@@ -66,6 +66,11 @@
 
 
 
+#if defined(_MSC_VER)
+# pragma function(memcpy)
+# pragma function(memset)
+#endif
+
 # undef memcpy
 # define memcpy(d,s,l) r_memcpy(d,s,l)
 # undef memset
@@ -87,9 +92,12 @@ void r_memset(void *d, int c, size_t l);
 #define _strnicmp(d,s,n) r_strnicmp(d,s,n)
 #undef _stricmp
 #define _stricmp(d,s) r_stricmp(d,s)
+#undef strcmp
+#define strcmp(d,s) r_strcmp(d,s)
 int r_atoi(const char *p);
 int r_strnicmp(const char* d, const char* s, size_t n);
 int r_stricmp(const char* d, const char* s);
+int r_strcmp(const char* d, const char* s);
 
 // IDs for timer
 #define IDTIMER_START       2

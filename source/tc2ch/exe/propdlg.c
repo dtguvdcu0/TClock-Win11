@@ -55,7 +55,23 @@ BOOL g_bApplyLangDLL = FALSE;
 extern HMENU g_hMenu;
 
 extern BOOL b_EnglishMenu;
+extern BOOL b_NormalLog;
 extern int Language_Offset;
+static int GetSafeLanguageOffset(void)
+{
+	if (Language_Offset == LANGUAGE_OFFSET_JAPANESE || Language_Offset == LANGUAGE_OFFSET_ENGLISH) {
+		return Language_Offset;
+	}
+
+	if (b_NormalLog) {
+		char msg[128];
+		wsprintf(msg, "[Warning] Invalid Language_Offset=%d. reset.", Language_Offset);
+		WriteNormalLog(msg);
+	}
+
+	Language_Offset = b_EnglishMenu ? LANGUAGE_OFFSET_ENGLISH : LANGUAGE_OFFSET_JAPANESE;
+	return Language_Offset;
+}
 
 
 
@@ -65,19 +81,49 @@ extern int Language_Offset;
 ---------------------------------------------*/
 void MyPropertyDialog(void)
 {
+	DWORD err;
+	char msg[192];
+
 	g_bApplyClock = FALSE;
 	g_bApplyTaskbar = FALSE;
 	g_bApplyLangDLL = FALSE;
 
-	if(g_hwndPropDlg && IsWindow(g_hwndPropDlg))
-		;
-	else {
-		g_hwndPropDlg = CreateDialog(GetLangModule(), MAKEINTRESOURCE(Language_Offset + IDD_PROPERTY), g_hwndMain, PropertyDialog);
-	}
-	ShowWindow(g_hwndPropDlg, SW_SHOW);
-	UpdateWindow(g_hwndPropDlg);
+	if(!(g_hwndPropDlg && IsWindow(g_hwndPropDlg))) {
+		g_hwndPropDlg = CreateDialog(GetLangModule(), MAKEINTRESOURCE(GetSafeLanguageOffset() + IDD_PROPERTY), g_hwndMain, PropertyDialog);
+		if(!(g_hwndPropDlg && IsWindow(g_hwndPropDlg))) {
+			err = GetLastError();
+			if (b_NormalLog) {
+				wsprintf(msg, "[Warning] CreateDialog failed (id=%u, off=%d, err=%lu)", (unsigned)(GetSafeLanguageOffset() + IDD_PROPERTY), Language_Offset, (unsigned long)err);
+				WriteNormalLog(msg);
+			}
 
-	SetForegroundWindow98(g_hwndPropDlg);
+			if (Language_Offset != 0)
+				g_hwndPropDlg = CreateDialog(GetLangModule(), MAKEINTRESOURCE(IDD_PROPERTY), g_hwndMain, PropertyDialog);
+			else
+				g_hwndPropDlg = CreateDialog(GetLangModule(), MAKEINTRESOURCE(1000 + IDD_PROPERTY), g_hwndMain, PropertyDialog);
+		}
+
+		if(!(g_hwndPropDlg && IsWindow(g_hwndPropDlg))) {
+			char fname[MAX_PATH];
+			HINSTANCE hInst = LoadLanguageDLL(fname);
+			if(hInst != NULL) {
+				if(g_hInstResource) FreeLibrary(g_hInstResource);
+				g_hInstResource = hInst;
+				strcpy(g_langdllname, fname);
+				g_hwndPropDlg = CreateDialog(GetLangModule(), MAKEINTRESOURCE(GetSafeLanguageOffset() + IDD_PROPERTY), g_hwndMain, PropertyDialog);
+			}
+		}
+	}
+
+	if(g_hwndPropDlg && IsWindow(g_hwndPropDlg)) {
+		ShowWindow(g_hwndPropDlg, SW_SHOW);
+		UpdateWindow(g_hwndPropDlg);
+		SetForegroundWindow98(g_hwndPropDlg);
+	}
+	else {
+		if (b_NormalLog) WriteNormalLog("[Error] Property dialog could not be opened.");
+		MyMessageBox(g_hwndMain, "Failed to open property dialog.", "TClock-Win10", MB_OK, MB_ICONEXCLAMATION);
+	}
 }
 
 static VOID SetPageDlgPos(HWND hParent, HWND hDlg)
@@ -221,7 +267,7 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 
 
 
-			CreatePageDialog(hDwnd, hDlg, bDlgFlg, 0, Language_Offset + IDD_PAGECOLOR, PageColorProc);
+			CreatePageDialog(hDwnd, hDlg, bDlgFlg, 0, GetSafeLanguageOffset() + IDD_PAGECOLOR, PageColorProc);
 			nowDlg = startpage;
 			//nowDlg = 0;
 			hNowDlg = &hDlg[nowDlg];
@@ -251,84 +297,84 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 					{
 						case 0:
 							nowDlg = 0;
-							CreatePageDialog(hDwnd, hDlg, bDlgFlg, nowDlg, Language_Offset + IDD_PAGECOLOR, PageColorProc);
+							CreatePageDialog(hDwnd, hDlg, bDlgFlg, nowDlg, GetSafeLanguageOffset() + IDD_PAGECOLOR, PageColorProc);
 							break;
 
 						case 1:
 							nowDlg = 11;
-							CreatePageDialog(hDwnd, hDlg, bDlgFlg, nowDlg, Language_Offset + IDD_PAGETOOLTIP, PageTooltipProc);
+							CreatePageDialog(hDwnd, hDlg, bDlgFlg, nowDlg, GetSafeLanguageOffset() + IDD_PAGETOOLTIP, PageTooltipProc);
 							break;
 
 						case 2:
 							nowDlg = 12;
-							CreatePageDialog(hDwnd, hDlg, bDlgFlg, nowDlg, Language_Offset + IDD_PAGE_KEYWORDS, PageKeywordProc);
+							CreatePageDialog(hDwnd, hDlg, bDlgFlg, nowDlg, GetSafeLanguageOffset() + IDD_PAGE_KEYWORDS, PageKeywordProc);
 							break;
 
 						case 3:
 							nowDlg = 13;
-							CreatePageDialog(hDwnd, hDlg, bDlgFlg, nowDlg, Language_Offset + IDD_PAGEABOUT, PageAboutProc);
+							CreatePageDialog(hDwnd, hDlg, bDlgFlg, nowDlg, GetSafeLanguageOffset() + IDD_PAGEABOUT, PageAboutProc);
 							break;
 
 						case 4:
 							nowDlg = 14;
-							CreatePageDialog(hDwnd, hDlg, bDlgFlg, nowDlg, Language_Offset + IDD_PAGEMISC, PageMiscProc);
+							CreatePageDialog(hDwnd, hDlg, bDlgFlg, nowDlg, GetSafeLanguageOffset() + IDD_PAGEMISC, PageMiscProc);
 							break;
 
 						case 5:
 							nowDlg = 15;
-							CreatePageDialog(hDwnd, hDlg, bDlgFlg, nowDlg, Language_Offset + IDD_PAGE_WIN11, PageWin11Proc);
+							CreatePageDialog(hDwnd, hDlg, bDlgFlg, nowDlg, GetSafeLanguageOffset() + IDD_PAGE_WIN11, PageWin11Proc);
 							break;
 
 						case 6:
 							nowDlg = 16;
-							CreatePageDialog(hDwnd, hDlg, bDlgFlg, nowDlg, Language_Offset + IDD_PAGEMOUSE, PageMouseProc);
+							CreatePageDialog(hDwnd, hDlg, bDlgFlg, nowDlg, GetSafeLanguageOffset() + IDD_PAGEMOUSE, PageMouseProc);
 							break;
 
 						case 7:
 							nowDlg = 17;
-							CreatePageDialog(hDwnd, hDlg, bDlgFlg, nowDlg, Language_Offset + IDD_PAGE_ETC, PageEtcProc);
+							CreatePageDialog(hDwnd, hDlg, bDlgFlg, nowDlg, GetSafeLanguageOffset() + IDD_PAGE_ETC, PageEtcProc);
 							break;
 
 						case 100:
 							//nowDlg -= 10;
 							nowDlg = 0;		//PAGECOLORÇÃêeÇ∆ìØÇ∂
-							CreatePageDialog(hDwnd, hDlg, bDlgFlg, nowDlg, Language_Offset + IDD_PAGECOLOR, PageColorProc);
+							CreatePageDialog(hDwnd, hDlg, bDlgFlg, nowDlg, GetSafeLanguageOffset() + IDD_PAGECOLOR, PageColorProc);
 							break;
 						case 101:
 							//nowDlg -= 10;
 							nowDlg = 1;
-							CreatePageDialog(hDwnd, hDlg, bDlgFlg, nowDlg, Language_Offset + IDD_PAGEFORMAT, PageFormatProc);
+							CreatePageDialog(hDwnd, hDlg, bDlgFlg, nowDlg, GetSafeLanguageOffset() + IDD_PAGEFORMAT, PageFormatProc);
 							break;
 
 						//case 102:
 						//	//nowDlg -= 10;
 						//	nowDlg = 2;
-						//	CreatePageDialog(hDwnd, hDlg, bDlgFlg, nowDlg, Language_Offset + IDD_PAGEMOUSE, PageMouseProc);
+						//	CreatePageDialog(hDwnd, hDlg, bDlgFlg, nowDlg, GetSafeLanguageOffset() + IDD_PAGEMOUSE, PageMouseProc);
 						//	break;
 						case 103:
 							//nowDlg -= 10;
 							nowDlg = 3;
-							CreatePageDialog(hDwnd, hDlg, bDlgFlg, nowDlg, Language_Offset + IDD_PAGEGRAPH, PageGraphProc);
+							CreatePageDialog(hDwnd, hDlg, bDlgFlg, nowDlg, GetSafeLanguageOffset() + IDD_PAGEGRAPH, PageGraphProc);
 							break;
 						case 104:
 							//nowDlg -= 10;
 							nowDlg = 4;
-							CreatePageDialog(hDwnd, hDlg, bDlgFlg, nowDlg, Language_Offset + IDD_PAGEANALOG, PageAnalogClockProc);
+							CreatePageDialog(hDwnd, hDlg, bDlgFlg, nowDlg, GetSafeLanguageOffset() + IDD_PAGEANALOG, PageAnalogClockProc);
 							break;
 
 						case 105:
 							nowDlg = 5;
-							CreatePageDialog(hDwnd, hDlg, bDlgFlg, nowDlg, Language_Offset + IDD_PAGEBARMETER, PageBarmeterProc);
+							CreatePageDialog(hDwnd, hDlg, bDlgFlg, nowDlg, GetSafeLanguageOffset() + IDD_PAGEBARMETER, PageBarmeterProc);
 							break;
 
 						case 106:
 							nowDlg = 6;
-							CreatePageDialog(hDwnd, hDlg, bDlgFlg, nowDlg, Language_Offset + IDD_PAGECOLOR_ADDITIONAL, PageColorAdditionalProc);
+							CreatePageDialog(hDwnd, hDlg, bDlgFlg, nowDlg, GetSafeLanguageOffset() + IDD_PAGECOLOR_ADDITIONAL, PageColorAdditionalProc);
 							break;
 
 						case 107:
 							nowDlg = 7;
-							CreatePageDialog(hDwnd, hDlg, bDlgFlg, nowDlg, Language_Offset + IDD_PAGECHIME, PageChimeProc);
+							CreatePageDialog(hDwnd, hDlg, bDlgFlg, nowDlg, GetSafeLanguageOffset() + IDD_PAGECHIME, PageChimeProc);
 							break;
 
 						default:

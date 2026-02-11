@@ -107,7 +107,19 @@ int r_stricmp(const char* d, const char* s)
 	}
 	return 0;
 }
-
+int r_strcmp(const char* d, const char* s)
+{
+	for (;;)
+	{
+		unsigned char c1 = (unsigned char)*d;
+		unsigned char c2 = (unsigned char)*s;
+		if (c1 != c2) return (int)c1 - (int)c2;
+		if (c1 == 0) break;
+		d++;
+		s++;
+	}
+	return 0;
+}
 /*-------------------------------------------
 　パス名にファイル名をつける
 ---------------------------------------------*/
@@ -298,14 +310,33 @@ char* MyString(UINT id)
 {
 	static char buf[MAX_PATH];
 	HINSTANCE hInst;
+	int n = 0;
 
 	extern int Language_Offset;
+	extern BOOL b_DebugLog;
 
 	buf[0] = 0;
 	hInst = GetLangModule();
-	if(hInst) LoadString(hInst, id + Language_Offset, buf, MAX_PATH);
+	if(hInst) {
+		n = LoadString(hInst, id + Language_Offset, buf, MAX_PATH);
+		if(n == 0) {
+			if(Language_Offset != 0) {
+				n = LoadString(hInst, id, buf, MAX_PATH);
+			}
+			else {
+				n = LoadString(hInst, id + 1000, buf, MAX_PATH);
+			}
+		}
+	}
 
-	if (strlen(buf) == 0) strcpy(buf, "NG_String");
+	if (strlen(buf) == 0) {
+		if (b_DebugLog) {
+			char tmp[160];
+			wsprintf(tmp, "[utl.c][MyString] NG id=%u off=%d hInst=%p", id, Language_Offset, hInst);
+			WriteDebug_New2(tmp);
+		}
+		strcpy(buf, "NG_String");
+	}
 
 	return buf;
 }

@@ -43,6 +43,31 @@ BOOL b_MenuItems_Initialized = FALSE;
 
 extern BOOL b_NormalLog;
 
+static char* SafeMyString(UINT id)
+{
+	char* s = MyString(id);
+	if (s[0] && strcmp(s, "NG_String") != 0) {
+		return s;
+	}
+
+	/* Recover once if language module was lost/corrupted at runtime. */
+	{
+		char fname[MAX_PATH];
+		HINSTANCE hInst = LoadLanguageDLL(fname);
+		if (hInst != NULL) {
+			if (g_hInstResource) FreeLibrary(g_hInstResource);
+			g_hInstResource = hInst;
+			strcpy(g_langdllname, fname);
+			s = MyString(id);
+			if (s[0] && strcmp(s, "NG_String") != 0) {
+				return s;
+			}
+		}
+	}
+
+	return "String_Error";
+}
+
 /*------------------------------------------------
    when the clock is right-clicked
    show pop-up menu
@@ -58,6 +83,16 @@ void OnContextMenu(HWND hwnd, HWND hwndClicked, int xPos, int yPos)
 	if (!g_hMenu)
 	{
 		g_hMenu = LoadMenu(GetLangModule(), MAKEINTRESOURCE(IDR_MENU));
+		if (!g_hMenu) {
+			char fname[MAX_PATH];
+			HINSTANCE hInst = LoadLanguageDLL(fname);
+			if (hInst != NULL) {
+				if (g_hInstResource) FreeLibrary(g_hInstResource);
+				g_hInstResource = hInst;
+				strcpy(g_langdllname, fname);
+				g_hMenu = LoadMenu(GetLangModule(), MAKEINTRESOURCE(IDR_MENU));
+			}
+		}
 		hPopupMenu = GetSubMenu(g_hMenu, 0);
 		SetMenuDefaultItem(hPopupMenu, 408, FALSE);
 
@@ -473,16 +508,26 @@ void OnTClockCommand(HWND hwnd, WORD wID, WORD wCode)
 		}
 		case IDC_HOTKEY0:
 			ExecuteMouseFunction(hwnd, wCode, IDS_HOTKEY - IDS_LEFTBUTTON, 0);
-			return;
-		case IDC_HOTKEY1:
-		case IDC_HOTKEY2:
-		case IDC_HOTKEY3:
-		case IDC_HOTKEY4:
-			ExecuteMouseFunction(hwnd, -1, IDS_HOTKEY - IDS_LEFTBUTTON, wID - IDC_HOTKEY1 + 1);
-			return;
-	}
+            return;
+        case IDC_HOTKEY1:
+        case IDC_HOTKEY2:
+        case IDC_HOTKEY3:
+        case IDC_HOTKEY4:
+            ExecuteMouseFunction(hwnd, -1, IDS_HOTKEY - IDS_LEFTBUTTON, wID - IDC_HOTKEY1 + 1);
+            return;
+    }
 
-	return;
+    if (b_DebugLog) {
+        char tmp[96];
+        wsprintf(tmp, "[menu.c][OnTClockCommand] Unknown wID=%u", wID);
+        WriteDebug_New2(tmp);
+    }
+    if (b_NormalLog) {
+        char tmp2[96];
+        wsprintf(tmp2, "[Warning] Unknown menu command wID=%u", wID);
+        WriteNormalLog(tmp2);
+    }
+    return;
 }
 
 
@@ -504,8 +549,8 @@ void InitializeMenuItems(void)
 
 
 
-	strcpy(stringMenuItem_RemoveDriveHeader, MyString(IDS_RMVDRVHEAD));
-	strcpy(stringMenuItem_RemoveDriveNoDrive, MyString(IDS_NORMVDRV));
+	strcpy(stringMenuItem_RemoveDriveHeader, SafeMyString(IDS_RMVDRVHEAD));
+	strcpy(stringMenuItem_RemoveDriveNoDrive, SafeMyString(IDS_NORMVDRV));
 
 
 	//if (b_AcceptRisk)
@@ -521,26 +566,26 @@ void InitializeMenuItems(void)
 	//	DeleteMenu(hPopupMenu, IDC_TOGGLE_CLOUD_APP, MF_BYCOMMAND);
 	//}
 
-	wsprintf(s, MyString(IDS_MENURETRIEVE));
+	wsprintf(s, SafeMyString(IDS_MENURETRIEVE));
 //	ModifyMenu(hPopupMenu, IDC_TOGGLE_DATAPLANFUNC, MF_BYCOMMAND, IDC_TOGGLE_DATAPLANFUNC, s);
 
-	ModifyMenu(hPopupMenu, IDC_TASKMAN, MF_BYCOMMAND, IDC_TASKMAN, MyString(IDS_TASKMGR));
-	ModifyMenu(hPopupMenu, IDC_CMD, MF_BYCOMMAND, IDC_CMD,MyString(IDS_CMD));
-	ModifyMenu(hPopupMenu, IDC_ALARM_CLOCK, MF_BYCOMMAND, IDC_ALARM_CLOCK, MyString(IDS_ALARM_CLOCK));
-	ModifyMenu(hPopupMenu, IDC_PULLBACK, MF_BYCOMMAND, IDC_PULLBACK, MyString(IDS_PULLBACK));
-	ModifyMenu(hPopupMenu, IDC_VISTACALENDAR, MF_BYCOMMAND, IDC_VISTACALENDAR, MyString(IDS_VISTACALENDAR));
-	ModifyMenu(hPopupMenu, IDC_SHOWAVAILABLENETWORKS, MF_BYCOMMAND, IDC_SHOWAVAILABLENETWORKS, MyString(IDS_SHOWAVAILABLENETWORKS));
-	ModifyMenu(hPopupMenu, IDC_CONTROLPNL, MF_BYCOMMAND, IDC_CONTROLPNL, MyString(IDS_CONTROLPNL));
-	ModifyMenu(hPopupMenu, IDC_POWERPNL, MF_BYCOMMAND, IDC_POWERPNL, MyString(IDS_POWERPNL));
-	ModifyMenu(hPopupMenu, IDC_NETWORKPNL, MF_BYCOMMAND, IDC_NETWORKPNL, MyString(IDS_NETWORKPNL));
-	ModifyMenu(hPopupMenu, IDC_SETTING, MF_BYCOMMAND, IDC_SETTING, MyString(IDS_SETTING));
-	ModifyMenu(hPopupMenu, IDC_NETWORKSTG, MF_BYCOMMAND, IDC_NETWORKSTG, MyString(IDS_NETWORKSTG));
-	ModifyMenu(hPopupMenu, IDC_DATETIME_Win10, MF_BYCOMMAND, IDC_DATETIME_Win10, MyString(IDS_PROPDATE));
-	ModifyMenu(hPopupMenu, IDC_REMOVE_DRIVE0, MF_BYCOMMAND, IDC_REMOVE_DRIVE0, MyString(IDS_ABOUTRMVDRV));
-	ModifyMenu(hPopupMenu, IDC_SHOWDIR, MF_BYCOMMAND, IDC_SHOWDIR, MyString(IDS_OPENTCFOLDER));
-	ModifyMenu(hPopupMenu, IDC_SHOWPROP, MF_BYCOMMAND, IDC_SHOWPROP, MyString(IDS_PROPERTY));
-	ModifyMenu(hPopupMenu, IDC_EXIT, MF_BYCOMMAND, IDC_EXIT, MyString(IDS_EXITTCLOCK));
-	ModifyMenu(hPopupMenu, IDC_RESTART, MF_BYCOMMAND, IDC_RESTART, MyString(IDS_RESTART));
+	ModifyMenu(hPopupMenu, IDC_TASKMAN, MF_BYCOMMAND, IDC_TASKMAN, SafeMyString(IDS_TASKMGR));
+	ModifyMenu(hPopupMenu, IDC_CMD, MF_BYCOMMAND, IDC_CMD,SafeMyString(IDS_CMD));
+	ModifyMenu(hPopupMenu, IDC_ALARM_CLOCK, MF_BYCOMMAND, IDC_ALARM_CLOCK, SafeMyString(IDS_ALARM_CLOCK));
+	ModifyMenu(hPopupMenu, IDC_PULLBACK, MF_BYCOMMAND, IDC_PULLBACK, SafeMyString(IDS_PULLBACK));
+	ModifyMenu(hPopupMenu, IDC_VISTACALENDAR, MF_BYCOMMAND, IDC_VISTACALENDAR, SafeMyString(IDS_VISTACALENDAR));
+	ModifyMenu(hPopupMenu, IDC_SHOWAVAILABLENETWORKS, MF_BYCOMMAND, IDC_SHOWAVAILABLENETWORKS, SafeMyString(IDS_SHOWAVAILABLENETWORKS));
+	ModifyMenu(hPopupMenu, IDC_CONTROLPNL, MF_BYCOMMAND, IDC_CONTROLPNL, SafeMyString(IDS_CONTROLPNL));
+	ModifyMenu(hPopupMenu, IDC_POWERPNL, MF_BYCOMMAND, IDC_POWERPNL, SafeMyString(IDS_POWERPNL));
+	ModifyMenu(hPopupMenu, IDC_NETWORKPNL, MF_BYCOMMAND, IDC_NETWORKPNL, SafeMyString(IDS_NETWORKPNL));
+	ModifyMenu(hPopupMenu, IDC_SETTING, MF_BYCOMMAND, IDC_SETTING, SafeMyString(IDS_SETTING));
+	ModifyMenu(hPopupMenu, IDC_NETWORKSTG, MF_BYCOMMAND, IDC_NETWORKSTG, SafeMyString(IDS_NETWORKSTG));
+	ModifyMenu(hPopupMenu, IDC_DATETIME_Win10, MF_BYCOMMAND, IDC_DATETIME_Win10, SafeMyString(IDS_PROPDATE));
+	ModifyMenu(hPopupMenu, IDC_REMOVE_DRIVE0, MF_BYCOMMAND, IDC_REMOVE_DRIVE0, SafeMyString(IDS_ABOUTRMVDRV));
+	ModifyMenu(hPopupMenu, IDC_SHOWDIR, MF_BYCOMMAND, IDC_SHOWDIR, SafeMyString(IDS_OPENTCFOLDER));
+	ModifyMenu(hPopupMenu, IDC_SHOWPROP, MF_BYCOMMAND, IDC_SHOWPROP, SafeMyString(IDS_PROPERTY));
+	ModifyMenu(hPopupMenu, IDC_EXIT, MF_BYCOMMAND, IDC_EXIT, SafeMyString(IDS_EXITTCLOCK));
+	ModifyMenu(hPopupMenu, IDC_RESTART, MF_BYCOMMAND, IDC_RESTART, SafeMyString(IDS_RESTART));
 
 
 

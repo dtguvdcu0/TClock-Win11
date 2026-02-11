@@ -69,6 +69,7 @@ void RedrawTClock(void);
 void SetTClockFont(void);
 void GetTaskbarSize(void);
 void RestartOnRefresh(void);
+static void RefreshAutoBackColors(BOOL force, char* reason);
 
 extern BOOL b_DebugLog;
 extern HWND hwndTaskBarMain;
@@ -260,6 +261,15 @@ HFONT hFontNotify = NULL;
 COLORREF colback, colback2, colfore;
 BOOL fillbackcolor = FALSE;
 DWORD grad;
+BOOL bAutoBackMatchTaskbar = TRUE;
+int autoBackAlpha = 96;
+int autoBackBlendRatio = 65;
+int autoBackRefreshSec = 5;
+BOOL bAutoBackTransparencyEnabled = TRUE;
+COLORREF autoBackColorMain = RGB(32, 32, 32);
+COLORREF autoBackColorEdge = RGB(48, 48, 48);
+static DWORD tickAutoBackLastRefresh = 0;
+static BOOL bAutoBackInitialized = FALSE;
 BOOL bTimerCheckNetStat = FALSE;	//Added by TTTT
 BOOL bTimerAdjust_SysInfo = FALSE;
 BOOL bTimerAdjust_NetStat = FALSE;
@@ -731,6 +741,136 @@ extern BOOL b_ShowingTClockBarWin11;
 BOOL b_ShowingTClockBarWin11_backup = FALSE;
 
 BOOL bSuppressGetTaskbarColor_Win11Type2 = FALSE;
+
+static int ClampInt(int value, int minv, int maxv)
+{
+	if (value < minv) return minv;
+	if (value > maxv) return maxv;
+	return value;
+}
+
+static COLORREF BlendColor(COLORREF c1, COLORREF c2, int ratioPercent)
+{
+	int r, g, b;
+	int ratio = ClampInt(ratioPercent, 0, 100);
+
+	r = (GetRValue(c1) * (100 - ratio) + GetRValue(c2) * ratio) / 100;
+	g = (GetGValue(c1) * (100 - ratio) + GetGValue(c2) * ratio) / 100;
+	b = (GetBValue(c1) * (100 - ratio) + GetBValue(c2) * ratio) / 100;
+
+	return RGB(r, g, b);
+}
+
+static BOOL ReadPersonalizeDword(const char* valueName, DWORD* valueOut)
+{
+	HKEY hkey;
+	DWORD regtype = 0;
+	DWORD size = sizeof(DWORD);
+	DWORD data = 0;
+
+	if (!valueName || !valueOut) return FALSE;
+	if (RegOpenKeyEx(HKEY_CURRENT_USER,
+		"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+		0, KEY_QUERY_VALUE, &hkey) != ERROR_SUCCESS) {
+		return FALSE;
+	}
+	if (RegQueryValueEx(hkey, valueName, 0, &regtype, (LPBYTE)&data, &size) == ERROR_SUCCESS
+		&& regtype == REG_DWORD) {
+		*valueOut = data;
+		RegCloseKey(hkey);
+		return TRUE;
+	}
+	RegCloseKey(hkey);
+	return FALSE;
+}
+
+static BOOL IsLikelyValidThemeColor(COLORREF col)
+{
+	// 0x00000001 is a frequent sentinel here when GetThemeColor_BG_Win10 fails and returns S_FALSE.
+	return (col != CLR_INVALID) && (col != 0x00000001);
+}
+
+static void RefreshAutoBackColors(BOOL force, char* reason)
+{
+	DWORD nowTick;
+	DWORD intervalMs;
+	DWORD transparency = 1;
+	COLORREF themeColor;
+	COLORREF sampleMain;
+	COLORREF sampleEdge;
+
+	if (!bAutoBackMatchTaskbar) return;
+
+	// Explorer restart/admin relaunch timing: refresh taskbar handles before sampling.
+	RefreshWin11TaskbarHandles();
+	if (!IsWindow(hwndTaskBarMain)) {
+		bAutoBackInitialized = FALSE;
+		if (b_DebugLog) writeDebugLog_Win10("[tclock.c][AutoBack] skip: taskbar handle not ready", 999);
+		return;
+	}
+	if (bWin11Main && posXMainClock <= 0) {
+		bAutoBackInitialized = FALSE;
+		if (b_DebugLog) writeDebugLog_Win10("[tclock.c][AutoBack] skip: posXMainClock not ready", posXMainClock);
+		return;
+	}
+
+	nowTick = GetTickCount();
+	intervalMs = (DWORD)ClampInt(autoBackRefreshSec, 1, 120) * 1000;
+	if (!force && bAutoBackInitialized && (nowTick - tickAutoBackLastRefresh < intervalMs)) return;
+
+	if (ReadPersonalizeDword("EnableTransparency", &transparency)) {
+		bAutoBackTransparencyEnabled = (transparency != 0);
+	}
+
+	themeColor = (COLORREF)GetThemeColor_BG_Win10(hwndClockMain);
+	if (!IsLikelyValidThemeColor(themeColor)) {
+		themeColor = GetSysColor(COLOR_3DFACE);
+	}
+
+	sampleMain = CLR_INVALID;
+	sampleEdge = CLR_INVALID;
+
+	// Use only the clock-near sampling point first; x=0 sampling can pick unrelated wallpaper tone.
+	GetTaskbarColor_Win11Type2(TRUE);
+	if (originalColorTaskbar != CLR_INVALID) sampleMain = originalColorTaskbar;
+	if (originalColorTaskbarEdge != CLR_INVALID) sampleEdge = originalColorTaskbarEdge;
+
+	// Fallback: only if near-clock sample failed.
+	if ((sampleMain == CLR_INVALID) || (sampleEdge == CLR_INVALID)) {
+		GetTaskbarColor_Win11Type2(FALSE);
+		if ((sampleMain == CLR_INVALID) && (originalColorTaskbar != CLR_INVALID)) sampleMain = originalColorTaskbar;
+		if ((sampleEdge == CLR_INVALID) && (originalColorTaskbarEdge != CLR_INVALID)) sampleEdge = originalColorTaskbarEdge;
+	}
+
+	if ((sampleMain == CLR_INVALID) || (sampleEdge == CLR_INVALID)) {
+		bAutoBackInitialized = FALSE;
+		if (b_DebugLog) writeDebugLog_Win10("[tclock.c][AutoBack] skip: sample color unavailable", 999);
+		return;
+	}
+
+	autoBackColorMain = sampleMain;
+	autoBackColorEdge = sampleEdge;
+
+	if (!bAutoBackTransparencyEnabled) {
+		// Transparency off: slightly flatten color to avoid noisy wallpaper bleed.
+		autoBackColorMain = BlendColor(autoBackColorMain, themeColor, 20);
+		autoBackColorEdge = BlendColor(autoBackColorEdge, themeColor, 20);
+	}
+
+	tickAutoBackLastRefresh = nowTick;
+	bAutoBackInitialized = TRUE;
+
+	if (b_DebugLog && reason) {
+		writeDebugLog_Win10("[tclock.c][AutoBack] refreshed reason=", 999);
+		writeDebugLog_Win10(reason, 999);
+		writeDebugLog_Win10("[tclock.c][AutoBack] themeColor=", (int)themeColor);
+		writeDebugLog_Win10("[tclock.c][AutoBack] sampleMain=", (int)sampleMain);
+		writeDebugLog_Win10("[tclock.c][AutoBack] sampleEdge=", (int)sampleEdge);
+		writeDebugLog_Win10("[tclock.c][AutoBack] finalMain=", (int)autoBackColorMain);
+		writeDebugLog_Win10("[tclock.c][AutoBack] finalEdge=", (int)autoBackColorEdge);
+		writeDebugLog_Win10("[tclock.c][AutoBack] transparencyEnabled=", bAutoBackTransparencyEnabled);
+	}
+}
 
 typedef struct _WIN11_CHILD_DUMP_CTX {
 	int count;
@@ -1844,6 +1984,19 @@ void ReadData()
 
 
 	fillbackcolor = GetMyRegLong("Color_Font", "UseBackColor", TRUE);
+	bAutoBackMatchTaskbar = GetMyRegLong("Color_Font", "AutoBackMatchTaskbar", TRUE);
+	SetMyRegLong("Color_Font", "AutoBackMatchTaskbar", bAutoBackMatchTaskbar);
+	autoBackAlpha = (int)GetMyRegLong("Color_Font", "AutoBackAlpha", 96);
+	autoBackAlpha = ClampInt(autoBackAlpha, 0, 255);
+	SetMyRegLong("Color_Font", "AutoBackAlpha", autoBackAlpha);
+	autoBackBlendRatio = (int)GetMyRegLong("Color_Font", "AutoBackBlendRatio", 65);
+	autoBackBlendRatio = ClampInt(autoBackBlendRatio, 0, 100);
+	SetMyRegLong("Color_Font", "AutoBackBlendRatio", autoBackBlendRatio);
+	autoBackRefreshSec = (int)GetMyRegLong("Color_Font", "AutoBackRefreshSec", 5);
+	autoBackRefreshSec = ClampInt(autoBackRefreshSec, 1, 120);
+	SetMyRegLong("Color_Font", "AutoBackRefreshSec", autoBackRefreshSec);
+	bAutoBackInitialized = FALSE;
+	RefreshAutoBackColors(TRUE, "ReadData");
 
 	grad = GetMyRegLong("Color_Font", "GradDir", GRADIENT_FILL_RECT_H);
 
@@ -2405,8 +2558,8 @@ void ReadData()
 	adjustWin11DetectNotify = (int)(short)GetMyRegLong("Win11", "AdjustDetectNotify", 0);
 	SetMyRegLong("Win11", "AdjustDetectNotify", adjustWin11DetectNotify);
 
-	bEnableWin11NotifyIcon = (BOOL)GetMyRegLong("Win11", "EnableWin11NotifyIcon", TRUE);
-	SetMyRegLong("Win11", "EnableWin11NotifyIcon", bEnableWin11NotifyIcon);
+	bEnableWin11NotifyIcon = FALSE;
+	SetMyRegLong("Win11", "EnableWin11NotifyIcon", FALSE);
 
 	if (bWin11Main && hwndWin11Notify) {
 		bEnabledWin11Notify = TRUE;
@@ -5257,17 +5410,10 @@ void FillBack(HDC hdcTarget, int width, int height)
 
 	if (!fillbackcolor)
 	{
-		//以前はここに時計背景をhdcClockに収容してその上に書き込むコードがあったが、2021年10月時点で機能しないものになっている。
-		//Windowsのタスクバー構造が完全に変わっていてその方式が復活する可能性はないので、削除
-		//透明化は、時計のビットマップを透過合成対応にして実現している。
-
-		//if (bWin11Main && (Win11Type == 2))
-		//{
-		//	//Win11Type2では透明効果でタスクバー色が変わるのでTClockの左端は毎秒色を合わせる。
-		//	//一方で、TClock右端には通知アイコンがあって、毎秒更新されるわけではないので、原則グラデーションで描画する。
-		//	//通知の更新がある場合に、左右の色が一致する。(通知の色をタスクバーの色に合わせる)
-		//	GradientFillBack(hdcTarget, width, height, originalColorTaskbar, originalColorTaskbar_ForWin11Notify, 0);
-		//}
+		if (bAutoBackMatchTaskbar) {
+			RefreshAutoBackColors(FALSE, "FillBack");
+			GradientFillBack(hdcTarget, width, height, autoBackColorMain, autoBackColorEdge, 0);
+		}
 	}
 	else
 	{
@@ -5323,14 +5469,6 @@ void FillClock()
 		//以前はここに時計背景をhdcClockに収容してその上に書き込むコードがあったが、2021年10月時点で機能しないものになっている。
 		//Windowsのタスクバー構造が完全に変わっていてその方式が復活する可能性はないので、削除
 		//透明化は、時計のビットマップを透過合成対応にして実現している。
-
-		//if (bWin11Main && (Win11Type == 2))
-		//{
-		//	col = originalColorTaskbar;
-		//	hbr = CreateSolidBrush(col);
-		//	FillRect(hdcClock, &tempRect, hbr);
-		//	DeleteObject(hbr);
-		//}
 	}
 	else 
 	{

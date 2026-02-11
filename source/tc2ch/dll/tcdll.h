@@ -227,6 +227,7 @@ HRESULT MyAlphaBlend(HDC hdcDest, int nXOriginDest, int nYOriginDest, int nWidth
 HRESULT MyTransparentBlt(HDC hdcDest, int nXOriginDest, int nYOriginDest, int nWidthDest, int nHeightDest,
   HDC hdcSrc, int nXOriginSrc, int nYOriginSrc, int nWidthSrc, int nHeightSrc, UINT crTransparent);
 HRESULT MyDrawThemeParentBackground(HWND hwnd,HDC hdc, RECT* prc);
+HRESULT GetThemeColor_BG_Win10(HWND hwnd);
 
 
 

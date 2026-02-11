@@ -1561,7 +1561,26 @@ void DrawWin11Notify(BOOL b_forceUpdate)
 }
 
 
-BOOL SetModifiedWidthWin11Tray(void)	//–ß‚è’l‚ÍƒAƒCƒRƒ“‚Ì—L–³‚ª•Ï‰»‚µ‚½‚©‚Ç‚¤‚©F•Ï‰»‚µ‚½‚çTRUE
+static BOOL IsHideClockPolicyEnabled(void)
+{
+	HKEY hkey;
+	DWORD reg_data = 0;
+	DWORD regtype = 0;
+	DWORD size = sizeof(DWORD);
+
+	if (RegOpenKeyEx(HKEY_CURRENT_USER, "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer", 0, KEY_QUERY_VALUE, &hkey) != ERROR_SUCCESS) {
+		return FALSE;
+	}
+
+	if (RegQueryValueEx(hkey, "HideClock", NULL, &regtype, (LPBYTE)&reg_data, &size) != ERROR_SUCCESS) {
+		RegCloseKey(hkey);
+		return FALSE;
+	}
+
+	RegCloseKey(hkey);
+	return (regtype == REG_DWORD && reg_data != 0);
+}
+BOOL SetModifiedWidthWin11Tray(void) //–ß‚è’l‚ÍƒAƒCƒRƒ“‚Ì—L–³‚ª•Ï‰»‚µ‚½‚©‚Ç‚¤‚©F•Ï‰»‚µ‚½‚çTRUE
 {
 	BOOL bPrev;
 	bPrev = bExistWin11Notify;
@@ -1569,6 +1588,7 @@ BOOL SetModifiedWidthWin11Tray(void)	//–ß‚è’l‚ÍƒAƒCƒRƒ“‚Ì—L–³‚ª•Ï‰»‚µ‚½‚©‚Ç‚¤‚©
 
 	bExistWin11Notify = FALSE;
 	cutOffWidthWin11Tray = defaultWin11ClockWidth;
+	if (IsHideClockPolicyEnabled()) cutOffWidthWin11Tray = 0;
 
 	intWin11FocusAssist = GetFocusAssistState();
 	intWin11NotificationNumber = GetNotificationNumber();
@@ -1617,6 +1637,9 @@ void SetMainClockOnTasktray_Win11(void)
 	//ƒ^ƒXƒNƒo[•‚ğæ“¾(Win11‚Í‚ß‚Á‚½‚É•Ï‚í‚ç‚È‚¢‚ªA”O‚Ì‚½‚ßB‰‰ñ‚Í•K—v)
 	GetTaskbarSize();
 
+	//25H2‚Å‚ÍContentBridgeŒnƒnƒ“ƒhƒ‹‚ª’x‰„¶¬/–¼Ì·•ª‚É‚È‚é‚±‚Æ‚ª‚ ‚é‚½‚ßA–ˆ‰ñÄ’Tõ‚·‚éB
+	RefreshWin11TaskbarHandles();
+
 	//Win11ƒ^ƒXƒNƒgƒŒƒCØ‚è—‚Æ‚µ•‚ğŒˆ’è
 	SetModifiedWidthWin11Tray();
 
@@ -1638,18 +1661,17 @@ void SetMainClockOnTasktray_Win11(void)
 		posXMainClock = widthTaskbar - widthMainClockFrame - widthWin11Notify;
 		if (posXMainClock < 0) posXMainClock = 0;
 
-		SetWindowPos(hwndClockMain, NULL, posXMainClock, 0, widthMainClockFrame, heightMainClockFrame,
+		SetWindowPos(hwndClockMain, HWND_TOP, posXMainClock, 0, widthMainClockFrame, heightMainClockFrame,
 			SWP_NOACTIVATE | SWP_NOSENDCHANGING | SWP_SHOWWINDOW);
 
 		if (IsWindow(hwndWin11Notify)) {
-			SetWindowPos(hwndWin11Notify, NULL, posXMainClock + widthMainClockFrame, 0, widthWin11Notify, heightMainClockFrame,
+			SetWindowPos(hwndWin11Notify, HWND_TOP, posXMainClock + widthMainClockFrame, 0, widthWin11Notify, heightMainClockFrame,
 				SWP_NOACTIVATE | SWP_NOSENDCHANGING | SWP_SHOWWINDOW);
 		}
 
 		CreateClockDC();
-		if (bEnableSubClks) {
-			SetTimer(hwndClockMain, IDTIMERDLL_DELEYED_RESPONSE, 500, NULL);
-		}
+		//degraded‚ÍWin11ƒnƒ“ƒhƒ‹Äæ“¾‚ÆÄ”z’u‚ğŒp‘±‚·‚é‚½‚ß’x‰„‰“š‚ğí‚É‹N“®‚·‚éB
+		SetTimer(hwndClockMain, IDTIMERDLL_DELEYED_RESPONSE, 500, NULL);
 		if (b_DebugLog) {
 			wsprintf(strLog, "[for_win11.c] Fallback layout applied. posXMainClock=%d", posXMainClock);
 			WriteDebugDLL_New(strLog);
@@ -1680,12 +1702,12 @@ void SetMainClockOnTasktray_Win11(void)
 		if (posXMainClock < 0) posXMainClock = 0;
 
 		//TClock‚ÌƒEƒBƒ“ƒhƒE‚ğŠ’è‚ÌêŠ‚ÉˆÚ“®‚·‚éB
-		SetWindowPos(hwndClockMain, NULL, posXMainClock, 0, widthMainClockFrame, heightMainClockFrame,
+		SetWindowPos(hwndClockMain, HWND_TOP, posXMainClock, 0, widthMainClockFrame, heightMainClockFrame,
 			SWP_NOACTIVATE | SWP_NOSENDCHANGING | SWP_SHOWWINDOW);
 
 		//©ì’Ê’mƒEƒBƒ“ƒhƒE‚ÌêŠ‚ğÄİ’è‚·‚éB
 		if (IsWindow(hwndWin11Notify)) {
-			SetWindowPos(hwndWin11Notify, NULL, posXMainClock + widthMainClockFrame, 0, widthWin11Notify, heightMainClockFrame,
+			SetWindowPos(hwndWin11Notify, HWND_TOP, posXMainClock + widthMainClockFrame, 0, widthWin11Notify, heightMainClockFrame,
 				SWP_NOACTIVATE | SWP_NOSENDCHANGING | SWP_SHOWWINDOW);
 			ShowWindow(hwndWin11Notify, SW_SHOW);
 		}

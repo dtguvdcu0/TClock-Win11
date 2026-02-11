@@ -69,6 +69,79 @@ void RedrawTClock(void);
 void SetTClockFont(void);
 void GetTaskbarSize(void);
 void RestartOnRefresh(void);
+
+extern BOOL b_DebugLog;
+extern HWND hwndTaskBarMain;
+extern HWND hwndTrayMain;
+extern HWND hwndWin11ReBarWin;
+extern HWND hwndWin11ContentBridge;
+extern HWND hwndWin11InnerTrayContentBridge;
+static void DebugLogWin11HandleState(const char* context);
+
+typedef struct _WIN11_FIND_CLASS_CTX {
+	const char* needle;
+	HWND found;
+} WIN11_FIND_CLASS_CTX;
+
+static BOOL CALLBACK EnumFindClassContainsProc_Win11(HWND hwnd, LPARAM lParam)
+{
+	WIN11_FIND_CLASS_CTX* ctx = (WIN11_FIND_CLASS_CTX*)lParam;
+	char className[128];
+
+	if (!ctx || !ctx->needle || ctx->found) return FALSE;
+	className[0] = 0;
+	GetClassName(hwnd, className, sizeof(className));
+	if (className[0] && StrStrIA(className, ctx->needle)) {
+		ctx->found = hwnd;
+		return FALSE;
+	}
+	return TRUE;
+}
+
+static HWND FindDescendantByClassContains_Win11(HWND root, const char* needle)
+{
+	WIN11_FIND_CLASS_CTX ctx;
+
+	if (!IsWindow(root) || !needle || !needle[0]) return NULL;
+	ctx.needle = needle;
+	ctx.found = NULL;
+	EnumChildWindows(root, EnumFindClassContainsProc_Win11, (LPARAM)&ctx);
+	return ctx.found;
+}
+
+void RefreshWin11TaskbarHandles(void)
+{
+	HWND prevTray = hwndTrayMain;
+	HWND prevRebar = hwndWin11ReBarWin;
+	HWND prevOuter = hwndWin11ContentBridge;
+	HWND prevInner = hwndWin11InnerTrayContentBridge;
+
+	if (!IsWindow(hwndTaskBarMain)) {
+		hwndTaskBarMain = FindWindow("Shell_TrayWnd", "");
+	}
+	if (!IsWindow(hwndTrayMain) && IsWindow(hwndTaskBarMain)) {
+		hwndTrayMain = FindWindowEx(hwndTaskBarMain, NULL, "TrayNotifyWnd", "");
+	}
+	if (!IsWindow(hwndWin11ReBarWin) && IsWindow(hwndTaskBarMain)) {
+		hwndWin11ReBarWin = FindWindowEx(hwndTaskBarMain, NULL, "ReBarWindow32", NULL);
+	}
+	if (!IsWindow(hwndWin11ContentBridge) && IsWindow(hwndTaskBarMain)) {
+		hwndWin11ContentBridge = FindWindowEx(hwndTaskBarMain, NULL, "Windows.UI.Composition.DesktopWindowContentBridge", NULL);
+		if (!IsWindow(hwndWin11ContentBridge)) {
+			hwndWin11ContentBridge = FindDescendantByClassContains_Win11(hwndTaskBarMain, "DesktopWindowContentBridge");
+		}
+	}
+	if (!IsWindow(hwndWin11InnerTrayContentBridge) && IsWindow(hwndTrayMain)) {
+		hwndWin11InnerTrayContentBridge = FindWindowEx(hwndTrayMain, NULL, "Windows.UI.Composition.DesktopWindowContentBridge", NULL);
+		if (!IsWindow(hwndWin11InnerTrayContentBridge)) {
+			hwndWin11InnerTrayContentBridge = FindDescendantByClassContains_Win11(hwndTrayMain, "DesktopWindowContentBridge");
+		}
+	}
+
+	if (b_DebugLog && (prevTray != hwndTrayMain || prevRebar != hwndWin11ReBarWin || prevOuter != hwndWin11ContentBridge || prevInner != hwndWin11InnerTrayContentBridge)) {
+		DebugLogWin11HandleState("RefreshWin11TaskbarHandles updated");
+	}
+}
 void GetMainClock(void);
 void SetMainClockOnTasktray(void);
 LRESULT CALLBACK SubclassTrayProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData);
@@ -531,12 +604,15 @@ BOOL bAutoRestart = TRUE;
 BOOL bWin11Main = FALSE;
 BOOL bWin11Sub = FALSE;
 BOOL bWin11LayoutDegraded = FALSE;
+BOOL bWin11MainClockHandleFound = FALSE;
 
 //Win11用関連ウィンドウハンドル
 HWND hwndWin11ReBarWin = NULL;
 HWND hwndWin11ContentBridge = NULL;
 HWND hwndWin11InnerTrayContentBridge = NULL;
 HWND hwndWin11Notify = NULL;
+HWND hwndWin11ClockMask = NULL;
+HWND hwndOriginalWin11MainClk = NULL;
 
 //通知ウィンドウ用
 //利用設定・フラグ
@@ -725,25 +801,23 @@ void GetMainClock(void)
 	bWin11Main = FALSE;
 	bWin11LayoutDegraded = FALSE;
 
-	//タスクトレイのハンドル取得(Win10, 11共通)
-	hwndTrayMain = FindWindowEx(hwndTaskBarMain, NULL, "TrayNotifyWnd", "");
+	//タスクバー周辺ハンドルを収集(Win10, 11共通)
+	RefreshWin11TaskbarHandles();
 
 	//TrayClockWClass(Win10までの時計)はWin11には存在しない。Win10まではこの時計を乗っ取って使う。
 	hwndClockMain = FindWindowEx(hwndTrayMain, NULL, "TrayClockWClass", NULL);
 
 	//Win11だと以下の条件が成立して関連のウィンドウのハンドルを取得する。
 	if (!hwndClockMain) {
-		hwndWin11ReBarWin = FindWindowEx(hwndTaskBarMain, NULL, "ReBarWindow32", NULL);		//Shell_TrayWndの直下、TrayNotifiWndの外
-		hwndWin11ContentBridge = FindWindowEx(hwndTaskBarMain, NULL, "Windows.UI.Composition.DesktopWindowContentBridge", NULL);
-		hwndWin11InnerTrayContentBridge = FindWindowEx(hwndTrayMain, NULL, "Windows.UI.Composition.DesktopWindowContentBridge", NULL);
 		bWin11Main = TRUE;
-
 
 		//メイン時計は新しいウィンドウをタスクバー内(トレイ内ではない)に作る
 		CreateWin11MainClock();
 
-		bMissingWin11Handles = (!IsWindow(hwndTrayMain) || !IsWindow(hwndWin11ReBarWin) ||
-			!IsWindow(hwndWin11ContentBridge) || !IsWindow(hwndWin11InnerTrayContentBridge));
+		//Explorer再起動直後はハンドルが遅れて生成されることがあるため、生成後に再探索する。
+		RefreshWin11TaskbarHandles();
+
+		bMissingWin11Handles = (!IsWindow(hwndTrayMain) || !IsWindow(hwndWin11ReBarWin) || !IsWindow(hwndWin11ContentBridge));
 		if (bMissingWin11Handles) {
 			WriteNormalLog_DLL("[Warning] Win11 taskbar handles are partially missing. Fallback layout mode will be used.");
 		}
@@ -937,6 +1011,13 @@ void InitClock()
 
 	b = GetMyRegLong("Mouse", "DropFiles", FALSE);
 	DragAcceptFiles(hwndClockMain, b);
+
+	// Win11 startup can miss the initial tray relayout path depending on message timing.
+	// Force one explicit placement pass here, then a delayed bridge move.
+	if (bWin11Main) {
+		SetMainClockOnTasktray_Win11();
+		PostMessage(hwndClockMain, CLOCKM_MOVEWIN11CONTENTBRIDGE, 1, 0);
+	}
 
 
 
@@ -1587,6 +1668,10 @@ void DelayedResponseToSyschange(void)
 	if (bEnableSubClks) {
 		CheckSubClocks();
 		SetAllSubClocks();
+	}
+
+	if (bWin11Main && bWin11LayoutDegraded && IsWindow(hwndClockMain)) {
+		SetMainClockOnTasktray_Win11();
 	}
 }
 

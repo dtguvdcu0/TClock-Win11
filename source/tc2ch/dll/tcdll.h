@@ -180,6 +180,7 @@ void SetMainClockOnTasktray_Win11(void);
 void GetWin11TaskbarType(void);
 //void DelayedMoveWin11ContentBridge(void);
 void MoveWin11ContentBridge(int operation);
+void RefreshWin11TaskbarHandles(void);
 void UpdateHdcYesWin11Notify(int num_notify);
 LRESULT CALLBACK WndProcTaskbarContentBridge_Win11(HWND tempHwnd, UINT message, WPARAM wParam, LPARAM lParam);
 void DesktopDirectDraw_Win11(void);

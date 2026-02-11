@@ -530,6 +530,7 @@ BOOL bAutoRestart = TRUE;
 //Win11対応自作ウィンドウモードフラグ
 BOOL bWin11Main = FALSE;
 BOOL bWin11Sub = FALSE;
+BOOL bWin11LayoutDegraded = FALSE;
 
 //Win11用関連ウィンドウハンドル
 HWND hwndWin11ReBarWin = NULL;
@@ -655,9 +656,75 @@ BOOL b_ShowingTClockBarWin11_backup = FALSE;
 
 BOOL bSuppressGetTaskbarColor_Win11Type2 = FALSE;
 
+typedef struct _WIN11_CHILD_DUMP_CTX {
+	int count;
+	int limit;
+} WIN11_CHILD_DUMP_CTX;
+
+static BOOL CALLBACK EnumTaskbarChildrenProc_Win11(HWND hwnd, LPARAM lParam)
+{
+	WIN11_CHILD_DUMP_CTX* ctx = (WIN11_CHILD_DUMP_CTX*)lParam;
+	char className[128];
+	char title[128];
+	char strLog[512];
+
+	if (!ctx) return FALSE;
+	if (ctx->count >= ctx->limit) return FALSE;
+
+	className[0] = 0;
+	title[0] = 0;
+	GetClassName(hwnd, className, sizeof(className));
+	GetWindowText(hwnd, title, sizeof(title));
+	wsprintf(strLog, "[tclock.c][Win11HandleDump][%d] class=%s title=%s", ctx->count, className, title);
+	WriteDebugDLL_New(strLog);
+	ctx->count++;
+	return TRUE;
+}
+
+static void DebugLogWin11HandleState(const char* context)
+{
+	char strLog[256];
+
+	if (!b_DebugLog) return;
+
+	wsprintf(strLog, "[tclock.c][Win11HandleState] %s", context);
+	WriteDebugDLL_New(strLog);
+	wsprintf(strLog, "  IsWindow(hwndTaskBarMain)=%d", IsWindow(hwndTaskBarMain));
+	WriteDebugDLL_New(strLog);
+	wsprintf(strLog, "  IsWindow(hwndTrayMain)=%d", IsWindow(hwndTrayMain));
+	WriteDebugDLL_New(strLog);
+	wsprintf(strLog, "  IsWindow(hwndWin11ReBarWin)=%d", IsWindow(hwndWin11ReBarWin));
+	WriteDebugDLL_New(strLog);
+	wsprintf(strLog, "  IsWindow(hwndWin11ContentBridge)=%d", IsWindow(hwndWin11ContentBridge));
+	WriteDebugDLL_New(strLog);
+	wsprintf(strLog, "  IsWindow(hwndWin11InnerTrayContentBridge)=%d", IsWindow(hwndWin11InnerTrayContentBridge));
+	WriteDebugDLL_New(strLog);
+	wsprintf(strLog, "  IsWindow(hwndClockMain)=%d", IsWindow(hwndClockMain));
+	WriteDebugDLL_New(strLog);
+}
+
+static void DumpTaskbarChildrenIfDebug(void)
+{
+	WIN11_CHILD_DUMP_CTX ctx;
+
+	if (!b_DebugLog) return;
+	if (!IsWindow(hwndTaskBarMain)) return;
+
+	ctx.count = 0;
+	ctx.limit = 80;
+	WriteDebugDLL_New("[tclock.c][Win11HandleDump] Begin EnumChildWindows(hwndTaskBarMain)");
+	EnumChildWindows(hwndTaskBarMain, EnumTaskbarChildrenProc_Win11, (LPARAM)&ctx);
+	WriteDebugDLL_New("[tclock.c][Win11HandleDump] End");
+}
+
 
 void GetMainClock(void)
 {
+	BOOL bMissingWin11Handles = FALSE;
+
+	bWin11Main = FALSE;
+	bWin11LayoutDegraded = FALSE;
+
 	//タスクトレイのハンドル取得(Win10, 11共通)
 	hwndTrayMain = FindWindowEx(hwndTaskBarMain, NULL, "TrayNotifyWnd", "");
 
@@ -674,6 +741,16 @@ void GetMainClock(void)
 
 		//メイン時計は新しいウィンドウをタスクバー内(トレイ内ではない)に作る
 		CreateWin11MainClock();
+
+		bMissingWin11Handles = (!IsWindow(hwndTrayMain) || !IsWindow(hwndWin11ReBarWin) ||
+			!IsWindow(hwndWin11ContentBridge) || !IsWindow(hwndWin11InnerTrayContentBridge));
+		if (bMissingWin11Handles) {
+			WriteNormalLog_DLL("[Warning] Win11 taskbar handles are partially missing. Fallback layout mode will be used.");
+		}
+		DebugLogWin11HandleState("after CreateWin11MainClock");
+		if (bMissingWin11Handles) {
+			DumpTaskbarChildrenIfDebug();
+		}
 	}
 }
 
@@ -1602,6 +1679,7 @@ void ReadData()
 	UpdateSettingFile();
 
 	SetMyRegLong("Status_DoNotEdit", "Win11TClockMain", bWin11Main);
+	SetMyRegLong("Status_DoNotEdit", "Win11LayoutDegraded", bWin11LayoutDegraded);
 
 	//SetMyRegLong("Status_DoNotEdit", "WindowsType", Win11Type);
 

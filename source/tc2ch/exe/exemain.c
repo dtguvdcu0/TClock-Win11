@@ -86,6 +86,13 @@ static BOOL IsUserAdmin(void);
 
 
 static BOOL AddMessageFilters(void);
+static BOOL HasCommandLineOption(const char *option);
+static BOOL SetHideClockPolicyValue(DWORD value);
+static BOOL IsHideClockPolicyEnabled(void);
+static BOOL WaitExplorerReady(DWORD timeoutMs);
+static void RestartExplorerForHideClock(void);
+static void ApplyHideClockPolicyFlow(void);
+static void RestoreHideClockPolicyFlow(void);
 
 static UINT s_uTaskbarRestart = 0;
 static BOOL bcontractTimer = FALSE;
@@ -135,6 +142,11 @@ HWND hwndTaskBar_Prev = NULL;
 BOOL b_ModernStandbySupported = FALSE;
 
 int countRestart = 0;
+int g_Win11ZombieMissCount = 0;
+BOOL b_UseHideClockPolicyFlow = FALSE;
+BOOL b_HideClockPolicyApplied = FALSE;
+BOOL b_SkipHideClockRestore = FALSE;
+BOOL b_IgnoreTaskbarRestartForHideClock = FALSE;
 
 /*-------------------------------------------------------
     mouse function list
@@ -168,6 +180,104 @@ int GetMouseFuncCount(void)
 {
 	return sizeof(mouse_func_list) / sizeof(MOUSE_FUNC_INFO);
 }
+
+static BOOL HasCommandLineOption(const char *option)
+{
+    char *p = GetCommandLine();
+    size_t n = strlen(option);
+
+    while (*p) {
+        while (*p && *p != '/' && *p != '-') p++;
+        if (!*p) break;
+        p++;
+        if (_strnicmp(p, option, n) == 0) return TRUE;
+        while (*p && *p != ' ') p++;
+    }
+    return FALSE;
+}
+
+static BOOL SetHideClockPolicyValue(DWORD value)
+{
+    HKEY hkey;
+    DWORD disp;
+    LONG rc;
+    char regPath[] = "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer";
+
+    rc = RegCreateKeyEx(HKEY_CURRENT_USER, regPath, 0, NULL, 0, KEY_SET_VALUE, NULL, &hkey, &disp);
+    if (rc != ERROR_SUCCESS) return FALSE;
+
+    rc = RegSetValueEx(hkey, "HideClock", 0, REG_DWORD, (const BYTE*)&value, sizeof(DWORD));
+    RegCloseKey(hkey);
+    return (rc == ERROR_SUCCESS);
+}
+
+static BOOL IsHideClockPolicyEnabled(void)
+{
+    HKEY hkey;
+    DWORD reg_data = 0;
+    DWORD regtype = 0;
+    DWORD size = sizeof(DWORD);
+    LONG rc;
+    char regPath[] = "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer";
+
+    rc = RegOpenKeyEx(HKEY_CURRENT_USER, regPath, 0, KEY_QUERY_VALUE, &hkey);
+    if (rc != ERROR_SUCCESS) return FALSE;
+
+    rc = RegQueryValueEx(hkey, "HideClock", NULL, &regtype, (LPBYTE)&reg_data, &size);
+    RegCloseKey(hkey);
+    if (rc != ERROR_SUCCESS) return FALSE;
+
+    return (regtype == REG_DWORD && reg_data != 0);
+}
+
+static BOOL WaitExplorerReady(DWORD timeoutMs)
+{
+    DWORD deadline = GetTickCount() + timeoutMs;
+    HWND hwndShell;
+    HWND hwndTray;
+
+    do {
+        hwndShell = FindWindow("Shell_TrayWnd", NULL);
+        if (hwndShell) {
+            hwndTray = FindWindowEx(hwndShell, NULL, "TrayNotifyWnd", NULL);
+            if (hwndTray) {
+                Sleep(500);
+                return TRUE;
+            }
+        }
+        Sleep(250);
+    } while (GetTickCount() < deadline);
+
+    return FALSE;
+}
+
+static void RestartExplorerForHideClock(void)
+{
+    b_IgnoreTaskbarRestartForHideClock = TRUE;
+    ShellExecute(NULL, "open", "taskkill.exe", "/F /IM explorer.exe", NULL, SW_HIDE);
+    Sleep(1200);
+    ShellExecute(NULL, "open", "explorer.exe", NULL, NULL, SW_SHOWDEFAULT);
+    WaitExplorerReady(20000);
+}
+
+static void ApplyHideClockPolicyFlow(void)
+{
+    if (!b_UseHideClockPolicyFlow) return;
+    if (!IsUserAdmin()) return;
+    if (!SetHideClockPolicyValue(1)) return;
+    b_HideClockPolicyApplied = TRUE;
+    RestartExplorerForHideClock();
+}
+
+static void RestoreHideClockPolicyFlow(void)
+{
+    if (!b_HideClockPolicyApplied) return;
+    if (!IsUserAdmin()) return;
+    if (!SetHideClockPolicyValue(0)) return;
+    RestartExplorerForHideClock();
+    b_HideClockPolicyApplied = FALSE;
+}
+
 
 
 
@@ -341,6 +451,19 @@ static UINT WINAPI TclockExeMain(void)
 
 	b_NormalLog = GetMyRegLong(NULL, "NormalLog", TRUE);
 	SetMyRegLong(NULL, "NormalLog", b_NormalLog);
+
+    b_UseHideClockPolicyFlow = GetMyRegLong("ETC", "UseHideClockPolicyFlow", TRUE);
+    SetMyRegLong("ETC", "UseHideClockPolicyFlow", b_UseHideClockPolicyFlow);
+    if (HasCommandLineOption("restart")) {
+        b_HideClockPolicyApplied = IsHideClockPolicyEnabled();
+    }
+    else if (HasCommandLineOption("exit")) {
+        b_UseHideClockPolicyFlow = FALSE;
+    }
+    else {
+        ApplyHideClockPolicyFlow();
+    }
+
 
 
 
@@ -857,6 +980,12 @@ LRESULT CALLBACK WndProc(HWND hwnd,	UINT message, WPARAM wParam, LPARAM lParam)	
 	{								 // and the taskbar is recreated.
 		if (b_DebugLog) WriteDebug_New2("[exemain.c][WndProc] message: s_uTaskbarRestart received");
 
+        if (b_IgnoreTaskbarRestartForHideClock) {
+            b_IgnoreTaskbarRestartForHideClock = FALSE;
+            if (b_DebugLog) WriteDebug_New2("[exemain.c][WndProc] Taskbar restart ignored (HideClock flow). ");
+            return 0;
+        }
+
 		if (b_NormalLog)
 		{
 			WriteNormalLog("[Warning] Windows Taskbar restarted. (notified from OS)");
@@ -880,6 +1009,7 @@ LRESULT CALLBACK WndProc(HWND hwnd,	UINT message, WPARAM wParam, LPARAM lParam)	
 			char fname[MAX_PATH];
 			strcpy(fname, g_mydir);
 			add_title(fname, "TClock-Win10.exe");
+            b_SkipHideClockRestore = TRUE;
 			ShellExecute(NULL, "open", fname, "/restart", NULL, SW_HIDE);
 
 		}
@@ -929,6 +1059,7 @@ void TerminateTClock(HWND hwnd)
 
 //	if (b_ShowTrayIcon)Shell_NotifyIcon(NIM_DELETE, &notifyIconData);
 	CreateTClockTrayIcon(FALSE);
+    if (!b_SkipHideClockRestore) RestoreHideClockPolicyFlow();
 
 	PostQuitMessage(0);
 	g_hwndMain = NULL;
@@ -970,6 +1101,7 @@ void TerminateTClockFromDLL(HWND hwnd)
 		bcontractTimer = FALSE;
 	}
 
+    if (!b_SkipHideClockRestore) RestoreHideClockPolicyFlow();
 	PostQuitMessage(0);
 	g_hwndMain = NULL;
 

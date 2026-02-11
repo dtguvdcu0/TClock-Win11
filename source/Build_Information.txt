@@ -1,11 +1,16 @@
 Build Information
-2018/11/25 by Mantis Mountain Mobile
+2026/02/12 updated for current local build environment
 
 Environment:
-Microsoft Visual Studio Community 2015
+Microsoft Visual Studio 2026 Community (v18.2.1)
+MSBuild 18.0.5+e22287bf1 (.NET Framework)
+MSVC Toolset 14.50.35717
 
 Target Platform Version:
-10.0.14393.0
+10.0.26100.0
 
-Available build configurations
+Available build configurations:
 Release / x64
+
+Build entry point:
+source/build.bat

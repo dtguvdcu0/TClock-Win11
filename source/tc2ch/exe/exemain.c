@@ -1423,6 +1423,10 @@ void CreateDefaultIniFile_Win10(char *fname)
 		SetMyRegLong("Color_Font", "UseBackColor", 0);
 		SetMyRegLong("Color_Font", "BackColor", 2147483633);
 		SetMyRegLong("Color_Font", "UseBackColor2", 0);
+		SetMyRegLong("Color_Font", "AutoBackMatchTaskbar", 1);
+		SetMyRegLong("Color_Font", "AutoBackAlpha", 96);
+		SetMyRegLong("Color_Font", "AutoBackBlendRatio", 65);
+		SetMyRegLong("Color_Font", "AutoBackRefreshSec", 5);
 		SetMyRegLong("Color_Font", "BackColor2", 2147483633);
 		SetMyRegLong("Color_Font", "GradDir", 0);
 		SetMyRegLong("Color_Font", "ForeColor", 16777215);

@@ -4527,8 +4527,21 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
 	}
 	else{			//背景透過の場合
 		unsigned channel;
+		BYTE back_alpha = 0;
+		BOOL apply_auto_back_alpha = FALSE;
 		BYTE temp_alpha;
 		BYTE textcol_r, textcol_g, textcol_b;
+
+		if (bAutoBackMatchTaskbar) {
+			apply_auto_back_alpha = TRUE;
+			if (bAutoBackTransparencyEnabled) {
+				back_alpha = (BYTE)ClampInt(autoBackAlpha, 0, 255);
+			}
+			else {
+				back_alpha = 255;
+			}
+		}
+
 		textcol_r = GetRValue(textcol);
 		textcol_g = GetGValue(textcol);
 		textcol_b = GetBValue(textcol);
@@ -4590,7 +4603,17 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
 				color->rgbReserved = 255;	
 			}
 			else {//グラフドットがないところ=透明
-				*(unsigned*)color = 0x00000000;
+				if (apply_auto_back_alpha && (back_alpha > 0)) {
+					if (back_alpha < 255) {
+						color->rgbRed = (BYTE)((unsigned)color->rgbRed * back_alpha / 255);
+						color->rgbGreen = (BYTE)((unsigned)color->rgbGreen * back_alpha / 255);
+						color->rgbBlue = (BYTE)((unsigned)color->rgbBlue * back_alpha / 255);
+					}
+					color->rgbReserved = back_alpha;
+				}
+				else {
+					*(unsigned*)color = 0x00000000;
+				}
 			}
 		}
 	}

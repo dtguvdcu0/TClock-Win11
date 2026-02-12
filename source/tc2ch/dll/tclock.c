@@ -851,7 +851,15 @@ static void RefreshAutoBackColors(BOOL force, char* reason)
 	autoBackColorMain = sampleMain;
 	autoBackColorEdge = sampleEdge;
 
-	if (!bAutoBackTransparencyEnabled) {
+	if (bAutoBackTransparencyEnabled) {
+		int pseudoRatio = ClampInt((autoBackAlpha * 100 + 127) / 255, 0, 100);
+		if (pseudoRatio < 100) {
+			// Pseudo-transparency: keep taskbar tone but blend toward theme base by AutoBackAlpha.
+			autoBackColorMain = BlendColor(themeColor, autoBackColorMain, pseudoRatio);
+			autoBackColorEdge = BlendColor(themeColor, autoBackColorEdge, pseudoRatio);
+		}
+	}
+	else {
 		// Transparency off: slightly flatten color to avoid noisy wallpaper bleed.
 		autoBackColorMain = BlendColor(autoBackColorMain, themeColor, 20);
 		autoBackColorEdge = BlendColor(autoBackColorEdge, themeColor, 20);
@@ -4633,7 +4641,18 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
 
 
 	//点滅処理は、フォントのみ反転として、TextColorFromInfoVal()の機能として実装
-	BitBlt(hdc, 0, 0, widthMainClockFrame, heightMainClockFrame, hdcClock, 0, 0, SRCCOPY);
+	if (!fillbackcolor) {
+		BLENDFUNCTION blend;
+		blend.BlendOp = 0;
+		blend.BlendFlags = 0;
+		blend.SourceConstantAlpha = 255;
+		blend.AlphaFormat = AC_SRC_ALPHA;
+		MyAlphaBlend(hdc, 0, 0, widthMainClockFrame, heightMainClockFrame,
+			hdcClock, 0, 0, widthMainClockFrame, heightMainClockFrame, blend);
+	}
+	else {
+		BitBlt(hdc, 0, 0, widthMainClockFrame, heightMainClockFrame, hdcClock, 0, 0, SRCCOPY);
+	}
 
 	HDC hdcSub = NULL;
 	HDC hdcSubBuffer = NULL;

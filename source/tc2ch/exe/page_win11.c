@@ -8,7 +8,8 @@
 
 static void OnInit(HWND hDlg);
 static void OnApply(HWND hDlg);
-//////void DefineDaysRange_Win10(HWND hDlg);
+static DWORD ReadPolicyDword(const char* subkey, const char* valueName, DWORD defval);
+static void WritePolicyDword(const char* subkey, const char* valueName, DWORD value);
 
 __inline void SendPSChanged(HWND hDlg)
 {
@@ -19,19 +20,46 @@ __inline void SendPSChanged(HWND hDlg)
 extern char g_mydir[];
 
 BOOL b_exe_Win11Main = FALSE;
-//BOOL b_exe_UseSubClks = TRUE;
-//BOOL b_exe_UseWin11Notify = TRUE;
 int exe_AdjustTrayCutPosition = 0;
 int exe_AdjustWin11ClockWidth = 0;
 int exe_AdjutDetectNotify = 0;
 BOOL b_exe_AdjustTrayWin11SmallTaskbar = TRUE;
 
-
-//extern BOOL b_AutoRestart;
-
 extern BOOL b_EnglishMenu;
 extern int Language_Offset;
 
+#ifndef IDC_WIN11_ENABLE_TRANSPARENCY
+#define IDC_WIN11_ENABLE_TRANSPARENCY 1900
+#endif
+
+static DWORD ReadPolicyDword(const char* subkey, const char* valueName, DWORD defval)
+{
+	HKEY hkey;
+	DWORD value = defval;
+	DWORD regtype = REG_DWORD;
+	DWORD size = sizeof(DWORD);
+
+	if (RegOpenKeyEx(HKEY_CURRENT_USER, subkey, 0, KEY_QUERY_VALUE, &hkey) != ERROR_SUCCESS) {
+		return defval;
+	}
+	if (RegQueryValueEx(hkey, valueName, 0, &regtype, (LPBYTE)&value, &size) != ERROR_SUCCESS || regtype != REG_DWORD) {
+		value = defval;
+	}
+	RegCloseKey(hkey);
+	return value;
+}
+
+static void WritePolicyDword(const char* subkey, const char* valueName, DWORD value)
+{
+	HKEY hkey;
+	DWORD disposition = 0;
+
+	if (RegCreateKeyEx(HKEY_CURRENT_USER, subkey, 0, NULL, 0, KEY_SET_VALUE, NULL, &hkey, &disposition) != ERROR_SUCCESS) {
+		return;
+	}
+	RegSetValueEx(hkey, valueName, 0, REG_DWORD, (const BYTE*)&value, sizeof(DWORD));
+	RegCloseKey(hkey);
+}
 
 /*------------------------------------------------
 　「バージョン情報」ページ用ダイアログプロシージャ
@@ -45,48 +73,13 @@ INT_PTR CALLBACK PageWin11Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
 			OnInit(hDlg);
 			return TRUE;
 		case WM_COMMAND:
-		{
-			WORD id, code;
-			id = LOWORD(wParam); code = HIWORD(wParam);
-			switch (id)
-			{
-			//case IDC_SPGDATAPLANMONTH:
-			//case IDC_DATAPLANMONTH:
-			//	month = SendDlgItemMessage(hDlg, IDC_SPGDATAPLANMONTH, UDM_GETPOS, 0, 0);
-			//	//////DefineDaysRange_Win10(hDlg);
-			//	break;
-			//case IDC_DATAPLANFIXEDDAY:
-			//	b_FixedDayInMonth = IsDlgButtonChecked(hDlg, IDC_DATAPLANFIXEDDAY);
-			//	break;
-			//case IDC_DATAPLANGB1024MB:
-			//	b_1024MBinGB = IsDlgButtonChecked(hDlg, IDC_DATAPLANGB1024MB);
-			//	break;
-			//case IDC_DATAPLANGB1000MB:
-			//	b_1024MBinGB = !IsDlgButtonChecked(hDlg, IDC_DATAPLANGB1000MB);
-			//	break;
-			//case IDC_DATAPLANAUTOFIND:
-			//	DataPlanUsageRetrieveMode = 0;
-			//	break;
-			//case IDC_DATAPLANALWAYSACTIVE:
-			//	DataPlanUsageRetrieveMode = 1;
-			//	break;
-			//case IDC_DATAPLANSUGGESTPROF:
-			//	DataPlanUsageRetrieveMode = 2;
-			//	break;
-			//case IDC_PROFILELIST:
-			//	{
-			//		PostMessage(g_hwndClock, CLOCKM_SHOWPROFILELIST, 0, 0);
-			//	}
-			//	break;
-			}
 			SendPSChanged(hDlg);
 			return TRUE;
-		}
 		case WM_NOTIFY:
 			switch (((NMHDR *)lParam)->code)
 			{
-			case PSN_APPLY: 
-				OnApply(hDlg); 
+			case PSN_APPLY:
+				OnApply(hDlg);
 				break;
 			case PSN_HELP:
 				My2chHelp(GetParent(hDlg));
@@ -102,61 +95,51 @@ INT_PTR CALLBACK PageWin11Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
 --------------------------------------------------*/
 static void OnInit(HWND hDlg)
 {
-
-//	CheckDlgButton(hDlg, IDC_ETC_AUTORESTART, b_AutoRestart);
-	
-	//b_exe_UseSubClks = GetMyRegLong(NULL, "EnableOnSubDisplay", TRUE);
-	//CheckDlgButton(hDlg, IDC_USE_SUBCLKS, b_exe_UseSubClks);
+	int autoBackAlpha;
+	int autoBackBlendRatio;
+	int autoBackRefreshSec;
+	DWORD hideClock;
+	DWORD transparency;
 
 	b_exe_Win11Main = GetMyRegLong("Status_DoNotEdit", "Win11TClockMain", 9);
 
+	autoBackAlpha = (int)GetMyRegLong("Color_Font", "AutoBackAlpha", 96);
+	if (autoBackAlpha < 0) autoBackAlpha = 0;
+	if (autoBackAlpha > 255) autoBackAlpha = 255;
 
+	autoBackBlendRatio = (int)GetMyRegLong("Color_Font", "AutoBackBlendRatio", 65);
+	if (autoBackBlendRatio < 0) autoBackBlendRatio = 0;
+	if (autoBackBlendRatio > 100) autoBackBlendRatio = 100;
 
-	if (b_exe_Win11Main)
-	{
-		CheckDlgButton(hDlg, IDC_ETC_USE_WIN11NOTIFY, (BOOL)GetMyRegLong("Win11", "EnableWin11NotifyIcon", 1));
+	autoBackRefreshSec = (int)GetMyRegLong("Color_Font", "AutoBackRefreshSec", 3);
+	if (autoBackRefreshSec < 1) autoBackRefreshSec = 1;
+	if (autoBackRefreshSec > 120) autoBackRefreshSec = 120;
 
-		int IconSize = GetMyRegLong("Status_DoNotEdit", "Win11IconSize", 99);
+	hideClock = ReadPolicyDword("Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer", "HideClock", 0);
+	transparency = ReadPolicyDword("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize", "EnableTransparency", 1);
 
-		exe_AdjustTrayCutPosition = (int)(short)GetMyRegLong("Win11", "AdjustCutTray", 0);
-		SendDlgItemMessage(hDlg, IDC_SPG_ETC_CUTPOSITION, UDM_SETRANGE, 0, MAKELONG(IconSize, -IconSize));
-		SendDlgItemMessage(hDlg, IDC_SPG_ETC_CUTPOSITION, UDM_SETPOS, 0, exe_AdjustTrayCutPosition);
+	CheckDlgButton(hDlg, IDC_ETC_USE_WIN11NOTIFY, (BOOL)GetMyRegLong("Color_Font", "AutoBackMatchTaskbar", 1));
+	CheckDlgButton(hDlg, IDC_ETC_ADJUST_WIN11_SMALLTASKBAR, hideClock ? BST_CHECKED : BST_UNCHECKED);
+	CheckDlgButton(hDlg, IDC_WIN11_ENABLE_TRANSPARENCY, transparency ? BST_CHECKED : BST_UNCHECKED);
 
-		exe_AdjustWin11ClockWidth = (int)(short)GetMyRegLong("Win11", "AdjustWin11ClockWidth", 0);
-		SendDlgItemMessage(hDlg, IDC_SPG_ETC_CUT_LIMIT, UDM_SETRANGE, 0, MAKELONG(IconSize, -IconSize));
-		SendDlgItemMessage(hDlg, IDC_SPG_ETC_CUT_LIMIT, UDM_SETPOS, 0, exe_AdjustWin11ClockWidth);
+	SendDlgItemMessage(hDlg, IDC_SPG_ETC_CUTPOSITION, UDM_SETRANGE, 0, MAKELONG(255, 0));
+	SendDlgItemMessage(hDlg, IDC_SPG_ETC_CUTPOSITION, UDM_SETPOS, 0, autoBackAlpha);
+	SendDlgItemMessage(hDlg, IDC_SPG_ETC_NOTIFY_DETECTPOS, UDM_SETRANGE, 0, MAKELONG(100, 0));
+	SendDlgItemMessage(hDlg, IDC_SPG_ETC_NOTIFY_DETECTPOS, UDM_SETPOS, 0, autoBackBlendRatio);
+	SendDlgItemMessage(hDlg, IDC_SPG_ETC_CUT_LIMIT, UDM_SETRANGE, 0, MAKELONG(120, 1));
+	SendDlgItemMessage(hDlg, IDC_SPG_ETC_CUT_LIMIT, UDM_SETPOS, 0, autoBackRefreshSec);
 
-		exe_AdjutDetectNotify = (int)(short)GetMyRegLong("Win11", "AdjustDetectNotify", 0);
-		SendDlgItemMessage(hDlg, IDC_SPG_ETC_NOTIFY_DETECTPOS, UDM_SETRANGE, 0, MAKELONG(IconSize, -IconSize));
-		SendDlgItemMessage(hDlg, IDC_SPG_ETC_NOTIFY_DETECTPOS, UDM_SETPOS, 0, exe_AdjutDetectNotify);
-
-		EnableDlgItem(hDlg, IDC_SPG_ETC_CUT_LIMIT, FALSE);
-		EnableDlgItem(hDlg, IDC_ETC_CUT_LIMIT, FALSE);
-		EnableDlgItem(hDlg, IDC_SPG_ETC_NOTIFY_DETECTPOS, FALSE);
-		EnableDlgItem(hDlg, IDC_ETC_NOTIFY_DETECTPOS, FALSE);
-
-		if (GetMyRegLong("Status_DoNotEdit", "WindowsType", 1) == 2) {
-			CheckDlgButton(hDlg, IDC_ETC_ADJUST_WIN11_SMALLTASKBAR, FALSE);
-			EnableDlgItem(hDlg, IDC_ETC_ADJUST_WIN11_SMALLTASKBAR, FALSE);
-		}
-		else {
-			b_exe_AdjustTrayWin11SmallTaskbar = (BOOL)GetMyRegLong("Win11", "AdjustWin11IconPosition", 1);
-			CheckDlgButton(hDlg, IDC_ETC_ADJUST_WIN11_SMALLTASKBAR, (BOOL)GetMyRegLong("Win11", "AdjustWin11IconPosition", 1));
-		}
-
-	}
-	else {
+	if (!b_exe_Win11Main) {
 		EnableDlgItem(hDlg, IDC_ETC_USE_WIN11NOTIFY, FALSE);
+		EnableDlgItem(hDlg, IDC_ETC_ADJUST_WIN11_SMALLTASKBAR, FALSE);
+		EnableDlgItem(hDlg, IDC_WIN11_ENABLE_TRANSPARENCY, FALSE);
 		EnableDlgItem(hDlg, IDC_SPG_ETC_CUTPOSITION, FALSE);
 		EnableDlgItem(hDlg, IDC_ETC_CUTPOSITION, FALSE);
 		EnableDlgItem(hDlg, IDC_SPG_ETC_CUT_LIMIT, FALSE);
 		EnableDlgItem(hDlg, IDC_ETC_CUT_LIMIT, FALSE);
 		EnableDlgItem(hDlg, IDC_SPG_ETC_NOTIFY_DETECTPOS, FALSE);
 		EnableDlgItem(hDlg, IDC_ETC_NOTIFY_DETECTPOS, FALSE);
-		EnableDlgItem(hDlg, IDC_ETC_ADJUST_WIN11_SMALLTASKBAR, FALSE);
 	}
-
-
 }
 
 /*------------------------------------------------
@@ -164,20 +147,35 @@ static void OnInit(HWND hDlg)
 --------------------------------------------------*/
 void OnApply(HWND hDlg)
 {
+	int autoBackAlpha;
+	int autoBackBlendRatio;
+	int autoBackRefreshSec;
+	DWORD hideClock;
+	DWORD transparency;
 
+		SetMyRegLong("Color_Font", "AutoBackMatchTaskbar", IsDlgButtonChecked(hDlg, IDC_ETC_USE_WIN11NOTIFY));
+	if (IsDlgButtonChecked(hDlg, IDC_ETC_USE_WIN11NOTIFY)) {
+		SetMyRegLong("Color_Font", "UseBackColor", 0);
+	}
 
-	//SetMyRegLong(NULL, "EnableOnSubDisplay", IsDlgButtonChecked(hDlg, IDC_USE_SUBCLKS));
+	autoBackAlpha = (int)(short)SendDlgItemMessage(hDlg, IDC_SPG_ETC_CUTPOSITION, UDM_GETPOS, 0, 0);
+	if (autoBackAlpha < 0) autoBackAlpha = 0;
+	if (autoBackAlpha > 255) autoBackAlpha = 255;
+	SetMyRegLong("Color_Font", "AutoBackAlpha", autoBackAlpha);
 
-	//b_AutoRestart = IsDlgButtonChecked(hDlg, IDC_ETC_AUTORESTART);
-	//SetMyRegLong(NULL, "AutoRestart", b_AutoRestart);
+	autoBackBlendRatio = (int)(short)SendDlgItemMessage(hDlg, IDC_SPG_ETC_NOTIFY_DETECTPOS, UDM_GETPOS, 0, 0);
+	if (autoBackBlendRatio < 0) autoBackBlendRatio = 0;
+	if (autoBackBlendRatio > 100) autoBackBlendRatio = 100;
+	SetMyRegLong("Color_Font", "AutoBackBlendRatio", autoBackBlendRatio);
 
-	SetMyRegLong("Win11", "EnableWin11NotifyIcon", IsDlgButtonChecked(hDlg, IDC_ETC_USE_WIN11NOTIFY));
+	autoBackRefreshSec = (int)(short)SendDlgItemMessage(hDlg, IDC_SPG_ETC_CUT_LIMIT, UDM_GETPOS, 0, 0);
+	if (autoBackRefreshSec < 1) autoBackRefreshSec = 1;
+	if (autoBackRefreshSec > 120) autoBackRefreshSec = 120;
+	SetMyRegLong("Color_Font", "AutoBackRefreshSec", autoBackRefreshSec);
 
-	SetMyRegLong("Win11", "AdjustCutTray", (int)(short)SendDlgItemMessage(hDlg, IDC_SPG_ETC_CUTPOSITION, UDM_GETPOS, 0, 0));
-	SetMyRegLong("Win11", "AdjustWin11ClockWidth", (int)(short)SendDlgItemMessage(hDlg, IDC_SPG_ETC_CUT_LIMIT, UDM_GETPOS, 0, 0));
-	SetMyRegLong("Win11", "AdjustDetectNotify", (int)(short)SendDlgItemMessage(hDlg, IDC_SPG_ETC_NOTIFY_DETECTPOS, UDM_GETPOS, 0, 0));
+	hideClock = IsDlgButtonChecked(hDlg, IDC_ETC_ADJUST_WIN11_SMALLTASKBAR) ? 1 : 0;
+	WritePolicyDword("Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer", "HideClock", hideClock);
 
-	SetMyRegLong("Win11", "AdjustWin11IconPosition", IsDlgButtonChecked(hDlg, IDC_ETC_ADJUST_WIN11_SMALLTASKBAR));
-
+	transparency = IsDlgButtonChecked(hDlg, IDC_WIN11_ENABLE_TRANSPARENCY) ? 1 : 0;
+	WritePolicyDword("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize", "EnableTransparency", transparency);
 }
-

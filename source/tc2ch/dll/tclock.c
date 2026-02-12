@@ -830,14 +830,14 @@ static void RefreshAutoBackColors(BOOL force, char* reason)
 	sampleMain = CLR_INVALID;
 	sampleEdge = CLR_INVALID;
 
-	// Use only the clock-near sampling point first; x=0 sampling can pick unrelated wallpaper tone.
-	GetTaskbarColor_Win11Type2(TRUE);
+	// Prioritize left-edge sampling for stability; near-clock area is more likely to be affected by popups.
+	GetTaskbarColor_Win11Type2(FALSE);
 	if (originalColorTaskbar != CLR_INVALID) sampleMain = originalColorTaskbar;
 	if (originalColorTaskbarEdge != CLR_INVALID) sampleEdge = originalColorTaskbarEdge;
 
-	// Fallback: only if near-clock sample failed.
+	// Fallback: use clock-near sample only if left-edge sample failed.
 	if ((sampleMain == CLR_INVALID) || (sampleEdge == CLR_INVALID)) {
-		GetTaskbarColor_Win11Type2(FALSE);
+		GetTaskbarColor_Win11Type2(TRUE);
 		if ((sampleMain == CLR_INVALID) && (originalColorTaskbar != CLR_INVALID)) sampleMain = originalColorTaskbar;
 		if ((sampleEdge == CLR_INVALID) && (originalColorTaskbarEdge != CLR_INVALID)) sampleEdge = originalColorTaskbarEdge;
 	}

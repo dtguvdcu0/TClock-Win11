@@ -60,6 +60,20 @@ static void WritePolicyDword(const char* subkey, const char* valueName, DWORD va
 	RegSetValueEx(hkey, valueName, 0, REG_DWORD, (const BYTE*)&value, sizeof(DWORD));
 	RegCloseKey(hkey);
 }
+static void WriteTaskbarAlignLeftQuiet(void)
+{
+	HKEY hkey;
+	DWORD disposition = 0;
+	DWORD value = 0;
+	const char regPath[] = "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced";
+
+	if (RegCreateKeyEx(HKEY_CURRENT_USER, regPath, 0, NULL, 0, KEY_SET_VALUE, NULL, &hkey, &disposition) != ERROR_SUCCESS) {
+		return;
+	}
+	RegSetValueEx(hkey, "TaskbarAl", 0, REG_DWORD, (const BYTE*)&value, sizeof(DWORD));
+	RegCloseKey(hkey);
+}
+
 
 /*------------------------------------------------
 　「バージョン情報」ページ用ダイアログプロシージャ
@@ -100,6 +114,7 @@ static void OnInit(HWND hDlg)
 	int autoBackRefreshSec;
 	DWORD hideClock;
 	DWORD transparency;
+	BOOL alignLeft;
 
 	b_exe_Win11Main = GetMyRegLong("Status_DoNotEdit", "Win11TClockMain", 9);
 
@@ -117,10 +132,12 @@ static void OnInit(HWND hDlg)
 
 	hideClock = ReadPolicyDword("Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer", "HideClock", 0);
 	transparency = ReadPolicyDword("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize", "EnableTransparency", 1);
+	alignLeft = (BOOL)GetMyRegLong("Win11", "AlignTaskbarLeft", 1);
 
 	CheckDlgButton(hDlg, IDC_ETC_USE_WIN11NOTIFY, (BOOL)GetMyRegLong("Color_Font", "AutoBackMatchTaskbar", 1));
 	CheckDlgButton(hDlg, IDC_ETC_ADJUST_WIN11_SMALLTASKBAR, hideClock ? BST_CHECKED : BST_UNCHECKED);
 	CheckDlgButton(hDlg, IDC_WIN11_ENABLE_TRANSPARENCY, transparency ? BST_CHECKED : BST_UNCHECKED);
+	CheckDlgButton(hDlg, IDC_WIN11_TASKBAR_ALIGN_LEFT, alignLeft ? BST_CHECKED : BST_UNCHECKED);
 
 	SendDlgItemMessage(hDlg, IDC_SPG_ETC_CUTPOSITION, UDM_SETRANGE, 0, MAKELONG(255, 0));
 	SendDlgItemMessage(hDlg, IDC_SPG_ETC_CUTPOSITION, UDM_SETPOS, 0, autoBackAlpha);
@@ -133,6 +150,7 @@ static void OnInit(HWND hDlg)
 		EnableDlgItem(hDlg, IDC_ETC_USE_WIN11NOTIFY, FALSE);
 		EnableDlgItem(hDlg, IDC_ETC_ADJUST_WIN11_SMALLTASKBAR, FALSE);
 		EnableDlgItem(hDlg, IDC_WIN11_ENABLE_TRANSPARENCY, FALSE);
+		EnableDlgItem(hDlg, IDC_WIN11_TASKBAR_ALIGN_LEFT, FALSE);
 		EnableDlgItem(hDlg, IDC_SPG_ETC_CUTPOSITION, FALSE);
 		EnableDlgItem(hDlg, IDC_ETC_CUTPOSITION, FALSE);
 		EnableDlgItem(hDlg, IDC_SPG_ETC_CUT_LIMIT, FALSE);
@@ -152,8 +170,9 @@ void OnApply(HWND hDlg)
 	int autoBackRefreshSec;
 	DWORD hideClock;
 	DWORD transparency;
+	BOOL alignLeft;
 
-		SetMyRegLong("Color_Font", "AutoBackMatchTaskbar", IsDlgButtonChecked(hDlg, IDC_ETC_USE_WIN11NOTIFY));
+	SetMyRegLong("Color_Font", "AutoBackMatchTaskbar", IsDlgButtonChecked(hDlg, IDC_ETC_USE_WIN11NOTIFY));
 	if (IsDlgButtonChecked(hDlg, IDC_ETC_USE_WIN11NOTIFY)) {
 		SetMyRegLong("Color_Font", "UseBackColor", 0);
 	}
@@ -178,4 +197,10 @@ void OnApply(HWND hDlg)
 
 	transparency = IsDlgButtonChecked(hDlg, IDC_WIN11_ENABLE_TRANSPARENCY) ? 1 : 0;
 	WritePolicyDword("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize", "EnableTransparency", transparency);
+
+	alignLeft = IsDlgButtonChecked(hDlg, IDC_WIN11_TASKBAR_ALIGN_LEFT) ? TRUE : FALSE;
+	SetMyRegLong("Win11", "AlignTaskbarLeft", alignLeft);
+	if (alignLeft) {
+		WriteTaskbarAlignLeftQuiet();
+	}
 }

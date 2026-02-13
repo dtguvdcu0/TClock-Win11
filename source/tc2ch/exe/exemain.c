@@ -5,6 +5,7 @@
 
 #include "tclock.h"
 #include <winver.h>
+#include <shellapi.h>
 
 #define AUTORESTART_WAIT_WIN11	5000	//Win11でのb_AutoRestart時のウェイト(ms)
 
@@ -145,8 +146,10 @@ int countRestart = 0;
 int g_Win11ZombieMissCount = 0;
 BOOL b_UseHideClockPolicyFlow = FALSE;
 BOOL b_HideClockPolicyApplied = FALSE;
+BOOL b_HideClockPolicyWasEnabled = FALSE;
 BOOL b_SkipHideClockRestore = FALSE;
 BOOL b_IgnoreTaskbarRestartForHideClock = FALSE;
+
 
 /*-------------------------------------------------------
     mouse function list
@@ -264,6 +267,7 @@ static void ApplyHideClockPolicyFlow(void)
 {
     if (!b_UseHideClockPolicyFlow) return;
     if (!IsUserAdmin()) return;
+    if (b_HideClockPolicyWasEnabled) return;
     if (!SetHideClockPolicyValue(1)) return;
     b_HideClockPolicyApplied = TRUE;
     RestartExplorerForHideClock();
@@ -454,8 +458,9 @@ static UINT WINAPI TclockExeMain(void)
 
     b_UseHideClockPolicyFlow = GetMyRegLong("ETC", "UseHideClockPolicyFlow", TRUE);
     SetMyRegLong("ETC", "UseHideClockPolicyFlow", b_UseHideClockPolicyFlow);
+    b_HideClockPolicyWasEnabled = IsHideClockPolicyEnabled();
     if (HasCommandLineOption("restart")) {
-        b_HideClockPolicyApplied = IsHideClockPolicyEnabled();
+        b_HideClockPolicyApplied = FALSE;
     }
     else if (HasCommandLineOption("exit")) {
         b_UseHideClockPolicyFlow = FALSE;
@@ -572,7 +577,6 @@ static UINT WINAPI TclockExeMain(void)
 	SetIdlePriority();	//デフォルトではIDLE_PRIORITY_CLASSとする	added by TTTT
 
 	CheckCommandLine(hwnd);		//コマンドラインチェック。この時点ではタスクトレイの改造は行っていない。この中で開始ウェイトも設定されている(?)
-
 	//b_RestartDLL = FALSE;		//どうせこのあと使わないが、気持ち悪いのでクリア
 	
 	HPOWERNOTIFY handle_PowerNotify;
@@ -1061,6 +1065,7 @@ void TerminateTClock(HWND hwnd)
 	CreateTClockTrayIcon(FALSE);
     if (!b_SkipHideClockRestore) RestoreHideClockPolicyFlow();
 
+	SetMyRegLong("Status_DoNotEdit", "LastExitUser", 1);
 	PostQuitMessage(0);
 	g_hwndMain = NULL;
 
@@ -1102,6 +1107,7 @@ void TerminateTClockFromDLL(HWND hwnd)
 	}
 
     if (!b_SkipHideClockRestore) RestoreHideClockPolicyFlow();
+	SetMyRegLong("Status_DoNotEdit", "LastExitUser", 1);
 	PostQuitMessage(0);
 	g_hwndMain = NULL;
 

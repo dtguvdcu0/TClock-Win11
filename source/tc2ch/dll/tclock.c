@@ -6134,21 +6134,18 @@ void CheckSafeMode_Win10(void)
 			+ (currentLaunchFileTime.dwLowDateTime >> 23)) * 0.839;
 
 
-	lastLaunchTimeStamp = GetMyRegLong("Status_DoNotEdit", "LastLaunchTimeStamp", 0);
-	SetMyRegLong("Status_DoNotEdit", "LastLaunchTimeStamp", currentLaunchTimeStamp);
-	LONG timeStampDifference = currentLaunchTimeStamp - lastLaunchTimeStamp;
-
-	int count = GetMyRegLong("Status_DoNotEdit", "CountAutoRestart", 0);
-
-	if ((timeStampDifference > 0) && (timeStampDifference < 20))
-	{
-		b_SafeMode = TRUE;
-		SetMyRegLong("Status_DoNotEdit", "CountAutoRestart",  count + 1);
-	}
-	else {
+	if (GetMyRegLong("Status_DoNotEdit", "LastExitUser", 0)) {
+		SetMyRegLong("Status_DoNotEdit", "LastExitUser", 0);
 		b_SafeMode = FALSE;
-		SetMyRegLong("Status_DoNotEdit", "CountAutoRestart",  0);
+		SetMyRegLong("Status_DoNotEdit", "CountAutoRestart", 0);
+		SetMyRegLong("Status_DoNotEdit", "SafeMode", b_SafeMode);
+		SetMyRegLong("Status_DoNotEdit", "LastLaunchTimeStamp", currentLaunchTimeStamp);
+		if (b_DebugLog) writeDebugLog_Win10("[tclock.c] SafeMode skipped due to user exit", 999);
+		return;
 	}
+
+	b_SafeMode = FALSE;
+	SetMyRegLong("Status_DoNotEdit", "CountAutoRestart", 0);
 
 
 
@@ -6163,7 +6160,6 @@ void CheckSafeMode_Win10(void)
 
 	if (b_DebugLog) writeDebugLog_Win10("lastLaunchTimeStamp = ", lastLaunchTimeStamp);
 	if (b_DebugLog) writeDebugLog_Win10("currentLaunchTimeStamp = ", currentLaunchTimeStamp);
-	if (b_DebugLog) writeDebugLog_Win10("timeStampDifference = ", timeStampDifference);
 	if (b_DebugLog) writeDebugLog_Win10("b_SafeMode = ", b_SafeMode);
 
 

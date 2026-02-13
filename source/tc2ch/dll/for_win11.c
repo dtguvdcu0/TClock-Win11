@@ -1140,6 +1140,7 @@ LRESULT CALLBACK WndProcTaskbarContentBridge_Win11(HWND tempHwnd, UINT message, 
 
 
 static int s_win11TrayMsgTraceCount = 0;
+static int s_missingWin11HandlesCount = 0;
 static BOOL s_win11RelayoutInProgress = FALSE;
 
 static void TryRelayoutWin11Tasktray(const char* reason)
@@ -1650,6 +1651,12 @@ void SetMainClockOnTasktray_Win11(void)
 		&& IsWindow(hwndWin11ReBarWin)
 		&& IsWindow(hwndWin11ContentBridge));
 	if (!bCanUseWin11Layout) {
+		s_missingWin11HandlesCount++;
+		if (s_missingWin11HandlesCount < 3) {
+			if (b_DebugLog) writeDebugLog_Win10("[for_win11.c] Missing Win11 handles (grace).", s_missingWin11HandlesCount);
+			SetTimer(hwndClockMain, IDTIMERDLL_DELEYED_RESPONSE, 500, NULL);
+			return;
+		}
 		if (!bWin11LayoutDegraded) {
 			bWin11LayoutDegraded = TRUE;
 			WriteNormalLog_DLL("[Warning] Entered Win11 degraded fallback layout mode.");
@@ -1679,6 +1686,7 @@ void SetMainClockOnTasktray_Win11(void)
 		return;
 	}
 
+	s_missingWin11HandlesCount = 0;
 	if (bWin11LayoutDegraded) {
 		bWin11LayoutDegraded = FALSE;
 		WriteNormalLog_DLL("[Info] Win11 layout handles recovered. Leaving degraded mode.");

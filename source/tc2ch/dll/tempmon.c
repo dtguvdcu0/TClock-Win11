@@ -119,7 +119,7 @@ int TempMoni_get(int zone)
 {
 	double tempDouble = 0.0;
 	long tempLong = 0;
-	int i = 0, ret;
+	int i = 0, ret = 0;
 	PDH_FMT_COUNTERVALUE FmtValue;
 
 	if (zone >= numThermalZone) {

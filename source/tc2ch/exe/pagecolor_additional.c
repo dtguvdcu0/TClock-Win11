@@ -82,8 +82,6 @@ BOOL CALLBACK PageColorAdditionalProc(HWND hDlg, UINT message,
 				case PSN_HELP: My2chHelp(GetParent(hDlg)); break;
 			}
 			return TRUE;
-			DeleteObject(combocolor);
-			break;
 	}
 	return FALSE;
 }

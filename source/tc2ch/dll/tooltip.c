@@ -372,7 +372,7 @@ static void TooltipUpdate2(HDC hdc, LPRECT lprcDraw, LPRECT lprect, UINT uDrawFl
 	HBRUSH hBrushTooltipBack = NULL, hBrushTooltipText = NULL;
 	RECT rc, rcall;
 	LPSTR pszText;
-	int maxwidth, width, height, len;
+	int maxwidth, width = 0, height, len;
 	LONG top;
 
 

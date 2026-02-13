@@ -1,6 +1,7 @@
+#define WIN32_NO_STATUS
 #include "tcdll.h"
 #include "string.h"
-#include <Windows.h>
+#undef WIN32_NO_STATUS
 #include <iostream>
 #include <PowrProf.h>
 #include <ntstatus.h>
@@ -179,7 +180,6 @@ extern "C" int GetFocusAssistState(void)
 		if (b_DebugLog)writeDebugLog_Win10("[newCodes_Win10.cpp][GetFocusAssistState] Error while calling NtQueryWnfStateData.", 999);
 		return -1;
 	}
-	return -1;
 }
 
 
@@ -223,7 +223,6 @@ extern "C" int GetNotificationNumber(void)
 		if (b_DebugLog)writeDebugLog_Win10("[newCodes_Win10.cpp][GetNotificationNumber] Error while calling NtQueryWnfStateData.", 999);
 		return -1;
 	}
-	return -1;
 }
 
 
@@ -257,6 +256,7 @@ extern "C" BOOL WINAPI CheckModernStandbyCapability_Win10(void) //20190725
 			return TRUE;
 		}
 	}
+	return FALSE;
 }
 
 
@@ -296,7 +296,10 @@ extern "C" int CheckWinVersion_Win10(void)
 		{
 			DWORD dw;
 			dw = 0;
+			#pragma warning(push)
+			#pragma warning(disable:4996)
 			dw = GetVersion();
+			#pragma warning(pop)
 			majorVersion = (int)(LOBYTE(LOWORD(dw)));
 			minorVersion = (int)(HIBYTE(LOWORD(dw)));
 			buildNumber = (int)HIWORD(dw) & 0x7fff;
@@ -334,7 +337,10 @@ extern "C" int CheckWinVersion_Win10(void)
 	{
 		DWORD dw;
 		dw = 0;
+		#pragma warning(push)
+		#pragma warning(disable:4996)
 		dw = GetVersion();
+		#pragma warning(pop)
 		majorVersion = (int)(LOBYTE(LOWORD(dw)));
 		minorVersion = (int)(HIBYTE(LOWORD(dw)));
 		buildNumber = (int)HIWORD(dw) & 0x7fff;
@@ -641,7 +647,7 @@ extern "C" void newCodes_startup_Win10()
 	
 	initializeVolume_Win10();
 
-	int i = CheckWinVersion_Win10();
+	(void)CheckWinVersion_Win10();
 
 
 	b_ToDo_updateConnectProfsInfo_Win10 = FALSE;
@@ -724,6 +730,7 @@ extern "C" BOOL updateConnectProfsInfo_Win10(BOOL b_Detail)	// return value: 1 =
 	if (b_DebugLog) writeDebugLog_Win10("updateConnectProfsInfo_Win10 called, with Detail option = ", b_Detail);
 
 	extern BOOL b_NormalLog;
+	UNREFERENCED_PARAMETER(b_NormalLog);
 
 
 
@@ -924,7 +931,7 @@ extern "C" BOOL chkExistProf_Win10(void)
 
 	if (connectProfs != nullptr)
 	{
-		int temp_int = (int)connectProfs->Size;
+		(void)connectProfs->Size;
 	}
 	return ret;
 }
@@ -1070,7 +1077,6 @@ extern "C" void chkInternetConnectionProfile_Win10()
 	{
 		if (g_InternetConnectStat_Win10 != newIntenetConnectionStatus_Win10)
 		{
-			extern BOOL b_DebugLog;
 			if (b_DebugLog) writeDebugLog_Win10("[chkInternetConnectionProfile_Win10]New g_InternetConnectStat_Win10 =", newIntenetConnectionStatus_Win10);
 			//b_ToDo_updateConnectProfsInfo_Win10 = TRUE;
 			b_ToDo_identifyInternetConnectProfNum_Win10 = TRUE;
@@ -1142,7 +1148,6 @@ extern "C" void saveAndOpenProfTable(BOOL b_Open)
 	char fname[MAX_PATH];
 	char strTemp[256];
 	char strTemp2[256];
-	char strTemp3[256];
 	int i = 0;
 	SYSTEMTIME systemtime;
 	GetLocalTime(&systemtime);

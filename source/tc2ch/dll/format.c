@@ -1216,7 +1216,7 @@ void MakeFormat(char* s, char* s_info, SYSTEMTIME* pt, int beat100, char* fmt)
 					BOOL bComma = FALSE;
 					BOOL bFlagGB = FALSE;
 					ms = mst = (DWORDLONG)-1;
-					double d_ms;
+					double d_ms = 0.0;
 
 
 					if (*(sp + 1) == 'K')

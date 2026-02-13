@@ -229,6 +229,7 @@ void InitFormat(void);
 void CreateFormat(char* s, int* checks);
 
 // menu.c
+void InitializeMenuItems(void);
 void OnContextMenu(HWND hwnd, HWND hwndClicked, int xPos, int yPos);
 void OnTClockCommand(HWND hwnd, WORD wID, WORD wCode);
 

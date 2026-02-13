@@ -102,6 +102,7 @@
 #define MAX_SUBSCREEN				8
 #define BASE_UID_SUBSCREEN			100
 // tclock.c
+void WINAPI HookEnd(void);
 void DrawClock(HWND hwnd, HDC hdc);
 void DrawClock_New(HDC hdc, BOOL b_forceUpdateWin11Notify);
 //void FillClock(HWND hwnd, HDC hdc, RECT *prc, int nblink);
@@ -109,6 +110,7 @@ void FillClock();
 void FillBack(HDC hdcTarget, int width, int height);
 void checkDisplayStatus_Win10(void); //added by TTTT
 void CheckPixel_Win10(int posX, int posY);
+int GPUMoni_get(void);
 
 
 // utl.c

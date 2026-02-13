@@ -10,6 +10,7 @@
 
 #include    <wingdi.h>
 #include	<shellapi.h>
+#include <stdio.h>
 
 #pragma     comment(lib,"msimg32.lib")
 
@@ -985,8 +986,6 @@ void InitClock()
 	HANDLE hfind;
 	char fname[MAX_PATH];
 	BOOL b;
-	DWORD dw;
-	int nDelay;
 
 
 
@@ -1022,7 +1021,7 @@ void InitClock()
 	//}
 
 
-	GetMainClock();	//hwndClockMain‚ðƒQƒbƒg, bWin11Main‚Í‚±‚±‚ÅŒˆ’è‚³‚ê‚éB
+	GetMainClock();	// get hwndClockMain; bWin11Main decided here
 	if (hwndClockMain == NULL) return;
 
 	hwndDesktop = GetDesktopWindow();
@@ -1413,6 +1412,7 @@ void EndClock(void)
 --------------------------------------------------*/
 LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
+	UNREFERENCED_PARAMETER(hwnd);
 	HWND tempHwnd;
 //	tempHwnd = hwnd;
 	tempHwnd = hwndClockMain;
@@ -1728,7 +1728,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 			if (b_DebugLog) writeDebugLog_Win10("[tclock.c][WndProc()] CLOCKM_UPDATE_EXTTEXT received", 999);
 
-			if (lParam == NULL){
+			if (!lParam){
 				GetMyRegStr("ETC", "ExtTXT_String", ExtTXT_String, 128, "");
 			}
 			else {
@@ -1896,7 +1896,6 @@ void ReadData()
 	LONG weight, italic;
 	SYSTEMTIME lt;
 	DWORD dwInfoFormat;
-	int resnetinterval;
 	TCHAR fname[MAX_PATH];
 
 	extern BOOL b_exist_DOWzone;
@@ -2118,8 +2117,8 @@ void ReadData()
 
 	if (bLogGraph)
 	{
-		if (NetGraphScaleRecv > 9) LogDigit = log10(NetGraphScaleRecv) + 1;
-		if (NetGraphScaleSend > 9) LogDigit2 = log10(NetGraphScaleSend) + 1;
+		if (NetGraphScaleRecv > 9) LogDigit = (int)log10(NetGraphScaleRecv) + 1;
+		if (NetGraphScaleSend > 9) LogDigit2 = (int)log10(NetGraphScaleSend) + 1;
 	}
 
 
@@ -2245,7 +2244,6 @@ void ReadData()
 
 
 	int BarMeterWidth;
-	int BarMeterHeight;
 	int BarMeterSpacing;
 
 	
@@ -2753,11 +2751,9 @@ void InitSysInfo()
 --------------------------------------------------*/
 void CreateClockDC(void)
 {
-	RECT tempRect;
 	//COLORREF col;
 	HDC hdc;
 	HWND tempHwnd;
-	char s[1024];
 	//int tempWidth, tempHeight;
 
 
@@ -2915,10 +2911,10 @@ void PlayChime(BOOL b_sedondary)
  --------------------------------------------------*/
 void OnTimer_Win10(void)
 {
+	BOOL bRedraw;
 	SYSTEMTIME t;
 	int beat100 = 0, tempInt = 0;
 	//HDC hdc;
-	BOOL bRedraw;
 
 
 	//if (bWin11Main && (Win11Type == 2)) {
@@ -3057,20 +3053,20 @@ void OnTimer_Win10(void)
 	{
 		if (b_EnableChime) {
 			BOOL bRing = FALSE;
-			int tempInt = t.wHour;
+			int tempHour = t.wHour;
 			if (intOffsetChimeSec < 0) {
-				tempInt++;
-				if (tempInt == 24) tempInt = 0;
+				tempHour++;
+				if (tempHour == 24) tempHour = 0;
 			}
 
-			if ((tempInt >= chimeHourStart) && (tempInt <= chimeHourEnd)) {
+			if ((tempHour >= chimeHourStart) && (tempHour <= chimeHourEnd)) {
 				bRing = TRUE;
 			}
 
 			if (bRing) {
 				if (b_CuckooClock)
 				{
-					nChime = (tempInt + 11) % 12 + 1;
+					nChime = (tempHour + 11) % 12 + 1;
 					//if (intOffsetChimeSec < 0)
 					//{
 					//	nChime = t.wHour % 12 + 1;
@@ -3233,6 +3229,7 @@ void OnTimerUpperTaskbar(void)
 --------------------------------------------------*/
 void DrawClock(HWND hwnd, HDC hdc)
 {
+	UNREFERENCED_PARAMETER(hwnd);
 	if (b_DebugLog)writeDebugLog_Win10("[tclock.c] DrawClock called.", 999);
 	SYSTEMTIME t;
 	int beat100 = 0;
@@ -3634,6 +3631,7 @@ static VOID ModifyMaskImage(SIZE *psize, LPBYTE buf)
 
 static BOOL CreateAnalogClockDC(HWND hWnd, HDC hDC, LPTSTR fname)
 {
+	UNREFERENCED_PARAMETER(hWnd);
 	SIZE size;
 	SIZE msize;
 	PSTR path;
@@ -3728,6 +3726,7 @@ static BOOL CreateAnalogClockDC(HWND hWnd, HDC hDC, LPTSTR fname)
 
 static VOID MakePosTable(int cx, int cy)
 {
+	UNREFERENCED_PARAMETER(cy);
 	int x, y;
 	int x2, y2;
 	double c, s;
@@ -3784,6 +3783,7 @@ static VOID SetAnalogClockSize(SIZE *s)
 
 static BOOL InitAnalogClockData(HWND hWnd)
 {
+	UNREFERENCED_PARAMETER(hWnd);
 	//ŽÀÛ‚É‚ÍhWnd = hwndClockMain
 	BOOL use;
 	int confNo;
@@ -3923,6 +3923,7 @@ static VOID AnalogClockBlt(HDC hDC, int dx, int dy, SIZE *pdst, int sx, int sy, 
 
 BOOL DrawAnalogClock(HDC hDC, SYSTEMTIME* pt, int xclock, int yclock, int wclock, int hclock)
 {
+	UNREFERENCED_PARAMETER(hclock);
 //	RECT r;
 	int sx, sy, dx, dy;
 	SIZE clock_size;
@@ -4001,7 +4002,6 @@ static BOOL LocalDrawAnalogClock(HDC hDC, SYSTEMTIME* pt, int xclock, int yclock
 	static WORD lastSec = 0xFFFF;
 	static WORD lastMin = 0xFFFF;
 	static WORD lastHour = 0xFFFF;
-	BOOL bRedraw;
 
 	if (nAnalogClockUseFlag != ANALOG_CLOCK_USE) {
 		return FALSE;
@@ -4170,17 +4170,15 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
 
 	if (b_DebugLog) writeDebugLog_Win10("[tclock.c] DrawClockSub called.", 999);
 
-	BITMAP bmp;
-	RECT rcFill,  rcClock;
+	RECT rcClock;
 
 	TEXTMETRIC tm;
-	int hf, y, w;
+	int hf, y;
 	char s[1024], s_info[1024], *p, *sp, *p_info, *sp_info;
 	//COLORREF s_col[1024];
 	SIZE sz;
-	int xclock, yclock, wclock, hclock, xsrc, ysrc, wsrc, hsrc;
+	int xclock, yclock, wclock, hclock;
 	int xcenter;
-	HRGN hRgn = NULL, hOldRgn = NULL;
 	COLORREF textcol, textshadow, textcol_dow;
 
 	RGBQUAD* color;
@@ -4440,7 +4438,7 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
 		{
 			y = (hclock - tm.tmHeight) / 2 - tm.tmInternalLeading / 4 + yclock;
 		}
-		if (GetTextExtentPoint32(hdcClock, sp, strlen(sp), &sz) == 0)
+		if (GetTextExtentPoint32(hdcClock, sp, (int)strlen(sp), &sz) == 0)
 		{
 			sz.cx = (LONG)strlen(sp) * tm.tmAveCharWidth;
 			sz.cy = tm.tmHeight;
@@ -4751,6 +4749,7 @@ paint graph, added by TTTT
 --------------------------------------------------*/
 void DrawBarMeter(HWND hwnd, HDC hdc, int wclock, int hclock, int bar_right, int bar_left, int bar_bottom, int bar_top, int value, COLORREF color, BOOL b_Horizontal, BOOL b_ToLeft)
 {
+	UNREFERENCED_PARAMETER(hwnd);
 	//hwnd‚ÍŽg‚í‚ê‚Ä‚¢‚È‚¢B
 
 	RECT barRect;
@@ -4798,6 +4797,7 @@ paint graph, added by TTTT
 --------------------------------------------------*/
 void DrawBarMeter2(HWND hwnd, HDC hdc, int wclock, int hclock, int bar_right, int bar_left, int bar_bottom, int bar_top, int value, COLORREF color, BOOL b_Horizontal)
 {
+	UNREFERENCED_PARAMETER(hwnd);
 	//hwnd‚ÍŽg‚í‚ê‚Ä‚¢‚È‚¢B
 
 	RECT barRect;
@@ -4866,7 +4866,7 @@ void DrawGraph(HDC hdc, int xclock, int yclock, int wclock, int hclock)
 	int graphSizeS;
 	int graphSizeR;
 	HPEN penSR, penR, penS;
-	HPEN penCU_M,penCU_H;
+	HPEN penCU_M = NULL, penCU_H = NULL;
 
 
 	getGraphVal();
@@ -5383,8 +5383,8 @@ void DrawGraph(HDC hdc, int xclock, int yclock, int wclock, int hclock)
 		DeleteObject(penR);
 		DeleteObject(penS);
 		if ((graphMode == 2) && (bUseBarMeterColForGraph)) {
-			DeleteObject(penCU_M);
-			DeleteObject(penCU_H);
+			if (penCU_M) DeleteObject(penCU_M);
+			if (penCU_H) DeleteObject(penCU_H);
 		}
 	}
 }
@@ -5409,8 +5409,7 @@ void getGraphVal()
 	}
 	else if (graphMode == 2)
 	{
-		int cpu_u;
-		for(i=MAXGRAPHLOG-1;i>=0;i--)
+			for(i=MAXGRAPHLOG-1;i>=0;i--)
 		{
 			sendlog[i+1]=sendlog[i];
 			recvlog[i+1]=recvlog[i];
@@ -5438,9 +5437,9 @@ void getGraphVal()
 
 void FillBack(HDC hdcTarget, int width, int height) 
 {
+	RECT tempRect;
 	HBRUSH hbr;
 	COLORREF col;
-	RECT tempRect;
 
 
 	tempRect.left = 0;
@@ -5494,9 +5493,9 @@ void FillBack(HDC hdcTarget, int width, int height)
 --------------------------------------------------*/
 void FillClock()
 {
+	RECT tempRect;
 	HBRUSH hbr;
 	COLORREF col;
-	RECT tempRect;
 
 
 	tempRect.left = 0;
@@ -5567,7 +5566,7 @@ void CalcMainClockContentSize(void)
 		sp = p;
 		while (*p && *p != 0x0d) p++;
 		if (*p == 0x0d) { *p = 0; p += 2; }
-		if (GetTextExtentPoint32(hdc, sp, strlen(sp), &sz) == 0)
+		if (GetTextExtentPoint32(hdc, sp, (int)strlen(sp), &sz) == 0)
 			sz.cx = (LONG)strlen(sp) * tm.tmAveCharWidth;
 		if (w < sz.cx) w = sz.cx;
 		h += hf; if (*p) h += 2 + dlineheight;
@@ -5622,10 +5621,10 @@ void CalcMainClockContentSize(void)
 // ‰¡Œ^‚Ìê‡‚Í•‚Íí‚É“¯‚¶‚ÅA‰º‚ÍContent‚Ì‰º‚ªØ‚ê‚é(Frame‚Íã‚©‚çØ‚ê–Ú‚Ü‚Å)‰Â”\«‚ª‚ ‚éB
 void CalcMainClockSize(void)
 {
+	RECT tempRect;
 
 	g_bVertTaskbar = IsVertTaskbar(hwndTaskBarMain);
 
-	RECT tempRect;
 	GetWindowRect(hwndTaskBarMain, &tempRect);
 	CalcMainClockContentSize();
 
@@ -5664,7 +5663,6 @@ void CalcMainClockSize(void)
 
 void UpdateSysRes(BOOL bbattery, BOOL bmem, BOOL bnet, BOOL bhdd, BOOL bcpu, BOOL bvol, BOOL bgpu, BOOL btemp)
 {
-	int i;
 
 
 
@@ -5744,7 +5742,7 @@ void UpdateSysRes(BOOL bbattery, BOOL bmem, BOOL bnet, BOOL bhdd, BOOL bcpu, BOO
 
 void OntimerCheckNetStat_Win10(HWND hwnd)
 {
-	int i;
+	UNREFERENCED_PARAMETER(hwnd);
 
 	//if (b_DebugLog) writeDebugLog_Win10("[tclock.c] OntimerCheckNetStat_Win10 called. ", 999);
 
@@ -5796,6 +5794,9 @@ subclass procedure of the tray
 --------------------------------------------------*/
 LRESULT CALLBACK SubclassTrayProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData)
 {
+	UNREFERENCED_PARAMETER(hwnd);
+	UNREFERENCED_PARAMETER(uIdSubclass);
+	UNREFERENCED_PARAMETER(dwRefData);
 	//‚±‚ÌƒR[ƒh“à‚Å‚Íhwnd‚ªhwndTrayMain‚Å‚ ‚èA‘¼‚Ì‘½‚­‚Ìê‡(hwnd=hwndClockMain)‚ÆˆÙ‚È‚é‚È‚Ì‚Å’ˆÓ‚·‚é‚±‚ÆI
 	//ƒ^ƒXƒNƒgƒŒƒC‚ÍƒƒCƒ“‚Ìƒ^ƒXƒNƒo[‚É‚µ‚©‘¶Ý‚µ‚È‚¢‚Ì‚ÅA‚»‚êˆÈŠO‚É‚ÍŽg‚¦‚È‚¢ƒR[ƒ‹ƒoƒbƒNŠÖ”‚É‚È‚Á‚Ä‚¢‚éB
 
@@ -5903,6 +5904,7 @@ Rearrange the notify area
 --------------------------------------------------*/
 void SetMainClockOnTasktray(void)
 {
+	RECT tempRect;
 	//‚±‚ÌŠÖ”‚ÍSubClassTrayProc‚ÌWM_NOTIFY‚©‚ç‚µ‚©ŒÄ‚Î‚ê‚È‚¢(ó‘Ô‚ðˆÛŽ‚·‚é‚±‚ÆI)B
 
 
@@ -5925,7 +5927,6 @@ void SetMainClockOnTasktray(void)
 	if (b_DebugLog) writeDebugLog_Win10("[tclock.c] SetMainClockOnTasktray called. ", 999);
 	POINT pos, shift;
 	HWND tempHwnd;
-	RECT tempRect;
 
 
 	//Šm•Û‚·‚×‚«ŽžŒv‚ÌƒTƒCƒY‚ðŽæ“¾
@@ -5993,9 +5994,9 @@ void SetMainClockOnTasktray(void)
 
 void CheckPixel_Win10(int posX, int posY)
 {
+	RECT tempRect;
 	HWND tempHwnd = NULL;
 	HDC tempDC = NULL;
-	RECT tempRect;
 	COLORREF tempCol;
 
 	tempHwnd = GetDesktopWindow();	//GetDesktopWindow()‚ªƒfƒXƒNƒgƒbƒv
@@ -6020,6 +6021,7 @@ void CheckPixel_Win10(int posX, int posY)
 
 void GetTaskbarColor_Win11Type2(BOOL bBoundary)	//bBoundary == TRUE‚¾‚ÆTClock‚Ì‹«ŠE•t‹ßAFALSE‚¾‚Ç¶’[
 {
+	RECT tempRect;
 	//extern BOOL b_ShowingTClockBarWin11;
 	//if (b_ShowingTClockBarWin11)return;
 
@@ -6031,7 +6033,6 @@ void GetTaskbarColor_Win11Type2(BOOL bBoundary)	//bBoundary == TRUE‚¾‚ÆTClock‚Ì‹
 
 	HWND tempHwnd = NULL;
 	HDC tempDC = NULL;
-	RECT tempRect;
 	int posX, posY;
 
 	GetWindowRect(hwndTaskBarMain, &tempRect);
@@ -6118,28 +6119,13 @@ BOOL IsVertTaskbar(HWND temphwndTaskBarMain)
  --------------------------------------------------*/
 void CheckSafeMode_Win10(void)
 {
-	//hwndŽg‚í‚ê‚Ä‚¢‚È‚¢
-
-
-	FILETIME currentLaunchFileTime;
-	currentLaunchFileTime.dwHighDateTime = 0;
-	currentLaunchFileTime.dwLowDateTime = 0;
-
-
-	LONG currentLaunchTimeStamp = 0;
-	LONG lastLaunchTimeStamp = 0;
-
-	GetSystemTimeAsFileTime(&currentLaunchFileTime);
-	currentLaunchTimeStamp = (((currentLaunchFileTime.dwHighDateTime & 0x000FFFFF) << 9)
-			+ (currentLaunchFileTime.dwLowDateTime >> 23)) * 0.839;
-
+	// hwnd unused
 
 	if (GetMyRegLong("Status_DoNotEdit", "LastExitUser", 0)) {
 		SetMyRegLong("Status_DoNotEdit", "LastExitUser", 0);
 		b_SafeMode = FALSE;
 		SetMyRegLong("Status_DoNotEdit", "CountAutoRestart", 0);
 		SetMyRegLong("Status_DoNotEdit", "SafeMode", b_SafeMode);
-		SetMyRegLong("Status_DoNotEdit", "LastLaunchTimeStamp", currentLaunchTimeStamp);
 		if (b_DebugLog) writeDebugLog_Win10("[tclock.c] SafeMode skipped due to user exit", 999);
 		return;
 	}
@@ -6147,28 +6133,23 @@ void CheckSafeMode_Win10(void)
 	b_SafeMode = FALSE;
 	SetMyRegLong("Status_DoNotEdit", "CountAutoRestart", 0);
 
-
-
 	b_ExcessNetProfiles = GetMyRegLong("Status_DoNotEdit", "ExcessNetProfiles", FALSE);
 	SetMyRegLong("Status_DoNotEdit", "ExcessNetProfiles", FALSE);
 	if (b_ExcessNetProfiles) b_SafeMode = TRUE;
-
 
 	SetMyRegLong("Status_DoNotEdit", "SafeMode", b_SafeMode);
 	
 	b_DebugLog = GetMyRegLong(NULL, "DebugLog", FALSE);
 
-	if (b_DebugLog) writeDebugLog_Win10("lastLaunchTimeStamp = ", lastLaunchTimeStamp);
-	if (b_DebugLog) writeDebugLog_Win10("currentLaunchTimeStamp = ", currentLaunchTimeStamp);
 	if (b_DebugLog) writeDebugLog_Win10("b_SafeMode = ", b_SafeMode);
-
 
 
 }
 
+
 COLORREF MyColorTT_Core(int iCPU)
 {
-	COLORREF returnvalue;
+	COLORREF returnvalue = ColorBarMeterCore_Low;
 	if (iCPU > 66)
 	{
 		returnvalue = ColorBarMeterCore_High;
@@ -6191,7 +6172,7 @@ COLORREF MyColorTT_GU(void)
 
 COLORREF MyColorTT_CU(void)
 {
-	COLORREF returnvalue;
+	COLORREF returnvalue = ColorBarMeterCU_Low;
 	if (totalCPUUsage >= BarMeterCU_Threshold_High)
 	{
 		returnvalue = ColorBarMeterCU_High;
@@ -6209,7 +6190,7 @@ COLORREF MyColorTT_CU(void)
 
 COLORREF MyColorTT_VL(void)
 {
-	COLORREF returnvalue;
+	COLORREF returnvalue = ColorBarMeterVL;
 		if (muteStatus)
 		{
 			returnvalue = ColorBarMeterVL_Mute;
@@ -6223,7 +6204,7 @@ COLORREF MyColorTT_VL(void)
 
 COLORREF MyColorTT_BL(void)
 {
-	COLORREF returnvalue;
+	COLORREF returnvalue = ColorBarMeterBL_Low;
 
 	if (b_Charging)
 	{
@@ -6256,7 +6237,6 @@ void checkDisplayStatus_Win10(void)
 	BOOL primaryDevFlag[32];
 	DISPLAY_DEVICE myDisplayDevice;
 	myDisplayDevice.cb = sizeof(DISPLAY_DEVICE);
-	DEVMODE mode;
 
 	if (b_DebugLog) writeDebugLog_Win10("checkDisplayStatus_Win10 called", 999);
 

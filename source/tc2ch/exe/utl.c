@@ -589,7 +589,7 @@ int GetMyRegStr(char* section, char* entry, char* val, int cbData,
 	BOOL b;
 	int r = 0;
 
-	if (strlen(g_inifile) == 0)return;
+	if (strlen(g_inifile) == 0) return 0;
 
 	key[0] = 0;
 
@@ -631,7 +631,7 @@ LONG GetMyRegLong(char* section, char* entry, LONG defval)
 	BOOL b;
 	LONG r = 0;
 
-	if (strlen(g_inifile) == 0)return;
+	if (strlen(g_inifile) == 0) return 0;
 
 
 	key[0] = 0;
@@ -671,7 +671,7 @@ BOOL SetMyRegStr(char* section, char* entry, char* val)
 	BOOL r = FALSE;
 	char key[80];
 
-	if (strlen(g_inifile) == 0)return;
+	if (strlen(g_inifile) == 0) return 0;
 
 
 	key[0] = 0;
@@ -736,7 +736,7 @@ BOOL SetMyRegLong(char* section, char* entry, DWORD val)
 	char key[80];
 
 
-	if (strlen(g_inifile) == 0)return;
+	if (strlen(g_inifile) == 0) return 0;
 
 	key[0] = 0;
 
@@ -778,7 +778,7 @@ BOOL DelMyReg(char* section, char* entry)
 	char key[80];
 	HKEY hkey;
 
-	if (strlen(g_inifile) == 0)return;
+	if (strlen(g_inifile) == 0) return 0;
 
 	key[0] = 0;
 
@@ -807,7 +807,7 @@ BOOL DelMyRegKey(char* section)
 	BOOL r = FALSE;
 	char key[80];
 
-	if (strlen(g_inifile) == 0)return;
+	if (strlen(g_inifile) == 0) return 0;
 
 	key[0] = 0;
 

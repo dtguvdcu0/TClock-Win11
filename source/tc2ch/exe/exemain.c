@@ -135,7 +135,7 @@ int TaskbarThreadID = 0;
 
 BOOL b_FlagDLLAlive = TRUE;
 
-LONG lastFileTimeDLLAlive = 0;
+ULONGLONG lastFileTimeDLLAlive = 0;
 
 HWND hwndTaskBar_Prev = NULL;
 
@@ -290,7 +290,6 @@ Wait Until Previous TClock Process Disappear
 ---------------------------------------------------------*/
 BOOL WaitQuitPrevTClock(int cycle)
 {
-	BOOL ret = FALSE;
 	HWND hwnd;
 
 	for (int i = 0; i < cycle; i++)
@@ -330,7 +329,13 @@ Status of DLL by TTTT
 ---------------------------------------------------------*/
 void OnDLLAliveMessage(WPARAM tempwParam)
 {
-	GetSystemTimeAsFileTime(&lastFileTimeDLLAlive);
+	FILETIME ft;
+	ULARGE_INTEGER ull;
+
+	GetSystemTimeAsFileTime(&ft);
+	ull.LowPart = ft.dwLowDateTime;
+	ull.HighPart = ft.dwHighDateTime;
+	lastFileTimeDLLAlive = ull.QuadPart;
 }
 
 
@@ -579,7 +584,7 @@ static UINT WINAPI TclockExeMain(void)
 	CheckCommandLine(hwnd);		//コマンドラインチェック。この時点ではタスクトレイの改造は行っていない。この中で開始ウェイトも設定されている(?)
 	//b_RestartDLL = FALSE;		//どうせこのあと使わないが、気持ち悪いのでクリア
 	
-	HPOWERNOTIFY handle_PowerNotify;
+	HPOWERNOTIFY handle_PowerNotify = NULL;
 	b_ModernStandbySupported = CheckModernStandbyCapability_Win10();
 	if (b_ModernStandbySupported)
 	{
@@ -610,7 +615,7 @@ static UINT WINAPI TclockExeMain(void)
 
 	UnregisterClass(szClassName, g_hInst);	// for TTBASE …と書いてあったが、たぶん必要 
 
-	if (b_ModernStandbySupported) UnregisterPowerSettingNotification(handle_PowerNotify);
+	if (b_ModernStandbySupported && handle_PowerNotify) UnregisterPowerSettingNotification(handle_PowerNotify);
 
 	return (UINT)msg.wParam;
 }
@@ -1140,11 +1145,14 @@ void OnTimerMain(HWND hwnd)		//メインループタイマー(デフォルト1秒)のタイムアウト
 	//Ver4.0.4時点で不測の自体に対する対処はOnTimerZombieCheck2で行っている。
 	//スリープ等でフラグが経つのですぐに終了してはいけない。
 
-	LONG currentFileTime = 0;
+	FILETIME currentFileTime;
+	ULARGE_INTEGER currentUll;
 
 	GetSystemTimeAsFileTime(&currentFileTime);
+	currentUll.LowPart = currentFileTime.dwLowDateTime;
+	currentUll.HighPart = currentFileTime.dwHighDateTime;
 
-	if (((LONGLONG)currentFileTime - (LONGLONG)lastFileTimeDLLAlive) > 20000000)
+	if ((currentUll.QuadPart - lastFileTimeDLLAlive) > 20000000ULL)
 	{
 		b_FlagDLLAlive = FALSE;	//Aliveメッセージが2秒開くとDLL音信不通フラグを立てる(復活可能)
 	}

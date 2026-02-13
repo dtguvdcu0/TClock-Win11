@@ -26,8 +26,11 @@
 #pragma warning(pop)
 
 
+#pragma warning(push)
+#pragma warning(disable:4005)
 #include "resource.h"
 #include "../language/resource.h"
+#pragma warning(pop)
 
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "gdi32.lib")

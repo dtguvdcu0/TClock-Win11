@@ -75,12 +75,43 @@ static void WriteTaskbarAlignLeftQuiet(void)
 }
 
 
+static void WriteTaskbarAlignCenterQuiet(void)
+{
+	HKEY hkey;
+	DWORD disposition = 0;
+	DWORD value = 1;
+	const char regPath[] = "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced";
+
+	if (RegCreateKeyEx(HKEY_CURRENT_USER, regPath, 0, NULL, 0, KEY_SET_VALUE, NULL, &hkey, &disposition) != ERROR_SUCCESS) {
+		return;
+	}
+	RegSetValueEx(hkey, "TaskbarAl", 0, REG_DWORD, (const BYTE*)&value, sizeof(DWORD));
+	RegCloseKey(hkey);
+}
+
+
+static void NotifyExplorerAdvancedChanged(void)
+{
+	DWORD_PTR dw = 0;
+	HWND hwndTaskbar = FindWindow("Shell_TrayWnd", NULL);
+	const char regPath[] = "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced";
+	SendMessageTimeout(HWND_BROADCAST, WM_SETTINGCHANGE, 0, (LPARAM)regPath, SMTO_ABORTIFHUNG | SMTO_BLOCK, 2000, &dw);
+	SendMessageTimeout(HWND_BROADCAST, WM_SETTINGCHANGE, 0, (LPARAM)"TraySettings", SMTO_ABORTIFHUNG | SMTO_BLOCK, 2000, &dw);
+	if (hwndTaskbar) {
+		SendMessageTimeout(hwndTaskbar, WM_SETTINGCHANGE, 0, (LPARAM)regPath, SMTO_ABORTIFHUNG | SMTO_BLOCK, 2000, &dw);
+		SendMessageTimeout(hwndTaskbar, WM_SETTINGCHANGE, 0, (LPARAM)"TraySettings", SMTO_ABORTIFHUNG | SMTO_BLOCK, 2000, &dw);
+	}
+	SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, NULL, NULL);
+}
+
+
 /*------------------------------------------------
 　「バージョン情報」ページ用ダイアログプロシージャ
 --------------------------------------------------*/
 
 INT_PTR CALLBACK PageWin11Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 {
+	UNREFERENCED_PARAMETER(wParam);
 	switch(message)
 	{
 		case WM_INITDIALOG:
@@ -202,5 +233,8 @@ void OnApply(HWND hDlg)
 	SetMyRegLong("Win11", "AlignTaskbarLeft", alignLeft);
 	if (alignLeft) {
 		WriteTaskbarAlignLeftQuiet();
+	} else {
+		WriteTaskbarAlignCenterQuiet();
 	}
+	NotifyExplorerAdvancedChanged();
 }

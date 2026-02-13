@@ -791,6 +791,41 @@ static BOOL IsLikelyValidThemeColor(COLORREF col)
 	return (col != CLR_INVALID) && (col != 0x00000001);
 }
 
+static BOOL SampleTaskbarColorsAtX(int posX, COLORREF* outMain, COLORREF* outEdge)
+{
+	RECT taskRect;
+	RECT desktopRect;
+	HDC tempDC;
+	int posY;
+	int maxX;
+
+	if (!outMain || !outEdge) return FALSE;
+	*outMain = CLR_INVALID;
+	*outEdge = CLR_INVALID;
+
+	if (!IsWindow(hwndTaskBarMain)) return FALSE;
+	GetWindowRect(hwndTaskBarMain, &taskRect);
+	maxX = taskRect.right - taskRect.left - 1;
+	if (maxX < 0) return FALSE;
+	posX = ClampInt(posX, 0, maxX);
+	posY = taskRect.top;
+
+	if (bSuppressGetTaskbarColor_Win11Type2) {
+		bSuppressGetTaskbarColor_Win11Type2 = FALSE;
+		return FALSE;
+	}
+
+	GetWindowRect(GetDesktopWindow(), &desktopRect);
+	tempDC = GetDC(GetDesktopWindow());
+	if (!tempDC) return FALSE;
+
+	*outMain = GetPixel(tempDC, posX, desktopRect.bottom - 1);
+	*outEdge = GetPixel(tempDC, posX, posY);
+	ReleaseDC(GetDesktopWindow(), tempDC);
+
+	return ((*outMain != CLR_INVALID) && (*outEdge != CLR_INVALID));
+}
+
 static void RefreshAutoBackColors(BOOL force, char* reason)
 {
 	DWORD nowTick;
@@ -831,16 +866,55 @@ static void RefreshAutoBackColors(BOOL force, char* reason)
 	sampleMain = CLR_INVALID;
 	sampleEdge = CLR_INVALID;
 
-	// Prioritize left-edge sampling for stability; near-clock area is more likely to be affected by popups.
-	GetTaskbarColor_Win11Type2(FALSE);
-	if (originalColorTaskbar != CLR_INVALID) sampleMain = originalColorTaskbar;
-	if (originalColorTaskbarEdge != CLR_INVALID) sampleEdge = originalColorTaskbarEdge;
+	if (bWin11Main) {
+		COLORREF leftMain, leftEdge;
+		COLORREF rightMain, rightEdge;
+		BOOL leftOk, rightOk;
+		int xLeft;
+		int xRight;
+		int ratio = ClampInt(autoBackBlendRatio, 0, 100);
 
-	// Fallback: use clock-near sample only if left-edge sample failed.
-	if ((sampleMain == CLR_INVALID) || (sampleEdge == CLR_INVALID)) {
-		GetTaskbarColor_Win11Type2(TRUE);
-		if ((sampleMain == CLR_INVALID) && (originalColorTaskbar != CLR_INVALID)) sampleMain = originalColorTaskbar;
-		if ((sampleEdge == CLR_INVALID) && (originalColorTaskbarEdge != CLR_INVALID)) sampleEdge = originalColorTaskbarEdge;
+		GetTaskbarSize();
+		if (posXMainClock > 0) {
+			xLeft = (posXMainClock * 2) / 3;
+			xRight = posXMainClock - (widthWin11Notify > 0 ? (widthWin11Notify / 2) : 10);
+		} else {
+			xLeft = (widthTaskbar * 2) / 3;
+			xRight = widthTaskbar - 10;
+		}
+		leftOk = SampleTaskbarColorsAtX(xLeft, &leftMain, &leftEdge);
+		rightOk = SampleTaskbarColorsAtX(xRight, &rightMain, &rightEdge);
+
+		if (leftOk && rightOk) {
+			sampleMain = BlendColor(leftMain, rightMain, ratio);
+			sampleEdge = BlendColor(leftEdge, rightEdge, ratio);
+		} else if (leftOk) {
+			sampleMain = leftMain;
+			sampleEdge = leftEdge;
+		} else if (rightOk) {
+			sampleMain = rightMain;
+			sampleEdge = rightEdge;
+		}
+
+		if (b_DebugLog) {
+			writeDebugLog_Win10("[tclock.c][AutoBack] sample xLeft=", xLeft);
+			writeDebugLog_Win10("[tclock.c][AutoBack] sample xRight=", xRight);
+			writeDebugLog_Win10("[tclock.c][AutoBack] lrBlendRatio=", ratio);
+			writeDebugLog_Win10("[tclock.c][AutoBack] sampleLeftMain=", (int)leftMain);
+			writeDebugLog_Win10("[tclock.c][AutoBack] sampleRightMain=", (int)rightMain);
+		}
+	} else {
+		// Prioritize left-edge sampling for stability; near-clock area is more likely to be affected by popups.
+		GetTaskbarColor_Win11Type2(FALSE);
+		if (originalColorTaskbar != CLR_INVALID) sampleMain = originalColorTaskbar;
+		if (originalColorTaskbarEdge != CLR_INVALID) sampleEdge = originalColorTaskbarEdge;
+
+		// Fallback: use clock-near sample only if left-edge sample failed.
+		if ((sampleMain == CLR_INVALID) || (sampleEdge == CLR_INVALID)) {
+			GetTaskbarColor_Win11Type2(TRUE);
+			if ((sampleMain == CLR_INVALID) && (originalColorTaskbar != CLR_INVALID)) sampleMain = originalColorTaskbar;
+			if ((sampleEdge == CLR_INVALID) && (originalColorTaskbarEdge != CLR_INVALID)) sampleEdge = originalColorTaskbarEdge;
+		}
 	}
 
 	if ((sampleMain == CLR_INVALID) || (sampleEdge == CLR_INVALID)) {

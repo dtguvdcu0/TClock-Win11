@@ -872,15 +872,21 @@ static void RefreshAutoBackColors(BOOL force, char* reason)
 		BOOL leftOk, rightOk;
 		int xLeft;
 		int xRight;
+		int rightFromNotifyArea = 0;
 		int ratio = ClampInt(autoBackBlendRatio, 0, 100);
 
 		GetTaskbarSize();
 		if (posXMainClock > 0) {
-			xLeft = (posXMainClock * 2) / 3;
-			xRight = posXMainClock - (widthWin11Notify > 0 ? (widthWin11Notify / 2) : 10);
+			if (widthWin11Notify > 0 && posXShowDesktopArea > 0) {
+				int localX = ClampInt(posXShowDesktopArea - 2, 0, widthWin11Notify - 1);
+				xLeft = posXMainClock + widthMainClockFrame + localX;
+			} else {
+				xLeft = posXMainClock - (widthWin11Notify > 0 ? (widthWin11Notify / 2) : 10);
+			}
+			xRight = posXMainClock - 1;
 		} else {
-			xLeft = (widthTaskbar * 2) / 3;
-			xRight = widthTaskbar - 10;
+			xLeft = widthTaskbar - 10;
+			xRight = 0;
 		}
 		leftOk = SampleTaskbarColorsAtX(xLeft, &leftMain, &leftEdge);
 		rightOk = SampleTaskbarColorsAtX(xRight, &rightMain, &rightEdge);
@@ -899,6 +905,7 @@ static void RefreshAutoBackColors(BOOL force, char* reason)
 		if (b_DebugLog) {
 			writeDebugLog_Win10("[tclock.c][AutoBack] sample xLeft=", xLeft);
 			writeDebugLog_Win10("[tclock.c][AutoBack] sample xRight=", xRight);
+			writeDebugLog_Win10("[tclock.c][AutoBack] leftFromNotifyArea=", rightFromNotifyArea);
 			writeDebugLog_Win10("[tclock.c][AutoBack] lrBlendRatio=", ratio);
 			writeDebugLog_Win10("[tclock.c][AutoBack] sampleLeftMain=", (int)leftMain);
 			writeDebugLog_Win10("[tclock.c][AutoBack] sampleRightMain=", (int)rightMain);

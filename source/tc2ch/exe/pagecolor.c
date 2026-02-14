@@ -315,10 +315,18 @@ void OnApply(HWND hDlg)
 
 
 	//フォント名の保存
-	CBGetLBText(hDlg, IDC_FONT, CBGetCurSel(hDlg, IDC_FONT), s);
-	//SetMyRegStr("Color_Font", "Font", s);
-
-	SetMyRegStr("Color_Font", "Font", s+1);	//先頭マークを除去して記録する場合
+	{
+		int sel = CBGetCurSel(hDlg, IDC_FONT);
+		if (sel >= 0) {
+			CBGetLBText(hDlg, IDC_FONT, sel, s);
+			if (s[0] == '*' || s[0] == ' ') {
+				SetMyRegStr("Color_Font", "Font", s + 1);	//????????????????
+			}
+			else {
+				SetMyRegStr("Color_Font", "Font", s);
+			}
+		}
+	}
 
 	//フォントサイズの保存
 	//5以下のサイズは許可しない(数値でないものも含まれる)

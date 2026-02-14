@@ -490,7 +490,25 @@ void InitComboFont(HWND hDlg)
 	if (i == LB_ERR)
 	{
 		i = CBFindStringExact(hDlg, IDC_FONT, s2);
-		if (i == LB_ERR) i = 0;
+		if (i == LB_ERR)
+		{
+			if (s[0])
+			{
+				i = (int)CBAddString(hDlg, IDC_FONT, (LPARAM)s2);
+				if (i != LB_ERR && i != CB_ERR)
+				{
+					SendDlgItemMessage(hDlg, IDC_FONT, CB_SETITEMDATA, i, (LPARAM)DEFAULT_CHARSET);
+				}
+				else
+				{
+					i = 0;
+				}
+			}
+			else
+			{
+				i = 0;
+			}
+		}
 	}
 
 	CBSetCurSel(hDlg, IDC_FONT, i);

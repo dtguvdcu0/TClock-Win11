@@ -5,6 +5,7 @@
 ---------------------------------------------*/
 
 #include "tcdll.h"
+#include "..\common\ini_io_utf8.h"
 
 extern HANDLE hmod;
 
@@ -202,7 +203,18 @@ int GetMyRegStr(char* section, char* entry, char* val, int cbData,
 	}
 
 
-	r = GetPrivateProfileString(key, entry, defval, val, cbData, g_inifile);
+	{
+		BOOL isUtf8 = FALSE;
+		if (tc_ini_utf8_detect_file(g_inifile, &isUtf8, NULL) && isUtf8) {
+			r = tc_ini_utf8_read_string(g_inifile, key, entry, defval ? defval : "", val, cbData);
+			if (r == 0) {
+				r = GetPrivateProfileString(key, entry, defval ? defval : "", val, cbData, g_inifile);
+			}
+		}
+		else {
+			r = GetPrivateProfileString(key, entry, defval ? defval : "", val, cbData, g_inifile);
+		}
+	}
 
 
 	extern BOOL b_DebugLog_RegAccess;
@@ -247,7 +259,33 @@ LONG GetMyRegLong(char* section, char* entry, LONG defval)
 	}
 
 
-	r = GetPrivateProfileInt(key, entry, defval, g_inifile);
+	{
+		char numbuf[64];
+		char defbuf[64];
+		BOOL isUtf8 = FALSE;
+		wsprintf(defbuf, "%ld", defval);
+		if (tc_ini_utf8_detect_file(g_inifile, &isUtf8, NULL) && isUtf8) {
+			if (tc_ini_utf8_read_string(g_inifile, key, entry, defbuf, numbuf, (int)sizeof(numbuf)) > 0) {
+				{
+				char* pnum = numbuf;
+				LONG sign = 1;
+				LONG v = 0;
+				if (*pnum == '-') { sign = -1; pnum++; }
+				while (*pnum >= '0' && *pnum <= '9') {
+					v = v * 10 + (LONG)(*pnum - '0');
+					pnum++;
+				}
+				r = v * sign;
+			}
+			}
+			else {
+				r = GetPrivateProfileInt(key, entry, defval, g_inifile);
+			}
+		}
+		else {
+			r = GetPrivateProfileInt(key, entry, defval, g_inifile);
+		}
+	}
 
 
 

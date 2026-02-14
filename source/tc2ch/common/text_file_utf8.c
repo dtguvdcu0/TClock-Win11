@@ -52,7 +52,10 @@ BOOL tc_read_text_file_utf8(const char* path, char** outText, DWORD* outSize, BO
     }
 
     if (start > 0) {
-        MoveMemory(raw, raw + start, rd - start);
+        DWORD i;
+        for (i = 0; i < rd - start; i++) {
+            raw[i] = raw[start + i];
+        }
         rd -= start;
         raw[rd] = '\0';
     }

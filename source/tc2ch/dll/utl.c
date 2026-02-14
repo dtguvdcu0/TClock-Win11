@@ -575,7 +575,7 @@ BOOL DelMyReg_DLL(char* section, char* entry)
 	}
 
 
-	if (WritePrivateProfileString(key, entry, NULL, g_inifile)) {
+	if (tc_ini_utf8_delete_key(g_inifile, key, entry)) {
 		r = TRUE;
 	}
 
@@ -603,7 +603,7 @@ BOOL DelMyRegKey_DLL(char* section)
 		strcpy(key, "Main");
 	}
 
-	if (WritePrivateProfileSection(key, NULL, g_inifile)) {
+	if (tc_ini_utf8_delete_section(g_inifile, key)) {
 		r = TRUE;
 	}
 

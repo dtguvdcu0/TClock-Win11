@@ -745,8 +745,17 @@ BOOL SetMyRegStr(char* section, char* entry, char* val)
 	else
 		strcpy(saveval, val);
 
-	if (WritePrivateProfileString(key, entry, saveval, g_inifile)) {
-		r = TRUE;
+	if (tc_ini_utf8_write_string(g_inifile, key, entry, saveval)) {
+		char verify[1024];
+		if (tc_ini_utf8_read_string(g_inifile, key, entry, "", verify, (int)sizeof(verify)) > 0) {
+			r = (lstrcmpA(verify, saveval) == 0) ? TRUE : FALSE;
+			if (!r && WritePrivateProfileString(key, entry, saveval, g_inifile)) {
+				r = TRUE;
+			}
+		}
+		else {
+			r = TRUE;
+		}
 	}
 
 
@@ -789,8 +798,17 @@ BOOL SetMyRegLong(char* section, char* entry, DWORD val)
 
 	char s[20];
 	wsprintf(s, "%d", val);
-	if (WritePrivateProfileString(key, entry, s, g_inifile)) {
-		r = TRUE;
+	if (tc_ini_utf8_write_string(g_inifile, key, entry, s)) {
+		char verify[64];
+		if (tc_ini_utf8_read_string(g_inifile, key, entry, "", verify, (int)sizeof(verify)) > 0) {
+			r = (lstrcmpA(verify, s) == 0) ? TRUE : FALSE;
+			if (!r && WritePrivateProfileString(key, entry, s, g_inifile)) {
+				r = TRUE;
+			}
+		}
+		else {
+			r = TRUE;
+		}
 	}
 
 	extern BOOL b_DebugLog_RegAccess;
@@ -829,7 +847,7 @@ BOOL DelMyReg(char* section, char* entry)
 	}
 
 
-	if (WritePrivateProfileString(key, entry, NULL, g_inifile)) {
+	if (tc_ini_utf8_delete_key(g_inifile, key, entry)) {
 		r = TRUE;
 	}
 
@@ -857,7 +875,7 @@ BOOL DelMyRegKey(char* section)
 		strcpy(key, "Main");
 	}
 
-	if (WritePrivateProfileSection(key, NULL, g_inifile)) {
+	if (tc_ini_utf8_delete_section(g_inifile, key)) {
 		r = TRUE;
 	}
 

@@ -443,10 +443,16 @@
     </ClCompile>
     <ClCompile Include="propdlg.c" />
     <ClCompile Include="utl.c" />
+    <ClCompile Include="..\common\text_codec.c" />
+    <ClCompile Include="..\common\text_file_utf8.c" />
+    <ClCompile Include="..\common\ini_io_utf8.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="resource.h" />
     <ClInclude Include="tclock.h" />
+    <ClInclude Include="..\common\text_codec.h" />
+    <ClInclude Include="..\common\text_file_utf8.h" />
+    <ClInclude Include="..\common\ini_io_utf8.h" />
   </ItemGroup>
   <ItemGroup>
     <Image Include="icon3.ico" />

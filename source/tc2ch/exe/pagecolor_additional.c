@@ -114,7 +114,7 @@ void OnInit(HWND hDlg)
 	CheckDlgButton(hDlg, IDC_CHKCOL_DATE, GetMyRegLong("Color_Font", "UseDateColor", TRUE));
 	CheckDlgButton(hDlg, IDC_CHKCOL_DOW, GetMyRegLong("Color_Font", "UseDowColor", TRUE));
 	CheckDlgButton(hDlg, IDC_CHKCOL_TIME, GetMyRegLong("Color_Font", "UseTimeColor", TRUE));
-	CheckDlgButton(hDlg, IDC_CHKCOL_ALL, GetMyRegLong("Color_Font", "UseAllColor", TRUE));
+	CheckDlgButton(hDlg, IDC_CHKCOL_ALL, GetMyRegLong("Color_Font", "UseAllColor", FALSE));
 	CheckDlgButton(hDlg, IDC_CHKCOL_VPN, GetMyRegLong("Color_Font", "UseVPNColor", TRUE));
 }
 

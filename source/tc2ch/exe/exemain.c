@@ -902,20 +902,24 @@ LRESULT CALLBACK WndProc(HWND hwnd,	UINT message, WPARAM wParam, LPARAM lParam)	
 			}
 			else if (wParam == PBT_POWERSETTINGCHANGE)
 			{
+				POWERBROADCAST_SETTING* pbs = (POWERBROADCAST_SETTING*)lParam;
+
 				if (b_DebugLog) WriteDebug_New2("[exemain.c][WndProc] wParam: PBT_POWERSETTINGCHANGE");
-				//if (*((POWERBROADCAST_SETTING*)lParam)->PowerSetting == GUID_CONSOLE_DISPLAY_STATE)
-				//{
+				if (!pbs || pbs->DataLength < 1) {
+					break;
+				}
+				if (memcmp(&pbs->PowerSetting, &GUID_CONSOLE_DISPLAY_STATE, sizeof(GUID)) != 0) {
+					break;
+				}
 
-				//}
-
-				if (*((POWERBROADCAST_SETTING*)lParam)->Data == 0x0)
+				if (pbs->Data[0] == 0x0)
 				{
-					if (b_DebugLog) WriteDebug_New2("[exemain.c][WndProc] lParam->Data == 0 : Sleep in");
+					if (b_DebugLog) WriteDebug_New2("[exemain.c][WndProc] GUID_CONSOLE_DISPLAY_STATE=0 : Sleep in");
 					PostMessage(g_hwndClock, CLOCKM_SLEEP_IN, 0, 0);
 				}
-				else if (*((POWERBROADCAST_SETTING*)lParam)->Data == 0x1)
+				else
 				{
-					if (b_DebugLog) WriteDebug_New2("[exemain.c][WndProc] lParam->Data == 1 : Awake from Sleep");
+					if (b_DebugLog) WriteDebug_New2("[exemain.c][WndProc] GUID_CONSOLE_DISPLAY_STATE!=0 : Awake from Sleep");
 					PostMessage(g_hwndClock, CLOCKM_SLEEP_AWAKE, 0, 0);
 				}
 			}

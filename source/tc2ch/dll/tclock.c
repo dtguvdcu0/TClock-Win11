@@ -71,6 +71,8 @@ void SetTClockFont(void);
 void GetTaskbarSize(void);
 void RestartOnRefresh(void);
 static void RefreshAutoBackColors(BOOL force, char* reason);
+static void RefreshClockWorkFont(void);
+static void StartupAutoAdjustPass(void);
 
 extern BOOL b_DebugLog;
 extern HWND hwndTaskBarMain;
@@ -257,6 +259,7 @@ HBITMAP hbm_DIBSection_work = NULL;
 BITMAPINFO bmi_MainClock;
 
 HFONT hFon = NULL;
+HFONT hFonWork = NULL;
 HFONT hFontNotify = NULL;
 
 COLORREF colback, colback2, colfore;
@@ -266,6 +269,8 @@ BOOL bAutoBackMatchTaskbar = TRUE;
 int autoBackAlpha = 96;
 int autoBackBlendRatio = 65;
 int autoBackRefreshSec = 5;
+int autoBackSampleClockOffset = -1;
+int autoBackSampleShowDesktopOffset = -2;
 BOOL bAutoBackTransparencyEnabled = TRUE;
 COLORREF autoBackColorMain = RGB(32, 32, 32);
 COLORREF autoBackColorEdge = RGB(48, 48, 48);
@@ -578,6 +583,7 @@ char ExtTXT_String[129];
 int TimerCountForSec = 1000;
 int intervalTimerAdjust = 0;
 BOOL b_InitialTimerAdjust = FALSE;
+int startupAutoAdjustRetryRemaining = 0;
 BOOL b_ModernStandbySupported = FALSE;
 BOOL b_Sleeping = FALSE;
 
@@ -878,12 +884,12 @@ static void RefreshAutoBackColors(BOOL force, char* reason)
 		GetTaskbarSize();
 		if (posXMainClock > 0) {
 			if (widthWin11Notify > 0 && posXShowDesktopArea > 0) {
-				int localX = ClampInt(posXShowDesktopArea - 2, 0, widthWin11Notify - 1);
+				int localX = ClampInt(posXShowDesktopArea + autoBackSampleShowDesktopOffset, 0, widthWin11Notify - 1);
 				xLeft = posXMainClock + widthMainClockFrame + localX;
 			} else {
 				xLeft = posXMainClock - (widthWin11Notify > 0 ? (widthWin11Notify / 2) : 10);
 			}
-			xRight = posXMainClock - 1;
+			xRight = posXMainClock + autoBackSampleClockOffset;
 		} else {
 			xLeft = widthTaskbar - 10;
 			xRight = 0;
@@ -1253,9 +1259,18 @@ void InitClock()
 	//タスクバーの更新
 	RedrawMainTaskbar();	//即時反映のために必要。必要があればWindowsのリサイズ処理を通してMainClockの再配置やサイズ更新、hdcClock再作成が実行される。
 
-	//ツールチップ作成
+	//????????
 	TooltipInit(hwndClockMain);
 
+	// Startup can enter sleep-like gating before any user input; force awake immediately.
+	b_Sleeping = FALSE;
+	PostMessage(hwndClockMain, CLOCKM_SLEEP_AWAKE, 0, 0);
+
+	if (bWin11Main || bAutoBackMatchTaskbar) {
+		StartupAutoAdjustPass();
+		startupAutoAdjustRetryRemaining = 3;
+		SetTimer(hwndClockMain, IDTIMERDLL_STARTUP_AUTOADJUST, 450, NULL);
+	}
 
 	if (b_DebugLog)writeDebugLog_Win10("[tclock.c] InitClock finished.", 999);
 
@@ -1295,10 +1310,45 @@ void RedrawMainTaskbar(void)
 /*------------------------------------------------
   ending process
 --------------------------------------------------*/
+static void StartupAutoAdjustPass(void)
+{
+	if (!IsWindow(hwndClockMain)) return;
+
+	if (bWin11Main) {
+		SetMainClockOnTasktray_Win11();
+		PostMessage(hwndClockMain, CLOCKM_MOVEWIN11CONTENTBRIDGE, 1, 0);
+	}
+
+	if (bAutoBackMatchTaskbar) {
+		bAutoBackInitialized = FALSE;
+		RefreshAutoBackColors(TRUE, "StartupAutoAdjust");
+	}
+
+	RedrawMainTaskbar();
+	RedrawTClock();
+}
+
+static void RefreshClockWorkFont(void)
+{
+	LOGFONT lf;
+
+	if (hFonWork) {
+		DeleteObject(hFonWork);
+		hFonWork = NULL;
+	}
+
+	if (!hFon) return;
+	if (GetObject(hFon, sizeof(lf), &lf) != sizeof(lf)) return;
+
+	// Work DC uses channel-tag rendering; avoid subpixel color fringing leakage.
+	lf.lfQuality = ANTIALIASED_QUALITY;
+	hFonWork = CreateFontIndirect(&lf);
+}
 void DeleteClockRes(void)
 {
 	TooltipDeleteRes();
 	if (hFon) DeleteObject(hFon); hFon = NULL;
+	if (hFonWork) DeleteObject(hFonWork); hFonWork = NULL;
 	if (hFontNotify) DeleteObject(hFontNotify); hFontNotify = NULL;
 	if (hdcClock) DeleteDC(hdcClock); hdcClock = NULL;
 	if (hbmpClock) DeleteObject(hbmpClock); hbmpClock = NULL;
@@ -1423,6 +1473,8 @@ void EndClock(void)
 		if(bTimerCheckNetStat) KillTimer(hwndClockMain, IDTIMERDLL_CHECKNETSTAT); bTimerCheckNetStat = FALSE;
 		if(bTooltipTimerStart) KillTimer(hwndClockMain, IDTIMERDLL_TIP); bTooltipTimerStart=FALSE;
 		KillTimer(hwndClockMain, IDTIMERDLL_DELEYED_RESPONSE);
+		KillTimer(hwndClockMain, IDTIMERDLL_STARTUP_AUTOADJUST);
+		startupAutoAdjustRetryRemaining = 0;
 
 		if (oldWndProc && (WNDPROC)WndProc == (WNDPROC)GetWindowLongPtr(hwndClockMain, GWLP_WNDPROC))
 		{
@@ -1609,6 +1661,18 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 		}
 		case WM_TIMER:
 //			if (b_DebugLog) writeDebugLog_Win10("[tclock.c][WndProc() WM_TIMER received with ID: ", (int)wParam);
+			if (wParam == IDTIMERDLL_STARTUP_AUTOADJUST) {
+				KillTimer(hwndClockMain, IDTIMERDLL_STARTUP_AUTOADJUST);
+				b_Sleeping = FALSE;
+				if (startupAutoAdjustRetryRemaining > 0) {
+					StartupAutoAdjustPass();
+					startupAutoAdjustRetryRemaining--;
+					if (startupAutoAdjustRetryRemaining > 0) {
+						SetTimer(hwndClockMain, IDTIMERDLL_STARTUP_AUTOADJUST, 650, NULL);
+					}
+				}
+				return 0;
+			}
 			if (!b_Sleeping)
 			{
 				if (wParam == IDTIMERDLL_DLLMAIN)
@@ -2083,6 +2147,12 @@ void ReadData()
 	autoBackRefreshSec = (int)GetMyRegLong("Color_Font", "AutoBackRefreshSec", 5);
 	autoBackRefreshSec = ClampInt(autoBackRefreshSec, 1, 120);
 	SetMyRegLong("Color_Font", "AutoBackRefreshSec", autoBackRefreshSec);
+	autoBackSampleClockOffset = (int)GetMyRegLong("Color_Font", "AutoBackSampleClockOffset", -1);
+	autoBackSampleClockOffset = ClampInt(autoBackSampleClockOffset, -200, 200);
+	SetMyRegLong("Color_Font", "AutoBackSampleClockOffset", autoBackSampleClockOffset);
+	autoBackSampleShowDesktopOffset = (int)GetMyRegLong("Color_Font", "AutoBackSampleShowDesktopOffset", -2);
+	autoBackSampleShowDesktopOffset = ClampInt(autoBackSampleShowDesktopOffset, -200, 200);
+	SetMyRegLong("Color_Font", "AutoBackSampleShowDesktopOffset", autoBackSampleShowDesktopOffset);
 	bAutoBackInitialized = FALSE;
 	RefreshAutoBackColors(TRUE, "ReadData");
 
@@ -2111,6 +2181,7 @@ void ReadData()
 
 	
 	hFon = CreateMyFont(fontname, fontsize, weight, italic);
+	RefreshClockWorkFont();
 	SetTClockFont();
 
 	TooltipReadData();
@@ -4161,11 +4232,31 @@ void Textout_Tclock_Win10_3(int x, int y, char* sp, int len, int infoval)
 			TextOut(hdcClock_work, x - 1, y - 1, sp, len);
 		}
 
-		if (textcol_temp == textcol_dow) {
-			SetTextColor(hdcClock_work, RGB(0, 255, 0));
-		}
-		else {
-			SetTextColor(hdcClock_work, RGB(255, 0, 0));
+		{
+			BOOL use_dow_channel = FALSE;
+
+			if (infoval == 88) {
+				use_dow_channel = TRUE;
+			}
+			else if (bUseAllColor) {
+				use_dow_channel = TRUE;
+			}
+			else if ((infoval == 0x02) && bUseDateColor) {
+				use_dow_channel = TRUE;
+			}
+			else if ((infoval == 0x04) && bUseDowColor) {
+				use_dow_channel = TRUE;
+			}
+			else if ((infoval == 0x08) && bUseTimeColor) {
+				use_dow_channel = TRUE;
+			}
+
+			if (use_dow_channel) {
+				SetTextColor(hdcClock_work, RGB(0, 255, 0));
+			}
+			else {
+				SetTextColor(hdcClock_work, RGB(255, 0, 0));
+			}
 		}
 
 		TextOut(hdcClock_work, x, y, sp, len);
@@ -5974,7 +6065,8 @@ void SetTClockFont()
 	}
 
 	if (hdcClock_work) {
-		if (hFon) SelectObject(hdcClock_work, hFon);
+		if (hFonWork) SelectObject(hdcClock_work, hFonWork);
+		else if (hFon) SelectObject(hdcClock_work, hFon);
 	}
 }
 

@@ -1,7 +1,7 @@
 /*-------------------------------------------
-  pagedataplan.c
-     「データ利用状況設定」
-     by TTTT
+  page_win11.c
+  Win11 settings page
+  by TTTT
 ---------------------------------------------*/
 
 #include "tclock.h"
@@ -31,7 +31,12 @@ extern int Language_Offset;
 #ifndef IDC_WIN11_ENABLE_TRANSPARENCY
 #define IDC_WIN11_ENABLE_TRANSPARENCY 1900
 #endif
-
+#ifndef IDC_WIN11_AUTOBACK_CLOCK_OFFSET
+#define IDC_WIN11_AUTOBACK_CLOCK_OFFSET 1910
+#define IDC_WIN11_AUTOBACK_CLOCK_OFFSET_SPIN 1911
+#define IDC_WIN11_AUTOBACK_SHOWDESK_OFFSET 1912
+#define IDC_WIN11_AUTOBACK_SHOWDESK_OFFSET_SPIN 1913
+#endif
 static DWORD ReadPolicyDword(const char* subkey, const char* valueName, DWORD defval)
 {
 	HKEY hkey;
@@ -106,7 +111,7 @@ static void NotifyExplorerAdvancedChanged(void)
 
 
 /*------------------------------------------------
-　「バージョン情報」ページ用ダイアログプロシージャ
+  Win11 property page dialog procedure
 --------------------------------------------------*/
 
 INT_PTR CALLBACK PageWin11Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
@@ -143,6 +148,8 @@ static void OnInit(HWND hDlg)
 	int autoBackAlpha;
 	int autoBackBlendRatio;
 	int autoBackRefreshSec;
+	int autoBackClockOffset;
+	int autoBackShowDesktopOffset;
 	DWORD hideClock;
 	DWORD transparency;
 	BOOL alignLeft;
@@ -161,6 +168,13 @@ static void OnInit(HWND hDlg)
 	if (autoBackRefreshSec < 1) autoBackRefreshSec = 1;
 	if (autoBackRefreshSec > 120) autoBackRefreshSec = 120;
 
+	autoBackClockOffset = (int)GetMyRegLong("Color_Font", "AutoBackSampleClockOffset", -1);
+	if (autoBackClockOffset < -200) autoBackClockOffset = -200;
+	if (autoBackClockOffset > 200) autoBackClockOffset = 200;
+	autoBackShowDesktopOffset = (int)GetMyRegLong("Color_Font", "AutoBackSampleShowDesktopOffset", -2);
+	if (autoBackShowDesktopOffset < -200) autoBackShowDesktopOffset = -200;
+	if (autoBackShowDesktopOffset > 200) autoBackShowDesktopOffset = 200;
+
 	hideClock = ReadPolicyDword("Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer", "HideClock", 0);
 	transparency = ReadPolicyDword("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize", "EnableTransparency", 1);
 	alignLeft = (BOOL)GetMyRegLong("Win11", "AlignTaskbarLeft", 1);
@@ -176,6 +190,10 @@ static void OnInit(HWND hDlg)
 	SendDlgItemMessage(hDlg, IDC_SPG_ETC_NOTIFY_DETECTPOS, UDM_SETPOS, 0, autoBackBlendRatio);
 	SendDlgItemMessage(hDlg, IDC_SPG_ETC_CUT_LIMIT, UDM_SETRANGE, 0, MAKELONG(120, 1));
 	SendDlgItemMessage(hDlg, IDC_SPG_ETC_CUT_LIMIT, UDM_SETPOS, 0, autoBackRefreshSec);
+	SendDlgItemMessage(hDlg, IDC_WIN11_AUTOBACK_CLOCK_OFFSET_SPIN, UDM_SETRANGE, 0, MAKELONG(200, -200));
+	SendDlgItemMessage(hDlg, IDC_WIN11_AUTOBACK_CLOCK_OFFSET_SPIN, UDM_SETPOS, 0, autoBackClockOffset);
+	SendDlgItemMessage(hDlg, IDC_WIN11_AUTOBACK_SHOWDESK_OFFSET_SPIN, UDM_SETRANGE, 0, MAKELONG(200, -200));
+	SendDlgItemMessage(hDlg, IDC_WIN11_AUTOBACK_SHOWDESK_OFFSET_SPIN, UDM_SETPOS, 0, autoBackShowDesktopOffset);
 
 	if (!b_exe_Win11Main) {
 		EnableDlgItem(hDlg, IDC_ETC_USE_WIN11NOTIFY, FALSE);
@@ -188,6 +206,10 @@ static void OnInit(HWND hDlg)
 		EnableDlgItem(hDlg, IDC_ETC_CUT_LIMIT, FALSE);
 		EnableDlgItem(hDlg, IDC_SPG_ETC_NOTIFY_DETECTPOS, FALSE);
 		EnableDlgItem(hDlg, IDC_ETC_NOTIFY_DETECTPOS, FALSE);
+		EnableDlgItem(hDlg, IDC_WIN11_AUTOBACK_CLOCK_OFFSET, FALSE);
+		EnableDlgItem(hDlg, IDC_WIN11_AUTOBACK_CLOCK_OFFSET_SPIN, FALSE);
+		EnableDlgItem(hDlg, IDC_WIN11_AUTOBACK_SHOWDESK_OFFSET, FALSE);
+		EnableDlgItem(hDlg, IDC_WIN11_AUTOBACK_SHOWDESK_OFFSET_SPIN, FALSE);
 	}
 }
 
@@ -199,6 +221,8 @@ void OnApply(HWND hDlg)
 	int autoBackAlpha;
 	int autoBackBlendRatio;
 	int autoBackRefreshSec;
+	int autoBackClockOffset;
+	int autoBackShowDesktopOffset;
 	DWORD hideClock;
 	DWORD transparency;
 	BOOL alignLeft;
@@ -222,6 +246,16 @@ void OnApply(HWND hDlg)
 	if (autoBackRefreshSec < 1) autoBackRefreshSec = 1;
 	if (autoBackRefreshSec > 120) autoBackRefreshSec = 120;
 	SetMyRegLong("Color_Font", "AutoBackRefreshSec", autoBackRefreshSec);
+
+	autoBackClockOffset = (int)(short)SendDlgItemMessage(hDlg, IDC_WIN11_AUTOBACK_CLOCK_OFFSET_SPIN, UDM_GETPOS, 0, 0);
+	if (autoBackClockOffset < -200) autoBackClockOffset = -200;
+	if (autoBackClockOffset > 200) autoBackClockOffset = 200;
+	SetMyRegLong("Color_Font", "AutoBackSampleClockOffset", autoBackClockOffset);
+
+	autoBackShowDesktopOffset = (int)(short)SendDlgItemMessage(hDlg, IDC_WIN11_AUTOBACK_SHOWDESK_OFFSET_SPIN, UDM_GETPOS, 0, 0);
+	if (autoBackShowDesktopOffset < -200) autoBackShowDesktopOffset = -200;
+	if (autoBackShowDesktopOffset > 200) autoBackShowDesktopOffset = 200;
+	SetMyRegLong("Color_Font", "AutoBackSampleShowDesktopOffset", autoBackShowDesktopOffset);
 
 	hideClock = IsDlgButtonChecked(hDlg, IDC_ETC_ADJUST_WIN11_SMALLTASKBAR) ? 1 : 0;
 	WritePolicyDword("Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer", "HideClock", hideClock);

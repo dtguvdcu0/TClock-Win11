@@ -163,7 +163,7 @@
     <LinkIncremental>false</LinkIncremental>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <TargetName>tcdll-win10</TargetName>
+    <TargetName>tcdll-win11</TargetName>
     <OutDir>$(SolutionDir)$(Platform)\$(Configuration)\</OutDir>
     <IntDir>$(Platform)\$(Configuration)\</IntDir>
     <LinkIncremental>false</LinkIncremental>
@@ -329,7 +329,7 @@
     <Link>
       <AdditionalOptions>/DYNAMICBASE
 /NXCOMPAT %(AdditionalOptions)</AdditionalOptions>
-      <OutputFile>$(OutDir)tcdll-win10.dll</OutputFile>
+      <OutputFile>$(OutDir)tcdll-win11.dll</OutputFile>
       <ModuleDefinitionFile>$(ProjectDir)\tcdll.def</ModuleDefinitionFile>
       <GenerateDebugInformation>false</GenerateDebugInformation>
       <SubSystem>Windows</SubSystem>
@@ -356,7 +356,7 @@
     <Link>
       <AdditionalOptions>/DYNAMICBASE
 /NXCOMPAT %(AdditionalOptions)</AdditionalOptions>
-      <OutputFile>$(OutDir)tcdll-win10.dll</OutputFile>
+      <OutputFile>$(OutDir)tcdll-win11.dll</OutputFile>
       <ModuleDefinitionFile>$(ProjectDir)tcdll.def</ModuleDefinitionFile>
       <GenerateDebugInformation>false</GenerateDebugInformation>
       <SubSystem>Windows</SubSystem>

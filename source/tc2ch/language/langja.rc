@@ -506,8 +506,8 @@ STYLE DS_SETFONT | DS_CONTROL | WS_CHILD
 FONT 9, "MS UI Gothic", 0, 0, 0x1
 BEGIN
     LTEXT           "その他の設定について",IDC_STATIC,10,8,158,8
-    LTEXT           "現時点で一部の機能については設定ダイアログがありません。設定ファイル(tclock-win10.ini)を直接編集してください。主要設定項目は以下です。",IDC_STATIC,10,27,181,37
-    PUSHBUTTON      "設定ファイル (tclock-win10.ini) 編集",IDC_EDITINI,6,181,136,15
+    LTEXT           "現時点で一部の機能については設定ダイアログがありません。設定ファイル(tclock-win11.ini)を直接編集してください。主要設定項目は以下です。",IDC_STATIC,10,27,181,37
+    PUSHBUTTON      "設定ファイル (tclock-win11.ini) 編集",IDC_EDITINI,6,181,136,15
     LTEXT           "[ETC]\nLTE / ミュート 状態表示文字列等を設定・変更できます。",IDC_STATIC,10,61,181,100
     LTEXT           "詳細な設定方法は、readme_jp.txtファイルを参照してください。",IDC_STATIC,10,163,181,12
 END
@@ -517,8 +517,8 @@ STYLE DS_SETFONT | DS_CONTROL | WS_CHILD
 FONT 9, "MS UI Gothic", 0, 0, 0x1
 BEGIN
     LTEXT           "For additional settings...",IDC_STATIC,10,8,158,8
-    LTEXT           "The setting dialogs do not cover all the functionality of the sotware. Please edit setting file (tclock-win10.ini) for additional settings. Following settings can be edited.",IDC_STATIC,10,27,181,37
-    PUSHBUTTON      "Edit tclock-win10.ini",IDC_EDITINI,6,178,136,15
+    LTEXT           "The setting dialogs do not cover all the functionality of the sotware. Please edit setting file (tclock-win11.ini) for additional settings. Following settings can be edited.",IDC_STATIC,10,27,181,37
+    PUSHBUTTON      "Edit tclock-win11.ini",IDC_EDITINI,6,178,136,15
     LTEXT           "[ETC] Strings for LTE / Mute  indicators, etc.",IDC_STATIC,10,61,181,100
     LTEXT           "Refer readme_en.txt for further information.",IDC_STATIC,10,163,181,12
 END
@@ -1068,7 +1068,7 @@ BEGIN
             VALUE "FileDescription", "TClock-Win10 Language DLL（日本語/English）"
             VALUE "FileVersion", "5.4.1.1"
             VALUE "InternalName", "LANGJA"
-            VALUE "OriginalFilename", "tclang-win10.dll"
+            VALUE "OriginalFilename", "tclang-win11.dll"
             VALUE "ProductName", "TClock-Win10"
             VALUE "ProductVersion", "5.4.1.1"
         END
@@ -1432,7 +1432,7 @@ STRINGTABLE
 BEGIN
     IDS_STARTUPLINK         "スタートアップにショートカットを作成しますか？"
     IDS_HELP2CH             "http://tclock2ch.no.land.to/"
-    IDS_LANGDLLFILE         "TClock 言語モジュール (tclang-win10.dll)"
+    IDS_LANGDLLFILE         "TClock 言語モジュール (tclang-win11.dll)"
     IDS_NOTFOUNDCLOCK       "時計の改造に失敗しました。"
     IDS_TEXTCENTER          "中央"
     IDS_TEXTLEFT            "左寄せ"
@@ -1475,7 +1475,7 @@ BEGIN
     IDS_PROP_ANALOG         "アナログ時計"
     IDS_PROP_AUTO           "自動実行"
     IDS_PROP_MISC           "TClockについて"
-    IDS_PROP_ABOUT          "tclock-win10.iniの編集"
+    IDS_PROP_ABOUT          "tclock-win11.iniの編集"
     IDS_ACLOCKLEFT          "左端に表示"
     IDS_ACLOCKRIGHT         "右端に表示"
     IDS_ACLOCKMIDDLE        "テキストに重ねて表示"
@@ -1506,7 +1506,7 @@ BEGIN
     IDS_TIPDISABLE          "ツールチップを表示する"
     IDS_CLOCK               "時計"
     IDS_TOOLTIP             "ツールチップ"
-    IDS_ABOUT               "tclock-win10.iniの編集"
+    IDS_ABOUT               "tclock-win11.iniの編集"
     IDS_MISC                "TClockについて"
     IDS_PROP_COLOR          "色とフォント"
 END
@@ -1573,7 +1573,7 @@ BEGIN
     IDS_START2              "Start"
     IDS_STARTUPLINK2        "Create TClock shortcut in Startup?"
     IDS_HELP2CH2            "http://tclock2ch.no.land.to/"
-    IDS_LANGDLLFILE2        "TClock Language Module(tclang-win10.dll)"
+    IDS_LANGDLLFILE2        "TClock Language Module(tclang-win11.dll)"
     IDS_NOTFOUNDCLOCK2      "Failed to modify clock"
     IDS_TEXTCENTER2         "Center align"
     IDS_TEXTLEFT2           "Left align"
@@ -1585,7 +1585,7 @@ BEGIN
     IDS_TIPDISABLE2         "Enable Tooltip"
     IDS_CLOCK2              "Clock"
     IDS_TOOLTIP2            "Tooltip"
-    IDS_ABOUT2              "Edit tclock-win10.ini"
+    IDS_ABOUT2              "Edit tclock-win11.ini"
     IDS_MISC2               "About TClock-Win10"
     IDS_PROP_COLOR2         "Color and Font"
     IDS_PROP_FORMAT2        "Format"

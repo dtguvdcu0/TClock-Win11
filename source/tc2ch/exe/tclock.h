@@ -50,7 +50,7 @@
 //# if defined(_DEBUG)
 //#  pragma comment(lib, "../../x64/debug/tcdll.lib")
 //# else
-#  pragma comment(lib, "../../x64/release/tcdll.lib")
+#  pragma comment(lib, "../../x64/release/tcdll-win11.lib")
 //# endif // _DEBUG
 #else
 //# if defined(_DEBUG)

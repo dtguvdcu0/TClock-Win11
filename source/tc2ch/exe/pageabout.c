@@ -52,7 +52,7 @@ INT_PTR CALLBACK PageAboutProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
 			{
 				char fname[1024];
 				strcpy(fname, g_mydir);
-				add_title(fname, "tclock-win10.ini");
+				add_title(fname, "tclock-win11.ini");
 				//ShellExecute(NULL, "edit", fname, NULL, NULL, SW_SHOWNORMAL);
 				ShellExecute(NULL, "open", "notepad.exe", fname, NULL, SW_SHOWNORMAL);
 			}

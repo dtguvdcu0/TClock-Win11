@@ -410,7 +410,7 @@ static UINT WINAPI TclockExeMain(void)
 
 	//CheckRegistry();
 	if (!CheckRegistry_Win10()) {		//名前にはRegistryとあるが、iniファイルを探し、なければ作成する関数
-		MessageBox(NULL, "tclock-win10.iniが見当たらず、また作成に失敗しました。アプリケーションを終了します。\n\nCould not access / create tclock-win10.ini.",
+		MessageBox(NULL, "tclock-win11.iniが見当たらず、また作成に失敗しました。アプリケーションを終了します。\n\nCould not access / create tclock-win11.ini.",
 			"TClock-Win10", MB_ICONERROR | MB_SETFOREGROUND);
 		return 1;
 	}
@@ -1021,7 +1021,7 @@ LRESULT CALLBACK WndProc(HWND hwnd,	UINT message, WPARAM wParam, LPARAM lParam)	
 
 			char fname[MAX_PATH];
 			strcpy(fname, g_mydir);
-			add_title(fname, "TClock-Win10.exe");
+			add_title(fname, "TClock-Win11.exe");
             b_SkipHideClockRestore = TRUE;
 			ShellExecute(NULL, "open", fname, "/restart", NULL, SW_HIDE);
 
@@ -1204,7 +1204,7 @@ void OnTimerZombieCheck2(HWND hwnd)
 
 			//	char fname[MAX_PATH];
 			//	strcpy(fname, g_mydir);
-			//	add_title(fname, "TClock-Win10.exe");
+			//	add_title(fname, "TClock-Win11.exe");
 			//	ShellExecute(NULL, "open", fname, "/restart", NULL, SW_HIDE);
 			//}
 			//else
@@ -1251,7 +1251,7 @@ void OnTimerZombieCheck2(HWND hwnd)
 //
 //				char fname[MAX_PATH];
 //				strcpy(fname, g_mydir);
-//				add_title(fname, "TClock-Win10.exe");
+//				add_title(fname, "TClock-Win11.exe");
 //				ShellExecute(NULL, "open", fname, "/restart", NULL, SW_HIDE);
 //			}
 //			else
@@ -1285,7 +1285,7 @@ HINSTANCE LoadLanguageDLL(char *langdllname)
 		GetModuleFileName(g_hInst, fname, MAX_PATH);
 		del_title(fname);
 
-		add_title(fname, "tclang-win10.dll");
+		add_title(fname, "tclang-win11.dll");
 		hfind = FindFirstFile(fname, &fd);
 		if(hfind != INVALID_HANDLE_VALUE)
 		{
@@ -1320,7 +1320,7 @@ BOOL CheckTCDLL(void)
 	if (b_DebugLog) WriteDebug_New2("[exemain.c][CheckTCDLL] CheckTCDLL() called");
 	char fname[MAX_PATH];
 	strcpy(fname, g_mydir);
-	add_title(fname, "tcdll-win10.dll");
+	add_title(fname, "tcdll-win11.dll");
 	return CheckDLL(fname);
 }
 
@@ -1668,7 +1668,7 @@ void CreateDefaultIniFile_Win10(char *fname)
 	}
 	else
 	{
-		MessageBox(NULL, "tclock-win10.iniの作成に失敗しました。書き込み可能なフォルダで実行してください",
+		MessageBox(NULL, "tclock-win11.iniの作成に失敗しました。書き込み可能なフォルダで実行してください",
 			"TClock-Win10", MB_ICONERROR | MB_OK);
 	}
 }
@@ -1686,7 +1686,7 @@ BOOL CheckRegistry_Win10(void)
 	BOOL br = FALSE;
 
 	strcpy(fname, g_mydir);
-	add_title(fname, "tclock-win10.ini");
+	add_title(fname, "tclock-win11.ini");
 	hfind = FindFirstFile(fname, &fd);
 
 	if (hfind == INVALID_HANDLE_VALUE)

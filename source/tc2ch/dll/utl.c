@@ -498,7 +498,7 @@ void WriteNormalLog_DLL(const char* s)
 	//tickCount_LastLog = tickCount_LastLog_temp;
 
 	strcpy(fname, g_mydir_dll);
-	add_title(fname, "TClock-Win10.log");
+	add_title(fname, "TClock-Win11.log");
 
 	hFile = CreateFile(
 		fname, FILE_APPEND_DATA, FILE_SHARE_READ, NULL,

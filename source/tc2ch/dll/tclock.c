@@ -1091,7 +1091,7 @@ void InitClock()
 
 
 	del_title(fname);
-	add_title(fname, "tclock-win10.ini");
+	add_title(fname, "tclock-win11.ini");
 	hfind = FindFirstFile(fname, &fd);
 	if(hfind != INVALID_HANDLE_VALUE)
 	{
@@ -1730,7 +1730,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 			//			char tempString[1024];
 			//			strcpy(tempString, "test45678901234567890123456789");
 			//			PostMessage(tempHwnd, CLOCKM_UPDATE_EXTTEXT, NULL, (LPARAM)tempString);		//read from lParam
-			////			PostMessage(tempHwnd, CLOCKM_UPDATE_EXTTEXT, NULL, NULL);					//read from tclock-win10.ini ([ETC]ExtTXT_String)
+			////			PostMessage(tempHwnd, CLOCKM_UPDATE_EXTTEXT, NULL, NULL);					//read from tclock-win11.ini ([ETC]ExtTXT_String)
 			//		}
 
 				DWORD mp;
@@ -1868,7 +1868,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 		{
 			// To Update "ExtTXT" in format
 			// PostMessage(****TCLOCK_MAIN_HWND****, 0x0404, NULL, (LPARAM)char* string);
-			// if lParam == NULL, text is read from tclock-win10.ini
+			// if lParam == NULL, text is read from tclock-win11.ini
 			// if wParam == 1, Clock resize is disabled.
 
 			if (b_DebugLog) writeDebugLog_Win10("[tclock.c][WndProc()] CLOCKM_UPDATE_EXTTEXT received", 999);
@@ -2365,7 +2365,7 @@ void ReadData()
 
 	//SafeMode operation Added by TTTT
 	b_SafeMode = GetMyRegLong("Status_DoNotEdit", "SafeMode", FALSE);
-	if (b_DebugLog) writeDebugLog_Win10("[tclock.c][ReadData] b_SafeMode was retrieved from tclock-win10.ini as ", b_SafeMode);
+	if (b_DebugLog) writeDebugLog_Win10("[tclock.c][ReadData] b_SafeMode was retrieved from tclock-win11.ini as ", b_SafeMode);
 
 	if (b_SafeMode)
 	{
@@ -6445,7 +6445,7 @@ void RestartTClockFromDLL(void)
 	SetMyRegLong("Status_DoNotEdit", "LastLaunchTimeStamp", 0);
 	char fname[MAX_PATH];
 	strcpy(fname, g_mydir_dll);
-	add_title(fname, "TClock-Win10.exe");
+	add_title(fname, "TClock-Win11.exe");
 	ShellExecute(NULL, "open", fname, "/restart", NULL, SW_HIDE);
 	EndClock();
 }

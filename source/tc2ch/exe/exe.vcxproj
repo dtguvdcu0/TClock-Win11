@@ -170,7 +170,7 @@
     <GenerateManifest>false</GenerateManifest>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <TargetName>TClock-Win10</TargetName>
+    <TargetName>TClock-Win11</TargetName>
     <OutDir>$(SolutionDir)$(Platform)\$(Configuration)\</OutDir>
     <IntDir>$(Platform)\$(Configuration)\</IntDir>
     <LinkIncremental>false</LinkIncremental>
@@ -353,7 +353,7 @@
     <Link>
       <AdditionalOptions>/DYNAMICBASE
 /NXCOMPAT %(AdditionalOptions)</AdditionalOptions>
-      <OutputFile>$(OutDir)TClock-Win10.exe</OutputFile>
+      <OutputFile>$(OutDir)TClock-Win11.exe</OutputFile>
       <GenerateDebugInformation>false</GenerateDebugInformation>
       <SubSystem>Windows</SubSystem>
       <OptimizeReferences>true</OptimizeReferences>
@@ -381,7 +381,7 @@
     <Link>
       <AdditionalOptions>/DYNAMICBASE
 /NXCOMPAT %(AdditionalOptions)</AdditionalOptions>
-      <OutputFile>$(OutDir)TClock-Win10.exe</OutputFile>
+      <OutputFile>$(OutDir)TClock-Win11.exe</OutputFile>
       <GenerateDebugInformation>false</GenerateDebugInformation>
       <SubSystem>Windows</SubSystem>
       <OptimizeReferences>true</OptimizeReferences>
@@ -408,7 +408,7 @@
     <Link>
       <AdditionalOptions>/DYNAMICBASE
 /NXCOMPAT %(AdditionalOptions)</AdditionalOptions>
-      <OutputFile>$(OutDir)TClock-Win10.exe</OutputFile>
+      <OutputFile>$(OutDir)TClock-Win11.exe</OutputFile>
       <GenerateDebugInformation>false</GenerateDebugInformation>
       <SubSystem>Windows</SubSystem>
       <OptimizeReferences>true</OptimizeReferences>

@@ -163,7 +163,7 @@
     <LinkIncremental>false</LinkIncremental>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <TargetName>tclang-win10</TargetName>
+    <TargetName>tclang-win11</TargetName>
     <OutDir>$(SolutionDir)$(Platform)\$(Configuration)\</OutDir>
     <IntDir>$(Platform)\$(Configuration)\</IntDir>
     <LinkIncremental>false</LinkIncremental>
@@ -329,7 +329,7 @@
     <Link>
       <AdditionalOptions>/DYNAMICBASE
 /NXCOMPAT %(AdditionalOptions)</AdditionalOptions>
-      <OutputFile>$(OutDir)tclang-win10.dll</OutputFile>
+      <OutputFile>$(OutDir)tclang-win11.dll</OutputFile>
       <ModuleDefinitionFile>$(ProjectDir)\langja.def</ModuleDefinitionFile>
       <GenerateDebugInformation>false</GenerateDebugInformation>
       <SubSystem>Windows</SubSystem>
@@ -355,7 +355,7 @@
     <Link>
       <AdditionalOptions>/DYNAMICBASE
 /NXCOMPAT %(AdditionalOptions)</AdditionalOptions>
-      <OutputFile>$(OutDir)tclang-win10.dll</OutputFile>
+      <OutputFile>$(OutDir)tclang-win11.dll</OutputFile>
       <ModuleDefinitionFile>$(ProjectDir)langja.def</ModuleDefinitionFile>
       <GenerateDebugInformation>false</GenerateDebugInformation>
       <SubSystem>Windows</SubSystem>

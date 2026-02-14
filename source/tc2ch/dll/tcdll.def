@@ -1,4 +1,4 @@
-LIBRARY 	tcdll-win10.dll
+LIBRARY 	tcdll-win11.dll
 
 SECTIONS
 MYDATA    SHARED READ WRITE

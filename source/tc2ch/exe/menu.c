@@ -173,12 +173,12 @@ void OnContextMenu(HWND hwnd, HWND hwndClicked, int xPos, int yPos)
 	}
 
 
-	//HDD(DRIVE_FIXED) î•ñæ“¾—p\‘¢‘Ì“™
+	//HDD(DRIVE_FIXED) æƒ…å ±å–å¾—ç”¨æ§‹é€ ä½“ç­‰
 	DWORD dwResult = 0;
 	STORAGE_PROPERTY_QUERY tStragePropertyQuery;
 	tStragePropertyQuery.PropertyId = StorageDeviceProperty;
 	tStragePropertyQuery.QueryType = PropertyStandardQuery;
-	// ƒƒ‚ƒŠ‚ÌŠm•Û
+	// ãƒ¡ãƒ¢ãƒªã®ç¢ºä¿
 	DWORD dwInfoSize = 4096;
 	STORAGE_DEVICE_DESCRIPTOR* tpStorageDeviceDescripter = (STORAGE_DEVICE_DESCRIPTOR*)malloc(dwInfoSize);
 
@@ -192,7 +192,7 @@ void OnContextMenu(HWND hwnd, HWND hwndClicked, int xPos, int yPos)
 
 				wsprintf(driveLetter, "%c:\\", 'A' + nDrive);
 
-				auto tempDriveType = GetDriveTypeA(driveLetter);
+				auto tempDriveType = GetDriveType(driveLetter);
 				
 				if (b_DebugLog && tempDriveType != DRIVE_UNKNOWN)
 				{
@@ -202,7 +202,7 @@ void OnContextMenu(HWND hwnd, HWND hwndClicked, int xPos, int yPos)
 
 				if (tempDriveType == DRIVE_REMOVABLE)
 				{
-					if (GetVolumeInformationA(driveLetter, volume_name, sizeof(volume_name), &serial, &length, &flags, volume_system, sizeof(volume_system)) != 0)
+					if (GetVolumeInformation(driveLetter, volume_name, sizeof(volume_name), &serial, &length, &flags, volume_system, sizeof(volume_system)) != 0)
 					{
 						//wsprintf(driveList_Win10[driveIndex_Win10], "%s%s (%c:)", stringMenuItem_RemoveDriveHeader, volume_name, ('A' + nDrive));
 						wsprintf(driveList_Win10[driveIndex_Win10], "%s(%c) %s", stringMenuItem_RemoveDriveHeader, ('A' + nDrive), volume_name);
@@ -231,12 +231,12 @@ void OnContextMenu(HWND hwnd, HWND hwndClicked, int xPos, int yPos)
 
 
 
-						////HDD(DRIVE_FIXED) î•ñæ“¾—p\‘¢‘Ì“™
+						////HDD(DRIVE_FIXED) æƒ…å ±å–å¾—ç”¨æ§‹é€ ä½“ç­‰
 						//DWORD dwResult = 0;
 						//STORAGE_PROPERTY_QUERY tStragePropertyQuery;
 						//tStragePropertyQuery.PropertyId = StorageDeviceProperty;
 						//tStragePropertyQuery.QueryType = PropertyStandardQuery;
-						//// ƒƒ‚ƒŠ‚ÌŠm•Û
+						//// ãƒ¡ãƒ¢ãƒªã®ç¢ºä¿
 						//DWORD dwInfoSize = 4096;
 						//STORAGE_DEVICE_DESCRIPTOR* tpStorageDeviceDescripter = (STORAGE_DEVICE_DESCRIPTOR*)malloc(dwInfoSize);
 
@@ -262,7 +262,7 @@ void OnContextMenu(HWND hwnd, HWND hwndClicked, int xPos, int yPos)
 						{
 							if (tpStorageDeviceDescripter->BusType == BusTypeUsb)	// BusTypeUsb = 0x7
 							{
-								if (GetVolumeInformationA(driveLetter, volume_name, sizeof(volume_name), &serial, &length, &flags, volume_system, sizeof(volume_system)) != 0)
+								if (GetVolumeInformation(driveLetter, volume_name, sizeof(volume_name), &serial, &length, &flags, volume_system, sizeof(volume_system)) != 0)
 								{
 									wsprintf(driveList_Win10[driveIndex_Win10], "%s(%c) %s (HDD)", stringMenuItem_RemoveDriveHeader, ('A' + nDrive), volume_name);
 									wsprintf(driveLetter_Win10[driveIndex_Win10], "%c", 'A' + nDrive);
@@ -456,7 +456,7 @@ void OnTClockCommand(HWND hwnd, WORD wID, WORD wCode)
 		{
 			if (wID == IDC_REMOVE_DRIVE0 && !b_UnplugDriveAvailable)
 			{
-				MessageBox(NULL, "TClockƒtƒHƒ‹ƒ_‚ÉƒtƒŠ[ƒ\ƒtƒg‚ÌUnplugDrive Portable (UnplugDrive.exe)‚ğ’u‚­‚ÆAƒŠƒ€[ƒoƒuƒ‹ƒhƒ‰ƒCƒuæ‚èŠO‚µ‹@”\‚ğ—˜—p‚·‚é‚±‚Æ‚ª‚Å‚«‚Ü‚·B\n\nHaving UnplugDrive.exe (Japanese freeware) in TClock folder enables \"Remove Drive\" function.",
+				MessageBox(NULL, "TClockãƒ•ã‚©ãƒ«ãƒ€ã«ãƒ•ãƒªãƒ¼ã‚½ãƒ•ãƒˆã®UnplugDrive Portable (UnplugDrive.exe)ã‚’ç½®ãã¨ã€ãƒªãƒ ãƒ¼ãƒãƒ–ãƒ«ãƒ‰ãƒ©ã‚¤ãƒ–å–ã‚Šå¤–ã—æ©Ÿèƒ½ã‚’åˆ©ç”¨ã™ã‚‹ã“ã¨ãŒã§ãã¾ã™ã€‚\n\nHaving UnplugDrive.exe (Japanese freeware) in TClock folder enables \"Remove Drive\" function.",
 					"TClock-Win10", MB_OK | MB_SETFOREGROUND | MB_ICONINFORMATION);
 				return;
 			}
@@ -558,7 +558,7 @@ void InitializeMenuItems(void)
 	//	if (b_EnglishMenu)	
 	//		wsprintf(s, "Kill Apps on %s / Metered WiFi", stringLTE);
 	//	else
-	//		wsprintf(s, "%sE]—Ê‰Û‹àWiFi‚ÅƒAƒvƒŠ‹­§I—¹", stringLTE);
+	//		wsprintf(s, "%sãƒ»å¾“é‡èª²é‡‘WiFiã§ã‚¢ãƒ—ãƒªå¼·åˆ¶çµ‚äº†", stringLTE);
 	//	ModifyMenu(hPopupMenu, IDC_TOGGLE_CLOUD_APP, MF_BYCOMMAND, IDC_TOGGLE_CLOUD_APP, s);
 	//}
 	//else

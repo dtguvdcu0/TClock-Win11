@@ -73,7 +73,7 @@ void PerMoni_start(void)
 	nLogicalProcessors = (int)si.dwNumberOfProcessors;
 	if (nLogicalProcessors > MAX_PROCESSOR) nLogicalProcessors = MAX_PROCESSOR;
 
-	//éQçl: https://wlog.flatlib.jp/item/878
+	//ÂèÇËÄÉ: https://wlog.flatlib.jp/item/878
 	DWORD retlen = 0;
 	GetLogicalProcessorInformation(NULL, &retlen);
 	if (retlen <= sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION)*MAX_PROCESSOR) {
@@ -143,8 +143,8 @@ void PerMoni_start(void)
 
 
 
-//		wsprintfW(counterName, L"\\Processor Information(0,%d)\\%% of Maximum Frequency", i);	//shoud be "%%" because of using wsprintfW, íZéûä‘ÇÃÉIÅ[ÉoÅ[ÉNÉçÉbÉNÇ™îΩâfÇ≥ÇÍÇ»Ç¢ÇÃÇ≈ã@éÌÇ…ÇÊÇ¡ÇƒÇÕí·Ç≠Ç»ÇÈ(É^ÉXÉNÉ}ÉlÅ[ÉWÉÉÅ[ÇÃÉNÉçÉbÉNï\ãLÇ∆àÍívÇµÇ»Ç¢)
-		wsprintfW(counterName, L"\\Processor Information(0,%d)\\%% Processor Performance", i);	//shoud be "%%" because of using wsprintfW, íZéûä‘ÇÃÉIÅ[ÉoÅ[ÉNÉçÉbÉNÇ™îΩâfÇ≥ÇÍÇƒ100%Çí¥Ç¶ÇÈÇ±Ç∆Ç™Ç†ÇÈÅBÉ^ÉXÉNÉ}ÉlÅ[ÉWÉÉÇÃï\ãLÇ∆äTÇÀàÍívÇ∑ÇÈÅB
+//		wsprintfW(counterName, L"\\Processor Information(0,%d)\\%% of Maximum Frequency", i);	//shoud be "%%" because of using wsprintfW, Áü≠ÊôÇÈñì„ÅÆ„Ç™„Éº„Éê„Éº„ÇØ„É≠„ÉÉ„ÇØ„ÅåÂèçÊò†„Åï„Çå„Å™„ÅÑ„ÅÆ„ÅßÊ©üÁ®Æ„Å´„Çà„Å£„Å¶„ÅØ‰Ωé„Åè„Å™„Çã(„Çø„Çπ„ÇØ„Éû„Éç„Éº„Ç∏„É£„Éº„ÅÆ„ÇØ„É≠„ÉÉ„ÇØË°®Ë®ò„Å®‰∏ÄËá¥„Åó„Å™„ÅÑ)
+		wsprintfW(counterName, L"\\Processor Information(0,%d)\\%% Processor Performance", i);	//shoud be "%%" because of using wsprintfW, Áü≠ÊôÇÈñì„ÅÆ„Ç™„Éº„Éê„Éº„ÇØ„É≠„ÉÉ„ÇØ„ÅåÂèçÊò†„Åï„Çå„Å¶100%„ÇíË∂Ö„Åà„Çã„Åì„Å®„Åå„ÅÇ„Çã„ÄÇ„Çø„Çπ„ÇØ„Éû„Éç„Éº„Ç∏„É£„ÅÆË°®Ë®ò„Å®Ê¶Ç„Å≠‰∏ÄËá¥„Åô„Çã„ÄÇ
 		if (pPdhAddCounterW(hQuery, counterName, 0, &hCPUClock2[i]) == ERROR_SUCCESS)
 		{
 			b_EnableClock2 = TRUE;

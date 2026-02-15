@@ -21,7 +21,7 @@ BOOL tc_read_text_file_utf8(const char* path, char** outText, DWORD* outSize, BO
     *outSize = 0;
     if (outHadBom) *outHadBom = FALSE;
 
-    h = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    h = CreateFile(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if (h == INVALID_HANDLE_VALUE) return FALSE;
 
     sz = GetFileSize(h, NULL);
@@ -74,7 +74,7 @@ BOOL tc_write_text_file_utf8(const char* path, const char* text, DWORD size, BOO
     if (!path) return FALSE;
     if (!text && size > 0) return FALSE;
 
-    h = CreateFileA(path, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    h = CreateFile(path, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
     if (h == INVALID_HANDLE_VALUE) return FALSE;
 
     if (writeBom) {
@@ -110,18 +110,18 @@ BOOL tc_text_file_utf8_selfcheck(void)
     const char* sample = "text-file-selfcheck";
     BOOL ok = FALSE;
 
-    if (!GetTempPathA((DWORD)sizeof(tmpPath), tmpPath)) return FALSE;
-    if (!GetTempFileNameA(tmpPath, "tcu", 0, tmpFile)) return FALSE;
+    if (!GetTempPath((DWORD)sizeof(tmpPath), tmpPath)) return FALSE;
+    if (!GetTempFileName(tmpPath, "tcu", 0, tmpFile)) return FALSE;
 
-    if (!tc_write_text_file_utf8(tmpFile, sample, (DWORD)lstrlenA(sample), TRUE)) goto cleanup;
+    if (!tc_write_text_file_utf8(tmpFile, sample, (DWORD)lstrlen(sample), TRUE)) goto cleanup;
     if (!tc_read_text_file_utf8(tmpFile, &outText, &outSize, &hadBom)) goto cleanup;
     if (!hadBom) goto cleanup;
-    if (outSize != (DWORD)lstrlenA(sample)) goto cleanup;
-    if (lstrcmpA(outText, sample) != 0) goto cleanup;
+    if (outSize != (DWORD)lstrlen(sample)) goto cleanup;
+    if (lstrcmp(outText, sample) != 0) goto cleanup;
     ok = TRUE;
 
 cleanup:
     if (outText) tc_free_text_buffer(outText);
-    DeleteFileA(tmpFile);
+    DeleteFile(tmpFile);
     return ok;
 }

@@ -132,7 +132,7 @@ void OnInit(HWND hDlg)
 	CheckDlgButton(hDlg, IDC_MINHAND_BOLD,
 		GetMyRegLong("AnalogClock", "AnalogClockMinHandBold", FALSE));
 
-	//uƒAƒiƒƒOŒvˆÊ’uv‚Ìİ’è
+	//ã€Œã‚¢ãƒŠãƒ­ã‚°æ™‚è¨ˆä½ç½®ã€ã®è¨­å®š
 	index = CBAddString(hDlg, IDC_ACLOCK_POS, (LPARAM)MyString(IDS_ACLOCKLEFT));
 	index = CBAddString(hDlg, IDC_ACLOCK_POS, (LPARAM)MyString(IDS_ACLOCKRIGHT));
 	index = CBAddString(hDlg, IDC_ACLOCK_POS, (LPARAM)MyString(IDS_ACLOCKMIDDLE));
@@ -169,19 +169,19 @@ void OnApply(HWND hDlg)
 	DWORD dw;
 	char fname[MAX_PATH + 1];
 
-	//’Zj‚ÌF
+	//çŸ­é‡ã®è‰²
 	dw = (DWORD)CBGetItemData(hDlg, IDC_COLHOUR, CBGetCurSel(hDlg, IDC_COLHOUR));
 	SetMyRegLong("AnalogClock", "AClockHourHandColor", dw);
 
-	//’·j‚ÌF
+	//é•·é‡ã®è‰²
 	dw = (DWORD)CBGetItemData(hDlg, IDC_COLMIN, CBGetCurSel(hDlg, IDC_COLMIN));
 	SetMyRegLong("AnalogClock", "AClockMinHandColor", dw);
 
-	//’ZjA’·j‚Ì‘¾‚³
+	//çŸ­é‡ã€é•·é‡ã®å¤ªã•
 	SetMyRegLong("AnalogClock", "AnalogClockHourHandBold", IsDlgButtonChecked(hDlg, IDC_HOURHAND_BOLD));
 	SetMyRegLong("AnalogClock", "AnalogClockMinHandBold", IsDlgButtonChecked(hDlg, IDC_MINHAND_BOLD));
 
-	//ƒAƒiƒƒOŒvˆÊ’u‚Ì•Û‘¶
+	//ã‚¢ãƒŠãƒ­ã‚°æ™‚è¨ˆä½ç½®ã®ä¿å­˜
 	SetMyRegLong("AnalogClock", "AnalogClockPos", CBGetCurSel(hDlg, IDC_ACLOCK_POS));
 
 	SetMyRegLong("AnalogClock", "UseAnalogClock",

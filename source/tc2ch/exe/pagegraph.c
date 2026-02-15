@@ -54,7 +54,7 @@ BOOL CALLBACK PageGraphProc(HWND hDlg, UINT message,
 			id = LOWORD(wParam); code = HIWORD(wParam);
 			switch(id)
 			{
-			//Œv‚É’ÊMó‹µƒOƒ‰ƒt‚ğ•\¦‚·‚é
+			//æ™‚è¨ˆã«é€šä¿¡çŠ¶æ³ã‚°ãƒ©ãƒ•ã‚’è¡¨ç¤ºã™ã‚‹
 			case IDC_TRAYGRAPH:
 				OnTrayGraph(hDlg);
 				break;
@@ -73,14 +73,14 @@ BOOL CALLBACK PageGraphProc(HWND hDlg, UINT message,
 					SendPSChanged(hDlg);
 				}
 				break;
-			// ƒRƒ“ƒ{ƒ{ƒbƒNƒX
+			// ã‚³ãƒ³ãƒœãƒœãƒƒã‚¯ã‚¹
 			case IDC_COLRECV:
 			case IDC_COLSEND:
 			case IDC_COLSR:
 				if(code == CBN_SELCHANGE)
 					SendPSChanged(hDlg);
 				break;
-			//u...vF‚Ì‘I‘ğ
+			//ã€Œ...ã€è‰²ã®é¸æŠ
 			case IDC_CHOOSECOLRECV:
 			case IDC_CHOOSECOLSEND:
 			case IDC_CHOOSECOLSR:
@@ -226,7 +226,7 @@ void OnInit(HWND hDlg)
 
 	if (Language_Offset == LANGUAGE_OFFSET_JAPANESE) {
 		wchar_t tempStr[64];
-		wsprintfW(tempStr, L"Œ»İ‚ÌŒv‚Ì• = %d, ‚‚³ = %d"
+		wsprintfW(tempStr, L"ç¾åœ¨ã®æ™‚è¨ˆã®å¹… = %d, é«˜ã• = %d"
 			, (int)GetMyRegLong("Status_DoNotEdit", "ClockWidth", 0), (int)GetMyRegLong("Status_DoNotEdit", "ClockHeight", 0));
 		SendDlgItemMessageW(hDlg, IDC_LABEL_HEIGHT, WM_SETTEXT, NULL, tempStr);
 	}
@@ -329,7 +329,7 @@ void OnApply(HWND hDlg)
 }
 
 /*------------------------------------------------
-@uŒv‚É’ÊMó‹µƒOƒ‰ƒt‚ğ•\¦‚·‚év
+ã€€ã€Œæ™‚è¨ˆã«é€šä¿¡çŠ¶æ³ã‚°ãƒ©ãƒ•ã‚’è¡¨ç¤ºã™ã‚‹ã€
 --------------------------------------------------*/
 void OnTrayGraph(HWND hDlg)
 {
@@ -342,7 +342,7 @@ void OnTrayGraph(HWND hDlg)
 		EnableDlgItem(hDlg, i, b);
 	SendPSChanged(hDlg);
 
-	//ŠÂ‹«‚ª256FˆÈ‰º‚Ì‚Æ‚«‚ÍAF‚Ì‘I‘ğ‚ğ–³Œø‚É
+	//ç’°å¢ƒãŒ256è‰²ä»¥ä¸‹ã®ã¨ãã¯ã€è‰²ã®é¸æŠã‚’ç„¡åŠ¹ã«
 	hdc = CreateIC("DISPLAY", NULL, NULL, NULL);
 	if(GetDeviceCaps(hdc, BITSPIXEL) <= 8)
 	{
@@ -394,7 +394,7 @@ void OnGraphMode(HWND hDlg)
 
 
 
-	if (tempGraphMode == 1)		//NetƒOƒ‰ƒt
+	if (tempGraphMode == 1)		//Netã‚°ãƒ©ãƒ•
 	{
 		ShowDlgItem(hDlg, IDC_MODE11, TRUE);
 		ShowDlgItem(hDlg, IDC_MODE13, TRUE);
@@ -431,7 +431,7 @@ void OnGraphMode(HWND hDlg)
 		ShowDlgItem(hDlg, IDC_BARMETERCOL_CPU2, FALSE);
 
 	}
-	else						//CPU, GPUƒOƒ‰ƒt
+	else						//CPU, GPUã‚°ãƒ©ãƒ•
 	{
 
 		ShowDlgItem(hDlg, IDC_MODE11, FALSE);
@@ -560,7 +560,7 @@ void InitGraphMode(HWND hDlg)
 	CBSetItemData(hDlg, IDC_GRAPHMODE, index, 1);
 	index = CBAddString(hDlg, IDC_GRAPHMODE, (LPARAM)MyString(IDS_GMCPU));
 	CBSetItemData(hDlg, IDC_GRAPHMODE, index, 2);
-	//ƒŠƒXƒg€–Ú‚Ì•\¦”‚ğw’è
+	//ãƒªã‚¹ãƒˆé …ç›®ã®è¡¨ç¤ºæ•°ã‚’æŒ‡å®š
 	AdjustDlgConboBoxDropDown(hDlg, IDC_GRAPHMODE, 2);
 }
 
@@ -572,7 +572,7 @@ void InitGraphType(HWND hDlg)
 	CBSetItemData(hDlg, IDC_GRAPHTYPE, index, 1);
 	index = CBAddString(hDlg, IDC_GRAPHTYPE, (LPARAM)MyString(IDS_GTLINE));
 	CBSetItemData(hDlg, IDC_GRAPHTYPE, index, 2);
-	//ƒŠƒXƒg€–Ú‚Ì•\¦”‚ğw’è
+	//ãƒªã‚¹ãƒˆé …ç›®ã®è¡¨ç¤ºæ•°ã‚’æŒ‡å®š
 	AdjustDlgConboBoxDropDown(hDlg, IDC_GRAPHTYPE, 2);
 }
 

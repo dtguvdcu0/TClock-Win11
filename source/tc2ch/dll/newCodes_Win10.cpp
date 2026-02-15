@@ -7,16 +7,16 @@
 #include <ntstatus.h>
 #pragma comment(lib, "PowrProf.lib")
 
-//focus assistó‘Ôæ“¾
+//focus assistçŠ¶æ…‹å–å¾—
 //https://stackoverflow.com/questions/53407374/is-there-a-way-to-detect-changes-in-focus-assist-formerly-quiet-hours-in-windo
 #include <map>
 
-// concurrency–¼‘O‹óŠÔ
+// concurrencyåå‰ç©ºé–“
 #include <ppltasks.h>
 #include <endpointvolume.h>	//added by TTTT for volume
 #include <mmdeviceapi.h>	//added by TTTT for volume
 
-// GPUæ“¾
+// GPUå–å¾—
 #include <pdh.h>
 #include <pdhmsg.h>
 #pragma comment(lib, "pdh.lib")
@@ -94,7 +94,7 @@ int soundDevChcekCountDown = 10;
 UserNotificationListenerAccessStatus accessStatus;
 
 
-//focus assistó‘Ôæ“¾ƒR[ƒh
+//focus assistçŠ¶æ…‹å–å¾—ã‚³ãƒ¼ãƒ‰
 //https://stackoverflow.com/questions/53407374/is-there-a-way-to-detect-changes-in-focus-assist-formerly-quiet-hours-in-windo
 
 
@@ -238,7 +238,7 @@ extern "C" BOOL WINAPI CheckModernStandbyCapability_Win10(void) //20190725
 	auto r1 = CallNtPowerInformation(SystemPowerCapabilities, nullptr, 0, &spc, sizeof spc);
 	if (r1 != STATUS_SUCCESS) 
 	{
-		//‚±‚ÌŠÖ”“à‚ÌƒƒO‚Í’Êí“®ì‚Å‚Í‹L˜^‚³‚ê‚È‚¢BŠm”F‚µ‚½‚¯‚ê‚ÎCheckWinVersion_Win10()‚ÌÅŒã‚Ì‚Ù‚¤‚ÌƒRƒƒ“ƒgƒAƒEƒg‚©‚ç‚±‚ÌŠÖ”‚ğŒÄ‚Ô•K—v‚ ‚èB
+		//ã“ã®é–¢æ•°å†…ã®ãƒ­ã‚°ã¯é€šå¸¸å‹•ä½œã§ã¯è¨˜éŒ²ã•ã‚Œãªã„ã€‚ç¢ºèªã—ãŸã‘ã‚Œã°CheckWinVersion_Win10()ã®æœ€å¾Œã®ã»ã†ã®ã‚³ãƒ¡ãƒ³ãƒˆã‚¢ã‚¦ãƒˆã‹ã‚‰ã“ã®é–¢æ•°ã‚’å‘¼ã¶å¿…è¦ã‚ã‚Šã€‚
 		if (b_DebugLog) writeDebugLog_Win10("[newCodes_Win10][CheckModernStandbyCapability_Win10] CallNtPowerInformation failed: NTSTATUS %d", r1);
 	}
 	else
@@ -317,11 +317,11 @@ extern "C" int CheckWinVersion_Win10(void)
 		//}
 		//else if ((buildNumber < 22579) || (buildNumber >= 22616))
 		//{
-		//	Win11Type = 1;		//Windows11 Type1 (Œv‚ªƒgƒŒƒC‚ÉÚ‚Á‚Á‚Ä‚¢‚é)
+		//	Win11Type = 1;		//Windows11 Type1 (æ™‚è¨ˆãŒãƒˆãƒ¬ã‚¤ã«è¼‰ã£ã£ã¦ã„ã‚‹)
 		//}
 		//else 
 		//{
-		//	Win11Type = 2;		//Windows11 Type2 (Œv‚ªContentBridge‚ÉÚ‚Á‚Ä‚¢‚ÄAƒ^ƒXƒNƒo[ˆ—‚ª‘å‚«‚­•Ï‚í‚Á‚½->Build22616‚Å“P‰ñ‚³‚ê‚½)
+		//	Win11Type = 2;		//Windows11 Type2 (æ™‚è¨ˆãŒContentBridgeã«è¼‰ã£ã¦ã„ã¦ã€ã‚¿ã‚¹ã‚¯ãƒãƒ¼å‡¦ç†ãŒå¤§ããå¤‰ã‚ã£ãŸ->Build22616ã§æ’¤å›ã•ã‚ŒãŸ)
 		//}
 
 		if (b_DebugLog)
@@ -402,7 +402,7 @@ extern "C" int CheckWinVersion_Win10(void)
 
 
 
-	//ˆÈ‰º‚Ìs‚ÍƒRƒƒ“ƒgƒAƒEƒg‚Ì‚Ü‚Ü‚Å“®ì‚·‚éBŠÖ”“à‚ÌƒƒO‚ğ“¾‚é•K—v‚ª‚ ‚ê‚Î‚±‚±‚Å—]•ª‚Éˆê‰ñŒÄ‚ÔB
+	//ä»¥ä¸‹ã®è¡Œã¯ã‚³ãƒ¡ãƒ³ãƒˆã‚¢ã‚¦ãƒˆã®ã¾ã¾ã§å‹•ä½œã™ã‚‹ã€‚é–¢æ•°å†…ã®ãƒ­ã‚°ã‚’å¾—ã‚‹å¿…è¦ãŒã‚ã‚Œã°ã“ã“ã§ä½™åˆ†ã«ä¸€å›å‘¼ã¶ã€‚
 	//CheckModernStandbyCapability_Win10();	
 
 
@@ -1036,7 +1036,7 @@ extern "C" void chkInternetConnectionProfile_Win10()
 		}
 
 
-		//VPNÚ‘±ó‘Ô(flag_VPN=TRUE)‚Å‚ÍInternetConnectionProfile‚ğ³‚µ‚­ŒŸo‚Å‚«‚È‚¢‚Ì‚ÅAOverride‚·‚éB
+		//VPNæ¥ç¶šçŠ¶æ…‹(flag_VPN=TRUE)ã§ã¯InternetConnectionProfileã‚’æ­£ã—ãæ¤œå‡ºã§ããªã„ã®ã§ã€Overrideã™ã‚‹ã€‚
 
 
 		if (flag_VPN)
@@ -1064,7 +1064,7 @@ extern "C" void chkInternetConnectionProfile_Win10()
 
 
 
-	//WANÚ‘±‚ÉAˆÈ‰º‚Ìs‚ª‚½‚Ü[‚É¸”s‚µ‚ÄƒNƒ‰ƒbƒVƒ…‚µ‚Ä‚¢‚é‰Â”\«
+	//WANæ¥ç¶šæ™‚ã«ã€ä»¥ä¸‹ã®è¡ŒãŒãŸã¾ãƒ¼ã«å¤±æ•—ã—ã¦ã‚¯ãƒ©ãƒƒã‚·ãƒ¥ã—ã¦ã„ã‚‹å¯èƒ½æ€§
 	auto th1 = std::thread([] {internetConnectProf = NetworkInformation::GetInternetConnectionProfile(); });
 	th1.join();
 

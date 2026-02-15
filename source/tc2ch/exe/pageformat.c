@@ -131,9 +131,9 @@ void InitLocale(HWND hwnd)
 	{
 		ilang = GetMyRegLong("Format", "Locale", (int)GetUserDefaultLangID());
 	}
-	GetLocaleInfoWA(ilang, LOCALE_IDATE, s, 20);
+	GetLocaleInfoCompat(ilang, LOCALE_IDATE, s, 20);
 	idate = atoi(s);
-	GetLocaleInfoWA(ilang, LOCALE_SABBREVDAYNAME1, sMon, 10);
+	GetLocaleInfoCompat(ilang, LOCALE_SABBREVDAYNAME1, sMon, 10);
 
 	bDayOfWeekIsLast = FALSE;
 	for(i = 0; aLangDayOfWeekIsLast[i]; i++)
@@ -164,9 +164,9 @@ BOOL CALLBACK EnumLocalesProc(LPTSTR lpLocaleString)
 	x = atox(lpLocaleString);
 	if (b_EnglishMenu)
 	{
-		if (GetLocaleInfoWA(x, LOCALE_SENGLANGUAGE, s1, 40) > 0)
+		if (GetLocaleInfoCompat(x, LOCALE_SENGLANGUAGE, s1, 40) > 0)
 		{
-			GetLocaleInfoWA(x, LOCALE_SENGCOUNTRY, s2, 40);
+			GetLocaleInfoCompat(x, LOCALE_SENGCOUNTRY, s2, 40);
 			wsprintf(s, "%s (%s)", s1, s2);
 			index = CBAddString(hwndPage, IDC_LOCALE, (LPARAM)s);
 		}
@@ -175,7 +175,7 @@ BOOL CALLBACK EnumLocalesProc(LPTSTR lpLocaleString)
 	}
 	else
 	{
-		if (GetLocaleInfoWA(x, LOCALE_SLANGUAGE, s, 80) > 0)
+		if (GetLocaleInfoCompat(x, LOCALE_SLANGUAGE, s, 80) > 0)
 			index = CBAddString(hwndPage, IDC_LOCALE, (LPARAM)s);
 		else
 			index = CBAddString(hwndPage, IDC_LOCALE, (LPARAM)lpLocaleString);
@@ -224,7 +224,7 @@ void OnInit(HWND hDlg)
 			CBSetCurSel(hDlg, IDC_LOCALE, i); break;
 		}
 	}
-	//ƒŠƒXƒg€–Ú‚Ì•\¦”‚ğw’è
+	//ãƒªã‚¹ãƒˆé …ç›®ã®è¡¨ç¤ºæ•°ã‚’æŒ‡å®š
 	AdjustDlgConboBoxDropDown(hDlg, IDC_LOCALE, 13);
 
 	InitLocale(hDlg);

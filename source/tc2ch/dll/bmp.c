@@ -1,15 +1,15 @@
 /*-----------------------------------------------------
-@BMP.C
-@@ƒrƒbƒgƒ}ƒbƒv‚Ì“Ç‚Ýž‚Ý
-@@KAZUBON 1997
+ã€€BMP.C
+ã€€ã€€ãƒ“ãƒƒãƒˆãƒžãƒƒãƒ—ã®èª­ã¿è¾¼ã¿
+ã€€ã€€KAZUBON 1997
 -------------------------------------------------------*/
 
 #include "tcdll.h"
 
-// ŽQlFCharls Petzold uƒvƒƒOƒ‰ƒ~ƒ“ƒO Windows3.1v
+// å‚è€ƒï¼šCharls Petzold ã€Œãƒ—ãƒ­ã‚°ãƒ©ãƒŸãƒ³ã‚° Windows3.1ã€
 
 /*--------------------------------------------------
-@ƒrƒbƒgƒ}ƒbƒv‚ÌƒpƒŒƒbƒg‚Ì”‚ð“¾‚é
+ã€€ãƒ“ãƒƒãƒˆãƒžãƒƒãƒ—ã®ãƒ‘ãƒ¬ãƒƒãƒˆã®æ•°ã‚’å¾—ã‚‹
 ----------------------------------------------------*/
 int GetDibNumColors(LPBITMAPINFOHEADER pbmih)
 {
@@ -27,7 +27,7 @@ int GetDibNumColors(LPBITMAPINFOHEADER pbmih)
 }
 
 /*--------------------------------------------------
-@ƒrƒbƒgƒ}ƒbƒvƒrƒbƒg‚ÌƒAƒhƒŒƒX‚ð“¾‚é
+ã€€ãƒ“ãƒƒãƒˆãƒžãƒƒãƒ—ãƒ“ãƒƒãƒˆã®ã‚¢ãƒ‰ãƒ¬ã‚¹ã‚’å¾—ã‚‹
 ----------------------------------------------------*/
 BYTE* GetDibBitsAddr(BYTE* pDib)
 {
@@ -38,8 +38,8 @@ BYTE* GetDibBitsAddr(BYTE* pDib)
 }
 
 /*--------------------------------------------------
-@ƒrƒbƒgƒ}ƒbƒv‚Ì“Ç‚Ýž‚Ý
-@LoadImage‚Æ“¯‚¶‚±‚Æ‚ðŽ©—Í‚Ås‚¤
+ã€€ãƒ“ãƒƒãƒˆãƒžãƒƒãƒ—ã®èª­ã¿è¾¼ã¿
+ã€€LoadImageã¨åŒã˜ã“ã¨ã‚’è‡ªåŠ›ã§è¡Œã†
 ----------------------------------------------------*/
 HBITMAP ReadBitmap(HWND hwnd, char* fname, BOOL b)
 {
@@ -84,12 +84,12 @@ HBITMAP ReadBitmap(HWND hwnd, char* fname, BOOL b)
 	_lclose(hf);
 
 	pbmih = (BITMAPINFOHEADER*)pDib;
-	// OS/2Œ`Ž®‚É‚Í‘Î‰ž‚µ‚È‚¢
+	// OS/2å½¢å¼ã«ã¯å¯¾å¿œã—ãªã„
 	if(pbmih->biSize != sizeof(BITMAPINFOHEADER))
 	{
 		GlobalFree(pDib); return NULL;
 	}
-	// RLEˆ³k‚É‚Í‘Î‰ž‚µ‚È‚¢
+	// RLEåœ§ç¸®ã«ã¯å¯¾å¿œã—ãªã„
 	if(pbmih->biCompression != BI_RGB &&
 		pbmih->biCompression != BI_BITFIELDS)
 	{
@@ -103,7 +103,7 @@ HBITMAP ReadBitmap(HWND hwnd, char* fname, BOOL b)
 
 	if(b)
 	{
-		// Å‰‚Ìƒhƒbƒg‚ÌƒpƒŒƒbƒg‚ðAƒ{ƒ^ƒ“‚Ì•\–Ê‚ÌF‚Æ“¯‚¶‚É‚·‚é
+		// æœ€åˆã®ãƒ‰ãƒƒãƒˆã®ãƒ‘ãƒ¬ãƒƒãƒˆã‚’ã€ãƒœã‚¿ãƒ³ã®è¡¨é¢ã®è‰²ã¨åŒã˜ã«ã™ã‚‹
 		if(pbmih->biBitCount == 1)
 			index = (*pDIBits & 0x80) >> 7;
 		else if(pbmih->biBitCount == 4)

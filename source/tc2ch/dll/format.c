@@ -26,6 +26,9 @@ static char EraStr[11];
 static int AltYear;
 
 static int ilang;
+typedef LPSTR(WINAPI* PFN_CHARNEXTEXA)(WORD, LPCSTR, DWORD);
+static PFN_CHARNEXTEXA g_pCharNextExCompat = NULL;
+static BOOL g_bCharNextExCompatInit = FALSE;
 
 extern BOOL bHour12, bHourZero;
 
@@ -124,10 +127,24 @@ extern int pdhTemperature;
 extern double pdhTemperatureDouble;
 extern BOOL b_TempAvailable;
 
+static char* GetCharNextCompat(char* p)
+{
+	if(!g_bCharNextExCompatInit)
+	{
+		HMODULE hUser32 = GetModuleHandle(TEXT("user32.dll"));
+		if(hUser32)
+			g_pCharNextExCompat = (PFN_CHARNEXTEXA)GetProcAddress(hUser32, "CharNextExA");
+		g_bCharNextExCompatInit = TRUE;
+	}
+	if(g_pCharNextExCompat)
+		return g_pCharNextExCompat((WORD)codepage, p, 0);
+	return CharNext(p);
+}
+
 /*------------------------------------------------
   GetLocaleInfo() for 95/NT
 --------------------------------------------------*/
-int GetLocaleInfoWA(WORD wLanguageID, LCTYPE LCType, char* dst, int n)
+int GetLocaleInfoCompat(WORD wLanguageID, LCTYPE LCType, char* dst, int n)
 {
 	int r;
 	LCID Locale;
@@ -150,7 +167,7 @@ int GetLocaleInfoWA(WORD wLanguageID, LCTYPE LCType, char* dst, int n)
 /*------------------------------------------------
   GetDateFormat() for 95/NT
 --------------------------------------------------*/
-int GetDateFormatWA(WORD wLanguageID, DWORD dwFlags, CONST SYSTEMTIME *t,
+int GetDateFormatCompat(WORD wLanguageID, DWORD dwFlags, CONST SYSTEMTIME *t,
 	char* fmt, char* dst, int n)
 {
 	int r;
@@ -165,13 +182,13 @@ int GetDateFormatWA(WORD wLanguageID, DWORD dwFlags, CONST SYSTEMTIME *t,
 		{
 			pw1 = (WCHAR*)GlobalAllocPtr(GHND,
 				sizeof(WCHAR)*(strlen(fmt)+1));
-			MultiByteToWideChar(CP_ACP, 0, fmt, -1,
+			MultiByteToWideChar(codepage, 0, fmt, -1,
 				pw1, strlen(fmt));
 		}
 		pw2 = (WCHAR*)GlobalAllocPtr(GHND, sizeof(WCHAR)*(n+1));
 		r = GetDateFormatW(Locale, dwFlags, t, pw1, pw2, n);
 		if(r)
-			WideCharToMultiByte(CP_ACP, 0, pw2, -1, dst, n,
+			WideCharToMultiByte(codepage, 0, pw2, -1, dst, n,
 				NULL, NULL);
 		if(pw1) GlobalFreePtr(pw1);
 		GlobalFreePtr(pw2);
@@ -182,7 +199,7 @@ int GetDateFormatWA(WORD wLanguageID, DWORD dwFlags, CONST SYSTEMTIME *t,
 /*------------------------------------------------
   GetTimeFormat() for 95/NT
 --------------------------------------------------*/
-int GetTimeFormatWA(WORD wLanguageID, DWORD dwFlags, CONST SYSTEMTIME *t,
+int GetTimeFormatCompat(WORD wLanguageID, DWORD dwFlags, CONST SYSTEMTIME *t,
 	char* fmt, char* dst, int n)
 {
 	int r;
@@ -197,13 +214,13 @@ int GetTimeFormatWA(WORD wLanguageID, DWORD dwFlags, CONST SYSTEMTIME *t,
 		{
 			pw1 = (WCHAR*)GlobalAllocPtr(GHND,
 				sizeof(WCHAR)*(strlen(fmt)+1));
-			MultiByteToWideChar(CP_ACP, 0, fmt, -1,
+			MultiByteToWideChar(codepage, 0, fmt, -1,
 				pw1, strlen(fmt));
 		}
 		pw2 = (WCHAR*)GlobalAllocPtr(GHND, sizeof(WCHAR)*(n+1));
 		r = GetTimeFormatW(Locale, dwFlags, t, pw1, pw2, n);
 		if(r)
-			WideCharToMultiByte(CP_ACP, 0, pw2, -1, dst, n,
+			WideCharToMultiByte(codepage, 0, pw2, -1, dst, n,
 				NULL, NULL);
 		if(pw1) GlobalFreePtr(pw1);
 		GlobalFreePtr(pw2);
@@ -224,7 +241,7 @@ void InitFormat(SYSTEMTIME* lt)
 	ilang = GetMyRegLong("Format", "Locale", (int)GetUserDefaultLangID());
 
 	codepage = CP_ACP;
-	if(GetLocaleInfoWA((WORD)ilang, LOCALE_IDEFAULTANSICODEPAGE,
+	if(GetLocaleInfoCompat((WORD)ilang, LOCALE_IDEFAULTANSICODEPAGE,
 		s, 10) > 0)
 	{
 		p = s; codepage = 0;
@@ -235,21 +252,21 @@ void InitFormat(SYSTEMTIME* lt)
 
 	i = lt->wDayOfWeek;
 	if (i > 6) i = 0;
-	GetLocaleInfoWA((WORD)ilang, LOCALE_SABBREVDAYNAME1 + i,
+	GetLocaleInfoCompat((WORD)ilang, LOCALE_SABBREVDAYNAME1 + i,
 		DayOfWeekShortNext, 10);
-	GetLocaleInfoWA((WORD)ilang, LOCALE_SDAYNAME1 + i,
+	GetLocaleInfoCompat((WORD)ilang, LOCALE_SDAYNAME1 + i,
 		DayOfWeekLongNext, 30);
 	i--;
 	if(i < 0) i = 6;
-	GetLocaleInfoWA((WORD)ilang, LOCALE_SABBREVDAYNAME1 + i,
+	GetLocaleInfoCompat((WORD)ilang, LOCALE_SABBREVDAYNAME1 + i,
 		DayOfWeekShort, 10);
-	GetLocaleInfoWA((WORD)ilang, LOCALE_SDAYNAME1 + i,
+	GetLocaleInfoCompat((WORD)ilang, LOCALE_SDAYNAME1 + i,
 		DayOfWeekLong, 30);
 	i--;
 	if (i < 0) i = 6;
-	GetLocaleInfoWA((WORD)ilang, LOCALE_SABBREVDAYNAME1 + i,
+	GetLocaleInfoCompat((WORD)ilang, LOCALE_SABBREVDAYNAME1 + i,
 		DayOfWeekShortPrev, 10);
-	GetLocaleInfoWA((WORD)ilang, LOCALE_SDAYNAME1 + i,
+	GetLocaleInfoCompat((WORD)ilang, LOCALE_SDAYNAME1 + i,
 		DayOfWeekLongPrev, 30);
 
 	
@@ -257,41 +274,41 @@ void InitFormat(SYSTEMTIME* lt)
 
 	i = lt->wMonth; 
 	if (i > 11) i = 0;
-	GetLocaleInfoWA((WORD)ilang, LOCALE_SABBREVMONTHNAME1 + i,
+	GetLocaleInfoCompat((WORD)ilang, LOCALE_SABBREVMONTHNAME1 + i,
 		MonthShortNext, 10);
-	GetLocaleInfoWA((WORD)ilang, LOCALE_SMONTHNAME1 + i,
+	GetLocaleInfoCompat((WORD)ilang, LOCALE_SMONTHNAME1 + i,
 		MonthLongNext, 30);
 	i--;
 	if (i < 0) i = 11;
-	GetLocaleInfoWA((WORD)ilang, LOCALE_SABBREVMONTHNAME1 + i,
+	GetLocaleInfoCompat((WORD)ilang, LOCALE_SABBREVMONTHNAME1 + i,
 		MonthShort, 10);
-	GetLocaleInfoWA((WORD)ilang, LOCALE_SMONTHNAME1 + i,
+	GetLocaleInfoCompat((WORD)ilang, LOCALE_SMONTHNAME1 + i,
 		MonthLong, 30);
 	i--;
 	if (i < 0) i = 11;
-	GetLocaleInfoWA((WORD)ilang, LOCALE_SABBREVMONTHNAME1 + i,
+	GetLocaleInfoCompat((WORD)ilang, LOCALE_SABBREVMONTHNAME1 + i,
 		MonthShortPrev, 10);
-	GetLocaleInfoWA((WORD)ilang, LOCALE_SMONTHNAME1 + i,
+	GetLocaleInfoCompat((WORD)ilang, LOCALE_SMONTHNAME1 + i,
 		MonthLongPrev, 30);
 
 
-	GetLocaleInfoWA((WORD)ilang, LOCALE_S1159, AM, 10);
+	GetLocaleInfoCompat((WORD)ilang, LOCALE_S1159, AM, 10);
 	GetMyRegStr("Format", "AMsymbol", s, 80, AM);
 	if(s[0] == 0) strcpy(s, "AM");
 	strcpy(AM, s);
-	GetLocaleInfoWA((WORD)ilang, LOCALE_S2359, PM, 10);
+	GetLocaleInfoCompat((WORD)ilang, LOCALE_S2359, PM, 10);
 	GetMyRegStr("Format", "PMsymbol", s, 80, PM);
 	if(s[0] == 0) strcpy(s, "PM");
 	strcpy(PM, s);
 
-	GetLocaleInfoWA((WORD)ilang, LOCALE_SDATE, SDate, 4);
-	GetLocaleInfoWA((WORD)ilang, LOCALE_STIME, STime, 4);
+	GetLocaleInfoCompat((WORD)ilang, LOCALE_SDATE, SDate, 4);
+	GetLocaleInfoCompat((WORD)ilang, LOCALE_STIME, STime, 4);
 
 	EraStr[0] = 0;
 	AltYear = -1;
 
 	ioptcal = 0;
-	if(GetLocaleInfoWA((WORD)ilang, LOCALE_IOPTIONALCALENDAR,
+	if(GetLocaleInfoCompat((WORD)ilang, LOCALE_IOPTIONALCALENDAR,
 		s, 10))
 	{
 		ioptcal = 0;
@@ -301,11 +318,11 @@ void InitFormat(SYSTEMTIME* lt)
 	}
 	if(ioptcal < 3) ilang = LANG_USER_DEFAULT;
 
-	if(GetDateFormatWA((WORD)ilang,
+	if(GetDateFormatCompat((WORD)ilang,
 		DATE_USE_ALT_CALENDAR, lt, "gg", s, 12) != 0);
 		strcpy(EraStr, s);
 
-	if(GetDateFormatWA((WORD)ilang,
+	if(GetDateFormatCompat((WORD)ilang,
 		DATE_USE_ALT_CALENDAR, lt, "yyyy", s, 6) != 0)
 	{
 		if(s[0])
@@ -351,11 +368,11 @@ BOOL GetNumFormat(char **sp, char x, char c, int *len, int *slen, BOOL *bComma)
 	return TRUE;
 }
 
-int SetNumFormat(char **dp, int n, int len, int slen, BOOL bComma)	//•Ô‚³‚ê‚é•¶Žš—ñ‚Ì’·‚³‚ÍAlen‚ÆŽÀÛ‚Ì•K—v•¶Žš”‚Ì‚¤‚¿’·‚¢‚Ù‚¤‚É‚È‚éB
+int SetNumFormat(char **dp, int n, int len, int slen, BOOL bComma)	//è¿”ã•ã‚Œã‚‹æ–‡å­—åˆ—ã®é•·ã•ã¯ã€lenã¨å®Ÿéš›ã®å¿…è¦æ–‡å­—æ•°ã®ã†ã¡é•·ã„ã»ã†ã«ãªã‚‹ã€‚
 {
 	char *p;
 	int minlen,i,ii;
-	int int_max_value = 1000000000; // 10^n‚µ‚½‚Æ‚«‚ÉŒ…‚ ‚Ó‚ê‚ð‹N‚±‚³‚¸‚Éˆ—‚Å‚«‚éÅ‘å’l
+	int int_max_value = 1000000000; // 10^nã—ãŸã¨ãã«æ¡ã‚ãµã‚Œã‚’èµ·ã“ã•ãšã«å‡¦ç†ã§ãã‚‹æœ€å¤§å€¤
 	int ret;
 
 	p = *dp;
@@ -396,7 +413,7 @@ int SetNumFormat(char **dp, int n, int len, int slen, BOOL bComma)	//•Ô‚³‚ê‚é•¶Ž
 
 	*dp = p;
 
-	return ret;		//•¶Žš”‚ð•Ô“š
+	return ret;		//æ–‡å­—æ•°ã‚’è¿”ç­”
 }
 
 
@@ -857,7 +874,7 @@ void MakeFormat(char* s, char* s_info, SYSTEMTIME* pt, int beat100, char* fmt)
 					p = EraStr;
 					while(*p && *sp == 'g')
 					{
-						p2 = CharNextExA((WORD)codepage, p, 0);
+						p2 = GetCharNextCompat(p);
 						while (p != p2) {
 							*dp++ = *p++; *infop++ = 0x08;
 						}
@@ -2154,7 +2171,7 @@ void MakeFormat(char* s, char* s_info, SYSTEMTIME* pt, int beat100, char* fmt)
 				else if(*sp == 'L' && _strncmp(sp, "LDATE", 5) == 0)
 				{
 					char s[80], *p;
-					GetDateFormatWA(MAKELANGID(LANG_NEUTRAL,SUBLANG_DEFAULT),
+					GetDateFormatCompat(MAKELANGID(LANG_NEUTRAL,SUBLANG_DEFAULT),
 						DATE_LONGDATE, pt, NULL, s, 80);
 					p = s;
 					while (*p) {
@@ -2165,7 +2182,7 @@ void MakeFormat(char* s, char* s_info, SYSTEMTIME* pt, int beat100, char* fmt)
 				else if(*sp == 'D' && _strncmp(sp, "DATE", 4) == 0)
 				{
 					char s[80], *p;
-					GetDateFormatWA(MAKELANGID(LANG_NEUTRAL,SUBLANG_DEFAULT),
+					GetDateFormatCompat(MAKELANGID(LANG_NEUTRAL,SUBLANG_DEFAULT),
 						DATE_SHORTDATE, pt, NULL, s, 80);
 					p = s;
 					while (*p) {
@@ -2176,7 +2193,7 @@ void MakeFormat(char* s, char* s_info, SYSTEMTIME* pt, int beat100, char* fmt)
 				else if(*sp == 'T' && _strncmp(sp, "TIME", 4) == 0)
 				{
 					char s[80], *p;
-					GetTimeFormatWA(MAKELANGID(LANG_NEUTRAL,SUBLANG_DEFAULT),
+					GetTimeFormatCompat(MAKELANGID(LANG_NEUTRAL,SUBLANG_DEFAULT),
 						TIME_FORCE24HOURFORMAT, pt, NULL, s, 80);
 					p = s;
 					while (*p) {
@@ -2379,7 +2396,7 @@ void MakeFormat(char* s, char* s_info, SYSTEMTIME* pt, int beat100, char* fmt)
 			}
 		}
 	}
-	*dp = 0; *infop++ = 0;	//•¶Žš—ñI’[
+	*dp = 0; *infop++ = 0;	//æ–‡å­—åˆ—çµ‚ç«¯
 
 	//if (b_DebugLog) {
 	//	writeDebugLog_Win10("[format.c][MakeFormat] Length of string =", strlen(s));

@@ -1,6 +1,6 @@
 /*-------------------------------------------
   pageabarmeter.c
-     uƒ[ƒ^[ƒo[Ý’èv
+     ã€Œãƒ¡ãƒ¼ã‚¿ãƒ¼ãƒãƒ¼è¨­å®šã€
      by TTTT
 ---------------------------------------------*/
 
@@ -39,7 +39,7 @@ void CreateBarMeterColorDialog(int index)
 
 
 /*------------------------------------------------
-@uƒo[ƒWƒ‡ƒ“î•ñvƒy[ƒW—pƒ_ƒCƒAƒƒOƒvƒƒV[ƒWƒƒ
+ã€€ã€Œãƒãƒ¼ã‚¸ãƒ§ãƒ³æƒ…å ±ã€ãƒšãƒ¼ã‚¸ç”¨ãƒ€ã‚¤ã‚¢ãƒ­ã‚°ãƒ—ãƒ­ã‚·ãƒ¼ã‚¸ãƒ£
 --------------------------------------------------*/
 
 INT_PTR CALLBACK PageBarmeterProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
@@ -111,7 +111,7 @@ static void OnInit(HWND hDlg)
 
 	if (Language_Offset == LANGUAGE_OFFSET_JAPANESE) {
 		wchar_t tempStr[64];
-		wsprintfW(tempStr, L"Œ»Ý‚ÌŽžŒv‚Ì• = %d, ‚‚³ = %d"
+		wsprintfW(tempStr, L"ç¾åœ¨ã®æ™‚è¨ˆã®å¹… = %d, é«˜ã• = %d"
 			, (int)GetMyRegLong("Status_DoNotEdit", "ClockWidth", 0), (int)GetMyRegLong("Status_DoNotEdit", "ClockHeight", 0));
 		SendDlgItemMessageW(hDlg, IDC_LABEL_HEIGHT, WM_SETTEXT, NULL, tempStr);
 	}

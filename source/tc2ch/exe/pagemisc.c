@@ -1,7 +1,7 @@
 /*-------------------------------------------
   pagemisc.c
-@@u‚»‚Ì‘¼vƒvƒƒpƒeƒBƒy[ƒW
-@@KAZUBON 1997-1998
+ã€€ã€€ã€Œãã®ä»–ã€ãƒ—ãƒ­ãƒ‘ãƒ†ã‚£ãƒšãƒ¼ã‚¸
+ã€€ã€€KAZUBON 1997-1998
 ---------------------------------------------*/
 #include "tclock.h"
 
@@ -18,7 +18,7 @@ extern BOOL b_EnglishMenu;
 extern int Language_Offset;
 
 /*------------------------------------------------
-@u‚»‚Ì‘¼vƒy[ƒW—pƒ_ƒCƒAƒƒOƒvƒƒV[ƒWƒƒ
+ã€€ã€Œãã®ä»–ã€ãƒšãƒ¼ã‚¸ç”¨ãƒ€ã‚¤ã‚¢ãƒ­ã‚°ãƒ—ãƒ­ã‚·ãƒ¼ã‚¸ãƒ£
 --------------------------------------------------*/
 BOOL CALLBACK PageMiscProc(HWND hDlg, UINT message,
 	WPARAM wParam, LPARAM lParam)
@@ -34,7 +34,7 @@ BOOL CALLBACK PageMiscProc(HWND hDlg, UINT message,
 			id = LOWORD(wParam); code = HIWORD(wParam);
 			switch(id)
 			{
-			// uƒXƒ^[ƒgƒAƒbƒvv‚ÉƒVƒ‡[ƒgƒJƒbƒg‚ğ‚Â‚­‚é
+			// ã€Œã‚¹ã‚¿ãƒ¼ãƒˆã‚¢ãƒƒãƒ—ã€ã«ã‚·ãƒ§ãƒ¼ãƒˆã‚«ãƒƒãƒˆã‚’ã¤ãã‚‹
 			case IDC_STARTUP:
 				OnStartup(hDlg);
 				break;
@@ -50,7 +50,7 @@ BOOL CALLBACK PageMiscProc(HWND hDlg, UINT message,
 						MyMessageBox(hDlg,MyString(IDS_DELREGNG),"TClock-Win10",MB_OK,MB_ICONEXCLAMATION);
 				}
 				break;
-				//  readme.txt‚ğŠJ‚­
+				//  readme.txtã‚’é–‹ã
 			case IDC_README1:
 				My2chHelp(GetParent(hDlg));
 				break;
@@ -69,7 +69,7 @@ BOOL CALLBACK PageMiscProc(HWND hDlg, UINT message,
 }
 
 /*------------------------------------------------
-@ƒy[ƒW‚Ì‰Šú‰»
+ã€€ãƒšãƒ¼ã‚¸ã®åˆæœŸåŒ–
 --------------------------------------------------*/
 void OnInit(HWND hDlg)
 {
@@ -87,7 +87,7 @@ void OnInit(HWND hDlg)
 }
 
 /*------------------------------------------------
-@XV
+ã€€æ›´æ–°
 --------------------------------------------------*/
 void OnApply(HWND hDlg)
 {
@@ -95,7 +95,7 @@ void OnApply(HWND hDlg)
 }
 
 /*------------------------------------------------
-@uƒXƒ^[ƒgƒAƒbƒvv‚ÉƒVƒ‡[ƒgƒJƒbƒg‚ğ‚Â‚­‚é
+ã€€ã€Œã‚¹ã‚¿ãƒ¼ãƒˆã‚¢ãƒƒãƒ—ã€ã«ã‚·ãƒ§ãƒ¼ãƒˆã‚«ãƒƒãƒˆã‚’ã¤ãã‚‹
 --------------------------------------------------*/
 void OnStartup(HWND hDlg)
 {
@@ -115,7 +115,7 @@ void OnStartup(HWND hDlg)
 }
 
 /*------------------------------------------------
-@ƒVƒ‡[ƒgƒJƒbƒg‚Ìì¬
+ã€€ã‚·ãƒ§ãƒ¼ãƒˆã‚«ãƒƒãƒˆã®ä½œæˆ
 --------------------------------------------------*/
 BOOL CreateLink(LPCSTR fname, LPCSTR dstpath, LPCSTR name)
 {

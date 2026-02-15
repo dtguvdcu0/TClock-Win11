@@ -1,6 +1,6 @@
 /*-------------------------------------------
-@TCDLL.H
-@KAZUBON 1997-2001
+ã€€TCDLL.H
+ã€€KAZUBON 1997-2001
 ---------------------------------------------*/
 
 	//#define _WIN32_IE 0x0500
@@ -99,7 +99,7 @@
 //#define IDTIMERDLL_MOVEWIN11CONTENTBRIDGE	17
 
 
-//ƒTƒuƒXƒNƒŠ[ƒ“ƒ^ƒXƒNƒo[‚ÌÅ‘åˆ—” 20211107 TTTT
+//ã‚µãƒ–ã‚¹ã‚¯ãƒªãƒ¼ãƒ³ã‚¿ã‚¹ã‚¯ãƒãƒ¼ã®æœ€å¤§å‡¦ç†æ•° 20211107 TTTT
 #define MAX_SUBSCREEN				8
 #define BASE_UID_SUBSCREEN			100
 // tclock.c
@@ -368,7 +368,7 @@ extern "C" {
 	void add_title(char *path, char *title);
 	LONG GetMyRegLong(char* section, char* entry, LONG defval);
 	BOOL SetMyRegLong(char* subkey, char* entry, DWORD val);
-	//void WriteDebug(LPSTR s); // WriteDebugDLL_New()‚ÉˆÚs by TTTT
+	//void WriteDebug(LPSTR s); // WriteDebugDLL_New()ã«ç§»è¡Œ by TTTT
 	void get_title(char* dst, const char *path);	//	copied from utl.c in tclock by TTTT
 
 

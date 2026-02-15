@@ -34,7 +34,7 @@ void InitTrayNotify(HWND hwndClock)
 	//bFlatTray = GetMyRegLong(NULL, "FlatTray", TRUE);
 	//bSkinTray = GetMyRegLong(NULL, "SkinTray", FALSE);
 
-//	if(bSkinTray) bFillTray = FALSE; // ‚¿‚å‚Á‚Æ‹­ˆø‚Éİ’è‚Ì–µ‚‚ğ‚È‚­‚·
+//	if(bSkinTray) bFillTray = FALSE; // ã¡ã‚‡ã£ã¨å¼·å¼•ã«è¨­å®šã®çŸ›ç›¾ã‚’ãªãã™
 
 	//if(!bFillTray && !bFlatTray && !bSkinTray) return ;
 	//if (!bFillTray && !bFlatTray) return;

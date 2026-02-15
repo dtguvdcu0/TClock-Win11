@@ -38,7 +38,7 @@ typedef PDH_STATUS (WINAPI *pfnPdhCollectQueryData)(PDH_HQUERY);
 typedef PDH_STATUS (WINAPI *pfnPdhGetFormattedCounterValue)(PDH_HCOUNTER, DWORD, LPDWORD, PPDH_FMT_COUNTERVALUE);
 typedef PDH_STATUS (WINAPI *pfnPdhCloseQuery)(PDH_HQUERY);
 typedef PDH_STATUS (WINAPI *pfnPdhRemoveCounter)(PDH_HCOUNTER);
-typedef PDH_STATUS(WINAPI *pfnPdhAddCounterA)(PDH_HQUERY, LPCSTR, DWORD_PTR, PDH_HCOUNTER*);
+typedef PDH_STATUS(WINAPI *pfnPdhAddCounter)(PDH_HQUERY, LPCSTR, DWORD_PTR, PDH_HCOUNTER*);
 
 static pfnPdhOpenQueryW pPdhOpenQueryW;
 static pfnPdhAddCounterW pPdhAddCounterW;
@@ -46,7 +46,7 @@ static pfnPdhCollectQueryData pPdhCollectQueryData;
 static pfnPdhGetFormattedCounterValue pPdhGetFormattedCounterValue;
 static pfnPdhCloseQuery pPdhCloseQuery;
 static pfnPdhRemoveCounter pPdhRemoveCounter;
-static pfnPdhAddCounterA pPdhAddCounterA;
+static pfnPdhAddCounter pPdhAddCounter;
 
 extern BOOL b_DebugLog;
 
@@ -66,7 +66,7 @@ void TempMoni_start(void)
 
 		pPdhOpenQueryW = (pfnPdhOpenQueryW)GetProcAddress(hmodPDH, "PdhOpenQueryW");
 		pPdhAddCounterW = (pfnPdhAddCounterW)GetProcAddress(hmodPDH, "PdhAddCounterW");
-		pPdhAddCounterA = (pfnPdhAddCounterA)GetProcAddress(hmodPDH, "PdhAddCounterA");
+		pPdhAddCounter = (pfnPdhAddCounter)GetProcAddress(hmodPDH, "PdhAddCounterA");
 		pPdhRemoveCounter = (pfnPdhRemoveCounter)GetProcAddress(hmodPDH, "PdhRemoveCounter");
 		pPdhCollectQueryData = (pfnPdhCollectQueryData)GetProcAddress(hmodPDH, "PdhCollectQueryData");
 		pPdhGetFormattedCounterValue = (pfnPdhGetFormattedCounterValue)GetProcAddress(hmodPDH, "PdhGetFormattedCounterValue");
@@ -74,7 +74,7 @@ void TempMoni_start(void)
 
 		if (pPdhOpenQueryW == NULL ||
 			pPdhAddCounterW == NULL ||
-			pPdhAddCounterA == NULL ||
+			pPdhAddCounter == NULL ||
 			pPdhCollectQueryData == NULL ||
 			pPdhRemoveCounter == NULL ||
 			pPdhGetFormattedCounterValue == NULL ||
@@ -90,7 +90,7 @@ void TempMoni_start(void)
 	}
 	
 	// create temperature counter
-	//if (pPdhAddCounterA(hQueryTemp, "\\Thermal Zone Information(\\_TZ.THM0)\\Temperature", 0, &hTempCounter) != ERROR_SUCCESS)	//should be "%" because of not using wsprintfW
+	//if (pPdhAddCounter(hQueryTemp, "\\Thermal Zone Information(\\_TZ.THM0)\\Temperature", 0, &hTempCounter) != ERROR_SUCCESS)	//should be "%" because of not using wsprintfW
 	//{
 	//	if (b_DebugLog) writeDebugLog_Win10("[permon.c][TempMoni_start] Performance Counter for Temperature registoration failed.", 999);
 	//}
@@ -185,7 +185,7 @@ int SetThermalZoneCounter(void)
 	LPSTR pTemp = NULL;
 
 	// Determine the required buffer size for the data. 
-	status = PdhEnumObjectItemsA(
+	status = PdhEnumObjectItems(
 		NULL,                   // real-time source
 		NULL,                   // local machine
 		COUNTER_OBJECT,         // object to enumerate
@@ -204,7 +204,7 @@ int SetThermalZoneCounter(void)
 
 		if (NULL != pwsCounterListBuffer && NULL != pwsInstanceListBuffer)
 		{
-			status = PdhEnumObjectItemsA(
+			status = PdhEnumObjectItems(
 				NULL,                   // real-time source
 				NULL,                   // local machine
 				COUNTER_OBJECT,         // object to enumerate
@@ -226,7 +226,7 @@ int SetThermalZoneCounter(void)
 						//							if (strstr(pTemp, "_0_eng_0_engtype_3D") || strstr(pTemp, "_0_eng_0_engtype_VideoDecode"))	//Currently use limited instances
 						snprintf(counterName, PDH_MAX_COUNTER_PATH, "\\Thermal Zone Information(%s)\\Temperature", pTemp);	//shoud be "%%" because of using wsprintfW
 //						if (b_DebugLog) writeDebugLog_Win10(counterName, numThermalZone);
-						if (pPdhAddCounterA(hQueryTemp, counterName, 0, &hThermalZoneCounter[numThermalZone]) == ERROR_SUCCESS)
+						if (pPdhAddCounter(hQueryTemp, counterName, 0, &hThermalZoneCounter[numThermalZone]) == ERROR_SUCCESS)
 						{
 							numThermalZone++;
 							if (numThermalZone >= MAX_THERMALZONE_COUNTER)

@@ -77,5 +77,5 @@ BOOL tc_text_codec_selfcheck(void)
     char abuf[64];
     if (tc_utf8_to_utf16(s, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) <= 0) return FALSE;
     if (tc_utf16_to_utf8(wbuf, abuf, (int)sizeof(abuf)) <= 0) return FALSE;
-    return (lstrcmpA(s, abuf) == 0) ? TRUE : FALSE;
+    return (lstrcmp(s, abuf) == 0) ? TRUE : FALSE;
 }

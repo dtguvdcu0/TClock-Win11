@@ -391,7 +391,7 @@ void Net_getRecvSend_Win10(double* recv, double* send, double* recvWAN, double* 
 					*recvWAN += ifr->dwInOctets;
 					*sendWAN += ifr->dwOutOctets;
 
-					ifIndex_LTE = i+1;	//‰½ŒÌ‚©1‚ğ‘«‚·‚Æ‡‚¤
+					ifIndex_LTE = i+1;	//ä½•æ•…ã‹1ã‚’è¶³ã™ã¨åˆã†
 
 				}
 			}
@@ -414,7 +414,7 @@ void Net_getRecvSend_Win10(double* recv, double* send, double* recvWAN, double* 
 					*recvWiFi += ifr->dwInOctets;
 					*sendWiFi += ifr->dwOutOctets;
 
-					ifIndex_WiFi = i+1;	//‰½ŒÌ‚©1‚ğ‘«‚·‚Æ‡‚¤
+					ifIndex_WiFi = i+1;	//ä½•æ•…ã‹1ã‚’è¶³ã™ã¨åˆã†
 
 
 				}
@@ -453,13 +453,13 @@ void Net_getRecvSend_Win10(double* recv, double* send, double* recvWAN, double* 
 					*recvEther += ifr->dwInOctets;
 					*sendEther += ifr->dwOutOctets;
 
-					ifIndex_Ether = i+1;	//‰½ŒÌ‚©1‚ğ‘«‚·‚Æ‡‚¤
+					ifIndex_Ether = i+1;	//ä½•æ•…ã‹1ã‚’è¶³ã™ã¨åˆã†
 
 
 				}
 			}
 
-			//Added for VPNÚ‘± indicator by TTTT
+			//Added for VPNæ¥ç¶š indicator by TTTT
 			if (!flag_VPNCheck)
 			{
 //				if ((ifr->dwType == MIB_IF_TYPE_ETHERNET) &&
@@ -487,7 +487,7 @@ void Net_getRecvSend_Win10(double* recv, double* send, double* recvWAN, double* 
 					flag_VPN = TRUE;
 					if (strstr(ifr->bDescr, strSoftEtherKeyword) != NULL) flag_SoftEther = TRUE;
 
-					ifIndex_VPN = i+1;	//‰½ŒÌ‚©1‚ğ‘«‚·‚Æ‡‚¤
+					ifIndex_VPN = i+1;	//ä½•æ•…ã‹1ã‚’è¶³ã™ã¨åˆã†
 
 
 				}

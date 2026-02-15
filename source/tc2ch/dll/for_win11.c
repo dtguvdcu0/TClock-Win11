@@ -9,7 +9,7 @@
 
 
 
-//”ñWin11ê—p
+//éWin11å°‚ç”¨
 extern BOOL b_DebugLog;
 extern HANDLE hmod;
 extern HWND hwndClockMain;
@@ -34,26 +34,26 @@ extern int originalWidthTaskbar;
 extern int originalHeightTaskbar;
 extern int originalPosYTaskbar;
 
-//Win11‘Î‰ŠÖ˜A
-//Win11‘Î‰©ìƒEƒBƒ“ƒhƒEƒ‚[ƒhƒtƒ‰ƒO
+//Win11å¯¾å¿œé–¢é€£
+//Win11å¯¾å¿œè‡ªä½œã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ãƒ¢ãƒ¼ãƒ‰ãƒ•ãƒ©ã‚°
 extern BOOL bWin11Main;
 extern BOOL bWin11Sub;
 extern BOOL bWin11LayoutDegraded;
 
 //extern int Win11Type;
 
-//Win11—pŠÖ˜AƒEƒBƒ“ƒhƒEƒnƒ“ƒhƒ‹
+//Win11ç”¨é–¢é€£ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ãƒãƒ³ãƒ‰ãƒ«
 extern HWND hwndWin11ReBarWin;
 extern HWND hwndWin11ContentBridge;
 extern HWND hwndWin11InnerTrayContentBridge;
 extern HWND hwndWin11Notify;
 
-//’Ê’mƒEƒBƒ“ƒhƒE—p
-//—˜—pİ’èEƒtƒ‰ƒO
-extern BOOL bEnabledWin11Notify;	//—˜—p‚·‚é‚©‚Ç‚¤‚©(’Ê’mƒEƒBƒ“ƒhƒE©‘Ì‚Íí‚Éì‚é)
-extern BOOL bEnableWin11NotifyIcon;	//ã‹L‚ªTRUE‚ÌÛAƒAƒCƒRƒ“‚ğ•\¦‚·‚é‚©‚Ç‚¤‚©
+//é€šçŸ¥ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ç”¨
+//åˆ©ç”¨è¨­å®šãƒ»ãƒ•ãƒ©ã‚°
+extern BOOL bEnabledWin11Notify;	//åˆ©ç”¨ã™ã‚‹ã‹ã©ã†ã‹(é€šçŸ¥ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦è‡ªä½“ã¯å¸¸ã«ä½œã‚‹)
+extern BOOL bEnableWin11NotifyIcon;	//ä¸Šè¨˜ãŒTRUEã®éš›ã€ã‚¢ã‚¤ã‚³ãƒ³ã‚’è¡¨ç¤ºã™ã‚‹ã‹ã©ã†ã‹
 
-									//’Ê’mƒEƒBƒ“ƒhƒE•`‰æ—p
+									//é€šçŸ¥ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦æç”»ç”¨
 extern HDC hdcYesWin11Notify;
 extern HDC hdcNoWin11Notify;
 extern HDC hdcFocusWin11Notify;
@@ -79,22 +79,22 @@ extern COLORREF colWin11Notify;
 
 extern BOOL fillbackcolor;
 
-//Œ»“_‚Å’Ê’m‚ªo‚Ä‚¢‚é‚©‚Ç‚¤‚©
+//ç¾æ™‚ç‚¹ã§é€šçŸ¥ãŒå‡ºã¦ã„ã‚‹ã‹ã©ã†ã‹
 extern BOOL bExistWin11Notify;
-//’Ê’mƒEƒBƒ“ƒhƒE‚ÌƒTƒCƒY
+//é€šçŸ¥ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ã®ã‚µã‚¤ã‚º
 extern int widthWin11Notify;
 extern int heightWin11Notify;
-//’Ê’mƒEƒBƒ“ƒhƒE“à‚ÌƒAƒCƒRƒ“¶ãˆÊ’u‚ÆƒTƒCƒY
+//é€šçŸ¥ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦å†…ã®ã‚¢ã‚¤ã‚³ãƒ³å·¦ä¸Šä½ç½®ã¨ã‚µã‚¤ã‚º
 extern POINT posNotifyIcon;
 extern int widthNotifyIcon;
 extern int heightNotifyIcon;
 extern int posXShowDesktopArea;
 extern POINT posNotifyText;
 
-//ƒƒCƒ“Œv(©ì)ˆ——p•Ï”
+//ãƒ¡ã‚¤ãƒ³æ™‚è¨ˆ(è‡ªä½œ)å‡¦ç†ç”¨å¤‰æ•°
 extern int widthWin11Clock;
 extern int heightWin11Clock;
-//•”•iƒTƒCƒY(Œ³‚ÌWin11’Ê’m—Ìˆæ‚Ì‰ğÍ—p)
+//éƒ¨å“ã‚µã‚¤ã‚º(å…ƒã®Win11é€šçŸ¥é ˜åŸŸã®è§£æç”¨)
 extern int widthWin11Icon;
 extern int widthWin11Button;
 extern int origWidthWin11Tray;
@@ -103,21 +103,21 @@ extern int defaultWin11ClockWidth;
 extern int defaultWin11NotificationWidth;
 extern int adjustWin11TrayYpos;
 
-//’²®—p
+//èª¿æ•´ç”¨
 extern int adjustWin11TrayCutPosition;
 extern int adjustWin11DetectNotify;
 extern int adjustWin11ClockWidth;
-//”z’uEƒJƒbƒgˆ—‚ÌŒ‹‰Ê“¾‚ç‚ê‚é’l
+//é…ç½®ãƒ»ã‚«ãƒƒãƒˆå‡¦ç†ã®çµæœå¾—ã‚‰ã‚Œã‚‹å€¤
 extern int cutOffWidthWin11Tray;
 extern int modifiedWidthWin11Tray;
 extern int posXMainClock;
 
-//w¬‚³‚¢ƒ^ƒXƒNƒo[x‚©‚Ç‚¤‚©
+//ã€å°ã•ã„ã‚¿ã‚¹ã‚¯ãƒãƒ¼ã€ã‹ã©ã†ã‹
 extern int typeWin11Taskbar;
-//w¬‚³‚¢ƒ^ƒXƒNƒo[x‚ÅƒgƒŒƒCˆÊ’u’²®‚·‚é‚©‚Ç‚¤‚©
+//ã€å°ã•ã„ã‚¿ã‚¹ã‚¯ãƒãƒ¼ã€ã§ãƒˆãƒ¬ã‚¤ä½ç½®èª¿æ•´ã™ã‚‹ã‹ã©ã†ã‹
 extern BOOL bAdjustTrayWin11SmallTaskbar;
 
-//’Ê’m—Ìˆæ—pƒIƒuƒWƒFƒNƒg
+//é€šçŸ¥é ˜åŸŸç”¨ã‚ªãƒ–ã‚¸ã‚§ã‚¯ãƒˆ
 extern HBRUSH hBrushWin11Notify;
 extern HPEN hPenWin11Notify;
 
@@ -137,7 +137,7 @@ int cursorPosX, cursorPosY;
 
 //extern BOOL bTokenMoveContentBridge;
 
-//Focus Assistó‘Ô
+//Focus AssistçŠ¶æ…‹
 //https://stackoverflow.com/questions/53407374/is-there-a-way-to-detect-changes-in-focus-assist-formerly-quiet-hours-in-windo
 //	not_supported = -2,
 //	failed = -1,
@@ -162,12 +162,12 @@ void CreateClockDC(void);
 
 void CreateTClockBarWin11Type2(void)
 {
-	//Å‰‚ÉcŠ[‚ªc‚Á‚Ä‚½‚çÁ‚·B
+	//æœ€åˆã«æ®‹éª¸ãŒæ®‹ã£ã¦ãŸã‚‰æ¶ˆã™ã€‚
 	HWND tempHwnd;
 	if(tempHwnd = FindWindow("TClockBarWin11", NULL) != NULL) PostMessage(tempHwnd, WM_CLOSE, 0, 0);
 
 
-	//Win11Type2—p‚ÌTClockBar‚ÌƒEƒBƒ“ƒhƒE‚ğ©ì‚·‚éB
+	//Win11Type2ç”¨ã®TClockBarã®ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ã‚’è‡ªä½œã™ã‚‹ã€‚
 	WNDCLASS classTClockBarWin11;
 	TCHAR szClassName[] = TEXT("TClockBarWin11");
 
@@ -201,20 +201,20 @@ void CreateTClockBarWin11Type2(void)
 void CreateWin11MainClock(void)
 {
 
-	//Win11Type2‚Ìê‡‚Í‘S‘Ì‚ğû—e‚·‚éTClockBarWin11‚ğì‚é
+	//Win11Type2ã®å ´åˆã¯å…¨ä½“ã‚’åå®¹ã™ã‚‹TClockBarWin11ã‚’ä½œã‚‹
 	//if (Win11Type == 2) {
 	//	CreateTClockBarWin11Type2();
 	//}
 
 
-	//Å‰‚ÉcŠ[‚ªc‚Á‚Ä‚½‚çÁ‚·B
+	//æœ€åˆã«æ®‹éª¸ãŒæ®‹ã£ã¦ãŸã‚‰æ¶ˆã™ã€‚
 	HWND tempHwnd;
 //	if (Win11Type < 2){
 		while ((tempHwnd = FindWindowEx(hwndTaskBarMain, NULL, "TClockMain", NULL)) != NULL) PostMessage(tempHwnd, WM_CLOSE, 0, 0);
 //	}
 
 
-	//Win11—p‚ÌTClock‚ÌƒEƒBƒ“ƒhƒE‚ğ©ì‚·‚éB
+	//Win11ç”¨ã®TClockã®ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ã‚’è‡ªä½œã™ã‚‹ã€‚
 	WNDCLASS classTClockWin11;
 	TCHAR szClassName[] = TEXT("TClockMain");
 
@@ -250,7 +250,7 @@ void CreateWin11MainClock(void)
 
 	if (hwndClockMain) {
 		ShowWindow(hwndClockMain, SW_SHOW);
-		CreateWin11Notify();		//g‚í‚È‚¢ê‡‚àì‚Á‚Ä‚¨‚­B
+		CreateWin11Notify();		//ä½¿ã‚ãªã„å ´åˆã‚‚ä½œã£ã¦ãŠãã€‚
 	}
 }
 
@@ -258,14 +258,14 @@ HWND CreateWin11SubClock(HWND tempHwndTaskbar)
 {
 
 
-	//Å‰‚ÉcŠ[‚ªc‚Á‚Ä‚½‚çÁ‚·B
+	//æœ€åˆã«æ®‹éª¸ãŒæ®‹ã£ã¦ãŸã‚‰æ¶ˆã™ã€‚
 	HWND tempHwnd;
 	if ((tempHwnd = FindWindowEx(tempHwndTaskbar, NULL, "TClockSub", NULL)) != NULL) PostMessage(tempHwnd, WM_CLOSE, 0, 0);
 
 	WNDCLASS classTClockWin11Sub;
 	TCHAR szClassName[] = TEXT("TClockSub");
 
-	//Win11—p‚ÌTClockSub‚ÌƒNƒ‰ƒX‚ğ©ì‚·‚éB
+	//Win11ç”¨ã®TClockSubã®ã‚¯ãƒ©ã‚¹ã‚’è‡ªä½œã™ã‚‹ã€‚
 	if (!bWin11Sub)
 	{
 		// register a window class
@@ -301,13 +301,13 @@ HWND CreateWin11SubClock(HWND tempHwndTaskbar)
 void CreateWin11Notify(void)
 {
 
-	//Å‰‚ÉcŠ[‚ªc‚Á‚Ä‚½‚çÁ‚·B
+	//æœ€åˆã«æ®‹éª¸ãŒæ®‹ã£ã¦ãŸã‚‰æ¶ˆã™ã€‚
 	HWND tempHwnd;
 //	if (Win11Type < 2) {
 		while ((tempHwnd = FindWindowEx(hwndTaskBarMain, NULL, "TClockNotify", NULL)) != NULL) PostMessage(tempHwnd, WM_CLOSE, 0, 0);
 //	}
 
-	//Win11—p‚ÌTClock‚ÌƒEƒBƒ“ƒhƒE‚ğ©ì‚·‚éB
+	//Win11ç”¨ã®TClockã®ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ã‚’è‡ªä½œã™ã‚‹ã€‚
 	WNDCLASS classTClockWin11Notify;
 	TCHAR szClassName[] = TEXT("TClockNotify");
 
@@ -349,7 +349,7 @@ void ReCreateWin11Notify(void)
 {
 	if (b_DebugLog)writeDebugLog_Win10("[for_win11.c] ReCreateWin11Notify called.", 999);
 
-	//Å‰‚ÉcŠ[‚ªc‚Á‚Ä‚½‚çÁ‚·B
+	//æœ€åˆã«æ®‹éª¸ãŒæ®‹ã£ã¦ãŸã‚‰æ¶ˆã™ã€‚
 	HWND tempHwnd;
 	while ((tempHwnd = FindWindowEx(hwndTaskBarMain, NULL, "TClockNotify", NULL)) != NULL) PostMessage(tempHwnd, WM_CLOSE, 0, 0);
 
@@ -400,10 +400,10 @@ void LoadBitMapWin11Notify(void)
 	if (b_DebugLog)writeDebugLog_Win10("[for_win11.c] LoadBitMapWin11Notify called.", 999);
 
 
-	//ƒrƒbƒgƒ}ƒbƒv‚ÌğŒ
-	//•->”wŒi
-	//”’(æ~’²‚ ‚è)->ƒAƒCƒRƒ“F
-	//ƒTƒCƒY:120 x 160‚ªŠî–{‚¾‚ªAˆá‚Á‚Ä‚àOK
+	//ãƒ“ãƒƒãƒˆãƒãƒƒãƒ—ã®æ¡ä»¶
+	//é»’->èƒŒæ™¯
+	//ç™½(è«§èª¿ã‚ã‚Š)->ã‚¢ã‚¤ã‚³ãƒ³è‰²
+	//ã‚µã‚¤ã‚º:120 x 160ãŒåŸºæœ¬ã ãŒã€é•ã£ã¦ã‚‚OK
 
 //	HBITMAP hbmpIconYesWin11Notify = NULL;
 	//HBITMAP hbmpIconNoWin11Notify = NULL;
@@ -435,11 +435,11 @@ void LoadBitMapWin11Notify(void)
 		DeleteObject(hbm_DIBSection_Win11Notify);
 	}
 
-	hbmpIconNoWin11Notify = LoadBitmap(hmod, IDB_BITMAP1);		//ƒuƒ‰ƒ“ƒN
-	hbmpIconFocusWin11Notify = LoadBitmap(hmod, IDB_BITMAP3);	//O“úŒƒ}[ƒN
+	hbmpIconNoWin11Notify = LoadBitmap(hmod, IDB_BITMAP1);		//ãƒ–ãƒ©ãƒ³ã‚¯
+	hbmpIconFocusWin11Notify = LoadBitmap(hmod, IDB_BITMAP3);	//ä¸‰æ—¥æœˆãƒãƒ¼ã‚¯
 
 
-	hbmpIconYesWin11Notify = LoadBitmap(hmod, IDB_BITMAP4);		//“h‚è‚Â‚Ô‚µ(•¶š“ü‚ê—p)
+	hbmpIconYesWin11Notify = LoadBitmap(hmod, IDB_BITMAP4);		//å¡—ã‚Šã¤ã¶ã—(æ–‡å­—å…¥ã‚Œç”¨)
 
 
 	tempR = GetRValue(colWin11Notify);
@@ -465,9 +465,9 @@ void LoadBitMapWin11Notify(void)
 //	CreateMyNotificationFont(heightWin11Notify / 2, widthNotifyIcon / 5);
 	
 
-	//ˆÈ‰º‚Ìˆ—‚Ínotification•\¦‚ÉŠÖ‚í‚ç‚¸Às‚·‚é•K—v‚ª‚ ‚é‚Ì‚ÅAGetWin11ElementSize‚ÉˆÚ“®
+	//ä»¥ä¸‹ã®å‡¦ç†ã¯notificationè¡¨ç¤ºã«é–¢ã‚ã‚‰ãšå®Ÿè¡Œã™ã‚‹å¿…è¦ãŒã‚ã‚‹ã®ã§ã€GetWin11ElementSizeã«ç§»å‹•
 
-	////NotificationƒNƒŠƒAE•`‰æ—pƒIƒuƒWƒFƒNƒgw’è
+	////Notificationã‚¯ãƒªã‚¢ãƒ»æç”»ç”¨ã‚ªãƒ–ã‚¸ã‚§ã‚¯ãƒˆæŒ‡å®š
 	//if (!hBrushWin11Notify)DeleteObject(hBrushWin11Notify);
 	//hBrushWin11Notify = CreateSolidBrush(RGB(0, 0, 0));
 	//SelectObject(hdc, hBrushWin11Notify);
@@ -477,7 +477,7 @@ void LoadBitMapWin11Notify(void)
 	//SelectObject(hdc, hPenWin11Notify);
 
 
-	//DIB sectionì¬—pbitmap\‘¢‘Ì
+	//DIB sectionä½œæˆç”¨bitmapæ§‹é€ ä½“
 	static BITMAPINFO bmi = { { sizeof(BITMAPINFO),0,0,1,32,BI_RGB }, };
 
 	
@@ -494,12 +494,12 @@ void LoadBitMapWin11Notify(void)
 	bmi.bmiHeader.biHeight = heightNotifyIcon;
 
 
-	//’Ê’m‚ ‚èƒAƒCƒRƒ“DCì¬
-	//DIB section ì¬, Å‰‚ÆÅŒã‚ÌƒAƒhƒŒƒXæ“¾
+	//é€šçŸ¥ã‚ã‚Šã‚¢ã‚¤ã‚³ãƒ³DCä½œæˆ
+	//DIB section ä½œæˆ, æœ€åˆã¨æœ€å¾Œã®ã‚¢ãƒ‰ãƒ¬ã‚¹å–å¾—
 	hbm_DIBSection_YesWin11Notify = CreateDIBSection(NULL, &bmi, DIB_RGB_COLORS, (void**)&m_color_YesWin11Notify_start, NULL, 0);
 	m_color_YesWin11Notify_end = m_color_YesWin11Notify_start + (widthNotifyIcon * heightNotifyIcon);
 
-	//ƒŠƒ\[ƒXƒrƒbƒgƒ}ƒbƒv(”’/“§–¾)‚ğ˜g‚É‚ ‚í‚¹‚ÄƒRƒs[B˜g‚ÍGetWin11ElementSize‚ÅŒˆ‚ß‚é)
+	//ãƒªã‚½ãƒ¼ã‚¹ãƒ“ãƒƒãƒˆãƒãƒƒãƒ—(ç™½/é€æ˜)ã‚’æ ã«ã‚ã‚ã›ã¦ã‚³ãƒ”ãƒ¼ã€‚æ ã¯GetWin11ElementSizeã§æ±ºã‚ã‚‹)
 	hdcYesWin11Notify = CreateCompatibleDC(hdc);
 	SelectObject(hdcYesWin11Notify, hbm_DIBSection_YesWin11Notify);
 	SetStretchBltMode(hdcYesWin11Notify, HALFTONE);
@@ -511,7 +511,7 @@ void LoadBitMapWin11Notify(void)
 
 	StretchBlt(hdcYesWin11Notify, 0, 0, widthNotifyIcon, heightNotifyIcon, tempDC, 0, 0, tempBitmap.bmWidth, tempBitmap.bmHeight, SRCCOPY);
 
-	//ƒ[ƒh‚µ‚½ƒrƒbƒgƒ}ƒbƒv‚Í‚à‚¤‚¢‚ç‚È‚¢‚Ì‚Å”jŠü->ÅŒã‚Ü‚Å—˜—p‚É•ÏX
+	//ãƒ­ãƒ¼ãƒ‰ã—ãŸãƒ“ãƒƒãƒˆãƒãƒƒãƒ—ã¯ã‚‚ã†ã„ã‚‰ãªã„ã®ã§ç ´æ£„->æœ€å¾Œã¾ã§åˆ©ç”¨ã«å¤‰æ›´
 //	DeleteObject(hbmpIconYesWin11Notify);
 
 	for (color = m_color_YesWin11Notify_start; color < m_color_YesWin11Notify_end; ++color)
@@ -519,7 +519,7 @@ void LoadBitMapWin11Notify(void)
 
 
 
-		//F‚ª‘¶İ‚·‚éƒ|ƒCƒ“ƒg‚ÍAlpha‚ğ‹P“x’l‚É‚·‚é(Œ³‚ğ”’/•ƒrƒbƒgƒ}ƒbƒv‚É‚µ‚Ä‚¨‚¯‚Î‚Ç‚ÌF‚©‚ç‚Å‚àæ‚ê‚é)B‚±‚¤‚µ‚È‚¢‚Æ•‚ª•\¦‚³‚ê‚È‚¢
+		//è‰²ãŒå­˜åœ¨ã™ã‚‹ãƒã‚¤ãƒ³ãƒˆã¯Alphaã‚’è¼åº¦å€¤ã«ã™ã‚‹(å…ƒã‚’ç™½/é»’ãƒ“ãƒƒãƒˆãƒãƒƒãƒ—ã«ã—ã¦ãŠã‘ã°ã©ã®è‰²ã‹ã‚‰ã§ã‚‚å–ã‚Œã‚‹)ã€‚ã“ã†ã—ãªã„ã¨é»’ãŒè¡¨ç¤ºã•ã‚Œãªã„
 		color->rgbReserved = color->rgbRed;
 
 		tempUnsigned = color->rgbRed * tempR / 255;
@@ -531,7 +531,7 @@ void LoadBitMapWin11Notify(void)
 		tempUnsigned = color->rgbBlue * tempB / 255;
 		color->rgbBlue = (tempUnsigned>255 ? 255 : (BYTE)tempUnsigned);
 
-		if (fillbackWin11NotifyIconInvert)	//fillbackcolor‚ÅF‚ªˆÃ‚¢‚Æ‚«‚Ì‚İA”wŒi‚ğ”’‚É”½“]‚·‚éB
+		if (fillbackWin11NotifyIconInvert)	//fillbackcolorã§è‰²ãŒæš—ã„ã¨ãã®ã¿ã€èƒŒæ™¯ã‚’ç™½ã«åè»¢ã™ã‚‹ã€‚
 		{
 			if (color->rgbReserved == 0)
 			{
@@ -543,12 +543,12 @@ void LoadBitMapWin11Notify(void)
 
 	}
 
-	//’Ê’m‚È‚µƒAƒCƒRƒ“DCì¬
-	//DIB section ì¬, Å‰‚ÆÅŒã‚ÌƒAƒhƒŒƒXæ“¾
+	//é€šçŸ¥ãªã—ã‚¢ã‚¤ã‚³ãƒ³DCä½œæˆ
+	//DIB section ä½œæˆ, æœ€åˆã¨æœ€å¾Œã®ã‚¢ãƒ‰ãƒ¬ã‚¹å–å¾—
 	hbm_DIBSection_NoWin11Notify = CreateDIBSection(NULL, &bmi, DIB_RGB_COLORS, (void**)&m_color_NoWin11Notify_start, NULL, 0);
 	m_color_NoWin11Notify_end = m_color_NoWin11Notify_start + (widthNotifyIcon * heightNotifyIcon);
 
-	//ƒŠƒ\[ƒXƒrƒbƒgƒ}ƒbƒv(”’/“§–¾)‚ğ˜g‚É‚ ‚í‚¹‚ÄƒRƒs[B˜g‚ÍGetWin11ElementSize‚ÅŒˆ‚ß‚é)
+	//ãƒªã‚½ãƒ¼ã‚¹ãƒ“ãƒƒãƒˆãƒãƒƒãƒ—(ç™½/é€æ˜)ã‚’æ ã«ã‚ã‚ã›ã¦ã‚³ãƒ”ãƒ¼ã€‚æ ã¯GetWin11ElementSizeã§æ±ºã‚ã‚‹)
 	hdcNoWin11Notify = CreateCompatibleDC(hdc);
 	SelectObject(hdcNoWin11Notify, hbm_DIBSection_NoWin11Notify);
 	SetStretchBltMode(hdcNoWin11Notify, HALFTONE);
@@ -561,12 +561,12 @@ void LoadBitMapWin11Notify(void)
 
 	StretchBlt(hdcNoWin11Notify, 0, 0, widthNotifyIcon, heightNotifyIcon, tempDC, 0, 0, tempBitmap.bmWidth, tempBitmap.bmHeight, SRCCOPY);
 
-	//ƒ[ƒh‚µ‚½ƒrƒbƒgƒ}ƒbƒv‚Í‚à‚¤‚¢‚ç‚È‚¢‚Ì‚Å”jŠü->ÅŒã‚Ü‚Å—˜—p‚É•ÏX
+	//ãƒ­ãƒ¼ãƒ‰ã—ãŸãƒ“ãƒƒãƒˆãƒãƒƒãƒ—ã¯ã‚‚ã†ã„ã‚‰ãªã„ã®ã§ç ´æ£„->æœ€å¾Œã¾ã§åˆ©ç”¨ã«å¤‰æ›´
 //	DeleteObject(hbmpIconNoWin11Notify);
 
 	for (color = m_color_NoWin11Notify_start; color < m_color_NoWin11Notify_end; ++color)
 	{
-		//F‚ª‘¶İ‚·‚éƒ|ƒCƒ“ƒg‚ÍAlpha‚ğ‹P“x’l‚É‚·‚é(Œ³‚ğ”’/•ƒrƒbƒgƒ}ƒbƒv‚É‚µ‚Ä‚¨‚¯‚Î‚Ç‚ÌF‚©‚ç‚Å‚àæ‚ê‚é)B‚±‚¤‚µ‚È‚¢‚Æ•‚ª•\¦‚³‚ê‚È‚¢
+		//è‰²ãŒå­˜åœ¨ã™ã‚‹ãƒã‚¤ãƒ³ãƒˆã¯Alphaã‚’è¼åº¦å€¤ã«ã™ã‚‹(å…ƒã‚’ç™½/é»’ãƒ“ãƒƒãƒˆãƒãƒƒãƒ—ã«ã—ã¦ãŠã‘ã°ã©ã®è‰²ã‹ã‚‰ã§ã‚‚å–ã‚Œã‚‹)ã€‚ã“ã†ã—ãªã„ã¨é»’ãŒè¡¨ç¤ºã•ã‚Œãªã„
 		color->rgbReserved = color->rgbRed;
 
 		tempUnsigned = color->rgbRed * tempR / 255;
@@ -578,7 +578,7 @@ void LoadBitMapWin11Notify(void)
 		tempUnsigned = color->rgbBlue * tempB / 255;
 		color->rgbBlue = (tempUnsigned>255 ? 255 : (BYTE)tempUnsigned);
 
-		if (fillbackWin11NotifyIconInvert)	//fillbackcolor‚ÅF‚ªˆÃ‚¢‚Æ‚«‚Ì‚İA”wŒi‚ğ”’‚É”½“]‚·‚éB
+		if (fillbackWin11NotifyIconInvert)	//fillbackcolorã§è‰²ãŒæš—ã„ã¨ãã®ã¿ã€èƒŒæ™¯ã‚’ç™½ã«åè»¢ã™ã‚‹ã€‚
 		{
 			if (color->rgbReserved == 0)
 			{
@@ -589,12 +589,12 @@ void LoadBitMapWin11Notify(void)
 		}
 	}
 
-	//W’†ƒ‚[ƒhƒAƒCƒRƒ“DCì¬
-	//DIB section ì¬, Å‰‚ÆÅŒã‚ÌƒAƒhƒŒƒXæ“¾
+	//é›†ä¸­ãƒ¢ãƒ¼ãƒ‰ã‚¢ã‚¤ã‚³ãƒ³DCä½œæˆ
+	//DIB section ä½œæˆ, æœ€åˆã¨æœ€å¾Œã®ã‚¢ãƒ‰ãƒ¬ã‚¹å–å¾—
 	hbm_DIBSection_FocusWin11Notify = CreateDIBSection(NULL, &bmi, DIB_RGB_COLORS, (void**)&m_color_FocusWin11Notify_start, NULL, 0);
 	m_color_FocusWin11Notify_end = m_color_FocusWin11Notify_start + (widthNotifyIcon * heightNotifyIcon);
 
-	//ƒŠƒ\[ƒXƒrƒbƒgƒ}ƒbƒv(”’/“§–¾)‚ğ˜g‚É‚ ‚í‚¹‚ÄƒRƒs[B˜g‚ÍGetWin11ElementSize‚ÅŒˆ‚ß‚é)
+	//ãƒªã‚½ãƒ¼ã‚¹ãƒ“ãƒƒãƒˆãƒãƒƒãƒ—(ç™½/é€æ˜)ã‚’æ ã«ã‚ã‚ã›ã¦ã‚³ãƒ”ãƒ¼ã€‚æ ã¯GetWin11ElementSizeã§æ±ºã‚ã‚‹)
 	hdcFocusWin11Notify = CreateCompatibleDC(hdc);
 	SelectObject(hdcFocusWin11Notify, hbm_DIBSection_FocusWin11Notify);
 	SetStretchBltMode(hdcFocusWin11Notify, HALFTONE);
@@ -606,12 +606,12 @@ void LoadBitMapWin11Notify(void)
 
 	StretchBlt(hdcFocusWin11Notify, 0, 0, widthNotifyIcon, heightNotifyIcon, tempDC, 0, 0, tempBitmap.bmWidth, tempBitmap.bmHeight, SRCCOPY);
 
-	//ƒ[ƒh‚µ‚½ƒrƒbƒgƒ}ƒbƒv‚Í‚à‚¤‚¢‚ç‚È‚¢‚Ì‚Å”jŠü->ÅŒã‚Ü‚Å—˜—p‚É•ÏX
+	//ãƒ­ãƒ¼ãƒ‰ã—ãŸãƒ“ãƒƒãƒˆãƒãƒƒãƒ—ã¯ã‚‚ã†ã„ã‚‰ãªã„ã®ã§ç ´æ£„->æœ€å¾Œã¾ã§åˆ©ç”¨ã«å¤‰æ›´
 //	DeleteObject(hbmpIconFocusWin11Notify);
 
 	for (color = m_color_FocusWin11Notify_start; color < m_color_FocusWin11Notify_end; ++color)
 	{
-		//F‚ª‘¶İ‚·‚éƒ|ƒCƒ“ƒg‚ÍAlpha‚ğ‹P“x’l‚É‚·‚é(Œ³‚ğ”’/•ƒrƒbƒgƒ}ƒbƒv‚É‚µ‚Ä‚¨‚¯‚Î‚Ç‚ÌF‚©‚ç‚Å‚àæ‚ê‚é)B‚±‚¤‚µ‚È‚¢‚Æ•‚ª•\¦‚³‚ê‚È‚¢
+		//è‰²ãŒå­˜åœ¨ã™ã‚‹ãƒã‚¤ãƒ³ãƒˆã¯Alphaã‚’è¼åº¦å€¤ã«ã™ã‚‹(å…ƒã‚’ç™½/é»’ãƒ“ãƒƒãƒˆãƒãƒƒãƒ—ã«ã—ã¦ãŠã‘ã°ã©ã®è‰²ã‹ã‚‰ã§ã‚‚å–ã‚Œã‚‹)ã€‚ã“ã†ã—ãªã„ã¨é»’ãŒè¡¨ç¤ºã•ã‚Œãªã„
 		color->rgbReserved = color->rgbRed;
 
 		tempUnsigned = color->rgbRed * tempR / 255;
@@ -623,7 +623,7 @@ void LoadBitMapWin11Notify(void)
 		tempUnsigned = color->rgbBlue * tempB / 255;
 		color->rgbBlue = (tempUnsigned>255 ? 255 : (BYTE)tempUnsigned);
 
-		if (fillbackWin11NotifyIconInvert)	//fillbackcolor‚ÅF‚ªˆÃ‚¢‚Æ‚«‚Ì‚İA”wŒi‚ğ”’‚É”½“]‚·‚éB
+		if (fillbackWin11NotifyIconInvert)	//fillbackcolorã§è‰²ãŒæš—ã„ã¨ãã®ã¿ã€èƒŒæ™¯ã‚’ç™½ã«åè»¢ã™ã‚‹ã€‚
 		{
 			if (color->rgbReserved == 0)
 			{
@@ -636,7 +636,7 @@ void LoadBitMapWin11Notify(void)
 	}
 
 
-	//ˆêDC‚Ìíœ‚Æ’Ê’mƒEƒBƒ“ƒhƒEDC‚ÌƒŠƒŠ[ƒX
+	//ä¸€æ™‚DCã®å‰Šé™¤ã¨é€šçŸ¥ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦DCã®ãƒªãƒªãƒ¼ã‚¹
 	DeleteDC(tempDC);
 	ReleaseDC(hwndWin11Notify, hdc);
 
@@ -649,55 +649,55 @@ void GetWin11ElementSize(void)
 	//RECT tempRect;
 
 	GetTaskbarSize();
-	GetWin11TaskbarType(); //ƒŒƒWƒXƒgƒŠ‚Å¬‚³‚¢ƒ^ƒXƒNƒo[İ’è‚ğ‚µ‚Ä‚¢‚é‚©‚Ç‚¤‚©Šm”F
+	GetWin11TaskbarType(); //ãƒ¬ã‚¸ã‚¹ãƒˆãƒªã§å°ã•ã„ã‚¿ã‚¹ã‚¯ãƒãƒ¼è¨­å®šã‚’ã—ã¦ã„ã‚‹ã‹ã©ã†ã‹ç¢ºèª
 
-						   //Œ³‚ÍƒAƒvƒŠƒAƒCƒRƒ““WŠJ—pƒ{ƒ^ƒ“•‚ğŠî€‚É‚µ‚Ä‚¢‚½‚Ì‚ÅAwidthWin11Button‚ªŠî€‚É‚È‚Á‚Ä‚¢‚éB
-						   //“WŠJƒ{ƒ^ƒ“‚ª‚È‚¢ê‡‚ª‚ ‚é‚±‚Æ‚ª”»–¾‚µ‚½‚Ì‚ÅA“¯‚¶’l‚ÌheightTaskbar / 2‚ÉˆÚs‚µ‚½B
+						   //å…ƒã¯ã‚¢ãƒ—ãƒªã‚¢ã‚¤ã‚³ãƒ³å±•é–‹ç”¨ãƒœã‚¿ãƒ³å¹…ã‚’åŸºæº–ã«ã—ã¦ã„ãŸã®ã§ã€widthWin11ButtonãŒåŸºæº–ã«ãªã£ã¦ã„ã‚‹ã€‚
+						   //å±•é–‹ãƒœã‚¿ãƒ³ãŒãªã„å ´åˆãŒã‚ã‚‹ã“ã¨ãŒåˆ¤æ˜ã—ãŸã®ã§ã€åŒã˜å€¤ã®heightTaskbar / 2ã«ç§»è¡Œã—ãŸã€‚
 
-						   //Win11(2021/11Œ“_)‚Ìƒ^ƒXƒNƒgƒŒƒCƒAƒCƒRƒ“ƒTƒCƒY(•W€ƒ^ƒXƒNƒo[)
-						   //¦Šg‘å—¦100%‚Ìê‡‚Ì’lB”{—¦‚É‚ ‚í‚¹‚Ä’l‚ª•Ï‚í‚é(—á:200%‚È‚ç”{‚Ì’l)
-						   //¦WinExplorer‚Å’²‚×‚½ê‡‚É‚ÍAÀÛ‚Ì”{—¦‚É‚æ‚ç‚¸‰º‹L‚Ì100%Š·Z‚Ì’l‚ª“¾‚ç‚ê‚éB
-						   //ƒ^ƒXƒNƒo[‚‚³: 48
-						   //ƒAƒvƒŠƒAƒCƒRƒ““WŠJƒ{ƒ^ƒ“(ƒAƒvƒŠƒAƒCƒRƒ“1ŒÂ‚Æ“¯‚¶)•	: 24
-						   //IMEAƒ^ƒbƒ`ƒL[ƒ{[ƒhAˆÊ’uî•ñ“™‚ÌOSƒAƒCƒRƒ“: 32
-						   //Œv•: 88 = 24 * 11 / 3
-						   //Œv‚É’Ê’m‚ªo‚½ê‡‚ÌL‚ª‚è•: 28
-						   //¦ƒAƒCƒRƒ“•32‚Æ’Ê’m•28‚Ì·‚ÅA’Ê’m”»’è‚ğs‚¤•K—v‚ª‚ ‚éA‚Æ‚¢‚¤‚±‚ÆB
-						   //WiFi“™ƒAƒCƒRƒ“‚ª3‚Â‚ ‚éê‡: 80 (ƒAƒCƒRƒ“1ŒÂ16 x 3 + Œ„ŠÔ‚â’[:8 x 4)
-						   //WiFi“™ƒAƒCƒRƒ“‚ª3‚Â‚ ‚éê‡: 56 (ƒAƒCƒRƒ“1ŒÂ16 x 2 + Œ„ŠÔ‚â’[:8 x 3)
+						   //Win11(2021/11æœˆæ™‚ç‚¹)ã®ã‚¿ã‚¹ã‚¯ãƒˆãƒ¬ã‚¤ã‚¢ã‚¤ã‚³ãƒ³ã‚µã‚¤ã‚º(æ¨™æº–ã‚¿ã‚¹ã‚¯ãƒãƒ¼)
+						   //â€»æ‹¡å¤§ç‡100%ã®å ´åˆã®å€¤ã€‚å€ç‡ã«ã‚ã‚ã›ã¦å€¤ãŒå¤‰ã‚ã‚‹(ä¾‹:200%ãªã‚‰å€ã®å€¤)
+						   //â€»WinExplorerã§èª¿ã¹ãŸå ´åˆã«ã¯ã€å®Ÿéš›ã®å€ç‡ã«ã‚ˆã‚‰ãšä¸‹è¨˜ã®100%æ›ç®—ã®å€¤ãŒå¾—ã‚‰ã‚Œã‚‹ã€‚
+						   //ã‚¿ã‚¹ã‚¯ãƒãƒ¼é«˜ã•: 48
+						   //ã‚¢ãƒ—ãƒªã‚¢ã‚¤ã‚³ãƒ³å±•é–‹ãƒœã‚¿ãƒ³(ã‚¢ãƒ—ãƒªã‚¢ã‚¤ã‚³ãƒ³1å€‹ã¨åŒã˜)å¹…	: 24
+						   //IMEã€ã‚¿ãƒƒãƒã‚­ãƒ¼ãƒœãƒ¼ãƒ‰ã€ä½ç½®æƒ…å ±ç­‰ã®OSã‚¢ã‚¤ã‚³ãƒ³: 32
+						   //æ™‚è¨ˆå¹…: 88 = 24 * 11 / 3
+						   //æ™‚è¨ˆã«é€šçŸ¥ãŒå‡ºãŸå ´åˆã®åºƒãŒã‚Šå¹…: 28
+						   //â€»ã‚¢ã‚¤ã‚³ãƒ³å¹…32ã¨é€šçŸ¥å¹…28ã®å·®ã§ã€é€šçŸ¥åˆ¤å®šã‚’è¡Œã†å¿…è¦ãŒã‚ã‚‹ã€ã¨ã„ã†ã“ã¨ã€‚
+						   //WiFiç­‰ã‚¢ã‚¤ã‚³ãƒ³ãŒ3ã¤ã‚ã‚‹å ´åˆ: 80 (ã‚¢ã‚¤ã‚³ãƒ³1å€‹16 x 3 + éš™é–“ã‚„ç«¯:8 x 4)
+						   //WiFiç­‰ã‚¢ã‚¤ã‚³ãƒ³ãŒ3ã¤ã‚ã‚‹å ´åˆ: 56 (ã‚¢ã‚¤ã‚³ãƒ³1å€‹16 x 2 + éš™é–“ã‚„ç«¯:8 x 3)
 
-						   //Win11(2021/11Œ“_)‚Ìƒ^ƒXƒNƒgƒŒƒCƒAƒCƒRƒ“ƒTƒCƒY(ƒŒƒWƒXƒgƒŠ‘€ì‚É‚æ‚éw¬‚³‚¢ƒ^ƒXƒNƒo[x)
-						   //¦Šg‘å—¦100%‚Ìê‡‚Ì’lB”{—¦‚É‚ ‚í‚¹‚Ä’l‚ª•Ï‚í‚é(—á:200%‚È‚ç”{‚Ì’l)
-						   //ƒ^ƒXƒNƒo[‚‚³: 32
-						   //ƒAƒvƒŠƒAƒCƒRƒ““WŠJƒ{ƒ^ƒ“(ƒAƒvƒŠƒAƒCƒRƒ“1ŒÂ‚Æ“¯‚¶)•	: 24
-						   //IMEAƒ^ƒbƒ`ƒL[ƒ{[ƒhAˆÊ’uî•ñ“™‚ÌOSƒAƒCƒRƒ“: 32
-						   //Œv•: 88
-						   //Œv‚É’Ê’m‚ªo‚½ê‡‚ÌL‚ª‚è•: 28
-						   //WiFi“™ƒAƒCƒRƒ“‚ª3‚Â‚ ‚éê‡:  80 (ƒAƒCƒRƒ“1ŒÂ16 x 3 + Œ„ŠÔ‚â’[:8 x 4)
-						   //WiFi“™ƒAƒCƒRƒ“‚ª3‚Â‚ ‚éê‡:  56 (ƒAƒCƒRƒ“1ŒÂ16 x 2 + Œ„ŠÔ‚â’[:8 x 3)
+						   //Win11(2021/11æœˆæ™‚ç‚¹)ã®ã‚¿ã‚¹ã‚¯ãƒˆãƒ¬ã‚¤ã‚¢ã‚¤ã‚³ãƒ³ã‚µã‚¤ã‚º(ãƒ¬ã‚¸ã‚¹ãƒˆãƒªæ“ä½œã«ã‚ˆã‚‹ã€å°ã•ã„ã‚¿ã‚¹ã‚¯ãƒãƒ¼ã€)
+						   //â€»æ‹¡å¤§ç‡100%ã®å ´åˆã®å€¤ã€‚å€ç‡ã«ã‚ã‚ã›ã¦å€¤ãŒå¤‰ã‚ã‚‹(ä¾‹:200%ãªã‚‰å€ã®å€¤)
+						   //ã‚¿ã‚¹ã‚¯ãƒãƒ¼é«˜ã•: 32
+						   //ã‚¢ãƒ—ãƒªã‚¢ã‚¤ã‚³ãƒ³å±•é–‹ãƒœã‚¿ãƒ³(ã‚¢ãƒ—ãƒªã‚¢ã‚¤ã‚³ãƒ³1å€‹ã¨åŒã˜)å¹…	: 24
+						   //IMEã€ã‚¿ãƒƒãƒã‚­ãƒ¼ãƒœãƒ¼ãƒ‰ã€ä½ç½®æƒ…å ±ç­‰ã®OSã‚¢ã‚¤ã‚³ãƒ³: 32
+						   //æ™‚è¨ˆå¹…: 88
+						   //æ™‚è¨ˆã«é€šçŸ¥ãŒå‡ºãŸå ´åˆã®åºƒãŒã‚Šå¹…: 28
+						   //WiFiç­‰ã‚¢ã‚¤ã‚³ãƒ³ãŒ3ã¤ã‚ã‚‹å ´åˆ:  80 (ã‚¢ã‚¤ã‚³ãƒ³1å€‹16 x 3 + éš™é–“ã‚„ç«¯:8 x 4)
+						   //WiFiç­‰ã‚¢ã‚¤ã‚³ãƒ³ãŒ3ã¤ã‚ã‚‹å ´åˆ:  56 (ã‚¢ã‚¤ã‚³ãƒ³1å€‹16 x 2 + éš™é–“ã‚„ç«¯:8 x 3)
 
-						   //->[Œ‹˜_] ¬‚³‚¢ƒ^ƒXƒNƒo[‚Ìê‡‚Íƒ^ƒXƒNƒo[‚‚³‚ª•Ï‚í‚é‚¾‚¯A
+						   //->[çµè«–] å°ã•ã„ã‚¿ã‚¹ã‚¯ãƒãƒ¼ã®å ´åˆã¯ã‚¿ã‚¹ã‚¯ãƒãƒ¼é«˜ã•ãŒå¤‰ã‚ã‚‹ã ã‘ã€
 
 	adjustWin11TrayYpos = 0;
 
-//	if ((typeWin11Taskbar == 0) && (Win11Type < 2))	//ƒŒƒWƒXƒgƒŠ‚ÌTaskbarSi‚Ìİ’è‚Íƒrƒ‹ƒh22579–¢–(Win11Type == 1)‚Å‚È‚¢‚Æ–³Œø
-	if (typeWin11Taskbar == 0)	//ƒŒƒWƒXƒgƒŠ‚ÌTaskbarSi‚Ìİ’è‚Íƒrƒ‹ƒh22579–¢–(Win11Type == 1)‚Å‚È‚¢‚Æ–³Œø
+//	if ((typeWin11Taskbar == 0) && (Win11Type < 2))	//ãƒ¬ã‚¸ã‚¹ãƒˆãƒªã®TaskbarSiã®è¨­å®šã¯ãƒ“ãƒ«ãƒ‰22579æœªæº€(Win11Type == 1)ã§ãªã„ã¨ç„¡åŠ¹
+	if (typeWin11Taskbar == 0)	//ãƒ¬ã‚¸ã‚¹ãƒˆãƒªã®TaskbarSiã®è¨­å®šã¯ãƒ“ãƒ«ãƒ‰22579æœªæº€(Win11Type == 1)ã§ãªã„ã¨ç„¡åŠ¹
 	{
 		widthWin11Button = heightTaskbar * 3 / 4;
 		if (bAdjustTrayWin11SmallTaskbar) adjustWin11TrayYpos = heightTaskbar / 4;
 	}
 	else
 	{
-		widthWin11Button = heightTaskbar / 2;		//•W€‚Ì‚‚³‚Ìƒ^ƒXƒNƒo[‚Ìê‡
+		widthWin11Button = heightTaskbar / 2;		//æ¨™æº–ã®é«˜ã•ã®ã‚¿ã‚¹ã‚¯ãƒãƒ¼ã®å ´åˆ
 	}
 
 	widthWin11Icon = widthWin11Button * 4 / 3;
 
-	SetMyRegLong("Status_DoNotEdit", "Win11IconSize", widthWin11Icon);	//İ’è‚ÌÛ‚ÌãŒÀ’lŒˆ‚ß‚é‚½‚ß‚Éƒtƒ@ƒCƒ‹‚É•Û‘¶‚·‚éB
+	SetMyRegLong("Status_DoNotEdit", "Win11IconSize", widthWin11Icon);	//è¨­å®šã®éš›ã®ä¸Šé™å€¤æ±ºã‚ã‚‹ãŸã‚ã«ãƒ•ã‚¡ã‚¤ãƒ«ã«ä¿å­˜ã™ã‚‹ã€‚
 
-//	defaultWin11ClockWidth = widthWin11Button * 11 / 3 - (widthWin11Button / 15) + adjustWin11ClockWidth;		//(widthWin11Button / 15)‚ÍŒvZã‚ÌŒë·‚Ì‹zû—pB‚±‚±‚Åè“®’²®’l‚ğ“K—p‚·‚éB
+//	defaultWin11ClockWidth = widthWin11Button * 11 / 3 - (widthWin11Button / 15) + adjustWin11ClockWidth;		//(widthWin11Button / 15)ã¯è¨ˆç®—ä¸Šã®èª¤å·®ã®å¸åç”¨ã€‚ã“ã“ã§æ‰‹å‹•èª¿æ•´å€¤ã‚’é©ç”¨ã™ã‚‹ã€‚
 
-	//Ver4.2.1ˆÈ~
+	//Ver4.2.1ä»¥é™
 	defaultWin11ClockWidth = widthWin11Button * 11 / 3 + adjustWin11TrayCutPosition;
 	defaultWin11NotificationWidth = widthWin11Button * 7 / 6;
 
@@ -713,8 +713,8 @@ void GetWin11ElementSize(void)
 
 	if (bEnabledWin11Notify)
 	{
-		if (bEnableWin11NotifyIcon) {	//TClock-Win10‚ÌWin11—p’Ê’mƒAƒCƒRƒ“‚ğ•\¦‚·‚éê‡
-			widthWin11Notify = widthWin11Icon;		//‚±‚ê‚Í©•ª‚ÅŒˆ‚ß‚Ä‚æ‚¢’l, 32, widthWin11Button * 4 / 3;
+		if (bEnableWin11NotifyIcon) {	//TClock-Win10ã®Win11ç”¨é€šçŸ¥ã‚¢ã‚¤ã‚³ãƒ³ã‚’è¡¨ç¤ºã™ã‚‹å ´åˆ
+			widthWin11Notify = widthWin11Icon;		//ã“ã‚Œã¯è‡ªåˆ†ã§æ±ºã‚ã¦ã‚ˆã„å€¤, 32, widthWin11Button * 4 / 3;
 			heightWin11Notify = heightTaskbar;
 
 			//posNotifyIcon.x = widthWin11Notify * 1 / 10;
@@ -735,34 +735,34 @@ void GetWin11ElementSize(void)
 				heightNotifyIcon = heightWin11Notify * 8 / 10;
 			}
 
-			LoadBitMapWin11Notify();		//’Ê’mƒAƒCƒRƒ“ƒTƒCƒY‚ªŒˆ‚Ü‚ç‚È‚¢‚Æƒ[ƒh‚Å‚«‚È‚¢B
+			LoadBitMapWin11Notify();		//é€šçŸ¥ã‚¢ã‚¤ã‚³ãƒ³ã‚µã‚¤ã‚ºãŒæ±ºã¾ã‚‰ãªã„ã¨ãƒ­ãƒ¼ãƒ‰ã§ããªã„ã€‚
 
 
-											//’Ê’m”•\¦—p‚ÌƒtƒHƒ“ƒgì¬EˆÊ’uŒˆ’è
+											//é€šçŸ¥æ•°è¡¨ç¤ºç”¨ã®ãƒ•ã‚©ãƒ³ãƒˆä½œæˆãƒ»ä½ç½®æ±ºå®š
 			posNotifyText.x = widthNotifyIcon / 2;
-			if (typeWin11Taskbar == 0)	//¬‚³‚¢ƒ^ƒXƒNƒo[‚Ìê‡
+			if (typeWin11Taskbar == 0)	//å°ã•ã„ã‚¿ã‚¹ã‚¯ãƒãƒ¼ã®å ´åˆ
 			{
 				posNotifyText.y = heightWin11Notify * 3 / 4;
 				CreateMyNotificationFont(heightWin11Notify / 2, widthNotifyIcon / 5);
 			}
-			else	//¬‚³‚¢ƒ^ƒXƒNƒo[‚Å‚È‚¢ê‡
+			else	//å°ã•ã„ã‚¿ã‚¹ã‚¯ãƒãƒ¼ã§ãªã„å ´åˆ
 			{
 				posNotifyText.y = heightWin11Notify * 7 / 10;
 				CreateMyNotificationFont(heightWin11Notify * 2 / 5, widthNotifyIcon / 5);
 			}
 		}
-		else {	//TClock-Win10‚ÌWin11—p’Ê’mƒAƒCƒRƒ“‚ğ•\¦‚¹‚¸AƒfƒXƒNƒgƒbƒv•\¦—Ìˆæ‚Ì‚İg‚¤ê‡
+		else {	//TClock-Win10ã®Win11ç”¨é€šçŸ¥ã‚¢ã‚¤ã‚³ãƒ³ã‚’è¡¨ç¤ºã›ãšã€ãƒ‡ã‚¹ã‚¯ãƒˆãƒƒãƒ—è¡¨ç¤ºé ˜åŸŸã®ã¿ä½¿ã†å ´åˆ
 			widthWin11Notify = widthWin11Button * 5 / 24;
 			heightWin11Notify = heightTaskbar;
 			posXShowDesktopArea = 0;	//27
 		}
 	}
-	else {		//g‚í‚È‚¢ê‡‚Í’P‚ÉƒTƒCƒY‚ğƒ[ƒ‚É‚µ‚ÄƒEƒBƒ“ƒhƒE‚Íc‚µ‚Ä‚¨‚­B
+	else {		//ä½¿ã‚ãªã„å ´åˆã¯å˜ã«ã‚µã‚¤ã‚ºã‚’ã‚¼ãƒ­ã«ã—ã¦ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ã¯æ®‹ã—ã¦ãŠãã€‚
 		widthWin11Notify = 0;
 		heightWin11Notify = 0;
 	}
 
-	//NotificationƒNƒŠƒAE•`‰æ—pƒIƒuƒWƒFƒNƒgw’è
+	//Notificationã‚¯ãƒªã‚¢ãƒ»æç”»ç”¨ã‚ªãƒ–ã‚¸ã‚§ã‚¯ãƒˆæŒ‡å®š
 	if (!hBrushWin11Notify)DeleteObject(hBrushWin11Notify);
 	hBrushWin11Notify = CreateSolidBrush(RGB(0, 0, 0));
 //	SelectObject(hdc, hBrushWin11Notify);
@@ -852,7 +852,7 @@ void DesktopDirectDraw_Win11(void)
 	}
 
 
-	tempDeskotopHwnd = GetDesktopWindow();	//GetDesktopWindow()‚ªƒfƒXƒNƒgƒbƒv
+	tempDeskotopHwnd = GetDesktopWindow();	//GetDesktopWindow()ãŒãƒ‡ã‚¹ã‚¯ãƒˆãƒƒãƒ—
 	
 	if (desktopDC = GetDC(tempDeskotopHwnd)) {
 		if (tclockDC = GetDC(hwndClockMain)) {
@@ -903,46 +903,46 @@ LRESULT CALLBACK WndProcTaskbarContentBridge_Win11(HWND tempHwnd, UINT message, 
 {
 
 
-//	DesktopDirectDraw_Win11();		//‚Æ‚è‚ ‚¦‚¸TClock‚ğ‹­§“I‚ÉƒfƒXƒNƒgƒbƒv‚É•\¦‚·‚éB
+//	DesktopDirectDraw_Win11();		//ã¨ã‚Šã‚ãˆãšTClockã‚’å¼·åˆ¶çš„ã«ãƒ‡ã‚¹ã‚¯ãƒˆãƒƒãƒ—ã«è¡¨ç¤ºã™ã‚‹ã€‚
 
 /*
-0‚ğ•Ô‚µ‘±‚¯‚é‚Æ15(WM_PAINT)‚ª‰„X‘±‚¢‚Äƒ‹[ƒv‚·‚éB‚·‚­‚È‚­‚Æ‚à15‚ÍoldProcTaskbarContentBridge_Win11‚É“n‚³‚È‚¯‚ê‚Î‚¢‚¯‚È‚¢B
+0ã‚’è¿”ã—ç¶šã‘ã‚‹ã¨15(WM_PAINT)ãŒå»¶ã€…ç¶šã„ã¦ãƒ«ãƒ¼ãƒ—ã™ã‚‹ã€‚ã™ããªãã¨ã‚‚15ã¯oldProcTaskbarContentBridge_Win11ã«æ¸¡ã•ãªã‘ã‚Œã°ã„ã‘ãªã„ã€‚
 
-ƒƒbƒZ[ƒW(•W€–ß‚è’l—á)
+ãƒ¡ãƒƒã‚»ãƒ¼ã‚¸(æ¨™æº–æˆ»ã‚Šå€¤ä¾‹)
 
-ƒEƒCƒ“ƒhƒEƒTƒCƒYî•ñ‚ğŠÜ‚Ş‚à‚Ì
+ã‚¦ã‚¤ãƒ³ãƒ‰ã‚¦ã‚µã‚¤ã‚ºæƒ…å ±ã‚’å«ã‚€ã‚‚ã®
 70		WM_WINDOWPOSCHANGING
 131		WM_NCCALCSIZE
 71		WM_WINDOWPOSCHANGED
 5		WM_SIZE
 
 
-ƒEƒBƒ“ƒhƒEƒTƒCƒYî•ñ‚ğŠÜ‚Ü‚È‚¢‚à‚Ì
+ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ã‚µã‚¤ã‚ºæƒ…å ±ã‚’å«ã¾ãªã„ã‚‚ã®
 133	 	WM_NCPAINT
-15		WM_PAINT (’Ê‚·‚©, BeginPaint&EndPaint‚µ‚È‚¢‚ÆŒÄ‚Î‚ê‘±‚¯‚é)
+15		WM_PAINT (é€šã™ã‹, BeginPaint&EndPaintã—ãªã„ã¨å‘¼ã°ã‚Œç¶šã‘ã‚‹)
 20 		WM_ERASEBKGND
 26		WM_WININICHANGE
-24		WM_SHOWWINDOW	ƒVƒXƒeƒ€‚É‚æ‚èƒ^ƒXƒNƒo[ƒTƒCƒY‚ª–ß‚³‚ê‚½‚Æ‚«‚É1‰ñ“Í‚­BSetMainClockOnTaskTray_Win11‚É‚æ‚éƒ^ƒXƒNƒo[’Zk‚Å‚Ío‚È‚¢‚½‚ßƒ‹[ƒv‚µ‚È‚¢B
+24		WM_SHOWWINDOW	ã‚·ã‚¹ãƒ†ãƒ ã«ã‚ˆã‚Šã‚¿ã‚¹ã‚¯ãƒãƒ¼ã‚µã‚¤ã‚ºãŒæˆ»ã•ã‚ŒãŸã¨ãã«1å›å±Šãã€‚SetMainClockOnTaskTray_Win11ã«ã‚ˆã‚‹ã‚¿ã‚¹ã‚¯ãƒãƒ¼çŸ­ç¸®ã§ã¯å‡ºãªã„ãŸã‚ãƒ«ãƒ¼ãƒ—ã—ãªã„ã€‚
 528		WM_PARENTNOTIFY
 
-ƒEƒBƒ“ƒhƒEƒTƒCƒYî•ñ‚ğŠÜ‚Ş‚©•s–¾‚È‚à‚Ì
-738		“Æ©ƒƒbƒZ[ƒWH‰æ–ÊƒXƒP[ƒŠƒ“ƒO‚ğ•ÏX‚·‚é‚Æ“Í‚­‚ª•’i‚Í“Í‚©‚È‚¢
-739		“Æ©ƒƒbƒZ[ƒWH‰æ–ÊƒXƒP[ƒŠƒ“ƒO‚ğ•ÏX‚·‚é‚Æ“Í‚­‚ª•’i‚Í“Í‚©‚È‚¢
+ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ã‚µã‚¤ã‚ºæƒ…å ±ã‚’å«ã‚€ã‹ä¸æ˜ãªã‚‚ã®
+738		ç‹¬è‡ªãƒ¡ãƒƒã‚»ãƒ¼ã‚¸ï¼Ÿç”»é¢ã‚¹ã‚±ãƒ¼ãƒªãƒ³ã‚°ã‚’å¤‰æ›´ã™ã‚‹ã¨å±ŠããŒæ™®æ®µã¯å±Šã‹ãªã„
+739		ç‹¬è‡ªãƒ¡ãƒƒã‚»ãƒ¼ã‚¸ï¼Ÿç”»é¢ã‚¹ã‚±ãƒ¼ãƒªãƒ³ã‚°ã‚’å¤‰æ›´ã™ã‚‹ã¨å±ŠããŒæ™®æ®µã¯å±Šã‹ãªã„
 
 */
 
-	//‚¢‚ë‚¢‚ëƒuƒƒbƒN‚ğ‚İ‚½‚ªc
-	//71‚ğ~‚ß‚é‚Æ‚¤‚Ü‚­ƒTƒCƒY’²®‚ª‚Å‚«‚È‚­‚È‚éB
-	//15‚ğ~‚ß‚é‚Æ–³ŒÀƒ‹[ƒv‚ÅNG
-	//‚»‚êˆÈŠO‚Í~‚ß‚Ä‚àAŒ»ó‚ÌƒAƒ‹ƒSƒŠƒYƒ€‚Å‚Í“Á‚ÉŒø‰Ê‚È‚¢B
-	//ƒfƒXƒNƒgƒbƒv’¼Ú•`‰æ‚Å‚¿‚ç‚Â‚«‰ü‘P‚ª‚İ‚ç‚ê‚é‚ªŠ®‘S‚Å‚Í‚È‚¢B
+	//ã„ã‚ã„ã‚ãƒ–ãƒ­ãƒƒã‚¯ã‚’è©¦ã¿ãŸãŒâ€¦
+	//71ã‚’æ­¢ã‚ã‚‹ã¨ã†ã¾ãã‚µã‚¤ã‚ºèª¿æ•´ãŒã§ããªããªã‚‹ã€‚
+	//15ã‚’æ­¢ã‚ã‚‹ã¨ç„¡é™ãƒ«ãƒ¼ãƒ—ã§NG
+	//ãã‚Œä»¥å¤–ã¯æ­¢ã‚ã¦ã‚‚ã€ç¾çŠ¶ã®ã‚¢ãƒ«ã‚´ãƒªã‚ºãƒ ã§ã¯ç‰¹ã«åŠ¹æœãªã„ã€‚
+	//ãƒ‡ã‚¹ã‚¯ãƒˆãƒƒãƒ—ç›´æ¥æç”»ã§ã¡ã‚‰ã¤ãæ”¹å–„ãŒã¿ã‚‰ã‚Œã‚‹ãŒå®Œå…¨ã§ã¯ãªã„ã€‚
 
-	//ƒTƒCƒY’²ß‚ÌÅŒã‚ÍA
-	//WM_WINDOWPOSCHANGED(71)‚ª“Í‚­
-	//oldProcTaskbarContentBridge_Win11‚Ì“®ì‚©‚çWM_SIZE(5)‚ª”­¶‚·‚é
-	//WM_SIZE‚É‘Î‚·‚éoldProcTaskbarContentBridge_Win11‚Ì“®ì‚ªŠ®—¹‚µ‚½‚ç–ß‚Á‚Ä‚«‚ÄWM_WINDOWPOSCHANGED‚ªI—¹‚·‚éB
-	//‚±‚Ì“_‚ÅƒTƒCƒY’²®‚ªŠ®—¹‚µ‚Ä‚¢‚é‚Ì‚ÅATClock—p‚ÌˆÚ“®‚ğs‚¤B‚½‚¾‚µ’¼ÚŒÄ‚ñ‚Å‚Í‘‚·‚¬‚é‚Ì‚ÅA
-	//PostMessage(hwndClockMain, CLOCKM_MOVEWIN11CONTENTBRIDGE, 0, 0);‚ÅŒÄ‚Ô
+	//ã‚µã‚¤ã‚ºèª¿ç¯€ã®æœ€å¾Œã¯ã€
+	//WM_WINDOWPOSCHANGED(71)ãŒå±Šã
+	//oldProcTaskbarContentBridge_Win11ã®å‹•ä½œã‹ã‚‰WM_SIZE(5)ãŒç™ºç”Ÿã™ã‚‹
+	//WM_SIZEã«å¯¾ã™ã‚‹oldProcTaskbarContentBridge_Win11ã®å‹•ä½œãŒå®Œäº†ã—ãŸã‚‰æˆ»ã£ã¦ãã¦WM_WINDOWPOSCHANGEDãŒçµ‚äº†ã™ã‚‹ã€‚
+	//ã“ã®æ™‚ç‚¹ã§ã‚µã‚¤ã‚ºèª¿æ•´ãŒå®Œäº†ã—ã¦ã„ã‚‹ã®ã§ã€TClockç”¨ã®ç§»å‹•ã‚’è¡Œã†ã€‚ãŸã ã—ç›´æ¥å‘¼ã‚“ã§ã¯æ—©ã™ãã‚‹ã®ã§ã€
+	//PostMessage(hwndClockMain, CLOCKM_MOVEWIN11CONTENTBRIDGE, 0, 0);ã§å‘¼ã¶
 
 	//if (b_DebugLog){
 	//	writeDebugLog_Win10("[for_win11.c][WndProcTaskbarContentBridge_Win11] Window Message was recevied, message =", message);
@@ -985,7 +985,7 @@ LRESULT CALLBACK WndProcTaskbarContentBridge_Win11(HWND tempHwnd, UINT message, 
 	//			writeDebugLog_Win10("[for_win11.c] cy =", (int)(*pwinpos).cy);
 	//		}
 
-	//		if ((message == 71))	//WM_WINDOWPOSCHANGED, ‚±‚ê‚ğƒuƒƒbƒN‚·‚é‚Æ‚¤‚Ü‚­“®‚©‚È‚¢
+	//		if ((message == 71))	//WM_WINDOWPOSCHANGED, ã“ã‚Œã‚’ãƒ–ãƒ­ãƒƒã‚¯ã™ã‚‹ã¨ã†ã¾ãå‹•ã‹ãªã„
 	//		{
 	//			writeDebugLog_Win10("[for_win11.c] WM_WINDOWPOSCHANGED(71)", 999);
 	//			WINDOWPOS* pwinpos = (WINDOWPOS*)lParam;
@@ -1031,7 +1031,7 @@ LRESULT CALLBACK WndProcTaskbarContentBridge_Win11(HWND tempHwnd, UINT message, 
 
 	LRESULT ret = 0;
 
-	//if (message == 15) {		//WM_PAINT‚ÍBeginPaint/EndPaint‚µ‚È‚¢‚ÆŒÄ‚Î‚ê‘±‚¯‚é‚Ì‚Å‚±‚ê‚ÅƒXƒLƒbƒv‚·‚éB
+	//if (message == 15) {		//WM_PAINTã¯BeginPaint/EndPaintã—ãªã„ã¨å‘¼ã°ã‚Œç¶šã‘ã‚‹ã®ã§ã“ã‚Œã§ã‚¹ã‚­ãƒƒãƒ—ã™ã‚‹ã€‚
 	//	//https://docs.microsoft.com/ja-jp/windows/win32/gdi/wm-paint
 	//	PAINTSTRUCT ps;
 	//	HDC hdc = BeginPaint(tempHwnd, &ps);
@@ -1058,8 +1058,8 @@ LRESULT CALLBACK WndProcTaskbarContentBridge_Win11(HWND tempHwnd, UINT message, 
 	{
 
 		cursorPosX = GET_X_LPARAM(lParam);
-//		cursorPosY = GET_Y_LPARAM(lParam);			//ƒ^ƒXƒNƒo[“àÀ•W
-		cursorPosY = posYTaskbar + GET_Y_LPARAM(lParam);		//â‘ÎÀ•W
+//		cursorPosY = GET_Y_LPARAM(lParam);			//ã‚¿ã‚¹ã‚¯ãƒãƒ¼å†…åº§æ¨™
+		cursorPosY = posYTaskbar + GET_Y_LPARAM(lParam);		//çµ¶å¯¾åº§æ¨™
 
 
 		
@@ -1094,24 +1094,24 @@ LRESULT CALLBACK WndProcTaskbarContentBridge_Win11(HWND tempHwnd, UINT message, 
 		else if (tempWidth == modifiedWidthTaskbar_Win11Type2)
 		{
 			if (b_DebugLog)writeDebugLog_Win10("[for_win11.c][WndProcTaskbarContentBridge_Win11] SetMainClockOnTaskTray_Win11(operation = 1) called due to ContentBridge resize, Size =", (int)(*pwinpos).cx);
-			PostMessage(hwndClockMain, CLOCKM_MOVEWIN11CONTENTBRIDGE, 1, 0);	//PostmessageŒo—R‚ÅSetMainClockOnTaskTray_Win11‚ğÀs‚·‚éB
+			PostMessage(hwndClockMain, CLOCKM_MOVEWIN11CONTENTBRIDGE, 1, 0);	//PostmessageçµŒç”±ã§SetMainClockOnTaskTray_Win11ã‚’å®Ÿè¡Œã™ã‚‹ã€‚
 		}
-		else if ( tempWidth == originalWidthTaskbar)	//”z’u‚ª–ß‚³‚ê‚½‚çˆê˜A‚ÌƒvƒƒZƒX‚ÌÅŒã‚É¬—§‚·‚éBÀÛ‚É‚ÍoriginalWidthTaskbar‚É–ß‚é‚ªA‚»‚êˆÈŠO‚ÌƒP[ƒX‚É‚à‘Î‰‚Å‚«‚é
+		else if ( tempWidth == originalWidthTaskbar)	//é…ç½®ãŒæˆ»ã•ã‚ŒãŸã‚‰ä¸€é€£ã®ãƒ—ãƒ­ã‚»ã‚¹ã®æœ€å¾Œã«æˆç«‹ã™ã‚‹ã€‚å®Ÿéš›ã«ã¯originalWidthTaskbarã«æˆ»ã‚‹ãŒã€ãã‚Œä»¥å¤–ã®ã‚±ãƒ¼ã‚¹ã«ã‚‚å¯¾å¿œã§ãã‚‹
 		{
 			if (b_DebugLog)writeDebugLog_Win10("[for_win11.c][WndProcTaskbarContentBridge_Win11] SetMainClockOnTaskTray_Win11(operation = 0) called due to ContentBridge resize, Size =", (int)(*pwinpos).cx);
 			SwitchToTClockBarWin11();
-			PostMessage(hwndClockMain, CLOCKM_MOVEWIN11CONTENTBRIDGE, 0, 0);	//PostmessageŒo—R‚ÅSetMainClockOnTaskTray_Win11‚ğÀs‚·‚éB
-//			SetMainClockOnTasktray_Win11();			//‚±‚ñ‚È•—‚É’¼ÚŒÄ‚Ô‚Æ‘‚·‚¬‚Ä‚¿‚ç‚Â‚«->¸”sA‚É‚È‚éB
+			PostMessage(hwndClockMain, CLOCKM_MOVEWIN11CONTENTBRIDGE, 0, 0);	//PostmessageçµŒç”±ã§SetMainClockOnTaskTray_Win11ã‚’å®Ÿè¡Œã™ã‚‹ã€‚
+//			SetMainClockOnTasktray_Win11();			//ã“ã‚“ãªé¢¨ã«ç›´æ¥å‘¼ã¶ã¨æ—©ã™ãã¦ã¡ã‚‰ã¤ã->å¤±æ•—ã€ã«ãªã‚‹ã€‚
 		}
 
 	}
-	else if (message == 70)	//’Ê’m”‚ª•Ï‚í‚é‚Æ‚È‚º‚©‚±‚ê‚ª“Í‚­‚æ‚¤‚È‚Ì‚ÅA’Ê’m”‚ª•Ï‰»‚µ‚Ä‚¢‚È‚¢‚©ƒ`ƒFƒbƒN‚·‚éB
+	else if (message == 70)	//é€šçŸ¥æ•°ãŒå¤‰ã‚ã‚‹ã¨ãªãœã‹ã“ã‚ŒãŒå±Šãã‚ˆã†ãªã®ã§ã€é€šçŸ¥æ•°ãŒå¤‰åŒ–ã—ã¦ã„ãªã„ã‹ãƒã‚§ãƒƒã‚¯ã™ã‚‹ã€‚
 	{
-		if (SetModifiedWidthWin11Tray())	//‚±‚ÌŠÖ”‚Í’Ê’mƒAƒCƒRƒ“‚Ì—L–³‚ª•Ï‰»‚µ‚½‚çTRUE‚É‚È‚éB
+		if (SetModifiedWidthWin11Tray())	//ã“ã®é–¢æ•°ã¯é€šçŸ¥ã‚¢ã‚¤ã‚³ãƒ³ã®æœ‰ç„¡ãŒå¤‰åŒ–ã—ãŸã‚‰TRUEã«ãªã‚‹ã€‚
 		{
 			if (b_DebugLog)writeDebugLog_Win10("[for_win11.c][WndProcTaskbarContentBridge_Win11] SetMainClockOnTaskTray_Win11 called due to Notification change.", 999);
-			PostMessage(hwndClockMain, CLOCKM_MOVEWIN11CONTENTBRIDGE, 0, 0);	//PostmessageŒo—R‚ÅSetMainClockOnTaskTray_Win11‚ğÀs‚·‚éB
-			//			SetMainClockOnTasktray_Win11(); ‚±‚ñ‚È•—‚É’¼ÚŒÄ‚Ô‚Æƒ^ƒCƒ~ƒ“ƒO‚ª‚¸‚ê‚Ä‚¤‚Ü‚­‚¢‚©‚È‚¢
+			PostMessage(hwndClockMain, CLOCKM_MOVEWIN11CONTENTBRIDGE, 0, 0);	//PostmessageçµŒç”±ã§SetMainClockOnTaskTray_Win11ã‚’å®Ÿè¡Œã™ã‚‹ã€‚
+			//			SetMainClockOnTasktray_Win11(); ã“ã‚“ãªé¢¨ã«ç›´æ¥å‘¼ã¶ã¨ã‚¿ã‚¤ãƒŸãƒ³ã‚°ãŒãšã‚Œã¦ã†ã¾ãã„ã‹ãªã„
 		}
 	}
 	else if (message == 131)	//WM_NCCALCSIZE
@@ -1127,7 +1127,7 @@ LRESULT CALLBACK WndProcTaskbarContentBridge_Win11(HWND tempHwnd, UINT message, 
 		SwitchToTClockBarWin11();
 	}
 
-//	DesktopDirectDraw_Win11();		//”O‚Ì‚½‚ßTClock‚ğ‹­§“I‚ÉƒfƒXƒNƒgƒbƒv‚É•\¦‚·‚éB
+//	DesktopDirectDraw_Win11();		//å¿µã®ãŸã‚TClockã‚’å¼·åˆ¶çš„ã«ãƒ‡ã‚¹ã‚¯ãƒˆãƒƒãƒ—ã«è¡¨ç¤ºã™ã‚‹ã€‚
 
 	
 
@@ -1184,8 +1184,8 @@ subclass procedure of the tray
 --------------------------------------------------*/
 LRESULT CALLBACK SubclassTrayProc_Win11(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData)
 {
-	//‚±‚ÌƒR[ƒh“à‚Å‚Íhwnd‚ªhwndTrayMain‚Å‚ ‚èA‘¼‚Ì‘½‚­‚Ìê‡(hwnd=hwndClockMain)‚ÆˆÙ‚È‚é‚È‚Ì‚Å’ˆÓ‚·‚é‚±‚ÆI
-	//ƒ^ƒXƒNƒgƒŒƒC‚ÍƒƒCƒ“‚Ìƒ^ƒXƒNƒo[‚É‚µ‚©‘¶İ‚µ‚È‚¢‚Ì‚ÅA‚»‚êˆÈŠO‚É‚Íg‚¦‚È‚¢ƒR[ƒ‹ƒoƒbƒNŠÖ”‚É‚È‚Á‚Ä‚¢‚éB
+	//ã“ã®ã‚³ãƒ¼ãƒ‰å†…ã§ã¯hwndãŒhwndTrayMainã§ã‚ã‚Šã€ä»–ã®å¤šãã®å ´åˆ(hwnd=hwndClockMain)ã¨ç•°ãªã‚‹ãªã®ã§æ³¨æ„ã™ã‚‹ã“ã¨ï¼
+	//ã‚¿ã‚¹ã‚¯ãƒˆãƒ¬ã‚¤ã¯ãƒ¡ã‚¤ãƒ³ã®ã‚¿ã‚¹ã‚¯ãƒãƒ¼ã«ã—ã‹å­˜åœ¨ã—ãªã„ã®ã§ã€ãã‚Œä»¥å¤–ã«ã¯ä½¿ãˆãªã„ã‚³ãƒ¼ãƒ«ãƒãƒƒã‚¯é–¢æ•°ã«ãªã£ã¦ã„ã‚‹ã€‚
 
 	UNREFERENCED_PARAMETER(hwnd);
 	UNREFERENCED_PARAMETER(uIdSubclass);
@@ -1193,8 +1193,8 @@ LRESULT CALLBACK SubclassTrayProc_Win11(HWND hwnd, UINT message, WPARAM wParam, 
 
 	TraceWin11TrayMessage(message, wParam, lParam);
 
-	//Win11‚Å‚ÍATClock‚Íƒ^ƒXƒNƒgƒŒƒC‚ÌŠO‚É‚ ‚éB
-	//‚±‚ÌƒvƒƒV[ƒWƒƒ‚Å‚ÍAƒ^ƒXƒNƒgƒŒƒC‚Ì–{—ˆ‚Ì’·‚³‚ğæ“¾‚µA‚»‚Ì‚¤‚¿‰E‚ÌŒv‚ğØ‚è—‚Æ‚·‚½‚ß‚Ì‘€ì‚ğs‚Á‚Ä‚¢‚éB
+	//Win11ã§ã¯ã€TClockã¯ã‚¿ã‚¹ã‚¯ãƒˆãƒ¬ã‚¤ã®å¤–ã«ã‚ã‚‹ã€‚
+	//ã“ã®ãƒ—ãƒ­ã‚·ãƒ¼ã‚¸ãƒ£ã§ã¯ã€ã‚¿ã‚¹ã‚¯ãƒˆãƒ¬ã‚¤ã®æœ¬æ¥ã®é•·ã•ã‚’å–å¾—ã—ã€ãã®ã†ã¡å³ã®æ™‚è¨ˆã‚’åˆ‡ã‚Šè½ã¨ã™ãŸã‚ã®æ“ä½œã‚’è¡Œã£ã¦ã„ã‚‹ã€‚
 
 	switch (message)
 	{
@@ -1270,16 +1270,16 @@ LRESULT CALLBACK WndProcWin11Notify(HWND hwnd, UINT message, WPARAM wParam, LPAR
 	HWND tempHwnd;
 	tempHwnd = hwnd;
 
-	//‚±‚ÌƒR[ƒ‹ƒoƒbƒNŠÖ”‚ÍhwndWin11Notification‚Æ‚Ì‘g‚İ‡‚í‚¹‚Å‚Å‚µ‚©³‚µ‚­“®ì‚µ‚È‚¢‚Ì‚ÅAŒ´‘¥‚Æ‚µ‚Ähwnd = hwndWin11Notify‚¾‚ªƒR[ƒ‹ƒoƒbƒNŠÖ”‚È‚Ì‚ÅtempHwnd‚Åˆ—‚µ‚Ä‚¢‚é
+	//ã“ã®ã‚³ãƒ¼ãƒ«ãƒãƒƒã‚¯é–¢æ•°ã¯hwndWin11Notificationã¨ã®çµ„ã¿åˆã‚ã›ã§ã§ã—ã‹æ­£ã—ãå‹•ä½œã—ãªã„ã®ã§ã€åŸå‰‡ã¨ã—ã¦hwnd = hwndWin11Notifyã ãŒã‚³ãƒ¼ãƒ«ãƒãƒƒã‚¯é–¢æ•°ãªã®ã§tempHwndã§å‡¦ç†ã—ã¦ã„ã‚‹
 
 
 //	if (b_DebugLog) writeDebugLog_Win10("[for_win11.c][WndProcWin11Notify] Window Message was recevied, message = ", message);
 
 
-	switch (message) //Win11ƒ^ƒXƒNƒgƒŒƒC’Ê’mƒAƒCƒRƒ“•”‚É‘€ì‚ğ“]‘—
+	switch (message) //Win11ã‚¿ã‚¹ã‚¯ãƒˆãƒ¬ã‚¤é€šçŸ¥ã‚¢ã‚¤ã‚³ãƒ³éƒ¨ã«æ“ä½œã‚’è»¢é€
 	{
 		case WM_LBUTTONDOWN:
-			//‚±‚±‚ÉA‰Ÿ‚³‚ê‚½êŠ‚ªposXShowDesktopArea‚æ‚è‰E‚È‚çƒfƒXƒNƒgƒbƒv‚ğ•\¦‚·‚éA‚Æ‚¢‚¤‚Ì‚ğÀ‘•‚·‚é*****
+			//ã“ã“ã«ã€æŠ¼ã•ã‚ŒãŸå ´æ‰€ãŒposXShowDesktopAreaã‚ˆã‚Šå³ãªã‚‰ãƒ‡ã‚¹ã‚¯ãƒˆãƒƒãƒ—ã‚’è¡¨ç¤ºã™ã‚‹ã€ã¨ã„ã†ã®ã‚’å®Ÿè£…ã™ã‚‹*****
 			if (GET_X_LPARAM(lParam) > posXShowDesktopArea) {
 				//https://www.ka-net.org/blog/?p=8432
 				//http://katsura-kotonoha.sakura.ne.jp/prog/win/tip00024.shtml
@@ -1295,7 +1295,7 @@ LRESULT CALLBACK WndProcWin11Notify(HWND hwnd, UINT message, WPARAM wParam, LPAR
 		{
 			POINT pos = { 0,0 };
 			MapWindowPoints(hwndWin11Notify, GetDesktopWindow(), &pos, 1);
-			PostMessage(hwndTClockExeMain, WM_CONTEXTMENU, wParam, (LPARAM)MAKELONG(pos.x, pos.y));		//³‚µ‚¢êŠ‚Éƒƒjƒ…[‚ğo‚·‚½‚ß‚ÉˆÊ’uî•ñ‚ğ‰æ–Êã‚Ìâ‘ÎÀ•W‚É•Ï‚¦‚Ä‘—‚é•K—v‚ª‚ ‚éB
+			PostMessage(hwndTClockExeMain, WM_CONTEXTMENU, wParam, (LPARAM)MAKELONG(pos.x, pos.y));		//æ­£ã—ã„å ´æ‰€ã«ãƒ¡ãƒ‹ãƒ¥ãƒ¼ã‚’å‡ºã™ãŸã‚ã«ä½ç½®æƒ…å ±ã‚’ç”»é¢ä¸Šã®çµ¶å¯¾åº§æ¨™ã«å¤‰ãˆã¦é€ã‚‹å¿…è¦ãŒã‚ã‚‹ã€‚
 			return 0;
 		}
 	}
@@ -1347,7 +1347,7 @@ void UpdateHdcYesWin11Notify(int num_notify)
 	//	tempUnsigned = color->rgbBlue * tempB / 255;
 	//	color->rgbBlue = (tempUnsigned>255 ? 255 : (BYTE)tempUnsigned);
 
-	//	if (fillbackWin11NotifyIconInvert)	//fillbackcolor‚ÅF‚ªˆÃ‚¢‚Æ‚«‚Ì‚İA”wŒi‚ğ”’‚É”½“]‚·‚éB
+	//	if (fillbackWin11NotifyIconInvert)	//fillbackcolorã§è‰²ãŒæš—ã„ã¨ãã®ã¿ã€èƒŒæ™¯ã‚’ç™½ã«åè»¢ã™ã‚‹ã€‚
 	//	{
 	//		if (color->rgbReserved == 0)
 	//		{
@@ -1371,14 +1371,20 @@ void UpdateHdcYesWin11Notify(int num_notify)
 	//else {
 		SetTextColor(hdcYesWin11Notify, 0x00000000);
 	//}
-	char tempString[2];
+	WCHAR tempString[3];
 
-	sprintf(tempString, "%d", num_notify);
+	wsprintfW(tempString, L"%d", num_notify);
 	if (num_notify < 10) {
-		TextOut(hdcYesWin11Notify, posNotifyText.x, posNotifyText.y - posNotifyIcon.y, tempString, 1);
+		if (!TextOutW(hdcYesWin11Notify, posNotifyText.x, posNotifyText.y - posNotifyIcon.y, tempString, 1) && b_DebugLog) {
+			writeDebugLog_Win10("[for_win11.c][DrawWin11Notify] TextOutW failed(tag=1)", 999);
+			writeDebugLog_Win10("[for_win11.c][DrawWin11Notify] GetLastError=", (int)GetLastError());
+		}
 	}
 	else {
-		TextOut(hdcYesWin11Notify, posNotifyText.x, posNotifyText.y - posNotifyIcon.y, tempString, 2);
+		if (!TextOutW(hdcYesWin11Notify, posNotifyText.x, posNotifyText.y - posNotifyIcon.y, tempString, 2) && b_DebugLog) {
+			writeDebugLog_Win10("[for_win11.c][DrawWin11Notify] TextOutW failed(tag=2)", 999);
+			writeDebugLog_Win10("[for_win11.c][DrawWin11Notify] GetLastError=", (int)GetLastError());
+		}
 	}
 
 
@@ -1395,7 +1401,7 @@ void UpdateHdcYesWin11Notify(int num_notify)
 		tempUnsigned = color->rgbBlue * tempB / 255;
 		color->rgbBlue = (tempUnsigned>255 ? 255 : (BYTE)tempUnsigned);
 
-		if (fillbackWin11NotifyIconInvert)	//fillbackcolor‚ÅF‚ªˆÃ‚¢‚Æ‚«‚Ì‚İA”wŒi‚ğ”’‚É”½“]‚·‚éB
+		if (fillbackWin11NotifyIconInvert)	//fillbackcolorã§è‰²ãŒæš—ã„ã¨ãã®ã¿ã€èƒŒæ™¯ã‚’ç™½ã«åè»¢ã™ã‚‹ã€‚
 		{
 			if (color->rgbReserved == 0)
 			{
@@ -1423,14 +1429,25 @@ void DrawWin11Notify(BOOL b_forceUpdate)
 
 	hdc = GetDC(hwndWin11Notify);
 
-	if (!hdc)	//bWin11Main‚Í©–¾(ŒÄ‚Î‚ê‚é‘O‚É”»’èÏ‚İ)B
-	{	//’Ê’mƒEƒBƒ“ƒhƒE‚ªÁ‚³‚ê‚Ä‚¢‚½‚çì‚è’¼‚·B
+	if (!hdc)	//bWin11Mainã¯è‡ªæ˜(å‘¼ã°ã‚Œã‚‹å‰ã«åˆ¤å®šæ¸ˆã¿)ã€‚
+	{	//é€šçŸ¥ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ãŒæ¶ˆã•ã‚Œã¦ã„ãŸã‚‰ä½œã‚Šç›´ã™ã€‚
 		ReCreateWin11Notify();
 	}
 	else if (bEnableWin11NotifyIcon)
 	{
 		intWin11FocusAssist = GetFocusAssistState();
 		intWin11NotificationNumber = GetNotificationNumber();
+		if (b_DebugLog) {
+			static DWORD s_lastSkipLogTick = 0;
+			DWORD nowTick = GetTickCount();
+			if ((intWin11FocusAssist <= 0) && (intWin11NotificationNumber <= 0) &&
+				((s_lastSkipLogTick == 0) || (nowTick - s_lastSkipLogTick >= 5000))) {
+				s_lastSkipLogTick = nowTick;
+				writeDebugLog_Win10("[for_win11.c][DrawWin11Notify] Skip notify icon draw (focus/notify <= 0).", 999);
+				writeDebugLog_Win10("[for_win11.c][DrawWin11Notify] focusAssist =", intWin11FocusAssist);
+				writeDebugLog_Win10("[for_win11.c][DrawWin11Notify] notificationNumber =", intWin11NotificationNumber);
+			}
+		}
 
 		if (intWin11FocusAssistPrev != intWin11FocusAssist)
 		{
@@ -1447,7 +1464,7 @@ void DrawWin11Notify(BOOL b_forceUpdate)
 
 		if (b_forceUpdate) {
 			UpdateHdcYesWin11Notify(intWin11NotificationNumber);
-			//b_update = TRUE;	//éŒ¾‚É“ü‚ê‚Ä‚¢‚é‚Ì‚Å•s—vB
+			//b_update = TRUE;	//å®£è¨€æ™‚ã«å…¥ã‚Œã¦ã„ã‚‹ã®ã§ä¸è¦ã€‚
 		}
 
 		if (b_update)
@@ -1475,7 +1492,7 @@ void DrawWin11Notify(BOOL b_forceUpdate)
 			MoveToEx(hdcWin11Notify, posXShowDesktopArea, 0, NULL);
 			LineTo(hdcWin11Notify, posXShowDesktopArea, heightWin11Notify);
 
-			//if (Win11Type == 2) {		//Win11Type2‚Å‚Ìã’[ƒ‰ƒCƒ“ÄŒ»
+			//if (Win11Type == 2) {		//Win11Type2ã§ã®ä¸Šç«¯ãƒ©ã‚¤ãƒ³å†ç¾
 			//	hPenWin11Notify = CreatePen(PS_SOLID, 1, originalColorTaskbarEdge);
 			//	SelectObject(hdcWin11Notify, hPenWin11Notify);
 			//	MoveToEx(hdcWin11Notify, 0, 0, NULL);
@@ -1527,6 +1544,14 @@ void DrawWin11Notify(BOOL b_forceUpdate)
 	}
 	else 
 	{
+		if (b_DebugLog) {
+			static DWORD s_lastDisabledLogTick = 0;
+			DWORD nowTick = GetTickCount();
+			if ((s_lastDisabledLogTick == 0) || (nowTick - s_lastDisabledLogTick >= 5000)) {
+				s_lastDisabledLogTick = nowTick;
+				writeDebugLog_Win10("[for_win11.c][DrawWin11Notify] Win11 notify icon disabled (bEnableWin11NotifyIcon == FALSE).", 999);
+			}
+		}
 		if (fillbackcolor)
 		{
 			FillBack(hdc, widthWin11Notify, heightWin11Notify);
@@ -1550,7 +1575,7 @@ void DrawWin11Notify(BOOL b_forceUpdate)
 		MoveToEx(hdc, posXShowDesktopArea, 0, NULL);
 		LineTo(hdc, posXShowDesktopArea, heightWin11Notify);
 
-		//if (Win11Type == 2) {		//Win11Type2‚Å‚Ìã’[ƒ‰ƒCƒ“ÄŒ»
+		//if (Win11Type == 2) {		//Win11Type2ã§ã®ä¸Šç«¯ãƒ©ã‚¤ãƒ³å†ç¾
 		//	hPenWin11Notify = CreatePen(PS_SOLID, 1, originalColorTaskbarEdge);
 		//	SelectObject(hdc, hPenWin11Notify);
 		//	MoveToEx(hdc, 0, 0, NULL);
@@ -1581,7 +1606,7 @@ static BOOL IsHideClockPolicyEnabled(void)
 	RegCloseKey(hkey);
 	return (regtype == REG_DWORD && reg_data != 0);
 }
-BOOL SetModifiedWidthWin11Tray(void) //–ß‚è’l‚ÍƒAƒCƒRƒ“‚Ì—L–³‚ª•Ï‰»‚µ‚½‚©‚Ç‚¤‚©F•Ï‰»‚µ‚½‚çTRUE
+BOOL SetModifiedWidthWin11Tray(void) //æˆ»ã‚Šå€¤ã¯ã‚¢ã‚¤ã‚³ãƒ³ã®æœ‰ç„¡ãŒå¤‰åŒ–ã—ãŸã‹ã©ã†ã‹ï¼šå¤‰åŒ–ã—ãŸã‚‰TRUE
 {
 	BOOL bPrev;
 	bPrev = bExistWin11Notify;
@@ -1618,33 +1643,33 @@ void LogCursorPos(void)
 	}
 }
 
-//Win11‚ÅƒƒCƒ“ƒNƒƒbƒN‚Ì”z’u‚Æü•Ó’²®
+//Win11ã§ãƒ¡ã‚¤ãƒ³ã‚¯ãƒ­ãƒƒã‚¯ã®é…ç½®ã¨å‘¨è¾ºèª¿æ•´
 void SetMainClockOnTasktray_Win11(void)
 {
 	BOOL bCanUseWin11Layout;
 	char strLog[256];
 
-	//‚±‚ÌŠÖ”‚ÍWin11Type < 2 (ƒrƒ‹ƒh22579–¢–)‚Å‚ÍSubClassTrayProc_Win11‚ÌWM_NOTIFY‚©‚ç‚µ‚©ŒÄ‚Î‚ê‚È‚¢(ó‘Ô‚ğˆÛ‚·‚é‚±‚ÆI)B
-	//‚»‚Ìê‡CLOCKM_MOVEWIN11CONTENTBRIDGE‚Í‚±‚ÌŠÖ”‚©‚ç“Š‚°‚éB
-	//ˆê•ûAWin11Type == 2‚Å‚ÍAƒƒCƒ“ƒNƒƒbƒNƒEƒBƒ“ƒhƒE‚Ö“Š‚°‚½CLOCKM_MOVEWIN11CONTENTBRIDGEƒƒbƒZ[ƒWŒo—R‚Å‚±‚¿‚ç‚É—ˆ‚éBŒÄ‚Î‚ê‚é‡”Ô‚ª‹t‚È‚Ì‚Å‚­‚ê‚®‚ê‚à’ˆÓ‚·‚éB
-	//Win11Type == 2‚ÅCLOCKM_MOVEWIN11CONTENTBRIDGEƒƒbƒZ[ƒW‚ğ“Š‚°‚é‚Æ–³ŒÀƒ‹[ƒv‚·‚éI
+	//ã“ã®é–¢æ•°ã¯Win11Type < 2 (ãƒ“ãƒ«ãƒ‰22579æœªæº€)ã§ã¯SubClassTrayProc_Win11ã®WM_NOTIFYã‹ã‚‰ã—ã‹å‘¼ã°ã‚Œãªã„(çŠ¶æ…‹ã‚’ç¶­æŒã™ã‚‹ã“ã¨ï¼)ã€‚
+	//ãã®å ´åˆCLOCKM_MOVEWIN11CONTENTBRIDGEã¯ã“ã®é–¢æ•°ã‹ã‚‰æŠ•ã’ã‚‹ã€‚
+	//ä¸€æ–¹ã€Win11Type == 2ã§ã¯ã€ãƒ¡ã‚¤ãƒ³ã‚¯ãƒ­ãƒƒã‚¯ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ã¸æŠ•ã’ãŸCLOCKM_MOVEWIN11CONTENTBRIDGEãƒ¡ãƒƒã‚»ãƒ¼ã‚¸çµŒç”±ã§ã“ã¡ã‚‰ã«æ¥ã‚‹ã€‚å‘¼ã°ã‚Œã‚‹é †ç•ªãŒé€†ãªã®ã§ãã‚Œãã‚Œã‚‚æ³¨æ„ã™ã‚‹ã€‚
+	//Win11Type == 2ã§CLOCKM_MOVEWIN11CONTENTBRIDGEãƒ¡ãƒƒã‚»ãƒ¼ã‚¸ã‚’æŠ•ã’ã‚‹ã¨ç„¡é™ãƒ«ãƒ¼ãƒ—ã™ã‚‹ï¼
 
-	//Win11‚É‚¨‚¯‚éƒ^ƒXƒNƒgƒŒƒC“àÄ”z’u‚Ì•û–@
-	//Win11‚Å‚ÍTClockWin11‚Æ‚¢‚¤ƒNƒ‰ƒX‚ğƒ^ƒXƒNƒo[’¼‰º‚Éì‚Á‚ÄA¶‚©‚çƒ[ƒNƒAƒCƒRƒ“ŒQAƒgƒŒƒCƒGƒŠƒA(¶‚ÉˆÚ“®)ATClock‚Ì‡‚É•À‚×‚éó‘Ô‚ğˆÛ‚·‚éB
+	//Win11ã«ãŠã‘ã‚‹ã‚¿ã‚¹ã‚¯ãƒˆãƒ¬ã‚¤å†…å†é…ç½®ã®æ–¹æ³•
+	//Win11ã§ã¯TClockWin11ã¨ã„ã†ã‚¯ãƒ©ã‚¹ã‚’ã‚¿ã‚¹ã‚¯ãƒãƒ¼ç›´ä¸‹ã«ä½œã£ã¦ã€å·¦ã‹ã‚‰ãƒ¯ãƒ¼ã‚¯ã‚¢ã‚¤ã‚³ãƒ³ç¾¤ã€ãƒˆãƒ¬ã‚¤ã‚¨ãƒªã‚¢(å·¦ã«ç§»å‹•)ã€TClockã®é †ã«ä¸¦ã¹ã‚‹çŠ¶æ…‹ã‚’ç¶­æŒã™ã‚‹ã€‚
 
 	if (b_DebugLog) writeDebugLog_Win10("[for_win11.c] SetMainClockOnTasktray_Win11 called. ", 999);
 	if (!IsWindow(hwndClockMain)) return;
 
-	//ƒ^ƒXƒNƒo[•‚ğæ“¾(Win11‚Í‚ß‚Á‚½‚É•Ï‚í‚ç‚È‚¢‚ªA”O‚Ì‚½‚ßB‰‰ñ‚Í•K—v)
+	//ã‚¿ã‚¹ã‚¯ãƒãƒ¼å¹…ã‚’å–å¾—(Win11ã¯ã‚ã£ãŸã«å¤‰ã‚ã‚‰ãªã„ãŒã€å¿µã®ãŸã‚ã€‚åˆå›ã¯å¿…è¦)
 	GetTaskbarSize();
 
-	//25H2‚Å‚ÍContentBridgeŒnƒnƒ“ƒhƒ‹‚ª’x‰„¶¬/–¼Ì·•ª‚É‚È‚é‚±‚Æ‚ª‚ ‚é‚½‚ßA–ˆ‰ñÄ’Tõ‚·‚éB
+	//25H2ã§ã¯ContentBridgeç³»ãƒãƒ³ãƒ‰ãƒ«ãŒé…å»¶ç”Ÿæˆ/åç§°å·®åˆ†ã«ãªã‚‹ã“ã¨ãŒã‚ã‚‹ãŸã‚ã€æ¯å›å†æ¢ç´¢ã™ã‚‹ã€‚
 	RefreshWin11TaskbarHandles();
 
-	//Win11ƒ^ƒXƒNƒgƒŒƒCØ‚è—‚Æ‚µ•‚ğŒˆ’è
+	//Win11ã‚¿ã‚¹ã‚¯ãƒˆãƒ¬ã‚¤åˆ‡ã‚Šè½ã¨ã—å¹…ã‚’æ±ºå®š
 	SetModifiedWidthWin11Tray();
 
-	//Šm•Û‚·‚×‚«Œv‚ÌƒTƒCƒY‚ğæ“¾
+	//ç¢ºä¿ã™ã¹ãæ™‚è¨ˆã®ã‚µã‚¤ã‚ºã‚’å–å¾—
 	CalcMainClockSize();
 
 	bCanUseWin11Layout = (IsWindow(hwndTrayMain)
@@ -1677,7 +1702,7 @@ void SetMainClockOnTasktray_Win11(void)
 		}
 
 		CreateClockDC();
-		//degraded‚ÍWin11ƒnƒ“ƒhƒ‹Äæ“¾‚ÆÄ”z’u‚ğŒp‘±‚·‚é‚½‚ß’x‰„‰“š‚ğí‚É‹N“®‚·‚éB
+		//degradedæ™‚ã¯Win11ãƒãƒ³ãƒ‰ãƒ«å†å–å¾—ã¨å†é…ç½®ã‚’ç¶™ç¶šã™ã‚‹ãŸã‚é…å»¶å¿œç­”ã‚’å¸¸ã«èµ·å‹•ã™ã‚‹ã€‚
 		SetTimer(hwndClockMain, IDTIMERDLL_DELEYED_RESPONSE, 500, NULL);
 		if (b_DebugLog) {
 			wsprintf(strLog, "[for_win11.c] Fallback layout applied. posXMainClock=%d", posXMainClock);
@@ -1695,36 +1720,36 @@ void SetMainClockOnTasktray_Win11(void)
 	{
 		int tempX = widthTaskbar - widthMainClockFrame - modifiedWidthWin11Tray - widthWin11Notify;
 
-		//ƒgƒŒƒC‚ğATClock‚ÌƒEƒBƒ“ƒhƒE•ª¶‚ÉˆÚ“®‚µ‚ÄA‰E‘¤‚ÌŒv—Ìˆæ‚ªŒ©‚¦‚È‚­‚È‚é‚æ‚¤‚ÉƒŠƒTƒCƒY‚·‚éB
+		//ãƒˆãƒ¬ã‚¤ã‚’ã€TClockã®ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦åˆ†å·¦ã«ç§»å‹•ã—ã¦ã€å³å´ã®æ™‚è¨ˆé ˜åŸŸãŒè¦‹ãˆãªããªã‚‹ã‚ˆã†ã«ãƒªã‚µã‚¤ã‚ºã™ã‚‹ã€‚
 		SetWindowPos(hwndTrayMain, NULL, tempX, 0, modifiedWidthWin11Tray, heightMainClockFrame,
 			SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOSENDCHANGING);
 
 		if (adjustWin11TrayYpos != 0 && IsWindow(hwndWin11InnerTrayContentBridge)) ShowWindow(hwndWin11InnerTrayContentBridge, SW_HIDE);
 
-		//ƒAƒvƒŠƒAƒCƒRƒ“—ñ‚ğAƒgƒŒƒC‚Ì¶’[‚Ü‚Å‚ÉƒŠƒTƒCƒY‚·‚é
+		//ã‚¢ãƒ—ãƒªã‚¢ã‚¤ã‚³ãƒ³åˆ—ã‚’ã€ãƒˆãƒ¬ã‚¤ã®å·¦ç«¯ã¾ã§ã«ãƒªã‚µã‚¤ã‚ºã™ã‚‹
 		SetWindowPos(hwndWin11ReBarWin, NULL, 0, 0, tempX, heightMainClockFrame,
 			SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOSENDCHANGING);
 
-		//TClock‚Ì¶’[‚ÌXÀ•W‚ğ‹‚ß‚éB
+		//TClockã®å·¦ç«¯ã®Xåº§æ¨™ã‚’æ±‚ã‚ã‚‹ã€‚
 		posXMainClock = widthTaskbar - widthMainClockFrame - widthWin11Notify;
 		if (posXMainClock < 0) posXMainClock = 0;
 
-		//TClock‚ÌƒEƒBƒ“ƒhƒE‚ğŠ’è‚ÌêŠ‚ÉˆÚ“®‚·‚éB
+		//TClockã®ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ã‚’æ‰€å®šã®å ´æ‰€ã«ç§»å‹•ã™ã‚‹ã€‚
 		SetWindowPos(hwndClockMain, HWND_TOP, posXMainClock, 0, widthMainClockFrame, heightMainClockFrame,
 			SWP_NOACTIVATE | SWP_NOSENDCHANGING | SWP_SHOWWINDOW);
 
-		//©ì’Ê’mƒEƒBƒ“ƒhƒE‚ÌêŠ‚ğÄİ’è‚·‚éB
+		//è‡ªä½œé€šçŸ¥ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ã®å ´æ‰€ã‚’å†è¨­å®šã™ã‚‹ã€‚
 		if (IsWindow(hwndWin11Notify)) {
 			SetWindowPos(hwndWin11Notify, HWND_TOP, posXMainClock + widthMainClockFrame, 0, widthWin11Notify, heightMainClockFrame,
 				SWP_NOACTIVATE | SWP_NOSENDCHANGING | SWP_SHOWWINDOW);
 			ShowWindow(hwndWin11Notify, SW_SHOW);
 		}
 
-		//ContentBridge‚ÌˆÚ“®‚Í­‚µ’x‚ê‚Äs‚¤•K—v‚ª‚ ‚é‚Ì‚ÅA‚±‚¿‚ç‚Å‚Ü‚Æ‚ß‚ÄÀs‚·‚éB
+		//ContentBridgeã®ç§»å‹•ã¯å°‘ã—é…ã‚Œã¦è¡Œã†å¿…è¦ãŒã‚ã‚‹ã®ã§ã€ã“ã¡ã‚‰ã§ã¾ã¨ã‚ã¦å®Ÿè¡Œã™ã‚‹ã€‚
 		PostMessage(hwndClockMain, CLOCKM_MOVEWIN11CONTENTBRIDGE, 0, 0);
 	}
 
-	//ƒTƒCƒYXV‚µ‚½‚çAhdcClock‚ğì‚è’¼‚·‚æ‚¤‚É‚·‚éB
+	//ã‚µã‚¤ã‚ºæ›´æ–°ã—ãŸã‚‰ã€hdcClockã‚’ä½œã‚Šç›´ã™ã‚ˆã†ã«ã™ã‚‹ã€‚
 	CreateClockDC();
 
 	if (bEnableSubClks){
@@ -1760,7 +1785,7 @@ void GetWin11TaskbarType(void)
 }
 
 
-void MoveWin11ContentBridge(int operation)	//Win11 Type2 (build 22579‚¨‚æ‚Ñ‚»‚êˆÈ~)‚Å‚ÍhwndWin11ContentBridge‚Ìã‚ÉƒAƒCƒRƒ“‚ªÚ‚é‚æ‚¤‚É‚È‚Á‚Ä‚¢‚ÄA‚±‚Ìˆ—‚Å‚ÍŒ³ƒAƒCƒRƒ“ŒQ‚ªØ‚ê‚ÄŒ©‚¦‚È‚­‚È‚éB
+void MoveWin11ContentBridge(int operation)	//Win11 Type2 (build 22579ãŠã‚ˆã³ãã‚Œä»¥é™)ã§ã¯hwndWin11ContentBridgeã®ä¸Šã«ã‚¢ã‚¤ã‚³ãƒ³ãŒè¼‰ã‚‹ã‚ˆã†ã«ãªã£ã¦ã„ã¦ã€ã“ã®å‡¦ç†ã§ã¯å…ƒã‚¢ã‚¤ã‚³ãƒ³ç¾¤ãŒåˆ‡ã‚Œã¦è¦‹ãˆãªããªã‚‹ã€‚
 {
 	if (b_DebugLog)writeDebugLog_Win10("[for_win11.c] MoveWin11ContentBridge called. operation =", operation);
 
@@ -1779,7 +1804,7 @@ void MoveWin11ContentBridge(int operation)	//Win11 Type2 (build 22579‚¨‚æ‚Ñ‚»‚êˆ
 
 	if (adjustWin11TrayYpos != 0 && IsWindow(hwndWin11InnerTrayContentBridge))
 	{
-		//‰ü‚ß‚ÄˆÚ“®‚µ‚ÄA•\¦‚·‚éB
+		//æ”¹ã‚ã¦ç§»å‹•ã—ã¦ã€è¡¨ç¤ºã™ã‚‹ã€‚
 		SetWindowPos(hwndWin11InnerTrayContentBridge, NULL, 0, -adjustWin11TrayYpos, modifiedWidthWin11Tray, heightMainClockFrame + adjustWin11TrayYpos,
 			SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOSENDCHANGING);
 	}

@@ -45,7 +45,7 @@ INT_PTR CALLBACK DlgProcBarmeterColor(HWND hDlg, UINT message,
 			id = LOWORD(wParam); code = HIWORD(wParam);
 			switch (id)
 			{
-				// ÉRÉìÉ{É{ÉbÉNÉX
+				// „Ç≥„É≥„Éú„Éú„ÉÉ„ÇØ„Çπ
 				case IDC_BARMETERCOL_0:
 				case IDC_BARMETERCOL_1:
 				case IDC_BARMETERCOL_2:
@@ -53,7 +53,7 @@ INT_PTR CALLBACK DlgProcBarmeterColor(HWND hDlg, UINT message,
 					if (code == CBN_SELCHANGE)
 						SendPSChanged(hDlg);
 					break;
-					//Åu...ÅvêFÇÃëIë
+					//„Äå...„ÄçËâ≤„ÅÆÈÅ∏Êäû
 				case IDC_CHOOSEBARMETERCOL_0:
 				case IDC_CHOOSEBARMETERCOL_1:
 				case IDC_CHOOSEBARMETERCOL_2:

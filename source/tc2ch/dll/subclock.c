@@ -43,26 +43,26 @@ subclass procedure of the Sub Display clocks , 20211107 TTTT
 --------------------------------------------------*/
 LRESULT CALLBACK WndProcSubClk(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
-	//���̊֐��̓T�u�E�B���h�E�̎��v(hwndSubClk[i])�̃v���V�[�W���Ƃ��ēo�^���Ă���̂ŁAhwnd��hwndSubClk[i]�̂����ꂩ�ɂȂ�B
-	//GetSubClkIndexFromHWND���g����i�𒲂ׂ�K�v������Bhwnd��hwndClockMain�ł͂Ȃ��̂Œ��ӂ���B
+	//この関数はサブウィンドウの時計(hwndSubClk[i])のプロシージャとして登録しているので、hwndはhwndSubClk[i]のいずれかになる。
+	//GetSubClkIndexFromHWNDを使ってiを調べる必要がある。hwndはhwndClockMainではないので注意する。
 
 //	if (b_DebugLog) writeDebugLog_Win10("[subclock.c][WndProcSubClk] Window Message was recevied, message = ", message);
 
 	switch (message) {
 	case (WM_USER + 100):
-		// �e�E�B���h�E���瑗���A�T�C�Y��Ԃ����b�Z�[�W�B
-		// (Win10RS1(=AU)�ȍ~��)�ł̓��C���N���b�N�ɂ��T�u�N���b�N�ɂ��A�T�C�Y�������K�v�ȏꍇ�ɂ́A���̃��b�Z�[�W�͗��Ȃ��B
+		// 親ウィンドウから送られ、サイズを返すメッセージ。
+		// (Win10RS1(=AU)以降は)ではメインクロックにもサブクロックにも、サイズ調整が必要な場合には、このメッセージは来ない。
 		break;
 		//case (WM_NOTIFY):
 	case (WM_NCCALCSIZE):
-		//�T�u�^�X�N�o�[�ɕύX������Ƃ��ꂪ�͂��ASetAllSubClocks�̌�ɂ��͂��̂ŁA���ꂪ������^�X�N�o�[�������I��
-		//�߂��ꂽ�A�Ɣ��f���邱�Ƃ͂ł��Ȃ��B�f�o�b�O�R�[�h�ɂ���悤�ȕ��G��lparam�̒��Ƀf�[�^�������Ă���B
-		//rgrc[0]���ύX����悤�Ƃ���T�C�Y�Ȃ̂ŁA���ꂪ�T�u�N���b�N�̃T�C�Y�ƈႦ�΁AWindows�W�����v�ɖ߂���悤�Ƃ��Ă��邱�Ƃ��킩��B
-		//���̏ꍇ��rgrc[0]�̒l��origSubClock�̃T�C�Y�Ƃ��čX�V����΁A�V�����^�X�N�o�[��Windows�W�����v�T�C�Y���킩��B
-		//���̂����ŁA�߂�l��0(�e�F�Ƃ����Ӗ��H)�ł͂Ȃ��AWVR _VALIDRECTS(=0x0400)��Ԃ�����X�V����Ă��܂킸�ɍς�?
+		//サブタスクバーに変更があるとこれが届く、SetAllSubClocksの後にも届くので、これが来たらタスクバーが強制的に
+		//戻された、と判断することはできない。デバッグコードにあるような複雑なlparamの中にデータが入っている。
+		//rgrc[0]が変更されようとするサイズなので、これがサブクロックのサイズと違えば、Windows標準時計に戻されようとしていることがわかる。
+		//その場合はrgrc[0]の値をorigSubClockのサイズとして更新すれば、新しいタスクバーでWindows標準時計サイズがわかる。
+		//そのうえで、戻り値に0(容認という意味？)ではなく、WVR _VALIDRECTS(=0x0400)を返したら更新されてしまわずに済む?
 		//http://blog.livedoor.jp/oans/archives/50628113.html
 
-		//������StoreSpecificSubClockDimensions���Ă�ł͍s���Ȃ��B�T�C�Y���܂��ύX����Ă��Ȃ����ߐ������l���擾���邱�Ƃ͂ł��Ȃ��B
+		//ここでStoreSpecificSubClockDimensionsを呼んでは行けない。サイズがまだ変更されていないため正しい値を取得することはできない。
 
 	{
 		int i, newWidth, newHeight;
@@ -92,7 +92,7 @@ LRESULT CALLBACK WndProcSubClk(HWND hwnd, UINT message, WPARAM wParam, LPARAM lP
 					writeDebugLog_Win10("[subclock.c][WndProcSubClk] origSubClockHeight updated: ", origSubClockHeight[i]);
 				}
 
-				//�V�����^�X�N�o�[�T�C�Y�Ȃǂ͕ۑ��ł��Ȃ����A���܂������̂ł܂��������A�Ƃ����Ƃ���B
+				//新しいタスクバーサイズなどは保存できないが、うまく動くのでまあいいか、というところ。
 			}
 		}
 
@@ -101,7 +101,7 @@ LRESULT CALLBACK WndProcSubClk(HWND hwnd, UINT message, WPARAM wParam, LPARAM lP
 	case WM_SIZE:
 	case WM_WININICHANGE:
 	{
-		//NG�c�[�I���g�̃T�C�Y��ύX����R�[�h������Ɩ������[�v����I�I
+		//NG残骸！自身のサイズを変更するコードを入れると無限ループする！！
 		//int i = 0;
 		//i = GetSubClkIndexFromHWND(hwnd);
 		//if ((i != 999) && bEnableSpecificSubClk[i]) {
@@ -109,22 +109,22 @@ LRESULT CALLBACK WndProcSubClk(HWND hwnd, UINT message, WPARAM wParam, LPARAM lP
 		//}
 		break;
 	}
-	case WM_PAINT:	// =15, �^�X�N�o�[���B���A����\�����N����ƁA���̂ق�70, 20, 15, ��1�b�ȓ��ɘA�����ē����Ă���(Win10�̂݁AWin11�ł͗��Ȃ��H)
-						//�B���Ă����^�X�N�o�[���o�Ă���Ƃ��͍Ō��WM_PAINT(15)��2��A���͂��B�B���Ƃ��͍Ō��WM_NCPAINT(70)->WM_PAINT(15)�ɂȂ�B
-						//Win10�ł̓T�u���v�̃T�C�Y���ύX����Ă��܂��BWin11�ł̓T�C�Y�ύX�͍s���Ȃ������̎��v���B���Ă����̂��\������Ă��܂��B
-						//���̃��b�Z�[�W��100ms�ȓ���2�񗈂���T�u�^�X�N�o�[�ĕ\���Ɣ��肵�āA���ԍ��ŃT�C�Y���������{����B
-						//���̃T�u���v�v���V�[�W���͋��ʂȂ̂ŁAWin10�݂̂Ŏ��s�����悤�Ɏ�������B
+	case WM_PAINT:	// =15, タスクバーを隠す、から表示が起こると、このほか70, 20, 15, が1秒以内に連続して入ってくる(Win10のみ、Win11では来ない？)
+						//隠していたタスクバーが出てくるときは最後にWM_PAINT(15)が2回連続届く。隠れるときは最後にWM_NCPAINT(70)->WM_PAINT(15)になる。
+						//Win10ではサブ時計のサイズが変更されてしまう。Win11ではサイズ変更は行われないが元の時計を隠していたのが表示されてしまう。
+						//このメッセージが100ms以内に2回来たらサブタスクバー再表示と判定して、時間差でサイズ調整を実施する。
+						//このサブ時計プロシージャは共通なので、Win10のみで実行されるように実装する。
 	{
 		if (bWmPaintRecevied)
 		{
 			bSubClkRecovering = FALSE;
 			if (b_DebugLog) writeDebugLog_Win10("[subclock.c][WndProcSubClk] Hidden SubTaskBar recovered. Index = ", GetSubClkIndexFromHWND(hwnd));
-			//�o�����������炷�݂₩�ɏ��������{����B(Delay�͕s�v)
+			//出現完了したらすみやかに処理を実施する。(Delayは不要)
 			if (!bWin11Sub) {
 				int i = GetSubClkIndexFromHWND(hwnd);
 				if ((i != 999) && bEnableSpecificSubClk[i])
 				{
-//					bSuppressUpdateSubClk[i] = FALSE;		//SetSpecificSubClock()�ŕ`��}�����������̂ŕs�v
+//					bSuppressUpdateSubClk[i] = FALSE;		//SetSpecificSubClock()で描画抑制解除されるので不要
 					SetSpecificSubClock(i);
 					RedrawTClock();
 				}
@@ -140,11 +140,11 @@ LRESULT CALLBACK WndProcSubClk(HWND hwnd, UINT message, WPARAM wParam, LPARAM lP
 		break;
 	}
 	case WM_CONTEXTMENU:
-	{	// �E�N���b�N���j���[�B�Ȃ�Win11�ł͍�����܂������Ȃ����A�����OS�̂������ƍl������B
+	{	// 右クリックメニュー。なおWin11では今一つうまく消えないが、それはOSのせいだと考えられる。
 		PostMessage(hwndTClockExeMain, message, wParam, lParam);
 		return 0;
 	}
-	//�c�[���`�b�v������������(MainClock��WndProc�̃R�[�h)
+	//ツールチップ処理導入準備(MainClockのWndProcのコード)
 	case WM_MOUSEMOVE:
 		//if (b_DebugLog) {
 		//	writeDebugLog_Win10("[subclock.c][WndProcSubClk] WM_MOUSEMOVE Received", 999);
@@ -162,7 +162,7 @@ LRESULT CALLBACK WndProcSubClk(HWND hwnd, UINT message, WPARAM wParam, LPARAM lP
 			if (TooltipOnNotify(&lres, lParam)) return lres;
 			break;
 		}
-	case WM_WINDOWPOSCHANGING:		// =70, ���ꂪ2��A������B
+	case WM_WINDOWPOSCHANGING:		// =70, これが2回連続する。
 	{
 		if (bWmWinPosChangingRecevied)
 		{
@@ -170,10 +170,10 @@ LRESULT CALLBACK WndProcSubClk(HWND hwnd, UINT message, WPARAM wParam, LPARAM lP
 			{
 				if (b_DebugLog) writeDebugLog_Win10("[subclock.c][WndProcSubClk] Hidden SubTaskBar recovering /hiding started. Index = ", GetSubClkIndexFromHWND(hwnd));
 				bSubClkRecovering = TRUE;
-				//�B���ꂽ�^�X�N�o�[�̕\��/�B���v���Z�X�̊J�n��
-				//�����ɃT�u�N���b�N�z�u�C���̏��������Ă��A�c�O�Ȃ���o�����̃v���Z�X�ŏ㏑������Ă��܂��BWM_PAINT(15)�̘A���ŏo�������𔻒肵�ď������邵���Ȃ��B
-				//�\�����N���A(�S���͏����Ȃ�)���čX�V�}�����邱�ƂŁA�ĕ\�����ɔ��[�ȕ\���������Ȃ��悤�ɂ���B
-				//�Ȃ��A������Windows��Visibility���A��ƃE�B���h�E���b�Z�[�W���󂯎��Ȃ��Ȃ�̂ŏ������ł��Ȃ��Ȃ�B
+				//隠されたタスクバーの表示/隠すプロセスの開始時
+				//ここにサブクロック配置修正の処理を入れても、残念ながら出現中のプロセスで上書きされてしまう。WM_PAINT(15)の連続で出現完了を判定して処理するしかない。
+				//表示をクリア(全部は消えない)して更新抑制することで、再表示時に半端な表示が見えないようにする。
+				//なお、ここでWindowsのVisibilityを帰るとウィンドウメッセージが受け取れなくなるので処理ができなくなる。
 				if (!bWin11Sub)
 				{
 					int i = GetSubClkIndexFromHWND(hwnd);
@@ -185,8 +185,8 @@ LRESULT CALLBACK WndProcSubClk(HWND hwnd, UINT message, WPARAM wParam, LPARAM lP
 				}
 			}
 		}
-		bWmPaintRecevied = FALSE;	//�B�ꂽ�^�X�N�o�[�������ꍇ�̍Ō��WM_PAINT(15)�̘A���Ŕ��肷�邽�߂̃t���O����
-		bWmWinPosChangingRecevied = TRUE;	//�^�X�N�o�[���B�ꂽ�ꍇ�̍Ō��WM_PAINT(70)�ւ̘A���Ŕ��肷�邽�߂̃t���O�グ
+		bWmPaintRecevied = FALSE;	//隠れたタスクバーが現れる場合の最後をWM_PAINT(15)の連続で判定するためのフラグ下げ
+		bWmWinPosChangingRecevied = TRUE;	//タスクバーが隠れた場合の最後をWM_PAINT(70)への連続で判定するためのフラグ上げ
 		break;
 	}
 	case WM_NCPAINT:
@@ -207,13 +207,13 @@ void ActivateSubClocks(void)
 {
 	if (b_DebugLog) writeDebugLog_Win10("[subclock.c]ActivateSubClocks called. ", 999);
 
-	//�T�u�f�B�X�v���C��^�X�N�o�[���v�̃t�b�N
+	//サブディスプレイ上タスクバー時計のフック
 	FindAllSubClocks();
 
-	//���C���^�X�N�o�[�̕������`�F�b�N
+	//メインタスクバーの方向をチェック
 	g_bVertTaskbar = IsVertTaskbar(hwndTaskBarMain);
 
-	//�T�u�^�X�N�o�[�̓��C���ƃT�u���������̏ꍇ�̂ݕ\������
+	//サブタスクバーはメインとサブが両方横の場合のみ表示する
 	for (int i = 0; i < MAX_SUBSCREEN; i++) {
 		if (hwndClockSubClk[i])
 		{
@@ -225,13 +225,13 @@ void ActivateSubClocks(void)
 		}
 	}
 
-	//�T�u�f�B�X�v���C�㎞�v�N�����_�̃T�C�Y��ۑ�
+	//サブディスプレイ上時計起動時点のサイズを保存
 	GetOrigSubClkDimensions();
 
-	//�T�u�f�B�X�v���C�㎞�v�̃T�C�Y�ƈʒu�ݒ�
+	//サブディスプレイ上時計のサイズと位置設定
 	SetAllSubClocks();
 
-	//�T�u�f�B�X�v���C�㎞�v�̃T�u�N���X��
+	//サブディスプレイ上時計のサブクラス化
 	for (int i = 0; i < MAX_SUBSCREEN; i++) {
 		if (bEnableSpecificSubClk[i])
 		{
@@ -310,7 +310,7 @@ void CalcSpecificSubClockSize(int i)
 
 	RECT tempRect;
 
-	GetWindowRect(hwndTaskBarSubClk[i], &tempRect);	//���̎��_��tempRect�ɂ͑ΏۃT�u�^�X�N�o�[�̏�񂪓����Ă���B
+	GetWindowRect(hwndTaskBarSubClk[i], &tempRect);	//この時点でtempRectには対象サブタスクバーの情報が入っている。
 	widthSubTaskbar[i] = tempRect.right - tempRect.left;
 	heightSubTaskbar[i] = tempRect.bottom - tempRect.top;
 
@@ -337,8 +337,8 @@ void CalcSpecificSubClockSize(int i)
 	}
 }
 
-//�T�u�N���b�N�o�[�ł́A��������o����Windows Ink���[�N�X�y�[�X�A�C�R���͖��������Ă��c���Ă��āAWorkerW�̌��ɉB��Ă��邾���̏ꍇ������B
-//���C���o�[�ɂ��c�邪�A�A�C�R������0�ɂȂ�̂ŁA����Ŋm�F���邱�Ƃ��ł���B
+//サブクロックバーでは、いったん出したWindows Inkワークスペースアイコンは無効化しても残っていて、WorkerWの後ろに隠れているだけの場合がある。
+//メインバーにも残るが、アイコン幅が0になるので、それで確認することができる。
 BOOL GetInkWorkspaceSetting(void)
 {
 	BOOL ret = FALSE;
@@ -375,7 +375,7 @@ void SetSpecificSubClock(int i)
 
 	CalcSpecificSubClockSize(i);
 
-	//�c�[���`�b�v�A�g�J�n(width, height���K�v�Ȃ̂ł����Ŏ��s����)
+	//ツールチップ連携開始(width, heightが必要なのでここで実行する)
 	TooltipAddSubClock(i);
 
 	tempIsVert = IsVertTaskbar(hwndTaskBarSubClk[i]);
@@ -393,7 +393,7 @@ void SetSpecificSubClock(int i)
 			SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOSENDCHANGING);
 	}
 
-	//�T�u�N���b�N�`��}������������
+	//サブクロック描画抑制を解除する
 	bSuppressUpdateSubClk[i] = FALSE;
 
 	tempHwnd = hwndClockSubClk[i];
@@ -412,12 +412,12 @@ void SetSpecificSubClock(int i)
 				pos2.x = 0;
 				pos2.y = 0;
 				MapWindowPoints(tempHwnd, hwndTaskBarSubClk[i], &pos2, 1);
-				if (pos2.x == 0) {	//�S�̑��̃N���X�̏ꍇ
+				if (pos2.x == 0) {	//全体側のクラスの場合
 					SetWindowPos(tempHwnd, NULL, 0, 0, pos.x, heightSubClock[i],
 						SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOZORDER | SWP_NOSENDCHANGING);
 				}
-				else {	//Win11�̃T�u�N���b�N���v�N���X�̏ꍇ
-					hwndOriginalWin11SubClk[i] = tempHwnd;	//�I���W�i�����v��HWND���X�V
+				else {	//Win11のサブクロック時計クラスの場合
+					hwndOriginalWin11SubClk[i] = tempHwnd;	//オリジナル時計のHWNDを更新
 					//DWORD dwStyle = (DWORD)GetWindowLong(hwndOriginalWin11SubClk[i], GWL_STYLE);
 					//if ((dwStyle & WS_VISIBLE) != 0)
 					//{
@@ -433,21 +433,21 @@ void SetSpecificSubClock(int i)
 		tempHwnd = FindWindowEx(hwndTaskBarSubClk[i], NULL, "PenWorkspaceButton", NULL);
 		if (tempHwnd)
 		{
-			//�T�u�N���b�N�o�[�ł́A��������o����Windows Ink���[�N�X�y�[�X�A�C�R���͖��������Ă��c���Ă��āAWorkerW�̌��ɉB��Ă��邾���̏ꍇ������B
-			//���C���o�[�ɂ��A�C�R���͎c�邪�A��0�ɂȂ�̂ŁA����Ŋm�F���邱�Ƃ��ł���(GetInkWorkspaceSetting)�B
+			//サブクロックバーでは、いったん出したWindows Inkワークスペースアイコンは無効化しても残っていて、WorkerWの後ろに隠れているだけの場合がある。
+			//メインバーにもアイコンは残るが、幅0になるので、それで確認することができる(GetInkWorkspaceSetting)。
 			GetWindowRect(tempHwnd, &tempRect);
 			if (tempIsVert) {
 				SetWindowPos(tempHwnd, NULL, 0, nextcorner.y - (tempRect.bottom - tempRect.top), 0, 0,
 					SWP_NOACTIVATE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOSENDCHANGING);
 				if (GetInkWorkspaceSetting()) {
-					nextcorner.y -= (tempRect.bottom - tempRect.top);					//��������Ȃ����WorkerW���d�Ȃ��Ă����B
+					nextcorner.y -= (tempRect.bottom - tempRect.top);					//これをしなければWorkerWが重なってくれる。
 				}
 			}
 			else {
 				SetWindowPos(tempHwnd, NULL, nextcorner.x - (tempRect.right - tempRect.left), 0, 0, 0,
 					SWP_NOACTIVATE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOSENDCHANGING);
 				if (GetInkWorkspaceSetting()) {
-					nextcorner.x -= (tempRect.right - tempRect.left);					//����������Ȃ����WorkerW���d�Ȃ��Ă����B
+					nextcorner.x -= (tempRect.right - tempRect.left);					//ここれをしなければWorkerWが重なってくれる。
 				}
 			}
 		}
@@ -459,7 +459,7 @@ void SetSpecificSubClock(int i)
 			pos.y = 0;
 			MapWindowPoints(tempHwnd, hwndTaskBarSubClk[i], &pos, 1);
 			SetWindowPos(tempHwnd, NULL, pos.x, pos.y, (nextcorner.x - pos.x), (nextcorner.y - pos.y),
-				SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOZORDER | SWP_NOSENDCHANGING);	//SWP_NOMOVE�t���O���Ȃ̂Ŏ��ۂɂ͈ʒu���͔��f����Ă��Ȃ�
+				SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOZORDER | SWP_NOSENDCHANGING);	//SWP_NOMOVEフラグつきなので実際には位置情報は反映されていない
 		}
 	}
 }
@@ -477,13 +477,13 @@ void SetAllSubClocks(void) {
 void CheckSubClocks(void)
 {
 
-	//���I�ȃT�u�N���b�N���o
+	//動的なサブクロック検出
 
 	if (b_DebugLog) {
 		writeDebugLog_Win10("[subclock.c] CheckSubClocks called.", 999);
 	}
 
-	if (!bEnableSubClks) return;	//�_�u���`�F�b�N
+	if (!bEnableSubClks) return;	//ダブルチェック
 
 	int i, tempIndex;
 	HWND tempHwndSubTaskbar = NULL;
@@ -491,7 +491,7 @@ void CheckSubClocks(void)
 
 
 
-	//�����T�u���v�̃`�F�b�N
+	//既存サブ時計のチェック
 	for (i = 0; i < MAX_SUBSCREEN; i++)
 	{
 		if (!hwndClockSubClk[i] && bEnableSpecificSubClk[i])
@@ -524,7 +524,7 @@ void CheckSubClocks(void)
 				while (bEnableSpecificSubClk[i]) {
 					i++;
 					if (i == MAX_SUBSCREEN) return;
-				}						//��index��������
+				}						//空きindexを見つける
 
 				hwndTaskBarSubClk[i] = tempHwndSubTaskbar;
 				hwndClockSubClk[i] = tempHwndSubClk;
@@ -552,7 +552,7 @@ void CheckSubClocks(void)
 
 void FindAllSubClocks(void)
 {
-	//�ŏ��̃T�u�N���b�N���o
+	//最初のサブクロック検出
 
 	for (int i = 0; i < MAX_SUBSCREEN; i++) {
 		hwndTaskBarSubClk[i] = NULL;
@@ -561,7 +561,7 @@ void FindAllSubClocks(void)
 		bSuppressUpdateSubClk[i] = FALSE;
 	}
 
-	if (!bEnableSubClks) return;	//�_�u���`�F�b�N
+	if (!bEnableSubClks) return;	//ダブルチェック
 
 	for (int i = 0; i < MAX_SUBSCREEN; i++) {
 		if (i == 0)
@@ -577,9 +577,9 @@ void FindAllSubClocks(void)
 		{
 			//// find the secondary clock window
 			//hwndClockSubClk[i] = FindWindowEx(hwndTaskBarSubClk[i], NULL, "ClockButton", NULL);
-			//if (!hwndClockSubClk[i])hwndClockSubClk[i] = CreateWin11SubClock(hwndTaskBarSubClk[i]);	//Win11���ƍl������̂ō쐬����B
+			//if (!hwndClockSubClk[i])hwndClockSubClk[i] = CreateWin11SubClock(hwndTaskBarSubClk[i]);	//Win11だと考えられるので作成する。
 
-			// Ver 4.2.1�ȍ~ find or create the secondary clock window
+			// Ver 4.2.1以降 find or create the secondary clock window
 			if (!bWin11Main) {
 				hwndClockSubClk[i] = FindWindowEx(hwndTaskBarSubClk[i], NULL, "ClockButton", NULL);
 			}
@@ -613,17 +613,17 @@ void DisableSpecificSubClock(int i) {
 		writeDebugLog_Win10("[subclock.c]DisableSpecificSubClock called for screen:", i);
 	}
 
-	//�c�[���`�b�v�A�g����
+	//ツールチップ連携解除
 	TooltipRemoveSubClock(i);
 
-	//�T�u�N���X������:������ŏ��ɂ���Ă����Ȃ��ƁA�T�u���v�̃T�C�Y��߂����̂ɔ�������SetSpecificSubClock���Ă΂�ăT�C�Y���傫���Ȃ��Ă��܂��I
+	//サブクラス化解除:これを最初にやっておかないと、サブ時計のサイズを戻したのに反応してSetSpecificSubClockが呼ばれてサイズが大きくなってしまう！
 	if (bEnableSpecificSubClk[i] && hwndClockSubClk[i] && oldWndProcSub[i])
 	{
 		SubclassWindow(hwndClockSubClk[i], oldWndProcSub[i]);
 	}
 	oldWndProcSub[i] = NULL;
 
-	CalcSpecificSubClockSize(i);	//widthSubTaskbar[i], heightSubTaskbar[i]�������~����
+	CalcSpecificSubClockSize(i);	//widthSubTaskbar[i], heightSubTaskbar[i]だけが欲しい
 
 
 	if (bWin11Sub) {
@@ -635,11 +635,11 @@ void DisableSpecificSubClock(int i) {
 				pos2.x = 0;
 				pos2.y = 0;
 				MapWindowPoints(tempHwnd, hwndTaskBarSubClk[i], &pos2, 1);
-				if (pos2.x == 0) {	//�S�̑��̃N���X�̏ꍇ
+				if (pos2.x == 0) {	//全体側のクラスの場合
 					SetWindowPos(tempHwnd, NULL, 0, 0, widthSubTaskbar[i], heightSubTaskbar[i],
 						SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOZORDER | SWP_NOSENDCHANGING);
 				}
-				else {	//Win11�̃T�u�N���b�N���v�N���X�̏ꍇ
+				else {	//Win11のサブクロック時計クラスの場合
 					ShowWindow(tempHwnd, SW_SHOW);
 				}
 			}
@@ -661,7 +661,7 @@ void DisableSpecificSubClock(int i) {
 				SWP_NOACTIVATE | SWP_NOZORDER);
 		}
 
-		//InkSpace�{�^���̈ʒu��߂�(Win10�̂�)
+		//InkSpaceボタンの位置を戻す(Win10のみ)
 		tempHwnd = FindWindowEx(hwndTaskBarSubClk[i], NULL, "PenWorkspaceButton", NULL);
 		if (tempHwnd)
 		{
@@ -671,19 +671,19 @@ void DisableSpecificSubClock(int i) {
 				SetWindowPos(tempHwnd, NULL, 0, nextcorner.y - (tempRect.bottom + tempRect.top), 0, 0,
 					SWP_NOACTIVATE | SWP_NOSIZE | SWP_NOZORDER);
 				if (GetInkWorkspaceSetting()) {
-					nextcorner.y -= (tempRect.bottom + tempRect.top);			//�������Ȃ���Ύ��̏�����WorkerW���d�Ȃ��Ă����B
+					nextcorner.y -= (tempRect.bottom + tempRect.top);			//こうしなければ次の処理でWorkerWが重なってくれる。
 				}
 			}
 			else {
 				SetWindowPos(tempHwnd, NULL, nextcorner.x - (tempRect.right - tempRect.left), 0, 0, 0,
 					SWP_NOACTIVATE | SWP_NOSIZE | SWP_NOZORDER);
 				if (GetInkWorkspaceSetting()) {
-					nextcorner.x -= (tempRect.right - tempRect.left);			//�������Ȃ���Ύ��̏�����WorkerW���d�Ȃ��Ă����B
+					nextcorner.x -= (tempRect.right - tempRect.left);			//こうしなければ次の処理でWorkerWが重なってくれる。
 				}
 			}
 		}
 
-		//�A�v���A�C�R���̈�̗̈敝��߂�
+		//アプリアイコン領域の領域幅を戻す
 		tempHwnd = FindWindowEx(hwndTaskBarSubClk[i], NULL, "WorkerW", NULL);
 		if (tempHwnd)
 		{
@@ -691,20 +691,20 @@ void DisableSpecificSubClock(int i) {
 			pos.y = 0;
 			MapWindowPoints(tempHwnd, hwndTaskBarSubClk[i], &pos, 1);
 			SetWindowPos(tempHwnd, NULL, pos.x, pos.y, (nextcorner.x - pos.x), (nextcorner.y - pos.y),
-				SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOZORDER);	//SWP_NOMOVE�t���O���Ȃ̂Ŏ��ۂɂ͈ʒu���͔��f����Ă��Ȃ�
+				SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOZORDER);	//SWP_NOMOVEフラグつきなので実際には位置情報は反映されていない
 		}
 	}
 
 	if (hwndClockSubClk[i]) {
 		if (bWin11Sub)
 		{
-			//Win11�̏ꍇ�B�T�u�N���b�N�E�B���h�E���폜����B
+			//Win11の場合。サブクロックウィンドウを削除する。
 			ClearSpecificSubClock(i);
 			PostMessage(hwndClockSubClk[i], WM_CLOSE, 0, 0);
 		}
 		else
 		{
-			//Win10�̏ꍇ�B�T�u�N���b�N�͌��ɖ߂����E�B���h�E�v���V�[�W���ɂ���𑗂��Ă����Ȃ��ƍĕ`�悳��Ȃ��B
+			//Win10の場合。サブクロックは元に戻したウィンドウプロシージャにこれを送っておかないと再描画されない。
 			PostMessage(hwndClockSubClk[i], WM_SIZE, SIZE_RESTORED, 0);
 		}
 	}
@@ -730,7 +730,7 @@ void DisableAllSubClocks(void)
 		}
 	}
 
-	if (bWin11Sub)		//�S���������I�������N���X�o�^���폜����B
+	if (bWin11Sub)		//全部処理が終わったらクラス登録を削除する。
 	{
 		UnregisterClass("TClockSub", hmod);
 		bWin11Sub = FALSE;
@@ -743,7 +743,7 @@ void DisableAllSubClocks(void)
 void ClearSpecificSubClock(int i)
 {
 	HDC hdcSub = NULL;
-	hdcSub = GetDC(hwndClockSubClk[i]);		//�T�u�f�B�X�v���C�̎��v�����݂����hdcSub�����݂��邱�ƂɂȂ�B
+	hdcSub = GetDC(hwndClockSubClk[i]);		//サブディスプレイの時計が存在するとhdcSubが存在することになる。
 	if (hdcSub != NULL)
 	{
 		PatBlt(hdcSub, 0, 0, widthSubClock[i], heightSubClock[i], BLACKNESS);

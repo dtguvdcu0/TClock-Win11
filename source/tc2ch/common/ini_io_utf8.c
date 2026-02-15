@@ -533,9 +533,46 @@ static BOOL tc_ini_utf8_find_value(const char* text, DWORD size,
 int tc_ini_utf8_read_string(const char* iniPath, const char* section, const char* key,
                             const char* defval, char* outVal, int outSize)
 {
+    HANDLE hLock = NULL;
+    char* text = NULL;
+    DWORD size = 0;
+    BOOL hadBom = FALSE;
+    int r = 0;
+
     if (!iniPath || !key || !outVal || outSize <= 0) return 0;
-    return (int)GetPrivateProfileString(tc_section_or_main(section), key, defval ? defval : "",
-                                        outVal, (DWORD)outSize, iniPath);
+    outVal[0] = '\0';
+
+    hLock = tc_ini_lock_enter(iniPath);
+    if (!hLock) {
+        goto fallback;
+    }
+
+    if (!tc_read_text_file_utf8(iniPath, &text, &size, &hadBom)) {
+        goto fallback_locked;
+    }
+
+    if (tc_ini_utf8_find_value(text, size, section, key, outVal, outSize)) {
+        r = lstrlen(outVal);
+        goto cleanup;
+    }
+
+fallback_locked:
+    if (defval && defval[0]) {
+        tc_copy_str(outVal, outSize, defval);
+        r = lstrlen(outVal);
+    }
+    goto cleanup;
+
+fallback:
+    if (defval && defval[0]) {
+        tc_copy_str(outVal, outSize, defval);
+        r = lstrlen(outVal);
+    }
+
+cleanup:
+    if (text) tc_free_text_buffer(text);
+    if (hLock) tc_ini_lock_leave(hLock);
+    return r;
 }
 
 BOOL tc_ini_utf8_write_string(const char* iniPath, const char* section, const char* key,

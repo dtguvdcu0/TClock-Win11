@@ -42,6 +42,7 @@ BOOL b_MenuItems_Initialized = FALSE;
 //extern BOOL b_AcceptRisk;
 
 extern BOOL b_NormalLog;
+extern BOOL b_SkipHideClockRestore;
 
 static char* SafeMyString(UINT id)
 {
@@ -345,6 +346,8 @@ void OnTClockCommand(HWND hwnd, WORD wID, WORD wCode)
 		case IDC_EXIT: // Exit
 			if (b_DebugLog) WriteDebug_New2("[menu.c][OnTClockCommand] IDC_EXIT received");
 			if (b_NormalLog) WriteNormalLog("Exit TClock-Win10 from right-click menu.");
+			/* Avoid Explorer restart side-effects on explicit user exit. */
+			b_SkipHideClockRestore = TRUE;
 			PostMessage(g_hwndMain, WM_CLOSE, 0, 0);
 //			PostMessage(g_hwndClock, WM_COMMAND, IDC_EXIT, 0);
 			return;
@@ -352,6 +355,8 @@ void OnTClockCommand(HWND hwnd, WORD wID, WORD wCode)
 		case IDC_RESTART: // Restart
 			if (b_DebugLog) WriteDebug_New2("[menu.c][OnTClockCommand] IDC_RESTART received");
 			if (b_NormalLog) WriteNormalLog("Restart TClock-Win10 from right-click menu.");
+			/* Avoid Explorer restart side-effects on explicit user restart. */
+			b_SkipHideClockRestore = TRUE;
 			PostMessage(g_hwndClock, WM_COMMAND, IDC_RESTART, 0);
 			return;
 		case IDC_POWERPNL:	//Added by TTTT

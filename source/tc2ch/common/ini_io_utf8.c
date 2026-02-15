@@ -415,6 +415,27 @@ static int tc_count_literal(const char* s, const char* token)
     return n;
 }
 
+static BOOL tc_file_has_utf8_bom(const char* path, BOOL* hasBom)
+{
+    HANDLE h;
+    DWORD rd = 0;
+    unsigned char bom[3];
+    if (hasBom) *hasBom = FALSE;
+    if (!path) return FALSE;
+
+    h = CreateFile(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (h == INVALID_HANDLE_VALUE) return FALSE;
+    if (!ReadFile(h, bom, 3, &rd, NULL)) {
+        CloseHandle(h);
+        return FALSE;
+    }
+    CloseHandle(h);
+    if (rd == 3 && bom[0] == 0xEF && bom[1] == 0xBB && bom[2] == 0xBF) {
+        if (hasBom) *hasBom = TRUE;
+    }
+    return TRUE;
+}
+
 BOOL tc_ini_utf8_detect_file(const char* iniPath, BOOL* isUtf8, BOOL* hasBom)
 {
     char* text = NULL;
@@ -424,6 +445,13 @@ BOOL tc_ini_utf8_detect_file(const char* iniPath, BOOL* isUtf8, BOOL* hasBom)
     if (!iniPath) return FALSE;
     if (isUtf8) *isUtf8 = FALSE;
     if (hasBom) *hasBom = FALSE;
+
+    /* Prefer BOM as UTF-8 intent marker even if legacy bytes polluted the body. */
+    if (tc_file_has_utf8_bom(iniPath, &bom) && bom) {
+        if (isUtf8) *isUtf8 = TRUE;
+        if (hasBom) *hasBom = TRUE;
+        return TRUE;
+    }
 
     if (!tc_read_text_file_utf8(iniPath, &text, &size, &bom)) {
         return FALSE;

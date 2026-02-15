@@ -2,17 +2,42 @@
 
 #if defined(_MSC_VER)
 #pragma function(memcpy)
+#pragma function(memmove)
 #pragma function(memset)
+#pragma optimize("", off)
 #endif
 
-void* memcpy(void* dst, const void* src, size_t count)
+void* memmove(void* dst, const void* src, size_t count)
 {
-	size_t i;
 	unsigned char* d = (unsigned char*)dst;
 	const unsigned char* s = (const unsigned char*)src;
 
-	for (i = 0; i < count; ++i) {
-		d[i] = s[i];
+	if (d == s || count == 0) {
+		return dst;
+	}
+
+	if (d < s || d >= (s + count)) {
+		while (count--) {
+			*d++ = *s++;
+		}
+	}
+	else {
+		d += count;
+		s += count;
+		while (count--) {
+			*--d = *--s;
+		}
+	}
+
+	return dst;
+}
+
+void* memcpy(void* dst, const void* src, size_t count)
+{
+	unsigned char* d = (unsigned char*)dst;
+	const unsigned char* s = (const unsigned char*)src;
+	while (count--) {
+		*d++ = *s++;
 	}
 	return dst;
 }
@@ -28,3 +53,7 @@ void* memset(void* dst, int c, size_t count)
 	}
 	return dst;
 }
+
+#if defined(_MSC_VER)
+#pragma optimize("", on)
+#endif

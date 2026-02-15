@@ -7,6 +7,7 @@
 #include "tclock.h"
 
 #define MAX_PAGE  20
+#define WM_TCLOCK_APPLY_REFRESH (WM_APP + 101)
 
 INT_PTR CALLBACK PropertyDialog(HWND, UINT, WPARAM, LPARAM);
 
@@ -34,7 +35,7 @@ INT_PTR CALLBACK PageColorAdditionalProc(HWND, UINT, WPARAM, LPARAM);
 
 
 
-// TV_INSERTSTRUCT‚Å‚Í‚È‚º‚©ƒGƒ‰[‚ª‚Å‚½
+// TV_INSERTSTRUCTã§ã¯ãªãœã‹ã‚¨ãƒ©ãƒ¼ãŒã§ãŸ
 typedef struct{
 	HTREEITEM hParent;
 	HTREEITEM hInsertAfter;
@@ -50,6 +51,10 @@ static int startpage = 0;  // page to open first
 BOOL g_bApplyClock = FALSE;
 BOOL g_bApplyTaskbar = FALSE;
 BOOL g_bApplyLangDLL = FALSE;
+static LONG g_inApplyDispatch = 0;
+static LONG g_refreshDispatchQueued = 0;
+static LONG g_propdlgCommandDepth = 0;
+static LONG g_propdlgNotifyDepth = 0;
 
 // menu.c
 extern HMENU g_hMenu;
@@ -185,7 +190,7 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 			hTree = GetDlgItem(hDwnd, IDC_TREE);
 			memset(&tv, 0, sizeof(_TV_INSERTSTRUCT));
 
-			//Ý’èƒ_ƒCƒAƒƒO¶ƒƒjƒ…[‚Ì‡˜‚ÍA”Žš‚Å‚Í‚È‚­AˆÈ‰º‚Ìs‚Ì‡”Ô‚ÅŒˆ‚Ü‚Á‚Ä‚¢‚éB
+			//è¨­å®šãƒ€ã‚¤ã‚¢ãƒ­ã‚°å·¦ãƒ¡ãƒ‹ãƒ¥ãƒ¼ã®é †åºã¯ã€æ•°å­—ã§ã¯ãªãã€ä»¥ä¸‹ã®è¡Œã®é †ç•ªã§æ±ºã¾ã£ã¦ã„ã‚‹ã€‚
 
 			tv.hInsertAfter = TVI_LAST;
 			tv.hParent = TVI_ROOT;
@@ -250,7 +255,7 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 			tv.item.pszText = MyString(IDS_PROP_GRAPH);
 			hChild[3] = TreeView_InsertItem(hTree, &tv);
 
-			//	BarMeterÝ’è	20181103
+			//	BarMeterè¨­å®š	20181103
 			tv.item.lParam = 105;
 			tv.item.pszText = MyString(IDS_BARMETER);
 			hChild[5] = TreeView_InsertItem(hTree, &tv);
@@ -287,13 +292,20 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 			break;
 
 		case WM_NOTIFY:
+			{
+			LONG notifyDepth = InterlockedIncrement(&g_propdlgNotifyDepth);
+			if (notifyDepth > 64) {
+				if (b_NormalLog) WriteNormalLog("[guard] Property WM_NOTIFY recursion blocked");
+				InterlockedDecrement(&g_propdlgNotifyDepth);
+				break;
+			}
 			pNMTV = (NM_TREEVIEW *)lParam;
 			switch (pNMTV->hdr.code){
 				case TVN_SELCHANGED:
 					ShowWindow(*hNowDlg, SW_HIDE);
 					UpdateWindow(*hNowDlg);
 					nowDlg = (int)pNMTV->itemNew.lParam;
-					switch (nowDlg)		//nowDlg‚Í‚±‚±‚Ì‚Æ‚±‚ë‚¾‚¯‚ÍTree‘I‘ð‚Ìƒoƒbƒtƒ@‚Æ‚µ‚Ä—˜—p‚³‚ê‚Ä‚¢‚é‚ªA‚±‚Ìswitch‚ðo‚é‚Æ‚«‚É‚à‚Æ‚à‚Æ‚ÌnowDlg‚Æ‚µ‚Ä‚ÌˆÓ–¡‚É–ß‚Á‚Ä‚¢‚éB
+					switch (nowDlg)		//nowDlgã¯ã“ã“ã®ã¨ã“ã‚ã ã‘ã¯Treeé¸æŠžã®ãƒãƒƒãƒ•ã‚¡ã¨ã—ã¦åˆ©ç”¨ã•ã‚Œã¦ã„ã‚‹ãŒã€ã“ã®switchã‚’å‡ºã‚‹ã¨ãã«ã‚‚ã¨ã‚‚ã¨ã®nowDlgã¨ã—ã¦ã®æ„å‘³ã«æˆ»ã£ã¦ã„ã‚‹ã€‚
 					{
 						case 0:
 							nowDlg = 0;
@@ -337,7 +349,7 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 
 						case 100:
 							//nowDlg -= 10;
-							nowDlg = 0;		//PAGECOLOR‚Ìe‚Æ“¯‚¶
+							nowDlg = 0;		//PAGECOLORã®è¦ªã¨åŒã˜
 							CreatePageDialog(hDwnd, hDlg, bDlgFlg, nowDlg, GetSafeLanguageOffset() + IDD_PAGECOLOR, PageColorProc);
 							break;
 						case 101:
@@ -387,25 +399,41 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 					UpdateWindow(*hNowDlg);
 					break;
 			}
+			InterlockedDecrement(&g_propdlgNotifyDepth);
+			}
 			break;
 
 		case WM_COMMAND:
+			{
+				LONG cmdDepth = InterlockedIncrement(&g_propdlgCommandDepth);
+				if (cmdDepth > 64) {
+					if (b_NormalLog) WriteNormalLog("[guard] Property WM_COMMAND recursion blocked");
+					InterlockedDecrement(&g_propdlgCommandDepth);
+					break;
+				}
 			// apply settings
 			if(LOWORD(wParam) == IDOK || LOWORD(wParam) == ID_APPLY)
 			{
+				if (InterlockedCompareExchange(&g_inApplyDispatch, 1, 0) != 0) {
+					if (b_NormalLog) WriteNormalLog("[guard] Property apply reentry skipped");
+					InterlockedDecrement(&g_propdlgCommandDepth);
+					break;
+				}
 				NMHDR lp;
 				lp.code = PSN_APPLY;
 				SendMessage(hDlg[nowDlg], WM_NOTIFY, 0, (LPARAM)&lp);
 				if(g_bApplyClock)
 				{
-					PostMessage(g_hwndClock, CLOCKM_REFRESHCLOCK, 0, 0);
 					g_bApplyClock = FALSE;
+					InterlockedExchange(&g_refreshDispatchQueued, 1);
 				}
 				if(g_bApplyTaskbar)
 				{
-					PostMessage(g_hwndClock, CLOCKM_REFRESHTASKBAR, 0, 0);
 					g_bApplyTaskbar = FALSE;
+					InterlockedExchange(&g_refreshDispatchQueued, 1);
 				}
+				PostMessage(hDwnd, WM_TCLOCK_APPLY_REFRESH, 0, 0);
+				InterlockedExchange(&g_inApplyDispatch, 0);
 			}
 			if(LOWORD(wParam) == IDOK || LOWORD(wParam) == IDCANCEL)
 			{
@@ -443,6 +471,15 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 					add_title(fname, "readme_jp.txt");
 				}
 				ShellExecute(NULL, "open", "notepad.exe", fname, NULL, SW_SHOWNORMAL);
+			}
+			InterlockedDecrement(&g_propdlgCommandDepth);
+			}
+			break;
+
+		case WM_TCLOCK_APPLY_REFRESH:
+			if (InterlockedExchange(&g_refreshDispatchQueued, 0) != 0) {
+				PostMessage(g_hwndClock, CLOCKM_REFRESHCLOCK, 0, 0);
+				PostMessage(g_hwndClock, CLOCKM_REFRESHTASKBAR, 0, 0);
 			}
 			break;
 

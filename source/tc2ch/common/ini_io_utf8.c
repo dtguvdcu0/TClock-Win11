@@ -111,6 +111,8 @@ static BOOL tc_buf_reserve(tc_dynbuf_t* b, DWORD need)
 static BOOL tc_buf_add(tc_dynbuf_t* b, const char* src, DWORD n)
 {
     if (!src || n == 0) return TRUE;
+    if (n > 0x7FFFFFFF) return FALSE;
+    if (b->len > (DWORD)(0x7FFFFFFF - (int)n - 1)) return FALSE;
     if (!tc_buf_reserve(b, b->len + n + 1)) return FALSE;
     CopyMemory(b->p + b->len, src, n);
     b->len += n;
@@ -191,11 +193,12 @@ static void tc_ini_lock_leave(HANDLE h)
     CloseHandle(h);
 }
 
-static BOOL tc_ini_utf8_rewrite_key(const char* text, DWORD size,
+static BOOL tc_ini_utf8_rewrite_key(const char* iniPath, const char* text, DWORD size,
                                     const char* section, const char* key, const char* utf8Value,
                                     char** outText, DWORD* outSize)
 {
     DWORD i = 0;
+    DWORD iter = 0;
     BOOL inTarget = FALSE;
     BOOL sectionSeen = FALSE;
     BOOL keyDone = FALSE;
@@ -204,14 +207,23 @@ static BOOL tc_ini_utf8_rewrite_key(const char* text, DWORD size,
     tc_dynbuf_t out;
 
     if (!tc_buf_init(&out)) return FALSE;
-
+    if (!tc_buf_reserve(&out, size + (DWORD)lstrlen(sec) + (DWORD)lstrlen(key) + (DWORD)lstrlen(utf8Value) + 256)) {
+        tc_buf_free(&out);
+        return FALSE;
+    }
     while (i < size) {
         DWORD ls = i;
-        DWORD le = i;
         DWORD txtEnd;
+        DWORD le = i;
         DWORD nlLen = 0;
-        BOOL nextInTarget = inTarget;
-        BOOL isAnySection = FALSE;
+        BOOL isTargetSection;
+        BOOL isAnySection;
+        BOOL nextInTarget;
+
+        if (++iter > size + 8) {
+            tc_buf_free(&out);
+            return FALSE;
+        }
 
         while (le < size && text[le] != '\r' && text[le] != '\n') le++;
         txtEnd = le;
@@ -228,10 +240,18 @@ static BOOL tc_ini_utf8_rewrite_key(const char* text, DWORD size,
             eol = "\n";
         }
 
-        if (tc_line_is_section(text + ls, (int)(txtEnd - ls), sec)) {
+        if (le <= i || le > size) {
+            tc_buf_free(&out);
+            return FALSE;
+        }
+
+        isTargetSection = tc_line_is_section(text + ls, (int)(txtEnd - ls), sec);
+        isAnySection = isTargetSection ? TRUE : tc_line_is_any_section(text + ls, (int)(txtEnd - ls));
+        nextInTarget = inTarget;
+
+        if (isTargetSection) {
             sectionSeen = TRUE;
             nextInTarget = TRUE;
-            isAnySection = TRUE;
             if (inTarget && !keyDone) {
                 if (!tc_buf_adds(&out, key) || !tc_buf_adds(&out, "=") || !tc_buf_adds(&out, utf8Value) || !tc_buf_adds(&out, eol)) {
                     tc_buf_free(&out);
@@ -240,7 +260,7 @@ static BOOL tc_ini_utf8_rewrite_key(const char* text, DWORD size,
                 keyDone = TRUE;
             }
         }
-        else if (tc_line_is_any_section(text + ls, (int)(txtEnd - ls))) {
+        else if (isAnySection) {
             if (inTarget && !keyDone) {
                 if (!tc_buf_adds(&out, key) || !tc_buf_adds(&out, "=") || !tc_buf_adds(&out, utf8Value) || !tc_buf_adds(&out, eol)) {
                     tc_buf_free(&out);
@@ -249,16 +269,14 @@ static BOOL tc_ini_utf8_rewrite_key(const char* text, DWORD size,
                 keyDone = TRUE;
             }
             nextInTarget = FALSE;
-            isAnySection = TRUE;
         }
 
-        if (inTarget && !isAnySection && !keyDone &&
-            tc_line_key_match(text + ls, (int)(txtEnd - ls), key)) {
+        if (inTarget && !isAnySection && !keyDone && tc_line_key_match(text + ls, (int)(txtEnd - ls), key)) {
             if (!tc_buf_adds(&out, key) || !tc_buf_adds(&out, "=") || !tc_buf_adds(&out, utf8Value)) {
                 tc_buf_free(&out);
                 return FALSE;
             }
-            if (nlLen && !tc_buf_add(&out, text + txtEnd, nlLen)) {
+            if (nlLen > 0 && !tc_buf_add(&out, text + txtEnd, nlLen)) {
                 tc_buf_free(&out);
                 return FALSE;
             }
@@ -502,11 +520,12 @@ BOOL tc_ini_utf8_write_string(const char* iniPath, const char* section, const ch
     BOOL hadBom = TRUE;
     char utf8Val[4096];
     BOOL ok = FALSE;
-
     if (!iniPath || !key || !key[0]) return FALSE;
     if (!val) val = "";
     hLock = tc_ini_lock_enter(iniPath);
-    if (!hLock) return FALSE;
+    if (!hLock) {
+        return FALSE;
+    }
 
     if (!tc_read_text_file_utf8(iniPath, &text, &size, &hadBom)) {
         goto cleanup;
@@ -516,11 +535,13 @@ BOOL tc_ini_utf8_write_string(const char* iniPath, const char* section, const ch
         tc_copy_str(utf8Val, (int)sizeof(utf8Val), val);
     }
 
-    if (!tc_ini_utf8_rewrite_key(text, size, section, key, utf8Val, &outText, &outSize)) {
+    if (!tc_ini_utf8_rewrite_key(iniPath, text, size, section, key, utf8Val, &outText, &outSize)) {
         goto cleanup;
     }
 
-    if (!tc_write_text_file_utf8(iniPath, outText, outSize, hadBom ? TRUE : FALSE)) goto cleanup;
+    if (!tc_write_text_file_utf8(iniPath, outText, outSize, hadBom ? TRUE : FALSE)) {
+        goto cleanup;
+    }
     ok = TRUE;
 
 cleanup:

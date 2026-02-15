@@ -4,6 +4,7 @@
          KAZUBON 1999
 ---------------------------------------------*/
 #include "tcdll.h"
+static LONG g_depth_CreateMyFont = 0;
 
 struct {
 	int cp;
@@ -22,7 +23,7 @@ struct {
 	{ 0, 0}
 };
 
-int GetLocaleInfoWA(WORD wLanguageID, LCTYPE LCType, char* dst, int n);
+int GetLocaleInfoCompat(WORD wLanguageID, LCTYPE LCType, char* dst, int n);
 
 /*------------------------------------------------
    callback function for EnumFontFamiliesEx,
@@ -33,7 +34,8 @@ BOOL CALLBACK EnumFontFamExProc(ENUMLOGFONTEX* pelf,
 {
 	UNREFERENCED_PARAMETER(lpntm);
 	UNREFERENCED_PARAMETER(FontType);
-	if(strcmp((LPSTR)fontname, pelf->elfLogFont.lfFaceName) == 0)
+	if (!pelf || !fontname) return TRUE;
+	if (lstrcmpi((LPSTR)fontname, pelf->elfLogFont.lfFaceName) == 0)
 		return FALSE;
 	return TRUE;
 }
@@ -47,17 +49,36 @@ HFONT CreateMyFont(char* fontname, int fontsize,
 	LOGFONT lf;
 	POINT pt;
 	HDC hdc;
+	HFONT hOut = NULL;
 	WORD langid;
 	char s[11];
+	char fontnameLocal[LF_FACESIZE];
 	int cp;
 	BYTE charset;
 	int i;
+	LONG depth;
+	int fnlen;
+
+	depth = InterlockedIncrement(&g_depth_CreateMyFont);
+	if (depth > 32) {
+		InterlockedDecrement(&g_depth_CreateMyFont);
+		return (HFONT)GetStockObject(DEFAULT_GUI_FONT);
+	}
+	if (!fontname) fontname = "";
+	lstrcpyn(fontnameLocal, fontname, LF_FACESIZE);
+	fnlen = lstrlen(fontnameLocal);
+	if (fnlen >= 2 && fontnameLocal[0] == '\"' && fontnameLocal[fnlen - 1] == '\"') {
+		int inner = fnlen - 2;
+		if (inner < 0) inner = 0;
+		MoveMemory(fontnameLocal, fontnameLocal + 1, inner);
+		fontnameLocal[inner] = '\0';
+	}
 
 	memset(&lf, 0, sizeof(LOGFONT));
 
 	langid = (WORD)GetMyRegLong("Format", "Locale", (int)GetUserDefaultLangID());
 	cp = CP_ACP;
-	if(GetLocaleInfoWA(langid, LOCALE_IDEFAULTANSICODEPAGE, s, 10) > 0)
+	if(GetLocaleInfoCompat(langid, LOCALE_IDEFAULTANSICODEPAGE, s, 10) > 0)
 	{
 		char *p;
 		p = s; cp = 0;
@@ -76,21 +97,9 @@ HFONT CreateMyFont(char* fontname, int fontsize,
 
 	hdc = GetDC(NULL);
 
-	// find a font named "fontname"
-	if(charset == 0) charset = (BYTE)GetTextCharset(hdc);
+	/* Avoid enum-time font-driver crashes: create font directly from face name. */
+	if(charset == 0) charset = DEFAULT_CHARSET;
 	lf.lfCharSet = charset;
-	if(EnumFontFamiliesEx(hdc, &lf, (FONTENUMPROC)EnumFontFamExProc,
-		(LPARAM)fontname, 0))
-	{
-		lf.lfCharSet = OEM_CHARSET;
-		if(EnumFontFamiliesEx(hdc, &lf, (FONTENUMPROC)EnumFontFamExProc,
-			(LPARAM)fontname, 0))
-		{
-			lf.lfCharSet = ANSI_CHARSET;
-			EnumFontFamiliesEx(hdc, &lf, (FONTENUMPROC)EnumFontFamExProc,
-				(LPARAM)fontname, 0);
-		}
-	}
 
 	pt.x = 0;
 	pt.y = GetDeviceCaps(hdc, LOGPIXELSY) * fontsize / 72;
@@ -109,9 +118,12 @@ HFONT CreateMyFont(char* fontname, int fontsize,
 	lf.lfClipPrecision = CLIP_DEFAULT_PRECIS;
 	lf.lfQuality = DEFAULT_QUALITY;
 	lf.lfPitchAndFamily = DEFAULT_PITCH | FF_DONTCARE;
-	strcpy(lf.lfFaceName, fontname);
+	lstrcpyn(lf.lfFaceName, fontnameLocal, LF_FACESIZE);
+	hOut = CreateFontIndirect(&lf);
+	if (!hOut) hOut = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
 
-	return CreateFontIndirect(&lf);
+	InterlockedDecrement(&g_depth_CreateMyFont);
+	return hOut;
 }
 
 

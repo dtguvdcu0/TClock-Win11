@@ -12,7 +12,7 @@ extern HANDLE hmod;
 
 BOOL g_bIniSetting = TRUE;
 char g_inifile[MAX_PATH];
-static const char* k_FontUtf8HexKey = "FontUtf8Hex";
+static const char* k_Utf8HexSuffix = "Utf8Hex";
 
 static int tc_hex_digit(int v)
 {
@@ -29,32 +29,69 @@ static int tc_hex_value(int c)
 	return -1;
 }
 
+static BOOL tc_is_utf8_hex_target_key(const char* section, const char* entry)
+{
+	if (!section || !entry || !*section || !*entry) return FALSE;
+	if (lstrcmpi(section, "Color_Font") == 0 && lstrcmpi(entry, "Font") == 0) return TRUE;
+	if (lstrcmpi(section, "Format") == 0 &&
+		(lstrcmpi(entry, "Format") == 0 || lstrcmpi(entry, "CustomFormat") == 0)) return TRUE;
+	if (lstrcmpi(section, "Tooltip") == 0 &&
+		(lstrcmpi(entry, "TipFont") == 0 ||
+		 lstrcmpi(entry, "TipTitle") == 0 ||
+		 lstrcmpi(entry, "Tooltip") == 0 ||
+		 lstrcmpi(entry, "Tooltip2") == 0 ||
+		 lstrcmpi(entry, "Tooltip3") == 0)) return TRUE;
+	return FALSE;
+}
+
+static BOOL tc_build_utf8_hex_entry_name(const char* entry, char* out, int outBytes)
+{
+	int entryLen;
+	int suffixLen;
+	if (!entry || !*entry || !out || outBytes <= 0) return FALSE;
+	entryLen = lstrlen(entry);
+	suffixLen = lstrlen(k_Utf8HexSuffix);
+	if (entryLen + suffixLen + 1 > outBytes) return FALSE;
+	lstrcpyn(out, entry, outBytes);
+	lstrcat(out, k_Utf8HexSuffix);
+	return TRUE;
+}
+
 static BOOL tc_encode_utf8_hex_from_ansi(const char* ansi, char* outHex, int outHexBytes)
 {
-	WCHAR wbuf[512];
-	char u8[1024];
+	WCHAR wbuf[4096];
+	char u8[8192];
+	UINT cps[3];
+	int cpCount = 0;
 	int i;
 	int n;
+	int c;
 
 	if (!ansi || !outHex || outHexBytes <= 0) return FALSE;
-	if (tc_ansi_to_utf16(GetACP(), ansi, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) <= 0) return FALSE;
-	if (tc_utf16_to_utf8(wbuf, u8, (int)sizeof(u8)) <= 0) return FALSE;
+	cps[cpCount++] = GetACP();
+	if (cps[0] != 932) cps[cpCount++] = 932;
+	if (cps[0] != CP_UTF8 && (cpCount == 1 || cps[1] != CP_UTF8)) cps[cpCount++] = CP_UTF8;
 
-	n = lstrlen(u8);
-	if (n * 2 + 1 > outHexBytes) return FALSE;
-	for (i = 0; i < n; i++) {
-		unsigned char b = (unsigned char)u8[i];
-		outHex[i * 2] = (char)tc_hex_digit((b >> 4) & 0x0F);
-		outHex[i * 2 + 1] = (char)tc_hex_digit(b & 0x0F);
+	for (c = 0; c < cpCount; c++) {
+		if (tc_ansi_to_utf16(cps[c], ansi, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) <= 0) continue;
+		if (tc_utf16_to_utf8(wbuf, u8, (int)sizeof(u8)) <= 0) continue;
+		n = lstrlen(u8);
+		if (n * 2 + 1 > outHexBytes) return FALSE;
+		for (i = 0; i < n; i++) {
+			unsigned char b = (unsigned char)u8[i];
+			outHex[i * 2] = (char)tc_hex_digit((b >> 4) & 0x0F);
+			outHex[i * 2 + 1] = (char)tc_hex_digit(b & 0x0F);
+		}
+		outHex[n * 2] = '\0';
+		return TRUE;
 	}
-	outHex[n * 2] = '\0';
-	return TRUE;
+	return FALSE;
 }
 
 static BOOL tc_decode_utf8_hex_to_ansi(const char* hex, char* outAnsi, int outAnsiBytes)
 {
-	char u8[1024];
-	WCHAR wbuf[512];
+	char u8[8192];
+	WCHAR wbuf[4096];
 	int n;
 	int i;
 
@@ -252,6 +289,8 @@ int GetMyRegStr(char* section, char* entry, char* val, int cbData,
 	BOOL b;
 	int r = 0;
 	BOOL isUtf8 = FALSE;
+	BOOL needsHexBackfill = FALSE;
+	char hexEntry[128];
 
 	if (strlen(g_inifile) == 0) return 0;
 
@@ -270,15 +309,17 @@ int GetMyRegStr(char* section, char* entry, char* val, int cbData,
 
 	{
 		if (tc_ini_utf8_detect_file(g_inifile, &isUtf8, NULL) && isUtf8) {
-			if (section && entry &&
-				lstrcmpi(section, "Color_Font") == 0 &&
-				lstrcmpi(entry, "Font") == 0) {
-				char hexbuf[1024];
-				if (tc_ini_utf8_read_string(g_inifile, key, (char*)k_FontUtf8HexKey, "", hexbuf, (int)sizeof(hexbuf)) > 0) {
+			if (tc_is_utf8_hex_target_key(section, entry)) {
+				char hexbuf[4096];
+				if (tc_build_utf8_hex_entry_name(entry, hexEntry, (int)sizeof(hexEntry)) &&
+					tc_ini_utf8_read_string(g_inifile, key, hexEntry, "", hexbuf, (int)sizeof(hexbuf)) > 0) {
 					if (tc_decode_utf8_hex_to_ansi(hexbuf, val, cbData)) {
 						r = lstrlen(val);
 						goto getmyregstr_done;
 					}
+				}
+				else if (tc_build_utf8_hex_entry_name(entry, hexEntry, (int)sizeof(hexEntry))) {
+					needsHexBackfill = TRUE;
 				}
 			}
 			r = tc_ini_utf8_read_string(g_inifile, key, entry, defval ? defval : "", val, cbData);
@@ -297,6 +338,12 @@ int GetMyRegStr(char* section, char* entry, char* val, int cbData,
 			tc_utf16_to_ansi(GetACP(), wbuf, abuf, (int)sizeof(abuf)) > 0) {
 			lstrcpyn(val, abuf, cbData);
 			r = lstrlen(val);
+		}
+	}
+	if (isUtf8 && needsHexBackfill && r > 0) {
+		char hexbuf[4096];
+		if (tc_encode_utf8_hex_from_ansi(val, hexbuf, (int)sizeof(hexbuf))) {
+			WritePrivateProfileString(key, hexEntry, hexbuf, g_inifile);
 		}
 	}
 
@@ -441,16 +488,17 @@ BOOL SetMyRegStr(char* section, char* entry, char* val)
 			lstrcpyn(saveval, val, (int)sizeof(saveval));
 
 		if (tc_ini_utf8_detect_file(g_inifile, &isUtf8, NULL) && isUtf8) {
-			if (section && entry &&
-				lstrcmpi(section, "Color_Font") == 0 &&
-				lstrcmpi(entry, "Font") == 0) {
-				char hexbuf[1024];
-				if (tc_encode_utf8_hex_from_ansi(val, hexbuf, (int)sizeof(hexbuf))) {
-					r = WritePrivateProfileString(key, (char*)k_FontUtf8HexKey, hexbuf, g_inifile) ? TRUE : FALSE;
+			if (tc_is_utf8_hex_target_key(section, entry)) {
+				char hexbuf[4096];
+				char hexEntry[128];
+				BOOL rHex = FALSE;
+				BOOL rLegacy = FALSE;
+				if (tc_build_utf8_hex_entry_name(entry, hexEntry, (int)sizeof(hexEntry)) &&
+					tc_encode_utf8_hex_from_ansi(val, hexbuf, (int)sizeof(hexbuf))) {
+					rHex = WritePrivateProfileString(key, hexEntry, hexbuf, g_inifile) ? TRUE : FALSE;
 				}
-				else {
-					r = FALSE;
-				}
+				rLegacy = WritePrivateProfileString(key, entry, saveval, g_inifile) ? TRUE : FALSE;
+				r = rHex || rLegacy;
 			}
 			else {
 				r = WritePrivateProfileString(key, entry, saveval, g_inifile) ? TRUE : FALSE;

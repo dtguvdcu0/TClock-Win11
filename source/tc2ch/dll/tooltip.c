@@ -753,7 +753,7 @@ void TooltipReadData(void)
 	GetMyRegStr("Tooltip", "Tooltip2", fmtToolTip2, sizeof(fmtToolTip1), "");
 	GetMyRegStr("Tooltip", "Tooltip3", fmtToolTip3, sizeof(fmtToolTip1), "");
 
-	GetMyRegStr("Tooltip", "TipTitle", tiptitle, 300, "TClock-Win10 <%VerTC%>");
+	GetMyRegStr("Tooltip", "TipTitle", tiptitle, 300, "TClock-Win11 <%VerTC%>");
 	SetMyRegStr("Tooltip", "TipTitle", tiptitle);
 
 

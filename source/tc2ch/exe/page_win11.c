@@ -134,12 +134,12 @@ INT_PTR CALLBACK PageWin11Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
 				if (saved) {
 					MyMessageBox(hDlg,
 						"現在の自動取得背景色を保存しました。\n固定値として使うには「背景色をタスクバーに自動一致」をOFFにしてください。\n\nSaved current auto-matched background colors.\nTurn off \"Auto match taskbar background\" to use fixed values.",
-						"TClock-Win10", MB_OK, MB_ICONINFORMATION);
+						"TClock-Win11", MB_OK, MB_ICONINFORMATION);
 				}
 				else {
 					MyMessageBox(hDlg,
 						"背景色の保存に失敗しました。\nタスクバー色の取得状態を確認して再実行してください。\n\nFailed to save background colors.\nPlease retry after taskbar color sampling is available.",
-						"TClock-Win10", MB_OK, MB_ICONEXCLAMATION);
+						"TClock-Win11", MB_OK, MB_ICONEXCLAMATION);
 				}
 				return TRUE;
 			}

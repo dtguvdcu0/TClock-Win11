@@ -456,18 +456,18 @@ int MyMessageBox(HWND hwnd, char* msg, char* title, UINT uType, UINT uBeep)
 	int titleRet;
 
 	if (!msg) msg = "";
-	if (!title) title = "TClock-Win10";
+	if (!title) title = "TClock-Win11";
 
-	msgRet = tc_ansi_to_utf16_compat(CP_UTF8, msg, wMsg, sizeof(wMsg) / sizeof(wMsg[0]));
-	titleRet = tc_ansi_to_utf16_compat(CP_UTF8, title, wTitle, sizeof(wTitle) / sizeof(wTitle[0]));
+	msgRet = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, msg, -1, wMsg, sizeof(wMsg) / sizeof(wMsg[0]));
+	if (msgRet <= 0) msgRet = MultiByteToWideChar(CP_ACP, 0, msg, -1, wMsg, sizeof(wMsg) / sizeof(wMsg[0]));
+	titleRet = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, title, -1, wTitle, sizeof(wTitle) / sizeof(wTitle[0]));
+	if (titleRet <= 0) titleRet = MultiByteToWideChar(CP_ACP, 0, title, -1, wTitle, sizeof(wTitle) / sizeof(wTitle[0]));
 	if (msgRet <= 0 || titleRet <= 0) {
 		if (msgRet <= 0) {
-			msgRet = tc_ansi_to_utf16_compat(CP_ACP, msg, wMsg, sizeof(wMsg) / sizeof(wMsg[0]));
-			if (msgRet <= 0) lstrcpynW(wMsg, L"[Message decode error]", sizeof(wMsg) / sizeof(wMsg[0]));
+			lstrcpynW(wMsg, L"[Message decode error]", sizeof(wMsg) / sizeof(wMsg[0]));
 		}
 		if (titleRet <= 0) {
-			titleRet = tc_ansi_to_utf16_compat(CP_ACP, title, wTitle, sizeof(wTitle) / sizeof(wTitle[0]));
-			if (titleRet <= 0) lstrcpynW(wTitle, L"TClock-Win10", sizeof(wTitle) / sizeof(wTitle[0]));
+			lstrcpynW(wTitle, L"TClock-Win11", sizeof(wTitle) / sizeof(wTitle[0]));
 		}
 	}
 

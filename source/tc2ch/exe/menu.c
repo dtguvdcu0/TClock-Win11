@@ -457,7 +457,7 @@ void OnTClockCommand(HWND hwnd, WORD wID, WORD wCode)
 			if (wID == IDC_REMOVE_DRIVE0 && !b_UnplugDriveAvailable)
 			{
 				MyMessageBox(NULL, "TClockフォルダにフリーソフトのUnplugDrive Portable (UnplugDrive.exe)を置くと、リムーバブルドライブ取り外し機能を利用することができます。\n\nHaving UnplugDrive.exe (Japanese freeware) in TClock folder enables \"Remove Drive\" function.",
-					"TClock-Win10", MB_OK | MB_SETFOREGROUND | MB_ICONINFORMATION, 0xFFFFFFFF);
+					"TClock-Win11", MB_OK | MB_SETFOREGROUND | MB_ICONINFORMATION, 0xFFFFFFFF);
 				return;
 			}
 

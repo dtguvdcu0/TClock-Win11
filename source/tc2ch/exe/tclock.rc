@@ -31,11 +31,11 @@ BEGIN
         BLOCK "000004b0"
         BEGIN
             VALUE "Comments", "TClock Main for Windows10 and Windows11"
-            VALUE "FileDescription", "TClock-Win10"
+            VALUE "FileDescription", "TClock-Win11"
             VALUE "FileVersion", "5.4.1.1"
             VALUE "InternalName", "TClock"
             VALUE "OriginalFilename", "TClock-Win11.exe"
-            VALUE "ProductName", "TClock-Win10"
+            VALUE "ProductName", "TClock-Win11"
             VALUE "ProductVersion", "5.4.1.1"
         END
     END

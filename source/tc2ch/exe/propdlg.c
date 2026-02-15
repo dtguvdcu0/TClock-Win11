@@ -127,7 +127,7 @@ void MyPropertyDialog(void)
 	}
 	else {
 		if (b_NormalLog) WriteNormalLog("[Error] Property dialog could not be opened.");
-		MyMessageBox(g_hwndMain, "Failed to open property dialog.", "TClock-Win10", MB_OK, MB_ICONEXCLAMATION);
+		MyMessageBox(g_hwndMain, "Failed to open property dialog.", "TClock-Win11", MB_OK, MB_ICONEXCLAMATION);
 	}
 }
 

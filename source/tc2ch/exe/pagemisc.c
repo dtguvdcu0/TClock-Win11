@@ -44,11 +44,11 @@ BOOL CALLBACK PageMiscProc(HWND hDlg, UINT message,
 					int r;
 					r = DelRegAll();
 					if (r == 0)
-						MyMessageBox(hDlg,MyString(IDS_DELREGNGINI), "TClock-Win10",MB_OK,MB_ICONEXCLAMATION);
+						MyMessageBox(hDlg,MyString(IDS_DELREGNGINI), "TClock-Win11",MB_OK,MB_ICONEXCLAMATION);
 					else if (r == 1)
-						MyMessageBox(hDlg,MyString(IDS_DELREGOK), "TClock-Win10",MB_OK,MB_ICONINFORMATION);
+						MyMessageBox(hDlg,MyString(IDS_DELREGOK), "TClock-Win11",MB_OK,MB_ICONINFORMATION);
 					else
-						MyMessageBox(hDlg,MyString(IDS_DELREGNG),"TClock-Win10",MB_OK,MB_ICONEXCLAMATION);
+						MyMessageBox(hDlg,MyString(IDS_DELREGNG),"TClock-Win11",MB_OK,MB_ICONEXCLAMATION);
 				}
 				break;
 				//  readme.txtを開く
@@ -81,7 +81,7 @@ void OnInit(HWND hDlg)
 	SendDlgItemMessage(hDlg, IDC_ABOUTICON, STM_SETIMAGE,
 		IMAGE_ICON, (LPARAM)g_hIconTClock);
 
-	wsprintf(s, "TClock-Win10 Ver %s", s1);
+	wsprintf(s, "TClock-Win11 Ver %s", s1);
 
 	SendDlgItemMessage(hDlg, IDC_STATIC_VersionText, WM_SETTEXT, 0, (LPARAM)s);
 
@@ -109,10 +109,10 @@ void OnStartup(HWND hDlg)
 	else return;
 
 	if(MyMessageBox(hDlg, MyString(IDS_STARTUPLINK),
-		"TClock-Win10", MB_YESNO, MB_ICONQUESTION) != IDYES) return;
+		"TClock-Win11", MB_YESNO, MB_ICONQUESTION) != IDYES) return;
 
 	GetModuleFileName(GetModuleHandle(NULL), myexe, MAX_PATH);
-	CreateLink(myexe, dstpath, "TClock-Win10");
+	CreateLink(myexe, dstpath, "TClock-Win11");
 }
 
 /*------------------------------------------------

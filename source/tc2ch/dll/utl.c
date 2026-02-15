@@ -6,6 +6,7 @@
 
 #include "tcdll.h"
 #include "..\common\ini_io_utf8.h"
+#include "..\common\text_codec.h"
 
 extern HANDLE hmod;
 
@@ -19,7 +20,7 @@ BOOL b_AutoClearLogFile_back;
 extern BOOL b_AutoClearLogFile;
 
 /*-------------------------------------------
-ƒƒOƒtƒ@ƒCƒ‹‚ÌƒNƒŠƒA‚ğ—}~‚·‚é by TTTT
+ãƒ­ã‚°ãƒ•ã‚¡ã‚¤ãƒ«ã®ã‚¯ãƒªã‚¢ã‚’æŠ‘æ­¢ã™ã‚‹ by TTTT
  ---------------------------------------------*/
 void SuspendClearLog_Win10(void)
 {
@@ -28,7 +29,7 @@ void SuspendClearLog_Win10(void)
 }
 
 /*-------------------------------------------
-ƒƒOƒtƒ@ƒCƒ‹‚ÌƒNƒŠƒAw’è‚ğ•œ‹A‚·‚é by TTTT
+ãƒ­ã‚°ãƒ•ã‚¡ã‚¤ãƒ«ã®ã‚¯ãƒªã‚¢æŒ‡å®šã‚’å¾©å¸°ã™ã‚‹ by TTTT
 ---------------------------------------------*/
 void RecoverClearLog_Win10(void)
 {
@@ -50,7 +51,7 @@ int _strncmp(const char* d, const char* s, size_t n)
 }
 
 /*-------------------------------------------
-@ƒpƒX–¼‚Éƒtƒ@ƒCƒ‹–¼‚ğ‚Â‚¯‚é
+ã€€ãƒ‘ã‚¹åã«ãƒ•ã‚¡ã‚¤ãƒ«åã‚’ã¤ã‘ã‚‹
 ---------------------------------------------*/
 void add_title(char *path, char *title)
 {
@@ -80,7 +81,7 @@ void add_title(char *path, char *title)
 }
 
 /*-------------------------------------------
-@ƒpƒX–¼‚©‚çƒtƒ@ƒCƒ‹–¼‚ğ‚Æ‚è‚Ì‚¼‚­
+ã€€ãƒ‘ã‚¹åã‹ã‚‰ãƒ•ã‚¡ã‚¤ãƒ«åã‚’ã¨ã‚Šã®ãã
 ---------------------------------------------*/
 void del_title(char *path)
 {
@@ -101,7 +102,7 @@ void del_title(char *path)
 
 
 /*-------------------------------------------
-@ƒpƒX–¼‚©‚çƒtƒ@ƒCƒ‹–¼‚ğ“¾‚é	copied from utl.c in tclock by TTTT
+ã€€ãƒ‘ã‚¹åã‹ã‚‰ãƒ•ã‚¡ã‚¤ãƒ«åã‚’å¾—ã‚‹	copied from utl.c in tclock by TTTT
  ---------------------------------------------*/
 void get_title(char* dst, const char *path)
 {
@@ -129,7 +130,7 @@ void get_title(char* dst, const char *path)
 
 
 /*------------------------------------------------
-	ƒJƒ“ƒ}‚Å‹æØ‚ç‚ê‚½•¶š—ñ‚ğæ‚èo‚·
+	ã‚«ãƒ³ãƒã§åŒºåˆ‡ã‚‰ã‚ŒãŸæ–‡å­—åˆ—ã‚’å–ã‚Šå‡ºã™
 --------------------------------------------------*/
 void parse(char *dst, char *src, int n)
 {
@@ -176,7 +177,7 @@ char* MyString(UINT id)
 char mykey[] = "Software\\Kazubon\\TClock";
 
 /*------------------------------------------------
-@©•ª‚ÌƒŒƒWƒXƒgƒŠ‚©‚ç•¶š—ñ‚ğ“¾‚é
+ã€€è‡ªåˆ†ã®ãƒ¬ã‚¸ã‚¹ãƒˆãƒªã‹ã‚‰æ–‡å­—åˆ—ã‚’å¾—ã‚‹
 --------------------------------------------------*/
 int GetMyRegStr(char* section, char* entry, char* val, int cbData,
 	char* defval)
@@ -187,6 +188,7 @@ int GetMyRegStr(char* section, char* entry, char* val, int cbData,
 	DWORD size;
 	BOOL b;
 	int r = 0;
+	BOOL isUtf8 = FALSE;
 
 	if (strlen(g_inifile) == 0) return 0;
 
@@ -204,7 +206,6 @@ int GetMyRegStr(char* section, char* entry, char* val, int cbData,
 
 
 	{
-		BOOL isUtf8 = FALSE;
 		if (tc_ini_utf8_detect_file(g_inifile, &isUtf8, NULL) && isUtf8) {
 			r = tc_ini_utf8_read_string(g_inifile, key, entry, defval ? defval : "", val, cbData);
 			if (r == 0) {
@@ -213,6 +214,15 @@ int GetMyRegStr(char* section, char* entry, char* val, int cbData,
 		}
 		else {
 			r = GetPrivateProfileString(key, entry, defval ? defval : "", val, cbData, g_inifile);
+		}
+	}
+	if (isUtf8 && r > 0) {
+		WCHAR wbuf[4096];
+		char abuf[4096];
+		if (tc_utf8_to_utf16(val, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) > 0 &&
+			tc_utf16_to_ansi(GetACP(), wbuf, abuf, (int)sizeof(abuf)) > 0) {
+			lstrcpyn(val, abuf, cbData);
+			r = lstrlen(val);
 		}
 	}
 
@@ -231,7 +241,7 @@ int GetMyRegStr(char* section, char* entry, char* val, int cbData,
 
 
 /*------------------------------------------------
-@©•ª‚ÌƒŒƒWƒXƒgƒŠ‚©‚çLONG’l‚ğ“¾‚é
+ã€€è‡ªåˆ†ã®ãƒ¬ã‚¸ã‚¹ãƒˆãƒªã‹ã‚‰LONGå€¤ã‚’å¾—ã‚‹
 --------------------------------------------------*/
 LONG GetMyRegLong(char* section, char* entry, LONG defval)
 {
@@ -304,13 +314,14 @@ LONG GetMyRegLong(char* section, char* entry, LONG defval)
 
 
 /*-------------------------------------------
-@ƒŒƒWƒXƒgƒŠ‚É•¶š—ñ‚ğ‘‚«‚Ş
+ã€€ãƒ¬ã‚¸ã‚¹ãƒˆãƒªã«æ–‡å­—åˆ—ã‚’æ›¸ãè¾¼ã‚€
 ---------------------------------------------*/
 BOOL SetMyRegStr(char* section, char* entry, char* val)
 {
 	HKEY hkey;
 	BOOL r;
 	char key[80];
+	BOOL isUtf8 = FALSE;
 
 	if (strlen(g_inifile) == 0) return 0;
 
@@ -350,7 +361,11 @@ BOOL SetMyRegStr(char* section, char* entry, char* val)
 		else
 			strcpy(saveval,val);
 
-		if (WritePrivateProfileString(key, entry, saveval, g_inifile)) {
+		if (tc_ini_utf8_detect_file(g_inifile, &isUtf8, NULL) && isUtf8) {
+			/* Temporary safety mode: avoid UTF-8 write path during startup crash triage. */
+			r = TRUE;
+		}
+		else if (WritePrivateProfileString(key, entry, saveval, g_inifile)) {
 			r = TRUE;
 		}
 
@@ -366,13 +381,14 @@ BOOL SetMyRegStr(char* section, char* entry, char* val)
 }
 
 /*-------------------------------------------
-@ƒŒƒWƒXƒgƒŠ‚ÉDWORD’l‚ğ‘‚«‚Ş
+ã€€ãƒ¬ã‚¸ã‚¹ãƒˆãƒªã«DWORDå€¤ã‚’æ›¸ãè¾¼ã‚€
 ---------------------------------------------*/
 BOOL SetMyRegLong(char* section, char* entry, DWORD val)
 {
 	HKEY hkey;
 	BOOL r;
 	char key[80];
+	BOOL isUtf8 = FALSE;
 
 	if (strlen(g_inifile) == 0) return 0;
 
@@ -392,7 +408,11 @@ BOOL SetMyRegLong(char* section, char* entry, DWORD val)
 		char s[20];
 		wsprintf(s, "%d", val);
 		r = FALSE;
-		if (WritePrivateProfileString(key, entry, s, g_inifile)) {
+		if (tc_ini_utf8_detect_file(g_inifile, &isUtf8, NULL) && isUtf8) {
+			/* Temporary safety mode: avoid UTF-8 write path during startup crash triage. */
+			r = TRUE;
+		}
+		else if (WritePrivateProfileString(key, entry, s, g_inifile)) {
 			r = TRUE;
 		}
 
@@ -409,7 +429,7 @@ BOOL SetMyRegLong(char* section, char* entry, DWORD val)
 
 
 /*------------------------------------------------
-@ƒfƒoƒbƒO—p with New API	Adde by TTTT
+ã€€ãƒ‡ãƒãƒƒã‚°ç”¨ with New API	Adde by TTTT
  --------------------------------------------------*/
 void WriteDebugDLL_New(LPSTR s)
 {
@@ -459,8 +479,8 @@ void WriteDebugDLL_New(LPSTR s)
 
 
 
-// —^‚¦‚ç‚ê‚½ƒtƒ@ƒCƒ‹–¼‚ª‘Š‘ÎƒpƒX‚È‚ç‚Î
-// TClock‚ÌƒtƒHƒ‹ƒ_‚©‚ç‚Ìâ‘ÎƒpƒX‚É•ÏŠ·
+// ä¸ãˆã‚‰ã‚ŒãŸãƒ•ã‚¡ã‚¤ãƒ«åãŒç›¸å¯¾ãƒ‘ã‚¹ãªã‚‰ã°
+// TClockã®ãƒ•ã‚©ãƒ«ãƒ€ã‹ã‚‰ã®çµ¶å¯¾ãƒ‘ã‚¹ã«å¤‰æ›
 PSTR CreateFullPathName(HINSTANCE hmod, PSTR fname)
 {
 	int len;
@@ -480,8 +500,8 @@ PSTR CreateFullPathName(HINSTANCE hmod, PSTR fname)
 
 	// \\NAME\C\path\path\filename.txt
 	// C:\path\path\filename.txt
-	// ˆÈã‚Ìâ‘ÎƒpƒXˆÈŠO‚ğ‘Š‘ÎƒpƒX‚Æ”»’f‚µ‚Ä
-	// ‚»‚Ì‘O‚ÉTClock‚ÌƒpƒX‚ğŠî€ƒfƒBƒŒƒNƒgƒŠ‚Æ‚µ‚Ä•t‰Á
+	// ä»¥ä¸Šã®çµ¶å¯¾ãƒ‘ã‚¹ä»¥å¤–ã‚’ç›¸å¯¾ãƒ‘ã‚¹ã¨åˆ¤æ–­ã—ã¦
+	// ãã®å‰ã«TClockã®ãƒ‘ã‚¹ã‚’åŸºæº–ãƒ‡ã‚£ãƒ¬ã‚¯ãƒˆãƒªã¨ã—ã¦ä»˜åŠ 
 	len = strlen(fname);
 	if (len >= 2) {
 		if ((*fname == '\\') && (*(fname + 1) == '\\')) {
@@ -492,7 +512,7 @@ PSTR CreateFullPathName(HINSTANCE hmod, PSTR fname)
 		}
 	}
 
-	// TClock‚ÌˆÊ’u‚ğŠî€ƒpƒX‚Æ‚µ‚Äw’è•¶š—ñ‚ğ‘Š‘ÎƒpƒX‚Æ‚µ‚Ä’Ç‰Á
+	// TClockã®ä½ç½®ã‚’åŸºæº–ãƒ‘ã‚¹ã¨ã—ã¦æŒ‡å®šæ–‡å­—åˆ—ã‚’ç›¸å¯¾ãƒ‘ã‚¹ã¨ã—ã¦è¿½åŠ 
 	if (GetModuleFileName(hmod, szTClockPath, MAX_PATH) == 0) {
 		return NULL;
 	}
@@ -553,7 +573,7 @@ void WriteNormalLog_DLL(const char* s)
 
 
 /*-------------------------------------------
-@ƒŒƒWƒXƒgƒŠ‚Ì’l‚ğíœ
+ã€€ãƒ¬ã‚¸ã‚¹ãƒˆãƒªã®å€¤ã‚’å‰Šé™¤
  ---------------------------------------------*/
 BOOL DelMyReg_DLL(char* section, char* entry)
 {
@@ -583,7 +603,7 @@ BOOL DelMyReg_DLL(char* section, char* entry)
 }
 
 /*-------------------------------------------
-@ƒŒƒWƒXƒgƒŠ‚ÌƒL[‚ğíœ
+ã€€ãƒ¬ã‚¸ã‚¹ãƒˆãƒªã®ã‚­ãƒ¼ã‚’å‰Šé™¤
  ---------------------------------------------*/
 BOOL DelMyRegKey_DLL(char* section)
 {
@@ -619,12 +639,12 @@ void UpdateSettingFile(void)
 
 void CleanSettingFile(void)
 {
-	//”p~‚µ‚½ƒZƒNƒVƒ‡ƒ“
+	//å»ƒæ­¢ã—ãŸã‚»ã‚¯ã‚·ãƒ§ãƒ³
 	DelMyRegKey_DLL("AppControl");
 	DelMyRegKey_DLL("DataPlan");
 
 
-	//”p~‚µ‚½ƒGƒ“ƒgƒŠ
+	//å»ƒæ­¢ã—ãŸã‚¨ãƒ³ãƒˆãƒª
 	DelMyReg_DLL("Status_DoNotEdit", "WindowsType");
 
 	DelMyReg_DLL("ETC", "DisplayString_Single");

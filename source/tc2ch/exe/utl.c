@@ -1,10 +1,11 @@
 /*-------------------------------------------
   utl.c
-    ‚»‚Ì‘¼‚ÌŠÖ”
+    ãã®ä»–ã®é–¢æ•°
 ---------------------------------------------*/
 
 #include "tclock.h"
 #include "..\common\ini_io_utf8.h"
+#include "..\common\text_codec.h"
 
 
 //#if defined(_MSC_VER) && (_MSC_VER >= 1200)
@@ -31,7 +32,7 @@ int PullBackIndex = 0;
 //#endif
 
 /*-------------------------------------------
-  ƒ‰ƒ“ƒ^ƒCƒ€ŠÖ”‚Ì‘ã—p
+  ãƒ©ãƒ³ã‚¿ã‚¤ãƒ é–¢æ•°ã®ä»£ç”¨
 ---------------------------------------------*/
 void r_memcpy(void *d, const void *s, size_t l)
 {
@@ -122,7 +123,7 @@ int r_strcmp(const char* d, const char* s)
 	return 0;
 }
 /*-------------------------------------------
-@ƒpƒX–¼‚Éƒtƒ@ƒCƒ‹–¼‚ğ‚Â‚¯‚é
+ã€€ãƒ‘ã‚¹åã«ãƒ•ã‚¡ã‚¤ãƒ«åã‚’ã¤ã‘ã‚‹
 ---------------------------------------------*/
 void add_title(char *path, char *title)
 {
@@ -153,7 +154,7 @@ void add_title(char *path, char *title)
 }
 
 /*-------------------------------------------
-@ƒpƒX–¼‚©‚çƒtƒ@ƒCƒ‹–¼‚ğ‚Æ‚è‚Ì‚¼‚­
+ã€€ãƒ‘ã‚¹åã‹ã‚‰ãƒ•ã‚¡ã‚¤ãƒ«åã‚’ã¨ã‚Šã®ãã
 ---------------------------------------------*/
 void del_title(char *path)
 {
@@ -173,7 +174,7 @@ void del_title(char *path)
 }
 
 /*-------------------------------------------
-@ƒpƒX–¼‚©‚çƒtƒ@ƒCƒ‹–¼‚ğ“¾‚é
+ã€€ãƒ‘ã‚¹åã‹ã‚‰ãƒ•ã‚¡ã‚¤ãƒ«åã‚’å¾—ã‚‹
 ---------------------------------------------*/
 void get_title(char* dst, const char *path)
 {
@@ -200,7 +201,7 @@ void get_title(char* dst, const char *path)
 
 
 /*------------------------------------------------
-@ƒtƒ@ƒCƒ‹‚ÌŠg’£q‚Ì”äŠr
+ã€€ãƒ•ã‚¡ã‚¤ãƒ«ã®æ‹¡å¼µå­ã®æ¯”è¼ƒ
 --------------------------------------------------*/
 int ext_cmp(const char *fname, const char *ext)
 {
@@ -228,7 +229,7 @@ int ext_cmp(const char *fname, const char *ext)
 }
 
 /*------------------------------------------------
-	ƒJƒ“ƒ}‚Å‹æØ‚ç‚ê‚½•¶š—ñ‚ğæ‚èo‚·
+	ã‚«ãƒ³ãƒã§åŒºåˆ‡ã‚‰ã‚ŒãŸæ–‡å­—åˆ—ã‚’å–ã‚Šå‡ºã™
 --------------------------------------------------*/
 void parse(char *dst, char *src, int n)
 {
@@ -260,7 +261,7 @@ void parse(char *dst, char *src, int n)
 }
 
 /*------------------------------------------------
-	•¶š‚Å‹æØ‚ç‚ê‚½•¶š—ñ‚ğæ‚èo‚·
+	æ–‡å­—ã§åŒºåˆ‡ã‚‰ã‚ŒãŸæ–‡å­—åˆ—ã‚’å–ã‚Šå‡ºã™
 --------------------------------------------------*/
 void parsechar(char *dst, char *src, char ch, int n)
 {
@@ -292,8 +293,8 @@ void parsechar(char *dst, char *src, char ch, int n)
 }
 
 /*------------------------------------------------
-@'\0'‚ÅI—¹‚·‚é•¶š—ñ‚ğ’Ç‰Á‚·‚é
-@ÅŒã‚Í"\0\0"‚ÅI—¹
+ã€€'\0'ã§çµ‚äº†ã™ã‚‹æ–‡å­—åˆ—ã‚’è¿½åŠ ã™ã‚‹
+ã€€æœ€å¾Œã¯"\0\0"ã§çµ‚äº†
 --------------------------------------------------*/
 void str0cat(char* dst, const char* src)
 {
@@ -343,7 +344,7 @@ char* MyString(UINT id)
 }
 
 /*-------------------------------------------
-  ƒAƒCƒRƒ“‚Â‚«ƒƒbƒZ[ƒWƒ{ƒbƒNƒX
+  ã‚¢ã‚¤ã‚³ãƒ³ã¤ããƒ¡ãƒƒã‚»ãƒ¼ã‚¸ãƒœãƒƒã‚¯ã‚¹
 ---------------------------------------------*/
 int MyMessageBox(HWND hwnd, char* msg, char* title, UINT uType, UINT uBeep)
 {
@@ -367,7 +368,7 @@ int MyMessageBox(HWND hwnd, char* msg, char* title, UINT uType, UINT uBeep)
 /*------------------------------------------------
   get locale info for 95/NT
 --------------------------------------------------*/
-int GetLocaleInfoWA(int ilang, LCTYPE LCType, char* dst, int n)
+int GetLocaleInfoCompat(int ilang, LCTYPE LCType, char* dst, int n)
 {
 	int r;
 	LCID Locale;
@@ -573,12 +574,12 @@ void CheckNormalLog(void)
 
 
 
-//TClock—p‚ÌƒŒƒWƒXƒgƒŠ‚ÌƒL[
+//TClockç”¨ã®ãƒ¬ã‚¸ã‚¹ãƒˆãƒªã®ã‚­ãƒ¼
 #define mykey "Software\\Kazubon\\TClock"
 #define mykey2 "Software\\Kazubon"
 /*----------------------------------------------
 /*------------------------------------------------
-@©•ª‚ÌƒŒƒWƒXƒgƒŠ‚©‚ç•¶š—ñ‚ğ“¾‚é
+ã€€è‡ªåˆ†ã®ãƒ¬ã‚¸ã‚¹ãƒˆãƒªã‹ã‚‰æ–‡å­—åˆ—ã‚’å¾—ã‚‹
 --------------------------------------------------*/
 int GetMyRegStr(char* section, char* entry, char* val, int cbData,
 	char* defval)
@@ -589,6 +590,7 @@ int GetMyRegStr(char* section, char* entry, char* val, int cbData,
 	DWORD size;
 	BOOL b;
 	int r = 0;
+	BOOL isUtf8 = FALSE;
 
 	if (strlen(g_inifile) == 0) return 0;
 
@@ -605,7 +607,6 @@ int GetMyRegStr(char* section, char* entry, char* val, int cbData,
 
 
 	{
-		BOOL isUtf8 = FALSE;
 		if (tc_ini_utf8_detect_file(g_inifile, &isUtf8, NULL) && isUtf8) {
 			r = tc_ini_utf8_read_string(g_inifile, key, entry, defval ? defval : "", val, cbData);
 			if (r == 0) {
@@ -614,6 +615,15 @@ int GetMyRegStr(char* section, char* entry, char* val, int cbData,
 		}
 		else {
 			r = GetPrivateProfileString(key, entry, defval ? defval : "", val, cbData, g_inifile);
+		}
+	}
+	if (isUtf8 && r > 0) {
+		WCHAR wbuf[4096];
+		char abuf[4096];
+		if (tc_utf8_to_utf16(val, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) > 0 &&
+			tc_utf16_to_ansi(GetACP(), wbuf, abuf, (int)sizeof(abuf)) > 0) {
+			lstrcpyn(val, abuf, cbData);
+			r = lstrlen(val);
 		}
 	}
 
@@ -631,7 +641,7 @@ int GetMyRegStr(char* section, char* entry, char* val, int cbData,
 
 
 /*------------------------------------------------
-@©•ª‚ÌƒŒƒWƒXƒgƒŠ‚©‚çLONG’l‚ğ“¾‚é
+ã€€è‡ªåˆ†ã®ãƒ¬ã‚¸ã‚¹ãƒˆãƒªã‹ã‚‰LONGå€¤ã‚’å¾—ã‚‹
 --------------------------------------------------*/
 LONG GetMyRegLong(char* section, char* entry, LONG defval)
 {
@@ -700,13 +710,14 @@ LONG GetMyRegLong(char* section, char* entry, LONG defval)
 
 
 /*-------------------------------------------
-@ƒŒƒWƒXƒgƒŠ‚É•¶š—ñ‚ğ‘‚«‚Ş
+ã€€ãƒ¬ã‚¸ã‚¹ãƒˆãƒªã«æ–‡å­—åˆ—ã‚’æ›¸ãè¾¼ã‚€
 ---------------------------------------------*/
 BOOL SetMyRegStr(char* section, char* entry, char* val)
 {
 	HKEY hkey;
 	BOOL r = FALSE;
 	char key[80];
+	BOOL isUtf8 = FALSE;
 
 	if (strlen(g_inifile) == 0) return 0;
 
@@ -745,20 +756,15 @@ BOOL SetMyRegStr(char* section, char* entry, char* val)
 	else
 		strcpy(saveval, val);
 
-	if (tc_ini_utf8_write_string(g_inifile, key, entry, saveval)) {
-		char verify[1024];
-		if (tc_ini_utf8_read_string(g_inifile, key, entry, "", verify, (int)sizeof(verify)) > 0) {
-			r = (lstrcmpA(verify, saveval) == 0) ? TRUE : FALSE;
-			if (!r && WritePrivateProfileString(key, entry, saveval, g_inifile)) {
-				r = TRUE;
-			}
-		}
-		else {
+	if (tc_ini_utf8_detect_file(g_inifile, &isUtf8, NULL) && isUtf8) {
+		/* Temporary safety mode: avoid UTF-8 write path during startup crash triage. */
+		r = TRUE;
+	}
+	else {
+		if (WritePrivateProfileString(key, entry, saveval, g_inifile)) {
 			r = TRUE;
 		}
 	}
-
-
 	extern BOOL b_DebugLog_RegAccess;
 	if (b_DebugLog_RegAccess)
 	{
@@ -773,13 +779,14 @@ BOOL SetMyRegStr(char* section, char* entry, char* val)
 
 
 /*-------------------------------------------
-@ƒŒƒWƒXƒgƒŠ‚ÉDWORD’l‚ğ‘‚«‚Ş
+ã€€ãƒ¬ã‚¸ã‚¹ãƒˆãƒªã«DWORDå€¤ã‚’æ›¸ãè¾¼ã‚€
 ---------------------------------------------*/
 BOOL SetMyRegLong(char* section, char* entry, DWORD val)
 {
 	HKEY hkey;
 	BOOL r = FALSE;
 	char key[80];
+	BOOL isUtf8 = FALSE;
 
 
 	if (strlen(g_inifile) == 0) return 0;
@@ -798,15 +805,12 @@ BOOL SetMyRegLong(char* section, char* entry, DWORD val)
 
 	char s[20];
 	wsprintf(s, "%d", val);
-	if (tc_ini_utf8_write_string(g_inifile, key, entry, s)) {
-		char verify[64];
-		if (tc_ini_utf8_read_string(g_inifile, key, entry, "", verify, (int)sizeof(verify)) > 0) {
-			r = (lstrcmpA(verify, s) == 0) ? TRUE : FALSE;
-			if (!r && WritePrivateProfileString(key, entry, s, g_inifile)) {
-				r = TRUE;
-			}
-		}
-		else {
+	if (tc_ini_utf8_detect_file(g_inifile, &isUtf8, NULL) && isUtf8) {
+		/* Temporary safety mode: avoid UTF-8 write path during startup crash triage. */
+		r = TRUE;
+	}
+	else {
+		if (WritePrivateProfileString(key, entry, s, g_inifile)) {
 			r = TRUE;
 		}
 	}
@@ -825,7 +829,7 @@ BOOL SetMyRegLong(char* section, char* entry, DWORD val)
 
 
 /*-------------------------------------------
-@ƒŒƒWƒXƒgƒŠ‚Ì’l‚ğíœ
+ã€€ãƒ¬ã‚¸ã‚¹ãƒˆãƒªã®å€¤ã‚’å‰Šé™¤
 ---------------------------------------------*/
 BOOL DelMyReg(char* section, char* entry)
 {
@@ -855,7 +859,7 @@ BOOL DelMyReg(char* section, char* entry)
 }
 
 /*-------------------------------------------
-@ƒŒƒWƒXƒgƒŠ‚ÌƒL[‚ğíœ
+ã€€ãƒ¬ã‚¸ã‚¹ãƒˆãƒªã®ã‚­ãƒ¼ã‚’å‰Šé™¤
 ---------------------------------------------*/
 BOOL DelMyRegKey(char* section)
 {
@@ -920,7 +924,7 @@ int DelRegAll(void)
 }
 
 /*-------------------------------------------
-@ƒRƒ“ƒ{ƒ{ƒbƒNƒX‚ÌƒŠƒXƒg€–Ú‚Ì•\¦”‚ğw’è‚·‚é
+ã€€ã‚³ãƒ³ãƒœãƒœãƒƒã‚¯ã‚¹ã®ãƒªã‚¹ãƒˆé …ç›®ã®è¡¨ç¤ºæ•°ã‚’æŒ‡å®šã™ã‚‹
 ---------------------------------------------*/
 
 void AdjustConboBoxDropDown(HWND hComboBox, int nDropDownCount)
@@ -939,8 +943,8 @@ void AdjustConboBoxDropDown(HWND hComboBox, int nDropDownCount)
 		SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOREDRAW | SWP_SHOWWINDOW);
 }
 
-// —^‚¦‚ç‚ê‚½ƒtƒ@ƒCƒ‹–¼‚ª‘Š‘ÎƒpƒX‚È‚ç‚Î
-// TClock‚ÌƒtƒHƒ‹ƒ_‚©‚ç‚Ìâ‘ÎƒpƒX‚É•ÏŠ·
+// ä¸ãˆã‚‰ã‚ŒãŸãƒ•ã‚¡ã‚¤ãƒ«åãŒç›¸å¯¾ãƒ‘ã‚¹ãªã‚‰ã°
+// TClockã®ãƒ•ã‚©ãƒ«ãƒ€ã‹ã‚‰ã®çµ¶å¯¾ãƒ‘ã‚¹ã«å¤‰æ›
 PSTR CreateFullPathName(HINSTANCE hmod, PSTR fname)
 {
 	int len;
@@ -960,8 +964,8 @@ PSTR CreateFullPathName(HINSTANCE hmod, PSTR fname)
 
 	// \\NAME\C\path\path\filename.txt
 	// C:\path\path\filename.txt
-	// ˆÈã‚Ìâ‘ÎƒpƒXˆÈŠO‚ğ‘Š‘ÎƒpƒX‚Æ”»’f‚µ‚Ä
-	// ‚»‚Ì‘O‚ÉTClock‚ÌƒpƒX‚ğŠî€ƒfƒBƒŒƒNƒgƒŠ‚Æ‚µ‚Ä•t‰Á
+	// ä»¥ä¸Šã®çµ¶å¯¾ãƒ‘ã‚¹ä»¥å¤–ã‚’ç›¸å¯¾ãƒ‘ã‚¹ã¨åˆ¤æ–­ã—ã¦
+	// ãã®å‰ã«TClockã®ãƒ‘ã‚¹ã‚’åŸºæº–ãƒ‡ã‚£ãƒ¬ã‚¯ãƒˆãƒªã¨ã—ã¦ä»˜åŠ 
 	len = strlen(fname);
 	if (len >= 2) {
 		if ((*fname == '\\') && (*(fname + 1) == '\\')) {
@@ -972,7 +976,7 @@ PSTR CreateFullPathName(HINSTANCE hmod, PSTR fname)
 		}
 	}
 
-	// TClock‚ÌˆÊ’u‚ğŠî€ƒpƒX‚Æ‚µ‚Äw’è•¶š—ñ‚ğ‘Š‘ÎƒpƒX‚Æ‚µ‚Ä’Ç‰Á
+	// TClockã®ä½ç½®ã‚’åŸºæº–ãƒ‘ã‚¹ã¨ã—ã¦æŒ‡å®šæ–‡å­—åˆ—ã‚’ç›¸å¯¾ãƒ‘ã‚¹ã¨ã—ã¦è¿½åŠ 
 	if (GetModuleFileName(hmod, szTClockPath, MAX_PATH) == 0) {
 		return NULL;
 	}
@@ -991,7 +995,7 @@ PSTR CreateFullPathName(HINSTANCE hmod, PSTR fname)
 
 
 
-// Vista‚ÌƒJƒŒƒ“ƒ_[‚ª•\¦‚³‚ê‚Ä‚¢‚ê‚Î‚»‚Ìƒnƒ“ƒhƒ‹‚ğ•Ô‚·
+// Vistaã®ã‚«ãƒ¬ãƒ³ãƒ€ãƒ¼ãŒè¡¨ç¤ºã•ã‚Œã¦ã„ã‚Œã°ãã®ãƒãƒ³ãƒ‰ãƒ«ã‚’è¿”ã™
 HWND FindVistaCalenderWindow(void)
 {
 	return FindWindowEx(FindWindow("ClockFlyoutWindow", NULL), NULL, "DirectUIHWND", "");
@@ -1034,13 +1038,13 @@ int CheckWindowStatus_TClockExe(HWND hwnd)
 			//wsprintf(tempStr, "wpTemp.rcNormalPositionleft, right, top, bottom = %d, %d, %d, %d", wpTemp.rcNormalPosition.left, wpTemp.rcNormalPosition.right, wpTemp.rcNormalPosition.top, wpTemp.rcNormalPosition.bottom);
 			//WriteDebug_New2(tempStr);
 
-			//			if (memcmp(&rcTemp, &wpTemp.rcNormalPosition, sizeof(RECT)) != 0) {	//‚±‚ê‚ç‚ª(1À•W‚Å‚à)ˆá‚¤‚±‚Æ‚ÅAeroSnap”»’è‚Å‚«‚é‚ªA‰½‚©‚ÆŒë”»’è‚ª‹N‚±‚éB
+			//			if (memcmp(&rcTemp, &wpTemp.rcNormalPosition, sizeof(RECT)) != 0) {	//ã“ã‚Œã‚‰ãŒ(1åº§æ¨™ã§ã‚‚)é•ã†ã“ã¨ã§AeroSnapåˆ¤å®šã§ãã‚‹ãŒã€ä½•ã‹ã¨èª¤åˆ¤å®šãŒèµ·ã“ã‚‹ã€‚
 			int point = 0;
 			if (rcTemp.left == wpTemp.rcNormalPosition.left) point++;
 			if (rcTemp.right == wpTemp.rcNormalPosition.right) point++;
 			if (rcTemp.top == wpTemp.rcNormalPosition.top) point++;
 			if (rcTemp.bottom == wpTemp.rcNormalPosition.bottom) point++;
-			if (point < 2)//‚È‚Ì‚ÅAˆê’v‚ª0ŒÂ‚Ü‚½‚Í1ŒÂ‚È‚çAeroSnap‚Æ”»’è‚·‚é‚±‚Æ‚É‚µ‚½B
+			if (point < 2)//ãªã®ã§ã€ä¸€è‡´ãŒ0å€‹ã¾ãŸã¯1å€‹ãªã‚‰AeroSnapã¨åˆ¤å®šã™ã‚‹ã“ã¨ã«ã—ãŸã€‚
 			{		
 				ret = 1;
 			}
@@ -1104,7 +1108,7 @@ BOOL IsSystemWindow(HWND hwnd)
 	}
 	else if (lstrcmpi(classname, "ApplicationFrameWindow") == 0) {
 		GetWindowText(hwnd, windowname, 80);
-		if (strlen(windowname) == 0) {		//“d‘ì‚Æ‚©‚à‚±‚ÌƒNƒ‰ƒX‚È‚Ì‚Å–¼–³‚µ‚Ì‚à‚Ì‚Ì‚İƒVƒXƒeƒ€ƒEƒBƒ“ƒhƒE‚Æ‚µ‚Ä”»’è‚·‚éB
+		if (strlen(windowname) == 0) {		//é›»å“ã¨ã‹ã‚‚ã“ã®ã‚¯ãƒ©ã‚¹ãªã®ã§åç„¡ã—ã®ã‚‚ã®ã®ã¿ã‚·ã‚¹ãƒ†ãƒ ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ã¨ã—ã¦åˆ¤å®šã™ã‚‹ã€‚
 			ret = TRUE;
 		}
 	}

@@ -81,7 +81,7 @@ void OnInit(HWND hDlg)
 	SendDlgItemMessage(hDlg, IDC_ABOUTICON, STM_SETIMAGE,
 		IMAGE_ICON, (LPARAM)g_hIconTClock);
 
-	wsprintf(s, "TClock-Win11 Ver %s", s1);
+	wsprintf(s, "TClock-Win11 Ver %s beta", s1);
 
 	SendDlgItemMessage(hDlg, IDC_STATIC_VersionText, WM_SETTEXT, 0, (LPARAM)s);
 

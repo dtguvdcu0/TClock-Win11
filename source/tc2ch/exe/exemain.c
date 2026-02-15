@@ -364,6 +364,7 @@ Status of DLL by TTTT
 ---------------------------------------------------------*/
 void OnDLLAliveMessage(WPARAM tempwParam)
 {
+	(void)tempwParam;
 	FILETIME ft;
 	ULARGE_INTEGER ull;
 
@@ -1091,7 +1092,7 @@ void TerminateTClock(HWND hwnd)
 
 	HookEnd();  // uninstall a hook, Ver 4.0.5.3以降ではすでにフック外れているはずだが念のため。
 
-	if (bDestroy == TRUE) return 0;	//２重終了しないように
+	if (bDestroy == TRUE) return;	//２重終了しないように
 
 	bDestroy = TRUE;
 	EndMouseFunction(hwnd);
@@ -1136,7 +1137,7 @@ void TerminateTClockFromDLL(HWND hwnd)
 
 	HookEnd();  // uninstall a hook, Ver 4.0.5.3以降ではすでにフック外れているはずだが念のため。
 
-	if (bDestroy == TRUE) return 0;	//２重終了しないように
+	if (bDestroy == TRUE) return;	//２重終了しないように
 
 	bDestroy = TRUE;
 	EndMouseFunction(hwnd);
@@ -1179,6 +1180,7 @@ void InitError(int n)
 ---------------------------------------------------------*/
 void OnTimerMain(HWND hwnd)		//メインループタイマー(デフォルト1秒)のタイムアウトの処理
 {
+	(void)hwnd;
 	//時計ウィンドウのタイマー動作が停止して2秒したらフラグが立つ。
 	//負荷が小さいので残してあるが、現在のところ停止動作等は実装されていない。
 	//Ver4.0.4時点で不測の自体に対する対処はOnTimerZombieCheck2で行っている。
@@ -1404,7 +1406,6 @@ BOOL CheckDLL(char *fname)
 void My2chHelp(HWND hwnd)
 {
 	char helpurl[1024];
-	char s[20];
 
 	GetMyRegStr("ETC", "2chHelpURL", helpurl, 1024, "");
 	if (helpurl[0] == 0)
@@ -1478,8 +1479,10 @@ void CreateDefaultIniFile_Win10(char *fname)
 		SetMyRegLong("Color_Font", "UseBackColor2", 0);
 		SetMyRegLong("Color_Font", "AutoBackMatchTaskbar", 1);
 		SetMyRegLong("Color_Font", "AutoBackAlpha", 96);
-		SetMyRegLong("Color_Font", "AutoBackBlendRatio", 65);
+		SetMyRegLong("Color_Font", "AutoBackBlendRatio", 50);
 		SetMyRegLong("Color_Font", "AutoBackRefreshSec", 5);
+		SetMyRegLong("Color_Font", "AutoBackSampleClockOffset", 0);
+		SetMyRegLong("Color_Font", "AutoBackSampleShowDesktopOffset", 0);
 		SetMyRegLong("Color_Font", "BackColor2", 2147483633);
 		SetMyRegLong("Color_Font", "GradDir", 0);
 		SetMyRegLong("Color_Font", "ForeColor", 16777215);

@@ -5,6 +5,7 @@
 -------------------------------------------------------*/
 #include "tcdll.h"
 #include "resource.h"
+#include "../common/text_codec.h"
 #include <math.h>
 //#include <physicalmonitorenumerationapi.h>
 
@@ -404,9 +405,7 @@ static int ConvertClockTextToWide(const char* sp, int len, WCHAR* wbuf, int cchW
 	if(len < 0) len = (int)strlen(sp);
 	if(len <= 0) { wbuf[0] = L'\0'; return 0; }
 
-	wlen = MultiByteToWideChar((UINT)codepage, 0, sp, len, wbuf, cchWide - 1);
-	if(wlen <= 0)
-		wlen = MultiByteToWideChar(CP_ACP, 0, sp, len, wbuf, cchWide - 1);
+	wlen = tc_ansi_bytes_to_utf16_compat((UINT)codepage, sp, len, wbuf, cchWide);
 	if(wlen <= 0) {
 		lastErr = GetLastError();
 		if (b_DebugLog) {

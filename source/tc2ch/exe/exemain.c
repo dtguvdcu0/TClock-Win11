@@ -6,6 +6,7 @@
 #include "tclock.h"
 #include <winver.h>
 #include <shellapi.h>
+#include "../common/text_codec.h"
 
 #define AUTORESTART_WAIT_WIN11	5000	//Win11でのb_AutoRestart時のウェイト(ms)
 
@@ -88,6 +89,7 @@ static BOOL IsUserAdmin(void);
 
 static BOOL AddMessageFilters(void);
 static BOOL HasCommandLineOption(const char *option);
+static int MessageBoxUtf8Compat(HWND hwnd, const char* text, const char* caption, UINT type);
 static BOOL SetHideClockPolicyValue(DWORD value);
 static BOOL IsHideClockPolicyEnabled(void);
 static BOOL WaitExplorerReady(DWORD timeoutMs);
@@ -196,7 +198,36 @@ static BOOL HasCommandLineOption(const char *option)
         if (_strnicmp(p, option, n) == 0) return TRUE;
         while (*p && *p != ' ') p++;
     }
-    return FALSE;
+	return FALSE;
+}
+
+static int MessageBoxUtf8Compat(HWND hwnd, const char* text, const char* caption, UINT type)
+{
+	wchar_t wText[2048];
+	wchar_t wCaption[256];
+	int retText;
+	int retCaption;
+
+	if (!text) text = "";
+	if (!caption) caption = "TClock-Win10";
+
+	retText = tc_ansi_to_utf16_compat(CP_UTF8, text, wText, sizeof(wText) / sizeof(wText[0]));
+	if (retText <= 0) {
+		retText = tc_ansi_to_utf16_compat(CP_ACP, text, wText, sizeof(wText) / sizeof(wText[0]));
+		if (retText <= 0) {
+			lstrcpynW(wText, L"[Message decode error]", sizeof(wText) / sizeof(wText[0]));
+		}
+	}
+
+	retCaption = tc_ansi_to_utf16_compat(CP_UTF8, caption, wCaption, sizeof(wCaption) / sizeof(wCaption[0]));
+	if (retCaption <= 0) {
+		retCaption = tc_ansi_to_utf16_compat(CP_ACP, caption, wCaption, sizeof(wCaption) / sizeof(wCaption[0]));
+		if (retCaption <= 0) {
+			lstrcpynW(wCaption, L"TClock-Win10", sizeof(wCaption) / sizeof(wCaption[0]));
+		}
+	}
+
+	return MessageBoxW(hwnd, wText, wCaption, type);
 }
 
 static BOOL SetHideClockPolicyValue(DWORD value)
@@ -240,9 +271,9 @@ static BOOL WaitExplorerReady(DWORD timeoutMs)
     HWND hwndTray;
 
     do {
-        hwndShell = FindWindow("Shell_TrayWnd", NULL);
+        hwndShell = FindWindow(TEXT("Shell_TrayWnd"), NULL);
         if (hwndShell) {
-            hwndTray = FindWindowEx(hwndShell, NULL, "TrayNotifyWnd", NULL);
+            hwndTray = FindWindowEx(hwndShell, NULL, TEXT("TrayNotifyWnd"), NULL);
             if (hwndTray) {
                 Sleep(500);
                 return TRUE;
@@ -257,9 +288,9 @@ static BOOL WaitExplorerReady(DWORD timeoutMs)
 static void RestartExplorerForHideClock(void)
 {
     b_IgnoreTaskbarRestartForHideClock = TRUE;
-    ShellExecute(NULL, "open", "taskkill.exe", "/F /IM explorer.exe", NULL, SW_HIDE);
+    ShellExecute(NULL, TEXT("open"), TEXT("taskkill.exe"), TEXT("/F /IM explorer.exe"), NULL, SW_HIDE);
     Sleep(1200);
-    ShellExecute(NULL, "open", "explorer.exe", NULL, NULL, SW_SHOWDEFAULT);
+    ShellExecute(NULL, TEXT("open"), TEXT("explorer.exe"), NULL, NULL, SW_SHOWDEFAULT);
     WaitExplorerReady(20000);
 }
 
@@ -299,7 +330,7 @@ BOOL WaitQuitPrevTClock(int cycle)
 		Sleep(100);
 	}
 
-	MessageBox(NULL, "TClock-Win10の再起動がうまくいかなかった可能性があります。現時点で正常に時計が改造されていない場合は、タスクマネージャーからTClock-Win10のプロセスを強制終了してください。\n\nRestarting TClock-Win10 may be unsuccessful. If you don't see the modified Clock on Taskbar, please kill the previous TClock-Win10 in the Taskmanager.",
+	MessageBoxUtf8Compat(NULL, "TClock-Win10の再起動がうまくいかなかった可能性があります。現時点で正常に時計が改造されていない場合は、タスクマネージャーからTClock-Win10のプロセスを強制終了してください。\n\nRestarting TClock-Win10 may be unsuccessful. If you don't see the modified Clock on Taskbar, please kill the previous TClock-Win10 in the Taskmanager.",
 		"TClock-Win10", MB_ICONEXCLAMATION | MB_SETFOREGROUND);
 
 	return TRUE;
@@ -362,7 +393,7 @@ static UINT WINAPI TclockExeMain(void)
 	//	}
 	//	if (hwnd != NULL)
 	//	{
-	//		MessageBox(NULL, "既存のTClock-Win10のプロセス終了に時間がかかっています。『OK』を押しても再起動しない場合にはタスクマネージャーからTClock-Win10のプロセスを強制終了してください。\n\nTerminating Previous TClock-Win10 is taking a long time. If you do not have the restarted TClock-Win10 even after clicking \"OK\", please kill the previous TClock-Win10 in the Taskmanager.",
+	//		MessageBoxUtf8Compat(NULL, "既存のTClock-Win10のプロセス終了に時間がかかっています。『OK』を押しても再起動しない場合にはタスクマネージャーからTClock-Win10のプロセスを強制終了してください。\n\nTerminating Previous TClock-Win10 is taking a long time. If you do not have the restarted TClock-Win10 even after clicking \"OK\", please kill the previous TClock-Win10 in the Taskmanager.",
 	//			"TClock-Win10", MB_ICONEXCLAMATION | MB_SETFOREGROUND);
 	//		hwnd = FindWindow(szClassName, szWindowText);
 	//		if (hwnd != NULL) return 1;
@@ -374,7 +405,7 @@ static UINT WINAPI TclockExeMain(void)
 
 	// check wow64
 	if (IsWow64()) {
-		MessageBox(NULL, "本実行ファイルは32bit (x86)バイナリです。\n64bit環境ではx64バイナリを使用する必要があります。\n\nThis is 32bit (x86) binary.\nx64 binary is required for 64bit Windows.",
+		MessageBoxUtf8Compat(NULL, "本実行ファイルは32bit (x86)バイナリです。\n64bit環境ではx64バイナリを使用する必要があります。\n\nThis is 32bit (x86) binary.\nx64 binary is required for 64bit Windows.",
 			"TClock-Win10", MB_ICONERROR | MB_SETFOREGROUND);
 		return 1;
 	}
@@ -391,7 +422,7 @@ static UINT WINAPI TclockExeMain(void)
 	// Call WINAPI CheckWinVersion_Win10() in tcdll.dll
 	if (CheckWinVersion_Win10() < 0x0400) // = WIN10, 1024
 	{
-		MessageBox(NULL, "本アプリケーションはWindows10以降用です。\n\nThis application works on Windows 10(Anniversary Update) or later.",
+		MessageBoxUtf8Compat(NULL, "本アプリケーションはWindows10以降用です。\n\nThis application works on Windows 10(Anniversary Update) or later.",
 			"TClock-Win10", MB_ICONERROR | MB_SETFOREGROUND);
 		return 1;
 	}
@@ -410,7 +441,7 @@ static UINT WINAPI TclockExeMain(void)
 
 	//CheckRegistry();
 	if (!CheckRegistry_Win10()) {		//名前にはRegistryとあるが、iniファイルを探し、なければ作成する関数
-		MessageBox(NULL, "tclock-win11.iniが見当たらず、また作成に失敗しました。アプリケーションを終了します。\n\nCould not access / create tclock-win11.ini.",
+		MessageBoxUtf8Compat(NULL, "tclock-win11.iniが見当たらず、また作成に失敗しました。アプリケーションを終了します。\n\nCould not access / create tclock-win11.ini.",
 			"TClock-Win10", MB_ICONERROR | MB_SETFOREGROUND);
 		return 1;
 	}
@@ -433,7 +464,7 @@ static UINT WINAPI TclockExeMain(void)
 		}
 		else
 		{
-			int reply = MessageBox(NULL, "TClockのプロセスが稼働中です。再起動しますか？\n『OK』を選ぶと現在のプロセスを終了して新プロセスで再起動します。\n『キャンセル』を選ぶと現在のプロセスを維持します。\n\nPrevious TClock process is still running. Will you restart TClock?\nChoosing:\n\"OK\" initiates restarting from existing TClock Process.\n\"Cancel\" simply aborts this new process",
+			int reply = MessageBoxUtf8Compat(NULL, "TClockのプロセスが稼働中です。再起動しますか？\n『OK』を選ぶと現在のプロセスを終了して新プロセスで再起動します。\n『キャンセル』を選ぶと現在のプロセスを維持します。\n\nPrevious TClock process is still running. Will you restart TClock?\nChoosing:\n\"OK\" initiates restarting from existing TClock Process.\n\"Cancel\" simply aborts this new process",
 				"TClock-Win10", MB_ICONEXCLAMATION | MB_OKCANCEL | MB_DEFBUTTON1 | MB_SETFOREGROUND);
 			if (reply == IDOK)
 			{
@@ -500,7 +531,7 @@ static UINT WINAPI TclockExeMain(void)
 	//起動時に前回終了時の連続リスタート回数を取得する
 	countRestart = GetMyRegLong("Status_DoNotEdit", "CountAutoRestart", 0);
 	if (countRestart >= MAX_AUTORESTART) {
-		MessageBox(NULL, "クラッシュループを検出しました。アプリケーションを終了します。\n\nTClock is terminated because of repeting crash.",
+		MessageBoxUtf8Compat(NULL, "クラッシュループを検出しました。アプリケーションを終了します。\n\nTClock is terminated because of repeting crash.",
 			"TClock-Win10", MB_ICONERROR | MB_SETFOREGROUND);
 		SetMyRegLong("Status_DoNotEdit", "CountAutoRestart", 0);
 		return 1;
@@ -535,7 +566,7 @@ static UINT WINAPI TclockExeMain(void)
 	// Message of the taskbar recreating
 	// Special thanks to Mr.Inuya
 	//https://isobe.exblog.jp/113279/
-	s_uTaskbarRestart = RegisterWindowMessage("TaskbarCreated");
+	s_uTaskbarRestart = RegisterWindowMessage(TEXT("TaskbarCreated"));
 
 	g_hIconTClock = LoadIcon(g_hInst, MAKEINTRESOURCE(IDI_ICON1));
 
@@ -571,7 +602,7 @@ static UINT WINAPI TclockExeMain(void)
 
 
 	if(OleInitialize(NULL) != S_OK){	//STA（シングルスレッドアパートメント）スレッドとして初期化し、OLE用の追加処理を行う…らしい。
-		MessageBox(NULL, "OLEの初期化に失敗しました。\n\nFailed to initialize OLE.", "TClock-Win10", MB_ICONERROR);
+		MessageBoxUtf8Compat(NULL, "OLEの初期化に失敗しました。\n\nFailed to initialize OLE.", "TClock-Win10", MB_ICONERROR);
 	}
 
 	g_hwndMain = hwnd;	//メイン隠しウィンドウのハンドルをグローバル変数のg_hwndMainにコピー
@@ -1668,7 +1699,7 @@ void CreateDefaultIniFile_Win10(char *fname)
 	}
 	else
 	{
-		MessageBox(NULL, "tclock-win11.iniの作成に失敗しました。書き込み可能なフォルダで実行してください",
+		MessageBoxUtf8Compat(NULL, "tclock-win11.iniの作成に失敗しました。書き込み可能なフォルダで実行してください",
 			"TClock-Win10", MB_ICONERROR | MB_OK);
 	}
 }
@@ -1744,7 +1775,7 @@ BOOL CheckRegistry_Win10(void)
 		//		"\n\nTooltip can be disabled (On \"Tooltip\" settings)"
 		//		);
 
-		//	MessageBox(NULL, tempString, "TClock-Win10", MB_OK | MB_SETFOREGROUND | MB_ICONINFORMATION);
+		//	MessageBoxUtf8Compat(NULL, tempString, "TClock-Win10", MB_OK | MB_SETFOREGROUND | MB_ICONINFORMATION);
 		//}
 
 		SetMyRegStr("Status_DoNotEdit", "Version", exeVersionString);

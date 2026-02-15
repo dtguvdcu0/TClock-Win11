@@ -164,7 +164,7 @@ void CreateTClockBarWin11Type2(void)
 {
 	//最初に残骸が残ってたら消す。
 	HWND tempHwnd;
-	if(tempHwnd = FindWindow("TClockBarWin11", NULL) != NULL) PostMessage(tempHwnd, WM_CLOSE, 0, 0);
+	if ((tempHwnd = FindWindow(TEXT("TClockBarWin11"), NULL)) != NULL) PostMessage(tempHwnd, WM_CLOSE, 0, 0);
 
 
 	//Win11Type2用のTClockBarのウィンドウを自作する。
@@ -177,7 +177,7 @@ void CreateTClockBarWin11Type2(void)
 	classTClockBarWin11.cbClsExtra = 0;
 	classTClockBarWin11.cbWndExtra = 0;
 	classTClockBarWin11.hInstance = hmod;
-	classTClockBarWin11.hIcon = LoadIcon(NULL, MAKEINTRESOURCE(IDI_APPLICATION));
+	classTClockBarWin11.hIcon = LoadIcon(NULL, IDI_APPLICATION);
 	classTClockBarWin11.hCursor = LoadCursor(NULL, IDC_ARROW);
 	classTClockBarWin11.hbrBackground = NULL;
 	classTClockBarWin11.lpszMenuName = NULL;
@@ -185,7 +185,7 @@ void CreateTClockBarWin11Type2(void)
 
 	RegisterClass(&classTClockBarWin11);
 
-	hwndTClockBarWin11 = CreateWindowEx(WS_EX_TOOLWINDOW, szClassName, "TClockBarWin11",
+	hwndTClockBarWin11 = CreateWindowEx(WS_EX_TOOLWINDOW, szClassName, TEXT("TClockBarWin11"),
 		WS_POPUP | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
 		NULL, NULL, hmod, NULL);
 
@@ -210,7 +210,7 @@ void CreateWin11MainClock(void)
 	//最初に残骸が残ってたら消す。
 	HWND tempHwnd;
 //	if (Win11Type < 2){
-		while ((tempHwnd = FindWindowEx(hwndTaskBarMain, NULL, "TClockMain", NULL)) != NULL) PostMessage(tempHwnd, WM_CLOSE, 0, 0);
+		while ((tempHwnd = FindWindowEx(hwndTaskBarMain, NULL, TEXT("TClockMain"), NULL)) != NULL) PostMessage(tempHwnd, WM_CLOSE, 0, 0);
 //	}
 
 
@@ -224,7 +224,7 @@ void CreateWin11MainClock(void)
 	classTClockWin11.cbClsExtra = 0;
 	classTClockWin11.cbWndExtra = 0;
 	classTClockWin11.hInstance = hmod;
-	classTClockWin11.hIcon = LoadIcon(NULL, MAKEINTRESOURCE(IDI_APPLICATION));
+	classTClockWin11.hIcon = LoadIcon(NULL, IDI_APPLICATION);
 	classTClockWin11.hCursor = LoadCursor(NULL, IDC_ARROW);
 	classTClockWin11.hbrBackground = NULL;
 	classTClockWin11.lpszMenuName = NULL;
@@ -242,7 +242,7 @@ void CreateWin11MainClock(void)
 	//}
 	//else 
 	{
-		hwndClockMain = CreateWindowEx(WS_EX_TOPMOST, szClassName, "TClockMain",
+		hwndClockMain = CreateWindowEx(WS_EX_TOPMOST, szClassName, TEXT("TClockMain"),
 			WS_VISIBLE | WS_CHILD, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
 			hwndTaskBarMain, NULL, hmod, NULL);
 	}
@@ -260,7 +260,7 @@ HWND CreateWin11SubClock(HWND tempHwndTaskbar)
 
 	//最初に残骸が残ってたら消す。
 	HWND tempHwnd;
-	if ((tempHwnd = FindWindowEx(tempHwndTaskbar, NULL, "TClockSub", NULL)) != NULL) PostMessage(tempHwnd, WM_CLOSE, 0, 0);
+	if ((tempHwnd = FindWindowEx(tempHwndTaskbar, NULL, TEXT("TClockSub"), NULL)) != NULL) PostMessage(tempHwnd, WM_CLOSE, 0, 0);
 
 	WNDCLASS classTClockWin11Sub;
 	TCHAR szClassName[] = TEXT("TClockSub");
@@ -274,7 +274,7 @@ HWND CreateWin11SubClock(HWND tempHwndTaskbar)
 		classTClockWin11Sub.cbClsExtra = 0;
 		classTClockWin11Sub.cbWndExtra = 0;
 		classTClockWin11Sub.hInstance = hmod;
-		classTClockWin11Sub.hIcon = LoadIcon(NULL, MAKEINTRESOURCE(IDI_APPLICATION));
+		classTClockWin11Sub.hIcon = LoadIcon(NULL, IDI_APPLICATION);
 		classTClockWin11Sub.hCursor = LoadCursor(NULL, IDC_ARROW);
 		classTClockWin11Sub.hbrBackground = NULL;
 		classTClockWin11Sub.lpszMenuName = NULL;
@@ -287,7 +287,7 @@ HWND CreateWin11SubClock(HWND tempHwndTaskbar)
 
 	tempHwnd = NULL;
 
-	tempHwnd = CreateWindowEx(WS_EX_TOPMOST, "TClockSub", "TClockSub",
+	tempHwnd = CreateWindowEx(WS_EX_TOPMOST, TEXT("TClockSub"), TEXT("TClockSub"),
 		WS_VISIBLE | WS_CHILD, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
 		tempHwndTaskbar, NULL, hmod, NULL);
 
@@ -304,7 +304,7 @@ void CreateWin11Notify(void)
 	//最初に残骸が残ってたら消す。
 	HWND tempHwnd;
 //	if (Win11Type < 2) {
-		while ((tempHwnd = FindWindowEx(hwndTaskBarMain, NULL, "TClockNotify", NULL)) != NULL) PostMessage(tempHwnd, WM_CLOSE, 0, 0);
+		while ((tempHwnd = FindWindowEx(hwndTaskBarMain, NULL, TEXT("TClockNotify"), NULL)) != NULL) PostMessage(tempHwnd, WM_CLOSE, 0, 0);
 //	}
 
 	//Win11用のTClockのウィンドウを自作する。
@@ -317,7 +317,7 @@ void CreateWin11Notify(void)
 	classTClockWin11Notify.cbClsExtra = 0;
 	classTClockWin11Notify.cbWndExtra = 0;
 	classTClockWin11Notify.hInstance = hmod;
-	classTClockWin11Notify.hIcon = LoadIcon(NULL, MAKEINTRESOURCE(IDI_APPLICATION));
+	classTClockWin11Notify.hIcon = LoadIcon(NULL, IDI_APPLICATION);
 	classTClockWin11Notify.hCursor = LoadCursor(NULL, IDC_ARROW);
 	classTClockWin11Notify.hbrBackground = NULL;
 	classTClockWin11Notify.lpszMenuName = NULL;
@@ -335,7 +335,7 @@ void CreateWin11Notify(void)
 	//}
 	//else 
 	{
-		hwndWin11Notify = CreateWindowEx(WS_EX_TOPMOST, "TClockNotify", "TClockNotify",
+		hwndWin11Notify = CreateWindowEx(WS_EX_TOPMOST, TEXT("TClockNotify"), TEXT("TClockNotify"),
 			WS_VISIBLE | WS_CHILD, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
 			hwndTaskBarMain, NULL, hmod, NULL);
 	}
@@ -351,11 +351,11 @@ void ReCreateWin11Notify(void)
 
 	//最初に残骸が残ってたら消す。
 	HWND tempHwnd;
-	while ((tempHwnd = FindWindowEx(hwndTaskBarMain, NULL, "TClockNotify", NULL)) != NULL) PostMessage(tempHwnd, WM_CLOSE, 0, 0);
+	while ((tempHwnd = FindWindowEx(hwndTaskBarMain, NULL, TEXT("TClockNotify"), NULL)) != NULL) PostMessage(tempHwnd, WM_CLOSE, 0, 0);
 
 	hwndWin11Notify = NULL;
 
-	hwndWin11Notify = CreateWindowEx(WS_EX_TOPMOST, "TClockNotify", "TClockNotify",
+	hwndWin11Notify = CreateWindowEx(WS_EX_TOPMOST, TEXT("TClockNotify"), TEXT("TClockNotify"),
 		WS_VISIBLE | WS_CHILD, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
 		hwndTaskBarMain, NULL, hmod, NULL);
 
@@ -370,6 +370,8 @@ void ReCreateWin11Notify(void)
 
 void CreateMyNotificationFont(int fontheight, int fontwidth)
 {
+	UNREFERENCED_PARAMETER(fontwidth);
+
 	//char fontname[80];
 	//GetMyRegStr("Color_Font", "Font", fontname, 80, "");
 //	hFontNotify = CreateMyFont(fontname, 9, FW_BOLD, FALSE);
@@ -388,7 +390,7 @@ void CreateMyNotificationFont(int fontheight, int fontwidth)
 	lf.lfClipPrecision = CLIP_DEFAULT_PRECIS;
 	lf.lfQuality = DEFAULT_QUALITY;
 	lf.lfPitchAndFamily = DEFAULT_PITCH | FF_DONTCARE;
-	strcpy(lf.lfFaceName, "Segoe UI");
+	lstrcpy(lf.lfFaceName, TEXT("Segoe UI"));
 
 	hFontNotify = CreateFontIndirect(&lf);
 }
@@ -410,7 +412,7 @@ void LoadBitMapWin11Notify(void)
 	//HBITMAP hbmpIconFocusWin11Notify = NULL;
 
 	HDC hdc, tempDC;
-	BYTE tempR, tempG, tempB, tempAlpha;
+	BYTE tempR, tempG, tempB;
 	unsigned tempUnsigned;
 	RGBQUAD* color;
 	BITMAP tempBitmap;
@@ -435,11 +437,11 @@ void LoadBitMapWin11Notify(void)
 		DeleteObject(hbm_DIBSection_Win11Notify);
 	}
 
-	hbmpIconNoWin11Notify = LoadBitmap(hmod, IDB_BITMAP1);		//ブランク
-	hbmpIconFocusWin11Notify = LoadBitmap(hmod, IDB_BITMAP3);	//三日月マーク
+	hbmpIconNoWin11Notify = LoadBitmap(hmod, MAKEINTRESOURCE(IDB_BITMAP1));		//ブランク
+	hbmpIconFocusWin11Notify = LoadBitmap(hmod, MAKEINTRESOURCE(IDB_BITMAP3));	//三日月マーク
 
 
-	hbmpIconYesWin11Notify = LoadBitmap(hmod, IDB_BITMAP4);		//塗りつぶし(文字入れ用)
+	hbmpIconYesWin11Notify = LoadBitmap(hmod, MAKEINTRESOURCE(IDB_BITMAP4));		//塗りつぶし(文字入れ用)
 
 
 	tempR = GetRValue(colWin11Notify);
@@ -782,7 +784,7 @@ void GetWin11TrayWidth(void)
 
 	HWND tempHwnd;
 	POINT pos = { 0,0 };
-	tempHwnd = FindWindowEx(hwndTrayMain, NULL, "TrayInputIndicatorWClass", NULL);
+	tempHwnd = FindWindowEx(hwndTrayMain, NULL, TEXT("TrayInputIndicatorWClass"), NULL);
 	MapWindowPoints(tempHwnd, hwndTrayMain, &pos, 1);
 
 	if (b_DebugLog)writeDebugLog_Win10("[for_win11.c][GetWin11TrayWidth] origWidthWin11Tray =", origWidthWin11Tray);
@@ -806,8 +808,8 @@ void SwitchToTClockBarWin11(void)
 	if (!b_ShowingTClockBarWin11)
 	{
 		b_ShowingTClockBarWin11 = TRUE;
-		if (desktopDC = GetDC(hwndDesktop)) {
-			if (tclockBarDC = GetDC(hwndTClockBarWin11)) {
+		if ((desktopDC = GetDC(hwndDesktop)) != NULL) {
+			if ((tclockBarDC = GetDC(hwndTClockBarWin11)) != NULL) {
 
 				BitBlt(tclockBarDC, 0, 0, posXMainClock, heightMainClockFrame, desktopDC, 0, posYTaskbar, SRCCOPY);
 				ReleaseDC(hwndTClockBarWin11, tclockBarDC);
@@ -844,7 +846,6 @@ void DesktopDirectDraw_Win11(void)
 	HWND tempDeskotopHwnd = NULL;
 	HDC desktopDC = NULL;
 	HDC tclockDC = NULL;
-	HDC notifyDC = NULL;
 	extern HDC hdcClock;
 
 	if (b_DebugLog) {
@@ -854,8 +855,8 @@ void DesktopDirectDraw_Win11(void)
 
 	tempDeskotopHwnd = GetDesktopWindow();	//GetDesktopWindow()がデスクトップ
 	
-	if (desktopDC = GetDC(tempDeskotopHwnd)) {
-		if (tclockDC = GetDC(hwndClockMain)) {
+	if ((desktopDC = GetDC(tempDeskotopHwnd)) != NULL) {
+		if ((tclockDC = GetDC(hwndClockMain)) != NULL) {
 			
 			BitBlt(desktopDC, posXMainClock, originalPosYTaskbar, widthMainClockFrame, heightMainClockFrame, tclockDC, 0, 0, SRCCOPY);
 			ReleaseDC(hwndClockMain, tclockDC);
@@ -1073,9 +1074,9 @@ LRESULT CALLBACK WndProcTaskbarContentBridge_Win11(HWND tempHwnd, UINT message, 
 
 		ret = CallWindowProc(oldProcTaskbarContentBridge_Win11, tempHwnd, message, wParam, lParam);
 
-	if (b_DebugLog) {
-		writeDebugLog_Win10("[for_win11.c][WndProcTaskbarContentBridge_Win11] Ret =", ret);
-	}
+		if (b_DebugLog) {
+			writeDebugLog_Win10("[for_win11.c][WndProcTaskbarContentBridge_Win11] Ret =", (int)ret);
+		}
 
 	if (message == 71)		//WM_WINDOWPOSCHANGED
 	{
@@ -1211,10 +1212,10 @@ LRESULT CALLBACK SubclassTrayProc_Win11(HWND hwnd, UINT message, WPARAM wParam, 
 
 			newWidth = (int)(*pncsp).rgrc[0].right - (int)(*pncsp).rgrc[0].left;
 
-			if (b_DebugLog) {
-				writeDebugLog_Win10("[for_win11.c][SubclassTrayProc_Win11] WM_NCCALCSIZE received, wParam = ", wParam);
-				writeDebugLog_Win10("[for_win11.c][SubclassTrayProc_Win11] newWidth = ", newWidth);
-			}
+				if (b_DebugLog) {
+					writeDebugLog_Win10("[for_win11.c][SubclassTrayProc_Win11] WM_NCCALCSIZE received, wParam = ", (int)wParam);
+					writeDebugLog_Win10("[for_win11.c][SubclassTrayProc_Win11] newWidth = ", newWidth);
+				}
 
 			if (newWidth != modifiedWidthWin11Tray) {
 				origWidthWin11Tray = newWidth;

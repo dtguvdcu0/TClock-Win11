@@ -70,6 +70,82 @@ int tc_utf16_to_ansi(UINT codepage, const wchar_t* wide, char* outAnsi, int outA
     return tc_len_no_nul_a(outAnsi);
 }
 
+int tc_ansi_to_utf16_compat(UINT preferredCodePage, const char* ansi, wchar_t* outWide, int outWideCch)
+{
+    int n;
+    DWORD flags;
+    UINT cp = preferredCodePage;
+
+    if (!cp) cp = GetACP();
+    if (!ansi || !outWide || outWideCch <= 0) return 0;
+
+    flags = (cp == CP_UTF8) ? MB_ERR_INVALID_CHARS : 0;
+    n = MultiByteToWideChar(cp, flags, ansi, -1, outWide, outWideCch);
+    if (n <= 0 && flags != 0) {
+        n = MultiByteToWideChar(cp, 0, ansi, -1, outWide, outWideCch);
+    }
+    if (n <= 0 && cp != CP_ACP) {
+        n = MultiByteToWideChar(CP_ACP, 0, ansi, -1, outWide, outWideCch);
+    }
+    if (n <= 0) {
+        outWide[0] = L'\0';
+        return 0;
+    }
+    outWide[outWideCch - 1] = L'\0';
+    return tc_len_no_nul_w(outWide);
+}
+
+int tc_utf16_to_ansi_compat(UINT preferredCodePage, const wchar_t* wide, char* outAnsi, int outAnsiBytes)
+{
+    int n;
+    UINT cp = preferredCodePage;
+
+    if (!cp) cp = GetACP();
+    if (!wide || !outAnsi || outAnsiBytes <= 0) return 0;
+
+    n = WideCharToMultiByte(cp, 0, wide, -1, outAnsi, outAnsiBytes, NULL, NULL);
+    if (n <= 0 && cp != CP_ACP) {
+        n = WideCharToMultiByte(CP_ACP, 0, wide, -1, outAnsi, outAnsiBytes, NULL, NULL);
+    }
+    if (n <= 0) {
+        outAnsi[0] = '\0';
+        return 0;
+    }
+    outAnsi[outAnsiBytes - 1] = '\0';
+    return tc_len_no_nul_a(outAnsi);
+}
+
+int tc_ansi_bytes_to_utf16_compat(UINT preferredCodePage, const char* ansi, int ansiBytes, wchar_t* outWide, int outWideCch)
+{
+    int n;
+    DWORD flags;
+    UINT cp = preferredCodePage;
+    int srcBytes = ansiBytes;
+
+    if (!cp) cp = GetACP();
+    if (!ansi || !outWide || outWideCch <= 1) return 0;
+    if (srcBytes < 0) srcBytes = tc_len_no_nul_a(ansi);
+    if (srcBytes <= 0) {
+        outWide[0] = L'\0';
+        return 0;
+    }
+
+    flags = (cp == CP_UTF8) ? MB_ERR_INVALID_CHARS : 0;
+    n = MultiByteToWideChar(cp, flags, ansi, srcBytes, outWide, outWideCch - 1);
+    if (n <= 0 && flags != 0) {
+        n = MultiByteToWideChar(cp, 0, ansi, srcBytes, outWide, outWideCch - 1);
+    }
+    if (n <= 0 && cp != CP_ACP) {
+        n = MultiByteToWideChar(CP_ACP, 0, ansi, srcBytes, outWide, outWideCch - 1);
+    }
+    if (n <= 0) {
+        outWide[0] = L'\0';
+        return 0;
+    }
+    outWide[n] = L'\0';
+    return n;
+}
+
 BOOL tc_text_codec_selfcheck(void)
 {
     const char* s = "codec-selfcheck";

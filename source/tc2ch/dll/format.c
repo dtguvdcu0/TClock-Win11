@@ -8,6 +8,7 @@
 
 #include "tcdll.h"
 #include "string.h"
+#include "../common/text_codec.h"
 #define MAX_PROCESSOR               64
 
 int codepage = CP_ACP;
@@ -157,8 +158,7 @@ int GetLocaleInfoCompat(WORD wLanguageID, LCTYPE LCType, char* dst, int n)
 		*pw = 0;
 		r = GetLocaleInfoW(Locale, LCType, pw, n);
 		if(r)
-			WideCharToMultiByte(codepage, 0, pw, -1, dst, n,
-				NULL, NULL);
+			tc_utf16_to_ansi_compat((UINT)codepage, pw, dst, n);
 		GlobalFreePtr(pw);
 	}
 	return r;
@@ -182,14 +182,13 @@ int GetDateFormatCompat(WORD wLanguageID, DWORD dwFlags, CONST SYSTEMTIME *t,
 		{
 			pw1 = (WCHAR*)GlobalAllocPtr(GHND,
 				sizeof(WCHAR)*(strlen(fmt)+1));
-			MultiByteToWideChar(codepage, 0, fmt, -1,
-				pw1, strlen(fmt));
+			if(pw1)
+				tc_ansi_to_utf16_compat((UINT)codepage, fmt, pw1, (int)strlen(fmt) + 1);
 		}
 		pw2 = (WCHAR*)GlobalAllocPtr(GHND, sizeof(WCHAR)*(n+1));
 		r = GetDateFormatW(Locale, dwFlags, t, pw1, pw2, n);
 		if(r)
-			WideCharToMultiByte(codepage, 0, pw2, -1, dst, n,
-				NULL, NULL);
+			tc_utf16_to_ansi_compat((UINT)codepage, pw2, dst, n);
 		if(pw1) GlobalFreePtr(pw1);
 		GlobalFreePtr(pw2);
 	}
@@ -214,14 +213,13 @@ int GetTimeFormatCompat(WORD wLanguageID, DWORD dwFlags, CONST SYSTEMTIME *t,
 		{
 			pw1 = (WCHAR*)GlobalAllocPtr(GHND,
 				sizeof(WCHAR)*(strlen(fmt)+1));
-			MultiByteToWideChar(codepage, 0, fmt, -1,
-				pw1, strlen(fmt));
+			if(pw1)
+				tc_ansi_to_utf16_compat((UINT)codepage, fmt, pw1, (int)strlen(fmt) + 1);
 		}
 		pw2 = (WCHAR*)GlobalAllocPtr(GHND, sizeof(WCHAR)*(n+1));
 		r = GetTimeFormatW(Locale, dwFlags, t, pw1, pw2, n);
 		if(r)
-			WideCharToMultiByte(codepage, 0, pw2, -1, dst, n,
-				NULL, NULL);
+			tc_utf16_to_ansi_compat((UINT)codepage, pw2, dst, n);
 		if(pw1) GlobalFreePtr(pw1);
 		GlobalFreePtr(pw2);
 	}

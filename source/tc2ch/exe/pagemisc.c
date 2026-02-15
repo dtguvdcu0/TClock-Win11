@@ -4,6 +4,7 @@
 　　KAZUBON 1997-1998
 ---------------------------------------------*/
 #include "tclock.h"
+#include "../common/text_codec.h"
 
 static void OnInit(HWND hDlg);
 static void OnApply(HWND hDlg);
@@ -142,14 +143,19 @@ BOOL CreateLink(LPCSTR fname, LPCSTR dstpath, LPCSTR name)
 
 		if(SUCCEEDED(hres))
 		{
-			WORD wsz[MAX_PATH];
+			WCHAR wsz[MAX_PATH];
 			char lnkfile[MAX_PATH];
 			strcpy(lnkfile, dstpath);
 			add_title(lnkfile, (char*)name);
 			strcat(lnkfile, ".lnk");
 
-			MultiByteToWideChar(CP_ACP, 0, lnkfile, -1,
-				wsz, MAX_PATH);
+			if(tc_ansi_to_utf16_compat(CP_UTF8, lnkfile, wsz, MAX_PATH) <= 0)
+			{
+				ppf->lpVtbl->Release(ppf);
+				psl->lpVtbl->Release(psl);
+				CoUninitialize();
+				return FALSE;
+			}
 
 			hres = ppf->lpVtbl->Save(ppf, wsz, TRUE);
 			ppf->lpVtbl->Release(ppf);

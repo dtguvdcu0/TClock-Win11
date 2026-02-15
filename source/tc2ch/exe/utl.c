@@ -449,21 +449,41 @@ char* MyString(UINT id)
 ---------------------------------------------*/
 int MyMessageBox(HWND hwnd, char* msg, char* title, UINT uType, UINT uBeep)
 {
-	MSGBOXPARAMS mbp;
+	MSGBOXPARAMSW mbp;
+	wchar_t wMsg[2048];
+	wchar_t wTitle[256];
+	int msgRet;
+	int titleRet;
 
-	mbp.cbSize = sizeof(MSGBOXPARAMS);
+	if (!msg) msg = "";
+	if (!title) title = "TClock-Win10";
+
+	msgRet = tc_ansi_to_utf16_compat(CP_UTF8, msg, wMsg, sizeof(wMsg) / sizeof(wMsg[0]));
+	titleRet = tc_ansi_to_utf16_compat(CP_UTF8, title, wTitle, sizeof(wTitle) / sizeof(wTitle[0]));
+	if (msgRet <= 0 || titleRet <= 0) {
+		if (msgRet <= 0) {
+			msgRet = tc_ansi_to_utf16_compat(CP_ACP, msg, wMsg, sizeof(wMsg) / sizeof(wMsg[0]));
+			if (msgRet <= 0) lstrcpynW(wMsg, L"[Message decode error]", sizeof(wMsg) / sizeof(wMsg[0]));
+		}
+		if (titleRet <= 0) {
+			titleRet = tc_ansi_to_utf16_compat(CP_ACP, title, wTitle, sizeof(wTitle) / sizeof(wTitle[0]));
+			if (titleRet <= 0) lstrcpynW(wTitle, L"TClock-Win10", sizeof(wTitle) / sizeof(wTitle[0]));
+		}
+	}
+
+	mbp.cbSize = sizeof(MSGBOXPARAMSW);
 	mbp.hwndOwner = hwnd;
 	mbp.hInstance = g_hInst;
-	mbp.lpszText = msg;
-	mbp.lpszCaption = title;
+	mbp.lpszText = wMsg;
+	mbp.lpszCaption = wTitle;
 	mbp.dwStyle = MB_USERICON | uType;
-	mbp.lpszIcon = MAKEINTRESOURCE(IDI_ICON1);
+	mbp.lpszIcon = MAKEINTRESOURCEW(IDI_ICON1);
 	mbp.dwContextHelpId = 0;
 	mbp.lpfnMsgBoxCallback = NULL;
 	mbp.dwLanguageId = MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT);
 	if(uBeep != 0xFFFFFFFF)
 		MessageBeep(uBeep);
-	return MessageBoxIndirect(&mbp);
+	return MessageBoxIndirectW(&mbp);
 }
 
 /*------------------------------------------------
@@ -482,10 +502,10 @@ int GetLocaleInfoCompat(int ilang, LCTYPE LCType, char* dst, int n)
 	{
 		WCHAR* pw;
 		pw = (WCHAR*)GlobalAllocPtr(GHND, sizeof(WCHAR)*(n+1));
+		if(!pw) return 0;
 		r = GetLocaleInfoW(Locale, LCType, pw, n);
 		if(r)
-			WideCharToMultiByte(CP_ACP, 0, pw, -1, dst, n,
-				NULL, NULL);
+			tc_utf16_to_ansi_compat(CP_UTF8, pw, dst, n);
 		GlobalFreePtr(pw);
 	}
 	return r;

@@ -5,6 +5,7 @@
 ----------------------------------------------------*/
 
 #include "tclock.h"
+#include "../common/text_codec.h"
 
 #ifndef TPM_RECURSE
 #define TPM_RECURSE         0x0001L
@@ -59,8 +60,7 @@ char *Unicode2Ansi(LPCWSTR psUnicode)
 
 	if(psAnsi != NULL){
 		ZeroMemory(psAnsi, iLengthW * 2 + 1);
-		WideCharToMultiByte(CP_ACP, 0, psUnicode, iLengthW,
-							psAnsi, iLengthW * 2, NULL, NULL);
+		tc_utf16_to_ansi_compat(CP_UTF8, psUnicode, psAnsi, iLengthW * 2 + 1);
 	}
 	return psAnsi;
 }
@@ -215,7 +215,12 @@ BOOL AddUserMenu(HMENU hMenu, LPMALLOC pMalloc, LPCTSTR path)
 		return FALSE;
 	}
 
-	MultiByteToWideChar(CP_ACP,MB_PRECOMPOSED,path,-1,ochPath,MAX_PATH);
+	if(tc_ansi_to_utf16_compat(CP_UTF8, path, ochPath, MAX_PATH) <= 0)
+	{
+		pFolder->lpVtbl->Release(pFolder);
+		pDesktop->lpVtbl->Release(pDesktop);
+		return FALSE;
+	}
 
 	if (pDesktop->lpVtbl->ParseDisplayName(pDesktop, NULL, NULL, ochPath, NULL, &pItemIDFolder, NULL)!=NOERROR)
 	{
@@ -584,7 +589,13 @@ void OnMenuRButtonUp(HWND hwnd, WPARAM wParam, LPARAM lParam)
 			return;
 		}
 
-		MultiByteToWideChar(CP_ACP,MB_PRECOMPOSED,path,-1,ochPath,MAX_PATH);
+		if(tc_ansi_to_utf16_compat(CP_UTF8, path, ochPath, MAX_PATH) <= 0)
+		{
+			pFolder->lpVtbl->Release(pFolder);
+			pDesktop->lpVtbl->Release(pDesktop);
+			pMalloc->lpVtbl->Release(pMalloc);
+			return;
+		}
 		if (pFolder->lpVtbl->ParseDisplayName(pFolder, NULL, NULL, ochPath, NULL, &pAllIDL, NULL)!=NOERROR)
 		{
 			pAllIDL = NULL;

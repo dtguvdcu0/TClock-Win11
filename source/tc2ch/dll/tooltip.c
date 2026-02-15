@@ -5,11 +5,13 @@
 -------------------------------------------------------*/
 #define COBJMACROS
 #include "tcdll.h"
+#include "../common/text_codec.h"
 
 extern HANDLE hmod;
 extern HWND hwndClockMain;
 
 extern BOOL b_DebugLog;
+extern int codepage;
 
 extern void GetDisplayTime(SYSTEMTIME* pt, int* beat100);
 
@@ -833,8 +835,7 @@ BOOL TooltipOnNotify(LRESULT *plRes, LPARAM lParam)
 			{
 				TooltipUpdateText();
 			}
-			MultiByteToWideChar(CP_ACP, 0, formatTooltip, -1,
-				formatTooltipW, sizeof(formatTooltipW)/sizeof(WCHAR));
+			tc_ansi_to_utf16_compat((UINT)codepage, formatTooltip, formatTooltipW, sizeof(formatTooltipW)/sizeof(WCHAR));
 			((LPTOOLTIPTEXTW)lParam)->lpszText = formatTooltipW;
 			*plRes = 0;
 			return TRUE;

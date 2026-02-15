@@ -482,8 +482,9 @@ int GetWindowTextUTF8(HWND hwnd, char* text, int textBytes)
 	text[0] = '\0';
 	if (!hwnd) return 0;
 	if (GetWindowTextW(hwnd, wText, (int)(sizeof(wText) / sizeof(wText[0]))) <= 0) return 0;
-	if (tc_utf16_to_utf8(wText, text, textBytes) > 0) return lstrlen(text);
+	/* Keep char-boundary behavior compatible with existing ANSI save/read paths. */
 	if (tc_utf16_to_ansi_compat(CP_ACP, wText, text, textBytes) > 0) return lstrlen(text);
+	if (tc_utf16_to_utf8(wText, text, textBytes) > 0) return lstrlen(text);
 	text[0] = '\0';
 	return 0;
 }
@@ -515,8 +516,8 @@ int GetClassNameUTF8(HWND hwnd, char* text, int textBytes)
 	text[0] = '\0';
 	if (!hwnd) return 0;
 	if (GetClassNameW(hwnd, wText, (int)(sizeof(wText) / sizeof(wText[0]))) <= 0) return 0;
-	if (tc_utf16_to_utf8(wText, text, textBytes) > 0) return lstrlen(text);
 	if (tc_utf16_to_ansi_compat(CP_ACP, wText, text, textBytes) > 0) return lstrlen(text);
+	if (tc_utf16_to_utf8(wText, text, textBytes) > 0) return lstrlen(text);
 	text[0] = '\0';
 	return 0;
 }

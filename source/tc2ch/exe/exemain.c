@@ -309,7 +309,6 @@ static void RestartExplorerForHideClock(void)
 static void ApplyHideClockPolicyFlow(void)
 {
     if (!b_UseHideClockPolicyFlow) return;
-    if (!IsUserAdmin()) return;
     if (b_HideClockPolicyWasEnabled) return;
     if (!SetHideClockPolicyValue(1)) return;
     b_HideClockPolicyApplied = TRUE;
@@ -319,7 +318,6 @@ static void ApplyHideClockPolicyFlow(void)
 static void RestoreHideClockPolicyFlow(void)
 {
     if (!b_HideClockPolicyApplied) return;
-    if (!IsUserAdmin()) return;
     if (!SetHideClockPolicyValue(0)) return;
     RestartExplorerForHideClock();
     b_HideClockPolicyApplied = FALSE;
@@ -527,7 +525,7 @@ static UINT WINAPI TclockExeMain(void)
 	b_NormalLog = GetMyRegLong(NULL, "NormalLog", TRUE);
 	SetMyRegLong(NULL, "NormalLog", b_NormalLog);
 
-    b_UseHideClockPolicyFlow = GetMyRegLong("ETC", "UseHideClockPolicyFlow", TRUE);
+    b_UseHideClockPolicyFlow = GetMyRegLong("ETC", "UseHideClockPolicyFlow", FALSE);
     SetMyRegLong("ETC", "UseHideClockPolicyFlow", b_UseHideClockPolicyFlow);
     b_HideClockPolicyWasEnabled = IsHideClockPolicyEnabled();
     if (HasCommandLineOption(L"restart")) {

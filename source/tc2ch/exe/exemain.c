@@ -1622,7 +1622,7 @@ void CreateDefaultIniFile_Win10(char *fname)
 		SetMyRegLong("Tooltip", "Tip2Use", 0);
 		SetMyRegLong("Tooltip", "Tip2Use", 0);
 		SetMyRegStr("ToolTip", "TipFont", "Lucida Console");
-		SetMyRegStr("Tooltip", "TipTitle", "TClock-Win11 <%VerTC%>");
+		SetMyRegStr("Tooltip", "TipTitle", "");
 		SetMyRegLong("Tooltip", "TipFontSize", 9);
 		SetMyRegLong("Tooltip", "TipBold", 0);
 		SetMyRegLong("Tooltip", "TipItalic", 0);

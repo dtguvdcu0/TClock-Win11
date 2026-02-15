@@ -115,6 +115,17 @@ static BOOL tc_decode_utf8_hex_to_ansi(const char* hex, char* outAnsi, int outAn
 	return TRUE;
 }
 
+static void tc_strip_wrapping_quotes(char* s)
+{
+	int len;
+	if (!s) return;
+	len = lstrlen(s);
+	if (len >= 2 && s[0] == '"' && s[len - 1] == '"') {
+		MoveMemory(s, s + 1, (SIZE_T)(len - 2));
+		s[len - 2] = '\0';
+	}
+}
+
 //#else
 //typedef union _TC_SINT64 {
 //    struct {
@@ -794,8 +805,11 @@ int GetMyRegStr(char* section, char* entry, char* val, int cbData,
 	BOOL isUtf8 = FALSE;
 	BOOL needsHexBackfill = FALSE;
 	char hexEntry[128];
+	const char missingSentinel[] = "\x1D";
 
 	if (strlen(g_inifile) == 0) return 0;
+	if (!val || cbData <= 0) return 0;
+	val[0] = '\0';
 
 	key[0] = 0;
 
@@ -812,16 +826,39 @@ int GetMyRegStr(char* section, char* entry, char* val, int cbData,
 	{
 		if (tc_ini_utf8_detect_file(g_inifile, &isUtf8, NULL) && isUtf8) {
 			if (tc_is_utf8_hex_target_key(section, entry)) {
+				char mainbuf[4096];
 				char hexbuf[4096];
-				if (tc_build_utf8_hex_entry_name(entry, hexEntry, (int)sizeof(hexEntry)) &&
-					tc_ini_utf8_read_string(g_inifile, key, hexEntry, "", hexbuf, (int)sizeof(hexbuf)) > 0) {
-					if (tc_decode_utf8_hex_to_ansi(hexbuf, val, cbData)) {
+				if (tc_ini_utf8_read_string(g_inifile, key, entry, missingSentinel, mainbuf, (int)sizeof(mainbuf)) > 0 ||
+					mainbuf[0] == '\0') {
+					if (lstrcmp(mainbuf, missingSentinel) != 0) {
+						tc_strip_wrapping_quotes(mainbuf);
+						lstrcpyn(val, mainbuf, cbData);
 						r = lstrlen(val);
+						if (isUtf8 && r > 0) {
+							WCHAR wbuf[4096];
+							char abuf[4096];
+							if (tc_utf8_to_utf16(val, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) > 0 &&
+								tc_utf16_to_ansi(GetACP(), wbuf, abuf, (int)sizeof(abuf)) > 0) {
+								lstrcpyn(val, abuf, cbData);
+								r = lstrlen(val);
+							}
+						}
+						if (r == 0 && tc_build_utf8_hex_entry_name(entry, hexEntry, (int)sizeof(hexEntry))) {
+							tc_ini_utf8_delete_key(g_inifile, key, hexEntry);
+						}
 						goto getmyregstr_done;
 					}
 				}
-				else if (tc_build_utf8_hex_entry_name(entry, hexEntry, (int)sizeof(hexEntry))) {
-					needsHexBackfill = TRUE;
+				if (tc_build_utf8_hex_entry_name(entry, hexEntry, (int)sizeof(hexEntry))) {
+					if (tc_ini_utf8_read_string(g_inifile, key, hexEntry, "", hexbuf, (int)sizeof(hexbuf)) > 0) {
+						if (tc_decode_utf8_hex_to_ansi(hexbuf, val, cbData)) {
+							r = lstrlen(val);
+							goto getmyregstr_done;
+						}
+					}
+					else {
+						needsHexBackfill = TRUE;
+					}
 				}
 			}
 			r = tc_ini_utf8_read_string(g_inifile, key, entry, defval ? defval : "", val, cbData);
@@ -984,12 +1021,20 @@ BOOL SetMyRegStr(char* section, char* entry, char* val)
 			char hexEntry[128];
 			BOOL rHex = FALSE;
 			BOOL rLegacy = FALSE;
-			if (tc_build_utf8_hex_entry_name(entry, hexEntry, (int)sizeof(hexEntry)) &&
-				tc_encode_utf8_hex_from_ansi(val, hexbuf, (int)sizeof(hexbuf))) {
-				rHex = tc_ini_utf8_write_string(g_inifile, key, hexEntry, hexbuf) ? TRUE : FALSE;
+			if (tc_build_utf8_hex_entry_name(entry, hexEntry, (int)sizeof(hexEntry))) {
+				if (val[0] == '\0') {
+					rHex = tc_ini_utf8_write_string(g_inifile, key, hexEntry, "") ? TRUE : FALSE;
+				}
+				else if (tc_encode_utf8_hex_from_ansi(val, hexbuf, (int)sizeof(hexbuf))) {
+					rHex = tc_ini_utf8_write_string(g_inifile, key, hexEntry, hexbuf) ? TRUE : FALSE;
+				}
+				else {
+					/* Keep both keys in sync even when encoding fails. */
+					rHex = tc_ini_utf8_write_string(g_inifile, key, hexEntry, "") ? TRUE : FALSE;
+				}
 			}
-			rLegacy = tc_ini_utf8_write_string(g_inifile, key, entry, saveval) ? TRUE : FALSE;
-			r = rHex || rLegacy;
+			rLegacy = tc_ini_utf8_write_string(g_inifile, key, entry, val) ? TRUE : FALSE;
+			r = rHex && rLegacy;
 		}
 		else {
 			r = tc_ini_utf8_write_string(g_inifile, key, entry, saveval) ? TRUE : FALSE;

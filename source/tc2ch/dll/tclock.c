@@ -5,6 +5,7 @@
 -------------------------------------------------------*/
 #include "tcdll.h"
 #include "resource.h"
+#include "../version.h"
 #include "../common/text_codec.h"
 #include <math.h>
 //#include <physicalmonitorenumerationapi.h>
@@ -2234,7 +2235,7 @@ void ReadData()
 	//LogLineCount = AutoClearLogLines;
 	LogLineCount = 0;
 
-	GetMyRegStr("Status_DoNotEdit", "Version", Ver_TClockWin10, 16, "Not Available");
+	lstrcpyn(Ver_TClockWin10, TCLOCK_VER_FILE_STR, sizeof(Ver_TClockWin10));
 
 	b_ExistLTEProfile = GetMyRegLong("Status_DoNotEdit", "ExistLTEProfile", FALSE);
 

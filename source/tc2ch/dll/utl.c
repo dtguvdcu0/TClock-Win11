@@ -548,7 +548,17 @@ BOOL SetMyRegLong(char* section, char* entry, DWORD val)
 		wsprintf(s, "%d", val);
 		r = FALSE;
 		if (tc_ini_utf8_detect_file(g_inifile, &isUtf8, NULL) && isUtf8) {
-			r = WritePrivateProfileString(key, entry, s, g_inifile) ? TRUE : FALSE;
+			if (tc_ini_utf8_write_string(g_inifile, key, entry, s)) {
+				r = TRUE;
+			}
+			else {
+				BOOL isMainSection = (!section || !*section || lstrcmpi(section, "Main") == 0);
+				/* Compatibility fallback for mixed/legacy UTF-8 files:
+				   avoid Main fallback to prevent duplicate [Main] append behavior. */
+				if (!isMainSection) {
+					r = WritePrivateProfileString(key, entry, s, g_inifile) ? TRUE : FALSE;
+				}
+			}
 		}
 		else if (WritePrivateProfileString(key, entry, s, g_inifile)) {
 			r = TRUE;

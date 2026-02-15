@@ -844,7 +844,7 @@ int GetMyRegStr(char* section, char* entry, char* val, int cbData,
 	if (isUtf8 && needsHexBackfill && r > 0) {
 		char hexbuf[4096];
 		if (tc_encode_utf8_hex_from_ansi(val, hexbuf, (int)sizeof(hexbuf))) {
-			WritePrivateProfileString(key, hexEntry, hexbuf, g_inifile);
+			tc_ini_utf8_write_string(g_inifile, key, hexEntry, hexbuf);
 		}
 	}
 
@@ -985,13 +985,13 @@ BOOL SetMyRegStr(char* section, char* entry, char* val)
 			BOOL rLegacy = FALSE;
 			if (tc_build_utf8_hex_entry_name(entry, hexEntry, (int)sizeof(hexEntry)) &&
 				tc_encode_utf8_hex_from_ansi(val, hexbuf, (int)sizeof(hexbuf))) {
-				rHex = WritePrivateProfileString(key, hexEntry, hexbuf, g_inifile) ? TRUE : FALSE;
+				rHex = tc_ini_utf8_write_string(g_inifile, key, hexEntry, hexbuf) ? TRUE : FALSE;
 			}
-			rLegacy = WritePrivateProfileString(key, entry, saveval, g_inifile) ? TRUE : FALSE;
+			rLegacy = tc_ini_utf8_write_string(g_inifile, key, entry, saveval) ? TRUE : FALSE;
 			r = rHex || rLegacy;
 		}
 		else {
-			r = WritePrivateProfileString(key, entry, saveval, g_inifile) ? TRUE : FALSE;
+			r = tc_ini_utf8_write_string(g_inifile, key, entry, saveval) ? TRUE : FALSE;
 		}
 	}
 	else {
@@ -1040,14 +1040,6 @@ BOOL SetMyRegLong(char* section, char* entry, DWORD val)
 	if (tc_ini_utf8_detect_file(g_inifile, &isUtf8, NULL) && isUtf8) {
 		if (tc_ini_utf8_write_string(g_inifile, key, entry, s)) {
 			r = TRUE;
-		}
-		else {
-			BOOL isMainSection = (!section || !*section || lstrcmpi(section, "Main") == 0);
-			/* Compatibility fallback for mixed/legacy UTF-8 files:
-			   avoid Main fallback to prevent duplicate [Main] append behavior. */
-			if (!isMainSection) {
-				r = WritePrivateProfileString(key, entry, s, g_inifile) ? TRUE : FALSE;
-			}
 		}
 	}
 	else {

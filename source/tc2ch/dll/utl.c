@@ -592,7 +592,7 @@ void WriteDebugDLL_New(LPSTR s)
 	char strTemp[1024];
 
 	strcpy(fname, g_mydir_dll);
-	add_title(fname, "TCLOCK-WIN10-DEBUG.LOG");
+	add_title(fname, "TCLOCK-WIN11-DEBUG.LOG");
 
 	LogLineCount++;
 

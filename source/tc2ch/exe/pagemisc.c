@@ -5,6 +5,7 @@
 ---------------------------------------------*/
 #include "tclock.h"
 #include "../common/text_codec.h"
+#include "../version.h"
 
 static void OnInit(HWND hDlg);
 static void OnApply(HWND hDlg);
@@ -74,14 +75,12 @@ BOOL CALLBACK PageMiscProc(HWND hDlg, UINT message,
 --------------------------------------------------*/
 void OnInit(HWND hDlg)
 {
-	char s[256], s1[32];
-
-	GetMyRegStr("Status_DoNotEdit", "Version", s1, 16, "x.x.x.x");
+	char s[256];
 
 	SendDlgItemMessage(hDlg, IDC_ABOUTICON, STM_SETIMAGE,
 		IMAGE_ICON, (LPARAM)g_hIconTClock);
 
-	wsprintf(s, "TClock-Win11 Ver %s beta", s1);
+	wsprintf(s, "TClock-Win11 Ver %s", TCLOCK_VER_PRODUCT_STR);
 
 	SendDlgItemMessage(hDlg, IDC_STATIC_VersionText, WM_SETTEXT, 0, (LPARAM)s);
 

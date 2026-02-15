@@ -1460,7 +1460,6 @@ void CreateDefaultIniFile_Win10(char *fname)
 		SetMyRegLong(NULL, "EnableOnSubDisplay", 1);
 		SetMyRegLong(NULL, "OffsetClockMS", 0);
 
-		SetMyRegStr("Status_DoNotEdit", "Version", "");
 		SetMyRegLong("Status_DoNotEdit", "SafeMode", 0);
 		SetMyRegLong("Status_DoNotEdit", "LastLaunchTimeStamp", 0);
 		SetMyRegLong("Status_DoNotEdit", "ExcessNetProfiles", FALSE);
@@ -1763,7 +1762,6 @@ BOOL CheckRegistry_Win10(void)
 		}
 
 
-		GetMyRegStr("Status_DoNotEdit", "Version", s, 16, "");
 		//if ((strcmp(s, "3.3.4.1") == 0)
 		//	| (strcmp(s, "3.3.3.1") == 0)
 		//	| (strcmp(s, "3.3.2.1") == 0)
@@ -1793,7 +1791,6 @@ BOOL CheckRegistry_Win10(void)
 		//	MessageBoxUtf8Compat(NULL, tempString, "TClock-Win10", MB_OK | MB_SETFOREGROUND | MB_ICONINFORMATION);
 		//}
 
-		SetMyRegStr("Status_DoNotEdit", "Version", exeVersionString);
 
 	}
 

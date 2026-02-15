@@ -1,6 +1,7 @@
 // Microsoft Visual C++ generated resource script.
 //
 #include "resource.h"
+#include "..\version.h"
 /////////////////////////////////////////////////////////////////////////////
 // “ú–{Œê (“ú–{) resources
 
@@ -14,8 +15,8 @@ LANGUAGE LANG_JAPANESE, SUBLANG_DEFAULT
 //
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 0,1,0,0
- PRODUCTVERSION 0,1,0,0
+ FILEVERSION TCLOCK_VER_FILE_NUM
+ PRODUCTVERSION TCLOCK_VER_FILE_NUM
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -32,11 +33,11 @@ BEGIN
         BEGIN
             VALUE "Comments", "TClock Main for Windows10 and Windows11"
             VALUE "FileDescription", "TClock-Win11"
-            VALUE "FileVersion", "0.1.1.0"
+            VALUE "FileVersion", TCLOCK_VER_FILE_STR
             VALUE "InternalName", "TClock"
             VALUE "OriginalFilename", "TClock-Win11.exe"
             VALUE "ProductName", "TClock-Win11"
-            VALUE "ProductVersion", "0.1.1 beta"
+            VALUE "ProductVersion", TCLOCK_VER_PRODUCT_STR
         END
     END
     BLOCK "VarFileInfo"

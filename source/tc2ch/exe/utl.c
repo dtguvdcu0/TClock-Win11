@@ -505,7 +505,7 @@ int GetLocaleInfoCompat(int ilang, LCTYPE LCType, char* dst, int n)
 		if(!pw) return 0;
 		r = GetLocaleInfoW(Locale, LCType, pw, n);
 		if(r)
-			tc_utf16_to_ansi_compat(CP_UTF8, pw, dst, n);
+			tc_utf16_to_ansi_compat(CP_ACP, pw, dst, n);
 		GlobalFreePtr(pw);
 	}
 	return r;

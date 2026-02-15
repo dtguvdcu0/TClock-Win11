@@ -474,7 +474,7 @@ STYLE DS_SETFONT | DS_CONTROL | WS_CHILD
 FONT 9, "MS UI Gothic", 0, 0, 0x0
 BEGIN
     ICON            0,IDC_ABOUTICON,10,2,20,20
-    LTEXT           "TClock-Win10 Ver. x.x.x.x",IDC_STATIC_VersionText,40,8,158,8
+    LTEXT           "TClock-Win11 Ver. x.x.x.x",IDC_STATIC_VersionText,40,8,158,8
     RTEXT           "本プログラムはフリーソフトウェアです。",IDC_STATIC,79,18,121,8
     LTEXT           "本プログラムは、Windows 10 Anniversary update (RS1) 以降で動作するTClockです。ほかのバージョンのTClockと同様に、本プログラムを利用することによる一切の損害等の責任は負いません。",IDC_STATIC,10,29,181,36
     LTEXT           "本プログラムは、TClock2ch:\n　tclock-101021-analog (Kazubon氏 -> 2ch有志)\nのソースコードをベースに、\n　TClock Light kt160911 (Kazubon氏 -> K.Takata氏)\nを参考にして現行Windows10に対応させたものです。",IDC_STATIC,10,70,172,50
@@ -490,7 +490,7 @@ STYLE DS_SETFONT | DS_CONTROL | WS_CHILD
 FONT 9, "MS UI Gothic", 0, 0, 0x0
 BEGIN
     ICON            0,IDC_ABOUTICON,10,2,20,20
-    LTEXT           "TClock-Win10 Ver. x.x.x.x",IDC_STATIC_VersionText,40,8,158,8
+    LTEXT           "TClock-Win11 Ver. x.x.x.x",IDC_STATIC_VersionText,40,8,158,8
     RTEXT           "This program is a freeware.",IDC_STATIC,70,18,130,8
     LTEXT           "This program works on Windows 10 Anniversary update (RS1) and later. The developer will not bear any responsibility for this software.",IDC_STATIC,10,29,181,36
     LTEXT           "This is a subversion of TClock, which used to be inherited and revised into multiple subversions by Japanese netgeeks in early 2000s.",IDC_STATIC,10,59,189,30
@@ -1022,7 +1022,7 @@ BEGIN
     LTEXT           "現在のデータ: ** ℃",IDC_LABEL_CURRENT_TEMP,114,85,73,8
     LTEXT           """TEMP""書式(Thermal Zone Informationより取得)",-1,8,68,164,11
     LTEXT           "*機種によっては固定値しか取得できません。",-1,62,100,142,11
-    CONTROL         "タスクトレイにTClock-Win10のアイコンを表示する",IDC_ETC_SHOWTRAYICON,
+    CONTROL         "タスクトレイにTClock-Win11のアイコンを表示する",IDC_ETC_SHOWTRAYICON,
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,9,41,182,11
 END
 
@@ -1066,12 +1066,12 @@ BEGIN
     BEGIN
         BLOCK "041104b0"
         BEGIN
-            VALUE "Comments", "TClock-Win10 Language DLL（日本語/English）"
-            VALUE "FileDescription", "TClock-Win10 Language DLL（日本語/English）"
+            VALUE "Comments", "TClock-Win11 Language DLL（日本語/English）"
+            VALUE "FileDescription", "TClock-Win11 Language DLL（日本語/English）"
             VALUE "FileVersion", "5.4.1.1"
             VALUE "InternalName", "LANGJA"
             VALUE "OriginalFilename", "tclang-win11.dll"
-            VALUE "ProductName", "TClock-Win10"
+            VALUE "ProductName", "TClock-Win11"
             VALUE "ProductVersion", "5.4.1.1"
         END
     END
@@ -1588,7 +1588,7 @@ BEGIN
     IDS_CLOCK2              "Clock"
     IDS_TOOLTIP2            "Tooltip"
     IDS_ABOUT2              "Edit tclock-win11.ini"
-    IDS_MISC2               "About TClock-Win10"
+    IDS_MISC2               "About TClock-Win11"
     IDS_PROP_COLOR2         "Color and Font"
     IDS_PROP_FORMAT2        "Format"
     IDS_PROP_MOUSE2         "Mouse Functions"
@@ -1600,7 +1600,7 @@ END
 STRINGTABLE
 BEGIN
     IDS_PROP_AUTO2          "Autorun"
-    IDS_PROP_MISC2          "About TClock-Win10"
+    IDS_PROP_MISC2          "About TClock-Win11"
     IDS_PROP_ABOUT2         "Additional Settings"
     IDS_ACLOCKLEFT2         "Show in Left"
     IDS_ACLOCKRIGHT2        "Show in Right"

@@ -18,11 +18,11 @@
 #define GRADIENT_FILL_RECT_V    0x00000001
 #define MAX_PROCESSOR               64
 
-//ƒOƒ‰ƒt‚Ì‹L˜^”
+//ã‚°ãƒ©ãƒ•ã®è¨˜éŒ²æ•°
 #define MAXGRAPHLOG 600
 #define MAX_MYCOLORS 16
 
-//IDTIMERDLL_CHECKNETSTAT, IDTIMERDLL_SYSINFO‚ÌƒIƒtƒZƒbƒg(ms)	added by TTTT
+//IDTIMERDLL_CHECKNETSTAT, IDTIMERDLL_SYSINFOã®ã‚ªãƒ•ã‚»ãƒƒãƒˆ(ms)	added by TTTT
 #define OFFSETMS_TIMER_SYSINFO	200
 #define OFFSETMS_TIMER_NETSTAT	500
 
@@ -32,7 +32,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
 
 
 
-//tcdll.h‚ÉˆÚ“®
+//tcdll.hã«ç§»å‹•
 //LRESULT CALLBACK WndProcSubClk(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
 //void GetOrigSubClkDimensions(void);
 //void StoreSpecificSubClockDimensions(int i);
@@ -95,7 +95,7 @@ static BOOL CALLBACK EnumFindClassContainsProc_Win11(HWND hwnd, LPARAM lParam)
 	if (!ctx || !ctx->needle || ctx->found) return FALSE;
 	className[0] = 0;
 	GetClassName(hwnd, className, sizeof(className));
-	if (className[0] && StrStrIA(className, ctx->needle)) {
+	if (className[0] && StrStrI(className, ctx->needle)) {
 		ctx->found = hwnd;
 		return FALSE;
 	}
@@ -163,7 +163,7 @@ void GetTaskbarColor_Win11Type2(BOOL bBoundary);
 
 
 
-//tcdll.h‚ÉˆÚ“®
+//tcdll.hã«ç§»å‹•
 //LRESULT CALLBACK SubclassTrayProc_Win11(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData);
 //LRESULT CALLBACK WndProcWin11Notify(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
 //void CreateWin11MainClock(void);
@@ -201,7 +201,7 @@ BOOL b_FlagTimerAdjust = FALSE;
 --------------------------------------------------*/
 #ifdef _MSC_VER
 #pragma data_seg("MYDATA")
-//dllmain‚Æ‹¤—L‚·‚éƒf[ƒ^(dll‚Ì‹¤—Lƒf[ƒ^H)‚Í‚±‚Ìdata_seg‚Ì’†‚É“ü‚ê‚é•K—v‚ª‚ ‚èA‚Ü‚½éŒ¾‚É‰Šú‰»‚ª•K—v
+//dllmainã¨å…±æœ‰ã™ã‚‹ãƒ‡ãƒ¼ã‚¿(dllã®å…±æœ‰ãƒ‡ãƒ¼ã‚¿ï¼Ÿ)ã¯ã“ã®data_segã®ä¸­ã«å…¥ã‚Œã‚‹å¿…è¦ãŒã‚ã‚Šã€ã¾ãŸå®£è¨€æ™‚ã«åˆæœŸåŒ–ãŒå¿…è¦
 HWND hwndTClockExeMain = NULL;
 HWND hwndTaskBarMain = NULL;
 
@@ -215,7 +215,7 @@ extern HWND hwndTaskBarMain;
 HWND hwndTrayMain = NULL;
 HWND hwndDesktop = NULL;
 
-//ˆÈ‰º‚Ì”z—ñ‚Ì‰Šú‰»‚ÍFindAllSubClocks‚Ìƒ‹[ƒv‚Ì’†‚Ås‚¤B
+//ä»¥ä¸‹ã®é…åˆ—ã®åˆæœŸåŒ–ã¯FindAllSubClocksã®ãƒ«ãƒ¼ãƒ—ã®ä¸­ã§è¡Œã†ã€‚
 HWND hwndTaskBarSubClk[MAX_SUBSCREEN];
 HWND hwndClockSubClk[MAX_SUBSCREEN];
 HWND hwndOriginalWin11SubClk[MAX_SUBSCREEN];
@@ -362,7 +362,7 @@ int tEdgeLeft;
 int tEdgeBottom;
 int tEdgeRight;
 
-//Addby ‚Ğ‚Ü‚¶‚ñ
+//Addby ã²ã¾ã˜ã‚“
 BOOL checknet=FALSE;
 BOOL bGraph = FALSE;
 BOOL bLogGraph = FALSE;
@@ -389,6 +389,89 @@ int graphMode = 1;
 extern HWND hwndStart;
 extern HWND hwndStartMenu;
 extern int codepage;
+
+static int ConvertClockTextToWide(const char* sp, int len, WCHAR* wbuf, int cchWide)
+{
+	int wlen;
+	DWORD lastErr;
+	static DWORD s_lastFailLogTick = 0;
+	static int s_failCount = 0;
+	static int s_lastCodePage = 0;
+	static int s_lastErrCode = 0;
+	static int s_lastLen = 0;
+
+	if(!sp || !wbuf || cchWide <= 1) return 0;
+	if(len < 0) len = (int)strlen(sp);
+	if(len <= 0) { wbuf[0] = L'\0'; return 0; }
+
+	wlen = MultiByteToWideChar((UINT)codepage, 0, sp, len, wbuf, cchWide - 1);
+	if(wlen <= 0)
+		wlen = MultiByteToWideChar(CP_ACP, 0, sp, len, wbuf, cchWide - 1);
+	if(wlen <= 0) {
+		lastErr = GetLastError();
+		if (b_DebugLog) {
+			DWORD now = GetTickCount();
+			s_failCount++;
+			s_lastCodePage = codepage;
+			s_lastErrCode = (int)lastErr;
+			s_lastLen = len;
+			if ((now - s_lastFailLogTick) >= 5000) {
+				writeDebugLog_Win10("[tclock.c][TextConv] MultiByteToWideChar failed; recent count=", s_failCount);
+				writeDebugLog_Win10("[tclock.c][TextConv] codepage=", s_lastCodePage);
+				writeDebugLog_Win10("[tclock.c][TextConv] GetLastError=", s_lastErrCode);
+				writeDebugLog_Win10("[tclock.c][TextConv] textLen=", s_lastLen);
+				s_failCount = 0;
+				s_lastFailLogTick = now;
+			}
+		}
+		return 0;
+	}
+	wbuf[wlen] = L'\0';
+	return wlen;
+}
+
+static BOOL ClockGetTextExtentCompat(HDC hdc, const char* sp, int len, SIZE* psz)
+{
+	WCHAR wbuf[2048];
+	int wlen = ConvertClockTextToWide(sp, len, wbuf, _countof(wbuf));
+	BOOL ok = FALSE;
+
+	if(wlen > 0)
+		ok = GetTextExtentPoint32W(hdc, wbuf, wlen, psz);
+	if(!ok)
+		ok = GetTextExtentPoint32(hdc, sp, len, psz);
+	if(!ok && b_DebugLog) {
+		static DWORD s_lastLogTick = 0;
+		DWORD now = GetTickCount();
+		if ((now - s_lastLogTick) >= 2000) {
+			writeDebugLog_Win10("[tclock.c][TextMeasure] GetTextExtent failed", 999);
+			writeDebugLog_Win10("[tclock.c][TextMeasure] GetLastError=", (int)GetLastError());
+			s_lastLogTick = now;
+		}
+	}
+	return ok;
+}
+
+static void ClockTextOutCompat(HDC hdc, int x, int y, const char* sp, int len)
+{
+	WCHAR wbuf[2048];
+	int wlen = ConvertClockTextToWide(sp, len, wbuf, _countof(wbuf));
+	BOOL ok = FALSE;
+
+	if(wlen > 0)
+		ok = TextOutW(hdc, x, y, wbuf, wlen);
+	if(!ok)
+		ok = TextOut(hdc, x, y, sp, len);
+	if(!ok && b_DebugLog) {
+		static DWORD s_lastLogTick = 0;
+		DWORD now = GetTickCount();
+		if ((now - s_lastLogTick) >= 2000) {
+			writeDebugLog_Win10("[tclock.c][TextDraw] TextOut failed", 999);
+			writeDebugLog_Win10("[tclock.c][TextDraw] GetLastError=", (int)GetLastError());
+			s_lastLogTick = now;
+		}
+	}
+}
 
 // XButton Messages
 #define WM_XBUTTONDOWN                  0x020B
@@ -427,6 +510,9 @@ int megabytesInGigaByte = 1000;
 BOOL b_DebugLog = FALSE;
 BOOL b_DebugLog_RegAccess = FALSE;
 BOOL b_DebugLog_Specific = FALSE;
+static LONG g_depth_ReadData = 0;
+static LONG g_refresh_in_progress = 0;
+static LONG g_refresh_pending = 0;
 
 int WinBuildNumber = 0;
 //int Win11Type = 0;
@@ -472,17 +558,17 @@ BOOL b_NormalLog = FALSE;		//added by TTTT
 
 // For BarMeter Added by TTTT
 //Color Chart
-//•F0
-//ŠDFF12632256
-//”–‚¢ŠDFF12632256
-//”’F16777215
-//ÔF255
-//®FF8388608
-//ÂF16711680
-//…FF16776960
-//—ÎF65280
-//‰©FF65535
-//ƒsƒ“ƒNF16711935
+//é»’ï¼š0
+//ç°è‰²ï¼š12632256
+//è–„ã„ç°è‰²ï¼š12632256
+//ç™½ï¼š16777215
+//èµ¤ï¼š255
+//ç´ºè‰²ï¼š8388608
+//é’ï¼š16711680
+//æ°´è‰²ï¼š16776960
+//ç·‘ï¼š65280
+//é»„è‰²ï¼š65535
+//ãƒ”ãƒ³ã‚¯ï¼š16711935
 
 BOOL b_UseBarMeterBL = FALSE;
 BOOL b_BatteryLifeAvailable = TRUE;
@@ -596,7 +682,7 @@ BOOL b_English = FALSE;
 static RGBQUAD* m_color_start = NULL, *m_color_end;
 static RGBQUAD* m_color_work_start = NULL, *m_color_work_end;
 
-//Check_Light_Theme_Win10—p
+//Check_Light_Theme_Win10ç”¨
 //BOOL b_System_Light_Theme = FALSE;
 //BOOL b_Apps_Light_Theme = FALSE;
 //BOOL b_Transparency_Theme = FALSE;
@@ -616,14 +702,14 @@ int posXTaskbar = 0;
 int posYTaskbar = 0;
 BOOL bAutoRestart = TRUE;
 
-//Win11‘Î‰ŠÖ˜A
-//Win11‘Î‰©ìƒEƒBƒ“ƒhƒEƒ‚[ƒhƒtƒ‰ƒO
+//Win11å¯¾å¿œé–¢é€£
+//Win11å¯¾å¿œè‡ªä½œã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ãƒ¢ãƒ¼ãƒ‰ãƒ•ãƒ©ã‚°
 BOOL bWin11Main = FALSE;
 BOOL bWin11Sub = FALSE;
 BOOL bWin11LayoutDegraded = FALSE;
 BOOL bWin11MainClockHandleFound = FALSE;
 
-//Win11—pŠÖ˜AƒEƒBƒ“ƒhƒEƒnƒ“ƒhƒ‹
+//Win11ç”¨é–¢é€£ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ãƒãƒ³ãƒ‰ãƒ«
 HWND hwndWin11ReBarWin = NULL;
 HWND hwndWin11ContentBridge = NULL;
 HWND hwndWin11InnerTrayContentBridge = NULL;
@@ -631,11 +717,11 @@ HWND hwndWin11Notify = NULL;
 HWND hwndWin11ClockMask = NULL;
 HWND hwndOriginalWin11MainClk = NULL;
 
-//’Ê’mƒEƒBƒ“ƒhƒE—p
-//—˜—pİ’èEƒtƒ‰ƒO
-BOOL bEnabledWin11Notify = TRUE;	//—˜—p‚·‚é‚©‚Ç‚¤‚©(’Ê’mƒEƒBƒ“ƒhƒE©‘Ì‚Íí‚Éì‚é)
-BOOL bEnableWin11NotifyIcon = TRUE;	//ã‹L‚ªTRUE‚ÌÛ‚ÉTClock-Win10ƒIƒŠƒWƒiƒ‹‚Ì’Ê’mƒAƒCƒRƒ“‚ğ•\¦‚·‚é‚©
-//’Ê’mƒEƒBƒ“ƒhƒE•`‰æ—p
+//é€šçŸ¥ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ç”¨
+//åˆ©ç”¨è¨­å®šãƒ»ãƒ•ãƒ©ã‚°
+BOOL bEnabledWin11Notify = TRUE;	//åˆ©ç”¨ã™ã‚‹ã‹ã©ã†ã‹(é€šçŸ¥ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦è‡ªä½“ã¯å¸¸ã«ä½œã‚‹)
+BOOL bEnableWin11NotifyIcon = TRUE;	//ä¸Šè¨˜ãŒTRUEã®éš›ã«TClock-Win10ã‚ªãƒªã‚¸ãƒŠãƒ«ã®é€šçŸ¥ã‚¢ã‚¤ã‚³ãƒ³ã‚’è¡¨ç¤ºã™ã‚‹ã‹
+//é€šçŸ¥ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦æç”»ç”¨
 HDC hdcYesWin11Notify = NULL;
 HDC hdcNoWin11Notify = NULL;
 HDC hdcFocusWin11Notify = NULL;
@@ -658,21 +744,21 @@ RGBQUAD* m_color_NoWin11Notify_end = NULL;
 RGBQUAD* m_color_FocusWin11Notify_start = NULL;
 RGBQUAD* m_color_FocusWin11Notify_end = NULL;
 COLORREF colWin11Notify = RGB(255, 255, 255);
-//Œ»“_‚Å’Ê’m‚ªo‚Ä‚¢‚é‚©‚Ç‚¤‚©
+//ç¾æ™‚ç‚¹ã§é€šçŸ¥ãŒå‡ºã¦ã„ã‚‹ã‹ã©ã†ã‹
 BOOL bExistWin11Notify = FALSE;
-//’Ê’mƒEƒBƒ“ƒhƒE‚ÌƒTƒCƒY
+//é€šçŸ¥ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ã®ã‚µã‚¤ã‚º
 int widthWin11Notify = 0;
 int heightWin11Notify = 0;
-//’Ê’mƒEƒBƒ“ƒhƒE“à‚ÌƒAƒCƒRƒ“¶ãˆÊ’u‚ÆƒTƒCƒY
+//é€šçŸ¥ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦å†…ã®ã‚¢ã‚¤ã‚³ãƒ³å·¦ä¸Šä½ç½®ã¨ã‚µã‚¤ã‚º
 POINT posNotifyIcon;
 POINT posNotifyText;
 int widthNotifyIcon, heightNotifyIcon;
 int posXShowDesktopArea;
 
-//ƒƒCƒ“Œv(©ì)ˆ——p•Ï”
+//ãƒ¡ã‚¤ãƒ³æ™‚è¨ˆ(è‡ªä½œ)å‡¦ç†ç”¨å¤‰æ•°
 int widthWin11Clock = 0;
 int heightWin11Clock = 0;
-//•”•iƒTƒCƒY(Œ³‚ÌWin11’Ê’m—Ìˆæ‚Ì‰ğÍ—p)
+//éƒ¨å“ã‚µã‚¤ã‚º(å…ƒã®Win11é€šçŸ¥é ˜åŸŸã®è§£æç”¨)
 int widthWin11Icon = 32;
 int widthWin11Button = 30;
 int origWidthWin11Tray = 0;
@@ -681,28 +767,28 @@ int defaultWin11ClockWidth = 999;
 int defaultWin11NotificationWidth = 100;
 int adjustWin11TrayYpos = 0;
 
-//’²®—p
+//èª¿æ•´ç”¨
 int adjustWin11TrayCutPosition = 0;
 int adjustWin11DetectNotify = 0;
 int adjustWin11ClockWidth = 0;
-//”z’uEƒJƒbƒgˆ—‚ÌŒ‹‰Ê“¾‚ç‚ê‚é’l
+//é…ç½®ãƒ»ã‚«ãƒƒãƒˆå‡¦ç†ã®çµæœå¾—ã‚‰ã‚Œã‚‹å€¤
 int cutOffWidthWin11Tray = 0;
 int modifiedWidthWin11Tray = 250;
 int posXMainClock = 0;
 
-//w¬‚³‚¢ƒ^ƒXƒNƒo[x‚©‚Ç‚¤‚©
+//ã€å°ã•ã„ã‚¿ã‚¹ã‚¯ãƒãƒ¼ã€ã‹ã©ã†ã‹
 int typeWin11Taskbar = 1;
-//w¬‚³‚¢ƒ^ƒXƒNƒo[x‚ÅƒgƒŒƒCˆÊ’u’²®‚·‚é‚©‚Ç‚¤‚©
+//ã€å°ã•ã„ã‚¿ã‚¹ã‚¯ãƒãƒ¼ã€ã§ãƒˆãƒ¬ã‚¤ä½ç½®èª¿æ•´ã™ã‚‹ã‹ã©ã†ã‹
 BOOL bAdjustTrayWin11SmallTaskbar = TRUE;
 
-//’Ê’m—Ìˆæ—pƒIƒuƒWƒFƒNƒg
+//é€šçŸ¥é ˜åŸŸç”¨ã‚ªãƒ–ã‚¸ã‚§ã‚¯ãƒˆ
 HBRUSH hBrushWin11Notify;
 HPEN hPenWin11Notify;
 
-//ContentBridgeˆÚ“®‘€ìƒg[ƒNƒ“
+//ContentBridgeç§»å‹•æ“ä½œãƒˆãƒ¼ã‚¯ãƒ³
 //BOOL bTokenMoveContentBridge = FALSE;
 
-//Focus Assistó‘Ô
+//Focus AssistçŠ¶æ…‹
 //https://stackoverflow.com/questions/53407374/is-there-a-way-to-detect-changes-in-focus-assist-formerly-quiet-hours-in-windo
 //	not_supported = -2,
 //	failed = -1,
@@ -1037,20 +1123,20 @@ void GetMainClock(void)
 	bWin11Main = FALSE;
 	bWin11LayoutDegraded = FALSE;
 
-	//ƒ^ƒXƒNƒo[ü•Óƒnƒ“ƒhƒ‹‚ğûW(Win10, 11‹¤’Ê)
+	//ã‚¿ã‚¹ã‚¯ãƒãƒ¼å‘¨è¾ºãƒãƒ³ãƒ‰ãƒ«ã‚’åé›†(Win10, 11å…±é€š)
 	RefreshWin11TaskbarHandles();
 
-	//TrayClockWClass(Win10‚Ü‚Å‚ÌŒv)‚ÍWin11‚É‚Í‘¶İ‚µ‚È‚¢BWin10‚Ü‚Å‚Í‚±‚ÌŒv‚ğæ‚Áæ‚Á‚Äg‚¤B
+	//TrayClockWClass(Win10ã¾ã§ã®æ™‚è¨ˆ)ã¯Win11ã«ã¯å­˜åœ¨ã—ãªã„ã€‚Win10ã¾ã§ã¯ã“ã®æ™‚è¨ˆã‚’ä¹—ã£å–ã£ã¦ä½¿ã†ã€‚
 	hwndClockMain = FindWindowEx(hwndTrayMain, NULL, "TrayClockWClass", NULL);
 
-	//Win11‚¾‚ÆˆÈ‰º‚ÌğŒ‚ª¬—§‚µ‚ÄŠÖ˜A‚ÌƒEƒBƒ“ƒhƒE‚Ìƒnƒ“ƒhƒ‹‚ğæ“¾‚·‚éB
+	//Win11ã ã¨ä»¥ä¸‹ã®æ¡ä»¶ãŒæˆç«‹ã—ã¦é–¢é€£ã®ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ã®ãƒãƒ³ãƒ‰ãƒ«ã‚’å–å¾—ã™ã‚‹ã€‚
 	if (!hwndClockMain) {
 		bWin11Main = TRUE;
 
-		//ƒƒCƒ“Œv‚ÍV‚µ‚¢ƒEƒBƒ“ƒhƒE‚ğƒ^ƒXƒNƒo[“à(ƒgƒŒƒC“à‚Å‚Í‚È‚¢)‚Éì‚é
+		//ãƒ¡ã‚¤ãƒ³æ™‚è¨ˆã¯æ–°ã—ã„ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ã‚’ã‚¿ã‚¹ã‚¯ãƒãƒ¼å†…(ãƒˆãƒ¬ã‚¤å†…ã§ã¯ãªã„)ã«ä½œã‚‹
 		CreateWin11MainClock();
 
-		//ExplorerÄ‹N“®’¼Œã‚Íƒnƒ“ƒhƒ‹‚ª’x‚ê‚Ä¶¬‚³‚ê‚é‚±‚Æ‚ª‚ ‚é‚½‚ßA¶¬Œã‚ÉÄ’Tõ‚·‚éB
+		//Explorerå†èµ·å‹•ç›´å¾Œã¯ãƒãƒ³ãƒ‰ãƒ«ãŒé…ã‚Œã¦ç”Ÿæˆã•ã‚Œã‚‹ã“ã¨ãŒã‚ã‚‹ãŸã‚ã€ç”Ÿæˆå¾Œã«å†æ¢ç´¢ã™ã‚‹ã€‚
 		RefreshWin11TaskbarHandles();
 
 		bMissingWin11Handles = (!IsWindow(hwndTrayMain) || !IsWindow(hwndWin11ReBarWin) || !IsWindow(hwndWin11ContentBridge));
@@ -1078,7 +1164,7 @@ void InitClock()
 
 	if(hwndClockMain != NULL) return;
 
-	HookEnd();	//Ver 4.0.5.3sBInitclock‹N“®‚µ‚Ä‚©‚ç‚Í•s—v‚È‚Ì‚ÅƒtƒbƒNŠO‚·B•s‹ï‡o‚é‚È‚ç‚±‚Ìs‚ğíœ‚·‚éB
+	HookEnd();	//Ver 4.0.5.3è©¦è¡Œã€‚Initclockèµ·å‹•ã—ã¦ã‹ã‚‰ã¯ä¸è¦ãªã®ã§ãƒ•ãƒƒã‚¯å¤–ã™ã€‚ä¸å…·åˆå‡ºã‚‹ãªã‚‰ã“ã®è¡Œã‚’å‰Šé™¤ã™ã‚‹ã€‚
 
 	GetModuleFileName(hmod, fname, MAX_PATH);
 
@@ -1125,14 +1211,14 @@ void InitClock()
 	}
 
 
-	//SafeModeƒ`ƒFƒbƒN
+	//SafeModeãƒã‚§ãƒƒã‚¯
 	CheckSafeMode_Win10();
 
-	//ƒŒƒWƒXƒgƒŠ“Ç‚İ‚İ
+	//ãƒ¬ã‚¸ã‚¹ãƒˆãƒªèª­ã¿è¾¼ã¿
 	ReadData();
 
 
-	b_WININICHANGED = TRUE; //Win11Type2‚Å‚Í’Ê’mƒAƒCƒRƒ“XV‚Ì‚¨‚Ü‚¶‚È‚¢B
+	b_WININICHANGED = TRUE; //Win11Type2ã§ã¯é€šçŸ¥ã‚¢ã‚¤ã‚³ãƒ³æ›´æ–°ã®ãŠã¾ã˜ãªã„ã€‚
 
 
 
@@ -1158,17 +1244,17 @@ void InitClock()
 	GetTimeZoneBias_Win10();
 
 
-	//ŠeíƒTƒCƒY‚ÌŠm•ÛBCalcMainClockSize‚ÍƒtƒHƒ“ƒgŒˆ’èŒã‚Å‚È‚¢‚Æ³‚µ‚¢Œ‹‰Ê‚ª“¾‚ç‚ê‚È‚¢‚Ì‚ÅAReadData‚æ‚èŒã‚ÅÀs‚·‚éB
-	//‚Ü‚½AƒTƒuƒNƒ‰ƒX‰»‚·‚é‚ÆƒƒbƒZ[ƒW‚É‹ì“®‚³‚ê‚Ä“®‚«n‚ß‚é‚Ì‚ÅA‚»‚ê‚æ‚è‘O‚ÉÀs‚·‚éB
+	//å„ç¨®ã‚µã‚¤ã‚ºã®ç¢ºä¿ã€‚CalcMainClockSizeã¯ãƒ•ã‚©ãƒ³ãƒˆæ±ºå®šå¾Œã§ãªã„ã¨æ­£ã—ã„çµæœãŒå¾—ã‚‰ã‚Œãªã„ã®ã§ã€ReadDataã‚ˆã‚Šå¾Œã§å®Ÿè¡Œã™ã‚‹ã€‚
+	//ã¾ãŸã€ã‚µãƒ–ã‚¯ãƒ©ã‚¹åŒ–ã™ã‚‹ã¨ãƒ¡ãƒƒã‚»ãƒ¼ã‚¸ã«é§†å‹•ã•ã‚Œã¦å‹•ãå§‹ã‚ã‚‹ã®ã§ã€ãã‚Œã‚ˆã‚Šå‰ã«å®Ÿè¡Œã™ã‚‹ã€‚
 	if (bWin11Main) {
 		GetWin11ElementSize();
-		GetWin11TrayWidth();	//‚±‚ê‚Í‰‰ñ‹N“®‚Ì‚İI
+		GetWin11TrayWidth();	//ã“ã‚Œã¯åˆå›èµ·å‹•æ™‚ã®ã¿ï¼
 		SetModifiedWidthWin11Tray();
 		CalcMainClockSize();
 		//if (Win11Type == 2) 
 		//{
-		//	SetMainClockOnTasktray_Win11();		//ƒ^ƒXƒNƒo[‚ÌˆÚ“®
-		//	PostMessage(hwndClockMain, CLOCKM_MOVEWIN11CONTENTBRIDGE, 1, 0);	//ContentBridgeƒEƒBƒ“ƒhƒE‚ÌƒJƒbƒg‚ÆTClockMain, TClockWin11Notify‚Ì”z’u
+		//	SetMainClockOnTasktray_Win11();		//ã‚¿ã‚¹ã‚¯ãƒãƒ¼ã®ç§»å‹•
+		//	PostMessage(hwndClockMain, CLOCKM_MOVEWIN11CONTENTBRIDGE, 1, 0);	//ContentBridgeã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ã®ã‚«ãƒƒãƒˆã¨TClockMain, TClockWin11Notifyã®é…ç½®
 		//	//COLORREF taskbarColor;
 		//	//HDC tempDC = NULL;
 		//	//tempDC = GetDC(hwndTaskBarMain);
@@ -1189,11 +1275,11 @@ void InitClock()
 
 
 
-	//ƒTƒuƒNƒ‰ƒX‰»
+	//ã‚µãƒ–ã‚¯ãƒ©ã‚¹åŒ–
 	oldWndProc = (WNDPROC)GetWindowLongPtr(hwndClockMain, GWLP_WNDPROC);
 	SubclassWindow(hwndClockMain, WndProc);
 
-	if (bWin11Main)		//Œ»“_‚ÅWndProc‚Í“¯‚¶, Remove‚à‡‚í‚¹‚é‚±‚ÆB
+	if (bWin11Main)		//ç¾æ™‚ç‚¹ã§WndProcã¯åŒã˜, Removeã‚‚åˆã‚ã›ã‚‹ã“ã¨ã€‚
 	{
 
 		if (hwndWin11Notify) SubclassWindow(hwndWin11Notify, WndProcWin11Notify);
@@ -1214,7 +1300,7 @@ void InitClock()
 		SetWindowSubclass(hwndTrayMain, SubclassTrayProc,
 			SUBCLASSTRAY_ID, (DWORD_PTR)hwndClockMain);
 	}
-	//ƒ_ƒuƒ‹ƒNƒŠƒbƒNó‚¯•t‚¯‚È‚¢
+	//ãƒ€ãƒ–ãƒ«ã‚¯ãƒªãƒƒã‚¯å—ã‘ä»˜ã‘ãªã„
 	SetClassLongPtr(hwndClockMain, GCL_STYLE,
 	  GetClassLongPtr(hwndClockMain, GCL_STYLE) & ~CS_DBLCLKS);
 
@@ -1224,11 +1310,11 @@ void InitClock()
 
 
 
-	//ƒTƒuƒfƒBƒXƒvƒŒƒCãƒ^ƒXƒNƒo[Œv‚ÌƒtƒbƒN
-	//ƒƒCƒ“ƒ^ƒXƒNƒo[•ûŒüƒ`ƒFƒbƒN‚ÆƒTƒuƒNƒƒbƒN‚ÌƒTƒuƒNƒ‰ƒX‰»‚às‚í‚ê‚éB
+	//ã‚µãƒ–ãƒ‡ã‚£ã‚¹ãƒ—ãƒ¬ã‚¤ä¸Šã‚¿ã‚¹ã‚¯ãƒãƒ¼æ™‚è¨ˆã®ãƒ•ãƒƒã‚¯
+	//ãƒ¡ã‚¤ãƒ³ã‚¿ã‚¹ã‚¯ãƒãƒ¼æ–¹å‘ãƒã‚§ãƒƒã‚¯ã¨ã‚µãƒ–ã‚¯ãƒ­ãƒƒã‚¯ã®ã‚µãƒ–ã‚¯ãƒ©ã‚¹åŒ–ã‚‚è¡Œã‚ã‚Œã‚‹ã€‚
 	if (bEnableSubClks) ActivateSubClocks();
 
-	//ã‚Ìˆ—‚Éæ‚è“ü‚ê‚½‚Ì‚ÅA–â‘è‚È‚­“®‚­‚±‚Æ‚ªŠm”F‚Å‚«‚½‚çÁ‚·B
+	//ä¸Šã®å‡¦ç†ã«å–ã‚Šå…¥ã‚ŒãŸã®ã§ã€å•é¡Œãªãå‹•ãã“ã¨ãŒç¢ºèªã§ããŸã‚‰æ¶ˆã™ã€‚
 	//if (bWin11Main)
 	//{
 	//	SetWindowSubclass(hwndTrayMain, SubclassTrayProc_Win11,
@@ -1256,8 +1342,8 @@ void InitClock()
 
 
 
-	//ƒ^ƒXƒNƒo[‚ÌXV
-	RedrawMainTaskbar();	//‘¦”½‰f‚Ì‚½‚ß‚É•K—vB•K—v‚ª‚ ‚ê‚ÎWindows‚ÌƒŠƒTƒCƒYˆ—‚ğ’Ê‚µ‚ÄMainClock‚ÌÄ”z’u‚âƒTƒCƒYXVAhdcClockÄì¬‚ªÀs‚³‚ê‚éB
+	//ã‚¿ã‚¹ã‚¯ãƒãƒ¼ã®æ›´æ–°
+	RedrawMainTaskbar();	//å³æ™‚åæ˜ ã®ãŸã‚ã«å¿…è¦ã€‚å¿…è¦ãŒã‚ã‚Œã°Windowsã®ãƒªã‚µã‚¤ã‚ºå‡¦ç†ã‚’é€šã—ã¦MainClockã®å†é…ç½®ã‚„ã‚µã‚¤ã‚ºæ›´æ–°ã€hdcClockå†ä½œæˆãŒå®Ÿè¡Œã•ã‚Œã‚‹ã€‚
 
 	//????????
 	TooltipInit(hwndClockMain);
@@ -1288,7 +1374,7 @@ void RedrawTClock(void)
 	hdc = GetDC(hwndClockMain);
 
 	if (hdc) {
-		DrawClock_New(hdc, b_WININICHANGED);		//b_WININICHANGED = TRUE ‚Ì‚Æ‚«‚ÍWin11Type2‚Ìê‡‚É‹­§“I‚É’Ê’m‚ğXV‚·‚éB
+		DrawClock_New(hdc, b_WININICHANGED);		//b_WININICHANGED = TRUE ã®ã¨ãã¯Win11Type2ã®å ´åˆã«å¼·åˆ¶çš„ã«é€šçŸ¥ã‚’æ›´æ–°ã™ã‚‹ã€‚
 		ReleaseDC(hwndClockMain, hdc);
 	}
 
@@ -1447,7 +1533,7 @@ void EndClock(void)
 	DragAcceptFiles(hwndClockMain, FALSE);
 
 
-	//ƒTƒu‰æ–Ê‚ÌŒv‚ÌƒTƒuƒNƒ‰ƒX‰»‚ğ‰ğœ‚µ‚Äƒ^ƒXƒNƒo[ƒTƒCƒY‚ğ–ß‚·B
+	//ã‚µãƒ–ç”»é¢ã®æ™‚è¨ˆã®ã‚µãƒ–ã‚¯ãƒ©ã‚¹åŒ–ã‚’è§£é™¤ã—ã¦ã‚¿ã‚¹ã‚¯ãƒãƒ¼ã‚µã‚¤ã‚ºã‚’æˆ»ã™ã€‚
 	DisableAllSubClocks();
 
 
@@ -1488,14 +1574,14 @@ void EndClock(void)
 
 		//if (Win11Type == 2) {
 		//	//if (bAdjustTrayWin11SmallTaskbar) {
-		//	//	//ƒ^ƒXƒNƒo[•‚ğ–ß‚·(ˆÊ’u‚ÆƒTƒCƒY)
+		//	//	//ã‚¿ã‚¹ã‚¯ãƒãƒ¼å¹…ã‚’æˆ»ã™(ä½ç½®ã¨ã‚µã‚¤ã‚º)
 		//	//	SetWindowPos(hwndTaskBarMain, NULL, 0, originalPosYTaskbar, originalWidthTaskbar, originalHeightTaskbar,
-		//	//		SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOSENDCHANGING | SWP_NOREDRAW | SWP_DEFERERASE);		//SWP_NOSENDCHANGING‚ğ“ü‚ê‚Ä‚¨‚©‚È‚¢‚Æƒ^ƒXƒNƒo[‚ÍˆÚ“®‚µ‚È‚¢I
+		//	//		SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOSENDCHANGING | SWP_NOREDRAW | SWP_DEFERERASE);		//SWP_NOSENDCHANGINGã‚’å…¥ã‚Œã¦ãŠã‹ãªã„ã¨ã‚¿ã‚¹ã‚¯ãƒãƒ¼ã¯ç§»å‹•ã—ãªã„ï¼
 		//	//}
 		//	//else {
-		//		//ƒ^ƒXƒNƒo[•‚ğ–ß‚·(ƒTƒCƒY‚Ì‚İ)
+		//		//ã‚¿ã‚¹ã‚¯ãƒãƒ¼å¹…ã‚’æˆ»ã™(ã‚µã‚¤ã‚ºã®ã¿)
 		//		SetWindowPos(hwndTaskBarMain, NULL, 0, 0, originalWidthTaskbar, originalHeightTaskbar,
-		//			SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOZORDER | SWP_NOSENDCHANGING | SWP_NOREDRAW | SWP_DEFERERASE);		//SWP_NOSENDCHANGING‚ğ“ü‚ê‚Ä‚¨‚©‚È‚¢‚Æƒ^ƒXƒNƒo[‚ÍˆÚ“®‚µ‚È‚¢I
+		//			SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOZORDER | SWP_NOSENDCHANGING | SWP_NOREDRAW | SWP_DEFERERASE);		//SWP_NOSENDCHANGINGã‚’å…¥ã‚Œã¦ãŠã‹ãªã„ã¨ã‚¿ã‚¹ã‚¯ãƒãƒ¼ã¯ç§»å‹•ã—ãªã„ï¼
 		//	//}
 		//}
 
@@ -1504,8 +1590,8 @@ void EndClock(void)
 		//{
 		//	SubclassWindow(hwndWin11ContentBridge, oldProcTaskbarContentBridge_Win11);
 		//	oldProcTaskbarContentBridge_Win11 = NULL;
-		//	ShowWindow(hwndWin11ContentBridge, SW_SHOW);	//‚±‚ê‚ğ‚â‚ç‚È‚¢‚Æƒ^ƒXƒNƒo[‚ªÁ‚¦‚éB
-		//	ShowWindow(hwndTaskBarMain, SW_SHOW);	//‚±‚ê‚ğ‚â‚ç‚È‚¢‚Æƒ^ƒXƒNƒo[‚ªÁ‚¦‚éB
+		//	ShowWindow(hwndWin11ContentBridge, SW_SHOW);	//ã“ã‚Œã‚’ã‚„ã‚‰ãªã„ã¨ã‚¿ã‚¹ã‚¯ãƒãƒ¼ãŒæ¶ˆãˆã‚‹ã€‚
+		//	ShowWindow(hwndTaskBarMain, SW_SHOW);	//ã“ã‚Œã‚’ã‚„ã‚‰ãªã„ã¨ã‚¿ã‚¹ã‚¯ãƒãƒ¼ãŒæ¶ˆãˆã‚‹ã€‚
 		//}
 		//else if (Win11Type < 2)
 		{
@@ -1516,7 +1602,7 @@ void EndClock(void)
 		PostMessage(hwndClockMain, WM_CLOSE, 0, 0);
 		UnregisterClass("TClockMain", hmod);
 
-		SubclassWindow(hwndWin11Notify, DefWindowProc);	//‚±‚ê‚ğ‚µ‚È‚¢‚Æ’†Œpæ‚Ìƒ†[ƒUƒCƒ“ƒ^[ƒtƒF[ƒX‚És‚Á‚Ä‚µ‚Ü‚¤B
+		SubclassWindow(hwndWin11Notify, DefWindowProc);	//ã“ã‚Œã‚’ã—ãªã„ã¨ä¸­ç¶™å…ˆã®ãƒ¦ãƒ¼ã‚¶ã‚¤ãƒ³ã‚¿ãƒ¼ãƒ•ã‚§ãƒ¼ã‚¹ã«è¡Œã£ã¦ã—ã¾ã†ã€‚
 		PostMessage(hwndWin11Notify, WM_CLOSE, 0, 0);
 		UnregisterClass("TClockNotify", hmod);
 
@@ -1534,9 +1620,9 @@ void EndClock(void)
 
 	RedrawMainTaskbar();
 
-	//‚±‚ÌŒãƒƒCƒ“ƒEƒBƒ“ƒhƒE‚ğI—¹‚·‚é‚Ì‚Í: PostMessage(hwndTClockExeMain, WM_USER+2, 0, 0);‚ğÀs
-	//‚½‚¾‚µA‚±‚ÌEndClock‚ªWndProc‚ÌWM_CLOSE‚ÅŒÄ‚Î‚ê‚½ê‡‚É‚ÍƒƒCƒ“‚©‚çŒÄ‚Î‚ê‚Ä‚¢‚é‚Ì‚ÅAƒƒCƒ“‘¤‚ÅI—¹ˆ—‚ªs‚í‚ê‚éB
-	//‚»‚Ì‚½‚ßAPostMessage‚ğ‚±‚±‚ÉƒR[ƒh‚µ‚Ä‚Í‚¢‚¯‚È‚¢B
+	//ã“ã®å¾Œãƒ¡ã‚¤ãƒ³ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ã‚’çµ‚äº†ã™ã‚‹ã®ã¯: PostMessage(hwndTClockExeMain, WM_USER+2, 0, 0);ã‚’å®Ÿè¡Œ
+	//ãŸã ã—ã€ã“ã®EndClockãŒWndProcã®WM_CLOSEã§å‘¼ã°ã‚ŒãŸå ´åˆã«ã¯ãƒ¡ã‚¤ãƒ³ã‹ã‚‰å‘¼ã°ã‚Œã¦ã„ã‚‹ã®ã§ã€ãƒ¡ã‚¤ãƒ³å´ã§çµ‚äº†å‡¦ç†ãŒè¡Œã‚ã‚Œã‚‹ã€‚
+	//ãã®ãŸã‚ã€PostMessageã‚’ã“ã“ã«ã‚³ãƒ¼ãƒ‰ã—ã¦ã¯ã„ã‘ãªã„ã€‚
 
 }
 
@@ -1550,12 +1636,12 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 //	tempHwnd = hwnd;
 	tempHwnd = hwndClockMain;
 
-	//‚±‚ÌƒR[ƒ‹ƒoƒbƒNŠÖ”‚ÍhwndClockMain‚Æ‚Ì‘g‚İ‡‚í‚¹‚Å‚Å‚µ‚©³‚µ‚­“®ì‚µ‚È‚¢‚Ì‚ÅAŒ´‘¥‚Æ‚µ‚Ähwnd = hwndClockMain‚¾‚ªƒR[ƒ‹ƒoƒbƒNŠÖ”‚È‚Ì‚ÅtempHwnd‚Åˆ—‚µ‚Ä‚¢‚é
-	//message‚ÍA’èí‰^“]‚ÍWM_TIMER(275)ˆÈŠO‚Í‚ß‚Á‚½‚É—ˆ‚È‚¢B
+	//ã“ã®ã‚³ãƒ¼ãƒ«ãƒãƒƒã‚¯é–¢æ•°ã¯hwndClockMainã¨ã®çµ„ã¿åˆã‚ã›ã§ã§ã—ã‹æ­£ã—ãå‹•ä½œã—ãªã„ã®ã§ã€åŸå‰‡ã¨ã—ã¦hwnd = hwndClockMainã ãŒã‚³ãƒ¼ãƒ«ãƒãƒƒã‚¯é–¢æ•°ãªã®ã§tempHwndã§å‡¦ç†ã—ã¦ã„ã‚‹
+	//messageã¯ã€å®šå¸¸é‹è»¢æ™‚ã¯WM_TIMER(275)ä»¥å¤–ã¯ã‚ã£ãŸã«æ¥ãªã„ã€‚
 //	if (b_DebugLog) writeDebugLog_Win10("[tclock.c][WndProc] Window Message was recevied, message = ", message);
 
 
-	switch(message) // ƒc[ƒ‹ƒ`ƒbƒv‘Î‰
+	switch(message) // ãƒ„ãƒ¼ãƒ«ãƒãƒƒãƒ—å¯¾å¿œ
 	{
 		case WM_MOUSEMOVE:
 		case WM_LBUTTONDOWN:
@@ -1591,39 +1677,39 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 	{
 		case WM_DESTROY:
 			if (b_DebugLog) writeDebugLog_Win10("[tclock.c][WndProc()] WM_DESTROY received, bAutoRestart =", bAutoRestart);
-			//‰½‚ç‚©‚Ì——R‚ÅWM_CLOSE‚Å‚Í‚È‚­A’¼ÚDESTROY‚ª—ˆ‚½ƒP[ƒXBWinExplorer‚ÅDestroy‚·‚é‚Æ‚±‚ê‚ªŒÄ‚Î‚ê‚éBExplorerƒNƒ‰ƒbƒVƒ…‚É‚Í‚±‚ê‚Í—ˆ‚È‚¢B
+			//ä½•ã‚‰ã‹ã®ç†ç”±ã§WM_CLOSEã§ã¯ãªãã€ç›´æ¥DESTROYãŒæ¥ãŸã‚±ãƒ¼ã‚¹ã€‚WinExplorerã§Destroyã™ã‚‹ã¨ã“ã‚ŒãŒå‘¼ã°ã‚Œã‚‹ã€‚Explorerã‚¯ãƒ©ãƒƒã‚·ãƒ¥æ™‚ã«ã¯ã“ã‚Œã¯æ¥ãªã„ã€‚
 			if (bWin11Main) {
 				if (bAutoRestart)
 				{
-					//Ä‹N“®‚·‚éê‡
+					//å†èµ·å‹•ã™ã‚‹å ´åˆ
 					RestartTClockFromDLL();
 				}
 				else
 				{
-					//I—¹‚·‚éê‡BŒv‘¤‚©‚çI—¹‚·‚éê‡‚É‚ÍEndClock->PostMessage‚ÅWM_USER+2‚ğ‘—M
+					//çµ‚äº†ã™ã‚‹å ´åˆã€‚æ™‚è¨ˆå´ã‹ã‚‰çµ‚äº†ã™ã‚‹å ´åˆã«ã¯EndClock->PostMessageã§WM_USER+2ã‚’é€ä¿¡
 					EndClock();
-					PostMessage(hwndTClockExeMain, WM_USER + 2, 0, 0);		//‚±‚Ìs‚ğƒRƒƒ“ƒgƒAƒEƒg‚·‚é‚ÆDll‘¤‚¾‚¯I—¹‚·‚éBexemain‚©‚çonTimerZombieChekck‚Å”­Œ©‚µ‚ÄAİ’è‚É‰ˆ‚Á‚ÄI—¹/Ä‹N“®‚µ‚Ä‚­‚ê‚éB
+					PostMessage(hwndTClockExeMain, WM_USER + 2, 0, 0);		//ã“ã®è¡Œã‚’ã‚³ãƒ¡ãƒ³ãƒˆã‚¢ã‚¦ãƒˆã™ã‚‹ã¨Dllå´ã ã‘çµ‚äº†ã™ã‚‹ã€‚exemainã‹ã‚‰onTimerZombieChekckã§ç™ºè¦‹ã—ã¦ã€è¨­å®šã«æ²¿ã£ã¦çµ‚äº†/å†èµ·å‹•ã—ã¦ãã‚Œã‚‹ã€‚
 				}
 			}
 			break;
 		case (WM_USER + 100):
-			// eƒEƒBƒ“ƒhƒE‚©‚ç‘—‚ç‚êAƒTƒCƒY‚ğ•Ô‚·ƒƒbƒZ[ƒWB
-			// Win10RS1(=AU)‚Å‚ÍAƒƒCƒ“ƒNƒƒbƒN‚Å‚Íƒ^ƒXƒNƒgƒŒƒC‚ª‚±‚ÌƒƒbƒZ[ƒW‚ğó‚¯‚Ä‘Î‰‚·‚é(SubClassTrayProc)‚Ì‚ÅA‰½‚à‚µ‚È‚­‚Ä—Ç‚¢B
-			// LRESULTŒ`®‚ÅLOWORD=Œv‚‚³AHIWORD=Œv•‚ğ•Ô“š‚·‚é‚ÆêŠ‚ªŠm•Û‚³‚ê‚éB
+			// è¦ªã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ã‹ã‚‰é€ã‚‰ã‚Œã€ã‚µã‚¤ã‚ºã‚’è¿”ã™ãƒ¡ãƒƒã‚»ãƒ¼ã‚¸ã€‚
+			// Win10RS1(=AU)ã§ã¯ã€ãƒ¡ã‚¤ãƒ³ã‚¯ãƒ­ãƒƒã‚¯ã§ã¯ã‚¿ã‚¹ã‚¯ãƒˆãƒ¬ã‚¤ãŒã“ã®ãƒ¡ãƒƒã‚»ãƒ¼ã‚¸ã‚’å—ã‘ã¦å¯¾å¿œã™ã‚‹(SubClassTrayProc)ã®ã§ã€ä½•ã‚‚ã—ãªãã¦è‰¯ã„ã€‚
+			// LRESULTå½¢å¼ã§LOWORD=æ™‚è¨ˆé«˜ã•ã€HIWORD=æ™‚è¨ˆå¹…ã‚’è¿”ç­”ã™ã‚‹ã¨å ´æ‰€ãŒç¢ºä¿ã•ã‚Œã‚‹ã€‚
 
 			//if (g_winver&WIN10RS1) 
 			break;
 
-		// ƒVƒXƒeƒ€‚Ìİ’è‚ğ”½‰f‚·‚é
+		// ã‚·ã‚¹ãƒ†ãƒ ã®è¨­å®šã‚’åæ˜ ã™ã‚‹
 		case WM_SYSCOLORCHANGE:
 		case WM_WININICHANGE:
 		case WM_TIMECHANGE:	
-		case (WM_USER+101):		// eƒEƒBƒ“ƒhƒE‚©‚ç‘—‚ç‚ê‚é
+		case (WM_USER+101):		// è¦ªã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ã‹ã‚‰é€ã‚‰ã‚Œã‚‹
 		{
 			CreateClockDC();
 
 
-			//b_WININICHANGED = TRUE;		//‚·‚®‚É‚±‚Ìƒtƒ‰ƒO‚ğ—§‚Ä‚é‚Æ‰æ–Êİ’èXV‘O‚Éontimer_win10‚ªŒÄ‚Î‚ê‚Ä‚µ‚Ü‚¤‚Ì‚ÅA‘Ò‹@Œã(DelayedResponseToSysChange‚ÉˆÚ“®)
+			//b_WININICHANGED = TRUE;		//ã™ãã«ã“ã®ãƒ•ãƒ©ã‚°ã‚’ç«‹ã¦ã‚‹ã¨ç”»é¢è¨­å®šæ›´æ–°å‰ã«ontimer_win10ãŒå‘¼ã°ã‚Œã¦ã—ã¾ã†ã®ã§ã€å¾…æ©Ÿå¾Œ(DelayedResponseToSysChangeã«ç§»å‹•)
 			if (b_DebugLog)writeDebugLog_Win10("[tclock.c][WndProc] WM_WININICHANGE etc received. message = ", message);
 			SetTimer(hwndClockMain, IDTIMERDLL_DELEYED_RESPONSE, 500, NULL);
 
@@ -1631,7 +1717,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 		}
 		case WM_SIZE:
 		{
-			//[ToDo]Wind11‘Î‰‚Å3.5.0.3‚©‚ç•Ï‚¦‚½‚Ì‚ÅWin10‚Å–â‘è‚È‚¢‚©—vƒ`ƒFƒbƒNII ->‚Ü‚¸‚©‚Á‚½‚Ì‚Å–ß‚µ‚½B
+			//[ToDo]Wind11å¯¾å¿œã§3.5.0.3ã‹ã‚‰å¤‰ãˆãŸã®ã§Win10ã§å•é¡Œãªã„ã‹è¦ãƒã‚§ãƒƒã‚¯ï¼ï¼ ->ã¾ãšã‹ã£ãŸã®ã§æˆ»ã—ãŸã€‚
 			//LRESULT ret;
 			//CalcMainClockSize();
 			//ret = oldWndProc(hwnd, message, wParam, lParam);
@@ -1651,7 +1737,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 			break;
 		case WM_PAINT:
 		{
-			//RedrawTClock‚Æˆ—‚Í“¯‚¶‚¾‚ªWM_PAINT‚É‘Î‚µ‚Ä‚ÍGetDC->BeginPaint‚Æ‚©‚É‚·‚é•K—v‚ª‚ ‚é‚ç‚µ‚¢
+			//RedrawTClockã¨å‡¦ç†ã¯åŒã˜ã ãŒWM_PAINTã«å¯¾ã—ã¦ã¯GetDC->BeginPaintã¨ã‹ã«ã™ã‚‹å¿…è¦ãŒã‚ã‚‹ã‚‰ã—ã„
 			PAINTSTRUCT ps;
 			HDC hdc;
 			hdc = BeginPaint(tempHwnd, &ps);
@@ -1688,7 +1774,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 					OntimerCheckNetStat_Win10(tempHwnd);
 				}
 				else if (wParam == IDTIMERDLL_TIP) {
-				//Ver 4.1ˆÈ~‚ÍOnTimer_Win10‚©‚çs‚¤‚±‚Æ‚Æ‚·‚éBƒ^ƒCƒ}[‚à‹N“®‚µ‚È‚¢‚æ‚¤‚É‚µ‚Ä‚¢‚éB
+				//Ver 4.1ä»¥é™ã¯OnTimer_Win10ã‹ã‚‰è¡Œã†ã“ã¨ã¨ã™ã‚‹ã€‚ã‚¿ã‚¤ãƒãƒ¼ã‚‚èµ·å‹•ã—ãªã„ã‚ˆã†ã«ã—ã¦ã„ã‚‹ã€‚
 //					TooltipOnTimer(tempHwnd);
 				}
 				else if (wParam == IDTIMERDLL_DELEYED_RESPONSE) {
@@ -1705,7 +1791,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 //				if (b_DebugLog) writeDebugLog_Win10("[tclock.c][WndProc] WM_TIMER actions cancelled because b_Sleeping = TRUE", 999);
 			}
 			return 0;
-		// ƒ}ƒEƒXƒ_ƒEƒ“
+		// ãƒã‚¦ã‚¹ãƒ€ã‚¦ãƒ³
 		case WM_LBUTTONDOWN:
 		case WM_RBUTTONDOWN:
 		case WM_MBUTTONDOWN:
@@ -1717,7 +1803,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 			PostMessage(hwndTClockExeMain, message, wParam, lParam);
 			return 0;
 
-		// ƒ}ƒEƒXƒAƒbƒv
+		// ãƒã‚¦ã‚¹ã‚¢ãƒƒãƒ—
 		case WM_LBUTTONUP:
 		case WM_RBUTTONUP:
 		case WM_MBUTTONUP:
@@ -1736,7 +1822,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 				DWORD mp;
 				mp = GetMessagePos();
 				PostMessage(hwndTClockExeMain, WM_CONTEXTMENU, (WPARAM)tempHwnd, (LPARAM)mp);
-				//if (bWin11Main && (Win11Type == 2)) {	//ƒNƒŠƒbƒN‚É‚æ‚èTClockBarWin11‚ªƒ^ƒXƒNƒo[‚æ‚è‘O–Ê‚É—ˆ‚Ä‚µ‚Ü‚¤‚Ì‚ğ–ß‚·B
+				//if (bWin11Main && (Win11Type == 2)) {	//ã‚¯ãƒªãƒƒã‚¯ã«ã‚ˆã‚ŠTClockBarWin11ãŒã‚¿ã‚¹ã‚¯ãƒãƒ¼ã‚ˆã‚Šå‰é¢ã«æ¥ã¦ã—ã¾ã†ã®ã‚’æˆ»ã™ã€‚
 				//	SetWindowPos(hwndTClockBarWin11, hwndTaskBarMain, 0, 0, 0, 0,
 				//		SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE | SWP_NOSENDCHANGING | SWP_SHOWWINDOW);
 				//}
@@ -1744,32 +1830,32 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 			}
 
 			PostMessage(hwndTClockExeMain, message, wParam, lParam);
-			//// «‰EƒNƒŠƒbƒN‚ªWM_CONTEXTMENU‚É•ÏŠ·‚³‚ê‚È‚¢‚æ‚¤‚ÉoldWndProc‚ğŒÄ‚Î‚È‚¢
-			//// ŒÄ‚ñ‚Å‚µ‚Ü‚¤‚Æ“Æ©ˆ—‚ğŠ„‚è“–‚Ä‚½‚Æ‚«‚àƒƒjƒ…[‚ªŠJ‚¢‚Ä‚µ‚Ü‚¤
+			//// â†“å³ã‚¯ãƒªãƒƒã‚¯ãŒWM_CONTEXTMENUã«å¤‰æ›ã•ã‚Œãªã„ã‚ˆã†ã«oldWndProcã‚’å‘¼ã°ãªã„
+			//// å‘¼ã‚“ã§ã—ã¾ã†ã¨ç‹¬è‡ªå‡¦ç†ã‚’å‰²ã‚Šå½“ã¦ãŸã¨ãã‚‚ãƒ¡ãƒ‹ãƒ¥ãƒ¼ãŒé–‹ã„ã¦ã—ã¾ã†
 			////if(message == WM_RBUTTONUP) break;
 			return 0;
 
 		case WM_MOUSEMOVE:
 			return 0;
-		case WM_CONTEXTMENU:   // ‰EƒNƒŠƒbƒNƒƒjƒ…[
-			// ApplicationKey‚ğ‰Ÿ‚³‚ê‚½‚Æ‚«‚É‚­‚é
-			// ‰EƒNƒŠƒbƒN‚Ìê‡‚Íª‚Å©‘O‚Å•ÏŠ·‚µ‚È‚¢‚Æ¤“Æ©ˆ—‚ğŠ„‚è“–‚Ä‚½‚Æ‚«‚à
-			// ƒƒjƒ…[‚ªŠJ‚¢‚Ä‚µ‚Ü‚¤
+		case WM_CONTEXTMENU:   // å³ã‚¯ãƒªãƒƒã‚¯ãƒ¡ãƒ‹ãƒ¥ãƒ¼
+			// ApplicationKeyã‚’æŠ¼ã•ã‚ŒãŸã¨ãã«ãã‚‹
+			// å³ã‚¯ãƒªãƒƒã‚¯ã®å ´åˆã¯â†‘ã§è‡ªå‰ã§å¤‰æ›ã—ãªã„ã¨ï½¤ç‹¬è‡ªå‡¦ç†ã‚’å‰²ã‚Šå½“ã¦ãŸã¨ãã‚‚
+			// ãƒ¡ãƒ‹ãƒ¥ãƒ¼ãŒé–‹ã„ã¦ã—ã¾ã†
 			//if (bRClickMenu) {
 
 
 				PostMessage(hwndTClockExeMain, message, wParam, lParam);
 			//}
 			return 0;
-		case WM_NCHITTEST: // oldWndProc‚Éˆ—‚³‚¹‚È‚¢
+		case WM_NCHITTEST: // oldWndProcã«å‡¦ç†ã•ã›ãªã„
 			return DefWindowProc(tempHwnd, message, wParam, lParam);
 		case WM_MOUSEACTIVATE:
 			return MA_ACTIVATE;
-		// ƒtƒ@ƒCƒ‹‚Ìƒhƒƒbƒv
+		// ãƒ•ã‚¡ã‚¤ãƒ«ã®ãƒ‰ãƒ­ãƒƒãƒ—
 		case WM_DROPFILES:
 			PostMessage(hwndTClockExeMain, WM_DROPFILES, wParam, lParam);
 			return 0;
-		case WM_NOTIFY: //ƒc[ƒ‹ƒ`ƒbƒv‚ÌƒeƒLƒXƒg•\¦
+		case WM_NOTIFY: //ãƒ„ãƒ¼ãƒ«ãƒãƒƒãƒ—ã®ãƒ†ã‚­ã‚¹ãƒˆè¡¨ç¤º
 		{
 			LRESULT lres;
 			if (TooltipOnNotify(&lres, lParam)) return lres;
@@ -1792,7 +1878,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 			}
 			else if (LOWORD(wParam) == CLOCKM_ZOMBIECHECK_CALL)
 			{
-				return 255;		//ŒÄ‚Ño‚µŒ³‚ÍƒƒCƒ“ƒvƒƒOƒ‰ƒ€(exemain.) 255‚ğ•Ô‚·‚ÆA‚±‚ÌƒR[ƒh(WndProc)‚ª¶‚«‚Ä‚¢‚é = ‰ü‘¢Œv‚ª‘¶İ‚·‚éA‚Æ”»’f‚³‚ê‚éB
+				return 255;		//å‘¼ã³å‡ºã—å…ƒã¯ãƒ¡ã‚¤ãƒ³ãƒ—ãƒ­ã‚°ãƒ©ãƒ (exemain.) 255ã‚’è¿”ã™ã¨ã€ã“ã®ã‚³ãƒ¼ãƒ‰(WndProc)ãŒç”Ÿãã¦ã„ã‚‹ = æ”¹é€ æ™‚è¨ˆãŒå­˜åœ¨ã™ã‚‹ã€ã¨åˆ¤æ–­ã•ã‚Œã‚‹ã€‚
 			}
 			else if (!b_CompactMode)
 			{
@@ -1942,10 +2028,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 		case CLOCKM_REFRESHTASKBAR: // refresh other elements than clock
 
 			SetLayeredTaskbar(tempHwnd);
-			RedrawMainTaskbar();	//‘¦”½‰f‚Ì‚½‚ß‚É•K—vB•K—v‚ª‚ ‚ê‚ÎWindows‚ÌƒŠƒTƒCƒYˆ—‚ğ’Ê‚µ‚ÄMainClock‚ÌÄ”z’u‚âƒTƒCƒYXVAhdcClockÄì¬‚ªÀs‚³‚ê‚éB
+			RedrawMainTaskbar();	//å³æ™‚åæ˜ ã®ãŸã‚ã«å¿…è¦ã€‚å¿…è¦ãŒã‚ã‚Œã°Windowsã®ãƒªã‚µã‚¤ã‚ºå‡¦ç†ã‚’é€šã—ã¦MainClockã®å†é…ç½®ã‚„ã‚µã‚¤ã‚ºæ›´æ–°ã€hdcClockå†ä½œæˆãŒå®Ÿè¡Œã•ã‚Œã‚‹ã€‚
 
 			return 0;
-		case WM_WINDOWPOSCHANGING:  // ƒTƒCƒY’²®
+		case WM_WINDOWPOSCHANGING:  // ã‚µã‚¤ã‚ºèª¿æ•´
 			break;
 	}
 	return CallWindowProc(oldWndProc, tempHwnd, message, wParam, lParam);
@@ -1955,7 +2041,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 void DelayedResponseToSyschange(void)
 {
 	if (b_DebugLog)writeDebugLog_Win10("[subclock.c] DelayedResponseToSyschange called.", 999);
-	b_WININICHANGED = TRUE;	//Ÿ‚ÌOntimer_Win10->RedrawClock‚Ìƒ^ƒCƒ~ƒ“ƒO‚ÅWin11Notify‚ª‹­§XV‚³‚ê‚éB
+	b_WININICHANGED = TRUE;	//æ¬¡ã®Ontimer_Win10->RedrawClockã®ã‚¿ã‚¤ãƒŸãƒ³ã‚°ã§Win11NotifyãŒå¼·åˆ¶æ›´æ–°ã•ã‚Œã‚‹ã€‚
 
 
 	if (bEnableSubClks) {
@@ -1970,6 +2056,11 @@ void DelayedResponseToSyschange(void)
 
 void RestartOnRefresh(void)
 {
+	if (InterlockedCompareExchange(&g_refresh_in_progress, 1, 0) != 0) {
+		InterlockedExchange(&g_refresh_pending, 1);
+		if (b_NormalLog) WriteNormalLog_DLL("[guard] RestartOnRefresh reentry queued");
+		return;
+	}
 
 	if (b_DebugLog)writeDebugLog_Win10("[tclock.c] RestartOnRefresh called. bWin11Main =", bWin11Main);
 
@@ -1994,19 +2085,19 @@ void RestartOnRefresh(void)
 
 	if (bWin11Main)
 	{
-		//Ø‚è—‚Æ‚µˆÊ’u‚È‚Ç‚ÍƒEƒBƒ“ƒhƒEî•ñ‚ª‚È‚¢‚ÆŒˆ‚ß‚ç‚ê‚È‚¢‚Ì‚ÅÄ“xŒÄ‚ÔB
+		//åˆ‡ã‚Šè½ã¨ã—ä½ç½®ãªã©ã¯ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦æƒ…å ±ãŒãªã„ã¨æ±ºã‚ã‚‰ã‚Œãªã„ã®ã§å†åº¦å‘¼ã¶ã€‚
 		GetWin11ElementSize();
-//		GetWin11TrayWidth();	//ŒÄ‚ñ‚Å‚ÍNGB‚·‚Å‚ÉƒTƒCƒY‚ª•Ï‚í‚Á‚Ä‚¢‚é‚Ì‚ÅŒëî•ñ‚ğæ“¾‚µ‚Ä‚µ‚Ü‚¤B
+//		GetWin11TrayWidth();	//å‘¼ã‚“ã§ã¯NGã€‚ã™ã§ã«ã‚µã‚¤ã‚ºãŒå¤‰ã‚ã£ã¦ã„ã‚‹ã®ã§èª¤æƒ…å ±ã‚’å–å¾—ã—ã¦ã—ã¾ã†ã€‚
 		SetModifiedWidthWin11Tray();
-		//CreateWin11NotifyDC();	//•s—v
-		//Win11‚Å‚ÍSetMainClockOnTasktray_Win11‚ğÀs‚·‚é(Win11Type == 2‚Ìê‡‚Í•K—v)
+		//CreateWin11NotifyDC();	//ä¸è¦
+		//Win11ã§ã¯SetMainClockOnTasktray_Win11ã‚’å®Ÿè¡Œã™ã‚‹(Win11Type == 2ã®å ´åˆã¯å¿…è¦)
 		//if (Win11Type == 2) {
 		//	SetMainClockOnTasktray_Win11();
 		//}
-		if (bEnabledWin11Notify) DrawWin11Notify(TRUE);	//’Ê’mƒAƒCƒRƒ“‚ÌF‚Ì”½‰f‚Ì‚½‚ß
+		if (bEnabledWin11Notify) DrawWin11Notify(TRUE);	//é€šçŸ¥ã‚¢ã‚¤ã‚³ãƒ³ã®è‰²ã®åæ˜ ã®ãŸã‚
 	}
 
-	//‚¢‚Á‚½‚ñƒTƒuƒNƒƒbƒN‚ğƒNƒŠƒA
+	//ã„ã£ãŸã‚“ã‚µãƒ–ã‚¯ãƒ­ãƒƒã‚¯ã‚’ã‚¯ãƒªã‚¢
 	for (int i = 0; i < MAX_SUBSCREEN; i++)
 	{
 		if (bEnableSpecificSubClk[i]) {
@@ -2015,7 +2106,7 @@ void RestartOnRefresh(void)
 		}
 	}
 
-	//ƒOƒ‰ƒtƒf[ƒ^ƒNƒŠƒA
+	//ã‚°ãƒ©ãƒ•ãƒ‡ãƒ¼ã‚¿ã‚¯ãƒªã‚¢
 	ClearGraphData();
 
 	RedrawMainTaskbar();
@@ -2024,13 +2115,18 @@ void RestartOnRefresh(void)
 	RedrawTClock();
 
 	TooltipOnRefresh(hwndClockMain);
+
+	InterlockedExchange(&g_refresh_in_progress, 0);
+	if (InterlockedExchange(&g_refresh_pending, 0) != 0) {
+		PostMessage(hwndClockMain, CLOCKM_REFRESHCLOCK, 0, 0);
+	}
 }
 
 
 
 
 /*------------------------------------------------
-@İ’è‚Ì“Ç‚İ‚İ‚Æƒf[ƒ^‚Ì‰Šú‰»
+ã€€è¨­å®šã®èª­ã¿è¾¼ã¿ã¨ãƒ‡ãƒ¼ã‚¿ã®åˆæœŸåŒ–
 --------------------------------------------------*/
 void ReadData()
 {
@@ -2042,9 +2138,18 @@ void ReadData()
 	SYSTEMTIME lt;
 	DWORD dwInfoFormat;
 	TCHAR fname[MAX_PATH];
+	LONG readDepth;
 
 	extern BOOL b_exist_DOWzone;
 	b_exist_DOWzone = FALSE;
+
+	readDepth = InterlockedIncrement(&g_depth_ReadData);
+	if (readDepth > 1)
+	{
+		if (b_NormalLog) WriteNormalLog_DLL("[guard] ReadData reentry skipped");
+		InterlockedDecrement(&g_depth_ReadData);
+		return;
+	}
 
 	b_DebugLog = GetMyRegLong(NULL, "DebugLog", FALSE);
 	SetMyRegLong(NULL, "DebugLog", b_DebugLog);
@@ -2060,7 +2165,7 @@ void ReadData()
 
 	//SetMyRegLong("Status_DoNotEdit", "WindowsType", Win11Type);
 
-	GetModuleFileName(hmod, g_mydir_dll, MAX_PATH);		//iniƒtƒ@ƒCƒ‹Œo—R‚Å‚È‚­ƒfƒBƒŒƒNƒgƒŠæ“¾‚·‚é‚æ‚¤‚É by TTTT
+	GetModuleFileName(hmod, g_mydir_dll, MAX_PATH);		//iniãƒ•ã‚¡ã‚¤ãƒ«çµŒç”±ã§ãªããƒ‡ã‚£ãƒ¬ã‚¯ãƒˆãƒªå–å¾—ã™ã‚‹ã‚ˆã†ã« by TTTT
 	del_title(g_mydir_dll);
 
 
@@ -2093,7 +2198,7 @@ void ReadData()
 	SetMyRegLong(NULL, "OffsetClockMS", (int)(short)offsetClockMS);
 
 
-	//Win11‚Åiniƒtƒ@ƒCƒ‹“Ç‚İo‚µ‚É–³Œø‰»‚·‚éê‡‚É‚ÍƒRƒƒ“ƒgƒAƒEƒg‚ğŠO‚·B
+	//Win11ã§iniãƒ•ã‚¡ã‚¤ãƒ«èª­ã¿å‡ºã—æ™‚ã«ç„¡åŠ¹åŒ–ã™ã‚‹å ´åˆã«ã¯ã‚³ãƒ¡ãƒ³ãƒˆã‚¢ã‚¦ãƒˆã‚’å¤–ã™ã€‚
 
 //	if (bWin11Main) bEnableSubClks = FALSE;
 	
@@ -2107,11 +2212,11 @@ void ReadData()
 
 	b_ExistMeteredProfile = GetMyRegLong("Status_DoNotEdit", "ExistMeteredProfile", FALSE);
 
-	//ƒ‚ƒ_ƒ“ƒXƒ^ƒ“ƒoƒC‘Î‰Šm”F
+	//ãƒ¢ãƒ€ãƒ³ã‚¹ã‚¿ãƒ³ãƒã‚¤å¯¾å¿œç¢ºèª
 	b_ModernStandbySupported = CheckModernStandbyCapability_Win10();
 	SetMyRegLong("Status_DoNotEdit", "ModernStandbySupported", b_ModernStandbySupported);
 
-	//İ’è”Ô†æ“¾
+	//è¨­å®šç•ªå·å–å¾—
 
 
 	colfore = (COLORREF)GetMyRegLong("Color_Font", "ForeColor", GetSysColor(COLOR_BTNTEXT));
@@ -2119,7 +2224,7 @@ void ReadData()
 	SetMyRegLong("Color_Font", "ForeColor", colfore);
 
 	ColorWeekdayText = colfore;
-	colWin11Notify = colfore;		//’Ê’mƒAƒCƒRƒ“‚ÍƒƒCƒ“ƒeƒLƒXƒg‚Æ“¯F
+	colWin11Notify = colfore;		//é€šçŸ¥ã‚¢ã‚¤ã‚³ãƒ³ã¯ãƒ¡ã‚¤ãƒ³ãƒ†ã‚­ã‚¹ãƒˆã¨åŒè‰²
 
 	colback = (COLORREF)GetMyRegLong("Color_Font", "BackColor", GetSysColor(COLOR_3DFACE));
 //	if (colback & 0x80000000) colback = GetSysColor(colback & 0x00ffffff);
@@ -2178,15 +2283,13 @@ void ReadData()
 	else weight = 0;
 	italic = GetMyRegLong("Color_Font", "Italic", 0);
 
-
-	
 	hFon = CreateMyFont(fontname, fontsize, weight, italic);
 	RefreshClockWorkFont();
 	SetTClockFont();
 
 	TooltipReadData();
 
-	//Ver 4.1‚Åƒc[ƒ‹ƒ`ƒbƒvXV‚ÍOnTimer_Win10‚©‚çÀs‚·‚é‚±‚Æ‚É‚µ‚½‚Ì‚ÅƒRƒƒ“ƒgƒAƒEƒg
+	//Ver 4.1ã§ãƒ„ãƒ¼ãƒ«ãƒãƒƒãƒ—æ›´æ–°ã¯OnTimer_Win10ã‹ã‚‰å®Ÿè¡Œã™ã‚‹ã“ã¨ã«ã—ãŸã®ã§ã‚³ãƒ¡ãƒ³ãƒˆã‚¢ã‚¦ãƒˆ
 	//if (bTooltipTimerStart) KillTimer(hwndClockMain, IDTIMERDLL_TIP); bTooltipTimerStart = FALSE;
 	//if (bEnableTooltip) {
 	//	bTooltipTimerStart = SetTimer(hwndClockMain, IDTIMERDLL_TIP, 200, NULL) != 0;
@@ -2798,7 +2901,7 @@ void ReadData()
 
 	GetMyRegStr("Format", "Format", format, 1024, "mm/dd ddd\\n hh:nn:ss ");
 
-	// Œv‚Ì‘®‚Í“Ç‚İ‚İ‚É<%`%>‚ğ’Ç‰Á‚·‚é
+	// æ™‚è¨ˆã®æ›¸å¼ã¯èª­ã¿è¾¼ã¿æ™‚ã«<%ï½%>ã‚’è¿½åŠ ã™ã‚‹
 	{
 		char fmt_tmp[1024];
 		strcpy(fmt_tmp,"<%");
@@ -2843,6 +2946,7 @@ void ReadData()
 	bTimerAdjust_NetStat = TRUE;
 
 	CleanSettingFile();
+	InterlockedDecrement(&g_depth_ReadData);
 
 }
 
@@ -2898,8 +3002,8 @@ void InitSysInfo()
 }
 
 /*------------------------------------------------
-@•`‰æ—pƒƒ‚ƒŠDC‚Ìì¬
- hdcClock‚ÆhdcClock_work‚ğì‚é(ì‚è’¼‚·)
+ã€€æç”»ç”¨ãƒ¡ãƒ¢ãƒªDCã®ä½œæˆ
+ hdcClockã¨hdcClock_workã‚’ä½œã‚‹(ä½œã‚Šç›´ã™)
 --------------------------------------------------*/
 void CreateClockDC(void)
 {
@@ -2914,7 +3018,7 @@ void CreateClockDC(void)
 
 	CalcMainClockSize();
 
-	//‚·‚Å‚ÉhdcClock‚ª‚ ‚éê‡‚É‚ÍAÁ‚·B
+	//ã™ã§ã«hdcClockãŒã‚ã‚‹å ´åˆã«ã¯ã€æ¶ˆã™ã€‚
 	if(hdcClock)
 	{
 		DeleteDC(hdcClock);
@@ -2927,7 +3031,7 @@ void CreateClockDC(void)
 		hdcClock_work = NULL;
 	}
 
-	//‚·‚Å‚Éhbm_DIBSection‚ª‘¶İ‚·‚éê‡‚É‚ÍAƒNƒŠƒA‚µ‚ÄÁ‚·B
+	//ã™ã§ã«hbm_DIBSectionãŒå­˜åœ¨ã™ã‚‹å ´åˆã«ã¯ã€ã‚¯ãƒªã‚¢ã—ã¦æ¶ˆã™ã€‚
 	if (hbm_DIBSection) {
 		DeleteObject(hbm_DIBSection);
 		hbm_DIBSection = NULL;
@@ -2945,7 +3049,7 @@ void CreateClockDC(void)
 	hdc = GetDC(tempHwnd);
 
 	hdcClock = CreateCompatibleDC(hdc);
-	if(!hdcClock)	//¸”s‚µ‚½ê‡‚Í’ú‚ß‚éc‹N‚±‚ç‚È‚¢‚Í‚¸B
+	if(!hdcClock)	//å¤±æ•—ã—ãŸå ´åˆã¯è«¦ã‚ã‚‹â€¦èµ·ã“ã‚‰ãªã„ã¯ãšã€‚
 	{
 		if (b_DebugLog)writeDebugLog_Win10("[tclock.c][CreateClockDC] Failed to create hdcClock!", 999);
 		ReleaseDC(tempHwnd, hdc);
@@ -3059,7 +3163,7 @@ void PlayChime(BOOL b_sedondary)
 }
 
 /*------------------------------------------------
-@WM_TIMER ‚Ìˆ— New Version for TClock-Win10
+ã€€WM_TIMER ã®å‡¦ç† New Version for TClock-Win10
  --------------------------------------------------*/
 void OnTimer_Win10(void)
 {
@@ -3287,14 +3391,14 @@ void OnTimer_Win10(void)
 		RedrawTClock();
 	}
 
-	//Ver 4.1ˆÈ~‚ÍOnTimer_Win10‚©‚çs‚¤‚±‚Æ‚Æ‚·‚éB
+	//Ver 4.1ä»¥é™ã¯OnTimer_Win10ã‹ã‚‰è¡Œã†ã“ã¨ã¨ã™ã‚‹ã€‚
 	if (bEnableTooltip) TooltipOnTimer(hwndClockMain, b_DayChange);
 
-	//Ver4.0.4Œ»İAexemain‚É‚¨‚¯‚éOnTimerZombieCheck2‚Æ“ñdƒ`ƒFƒbƒN‚É‚È‚Á‚Ä‚¢‚é‚Ì‚Å‚¢‚¸‚ê®—‚ª•K—v
-	//‚µ‚©‚à‚±‚¿‚ç‚Ìd‘g‚İ‚Í’â~“®ì“™‚ÍÀ‘•‚³‚ê‚Ä‚¢‚È‚¢B
+	//Ver4.0.4ç¾åœ¨ã€exemainã«ãŠã‘ã‚‹OnTimerZombieCheck2ã¨äºŒé‡ãƒã‚§ãƒƒã‚¯ã«ãªã£ã¦ã„ã‚‹ã®ã§ã„ãšã‚Œæ•´ç†ãŒå¿…è¦
+	//ã—ã‹ã‚‚ã“ã¡ã‚‰ã®ä»•çµ„ã¿ã¯åœæ­¢å‹•ä½œç­‰ã¯å®Ÿè£…ã•ã‚Œã¦ã„ãªã„ã€‚
 	SendStatusDLL2Main();	
 
-	b_DayChange = FALSE;	//“ú•tXVˆ—‚Í1‰ñ‚¾‚¯
+	b_DayChange = FALSE;	//æ—¥ä»˜æ›´æ–°å‡¦ç†ã¯1å›ã ã‘
 
 
 	if (b_DebugLog) writeDebugLog_Win10("[tclock.c] OnTimer_Win10 finished.", 999);
@@ -3302,7 +3406,7 @@ void OnTimer_Win10(void)
 }
 
 /*------------------------------------------------
-@DLL‚Ì“®ìó‘Ô‚ğMain‚É‘—M by TTTT
+ã€€DLLã®å‹•ä½œçŠ¶æ…‹ã‚’Mainã«é€ä¿¡ by TTTT
  --------------------------------------------------*/
 void SendStatusDLL2Main(void)
 {
@@ -3331,14 +3435,14 @@ void OnTimerUpperTaskbar(void)
 	 || (rectWnd.bottom-rectWnd.top) >= GetSystemMetrics(SM_CYFULLSCREEN)
 	 || (rectWnd.right-rectWnd.left) >= GetSystemMetrics(SM_CXFULLSCREEN))
 		return;
-	//uƒfƒXƒNƒgƒbƒv‚Ì•\¦v‚ÅÅ¬‰»‚³‚ê‚½ƒEƒBƒ“ƒhƒE‚ğ•œŒ³‚µ‚½‚Æ‚«‚É
-	//ƒEƒBƒ“ƒhƒEˆÊ’u‚ª‚¨‚©‚µ‚­‚È‚é–â‘è‰ñ”ğ
+	//ã€Œãƒ‡ã‚¹ã‚¯ãƒˆãƒƒãƒ—ã®è¡¨ç¤ºã€ã§æœ€å°åŒ–ã•ã‚ŒãŸã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ã‚’å¾©å…ƒã—ãŸã¨ãã«
+	//ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ä½ç½®ãŒãŠã‹ã—ããªã‚‹å•é¡Œå›é¿
 	if (!GetClientRect(hActiveWnd, &rectClient)) return;
 	if (rectClient.right == 0 && rectClient.bottom == 0) return;
 
 	if (rectTaskbar.bottom <= (GetSystemMetrics(SM_CYSCREEN)/2))
 	{
-		//ãƒ^ƒXƒNƒo[
+		//ä¸Šã‚¿ã‚¹ã‚¯ãƒãƒ¼
 		if (rectWnd.top < rectTaskbar.bottom)
 		{
 			MoveWindow(hActiveWnd, rectWnd.left, rectTaskbar.bottom,
@@ -3348,7 +3452,7 @@ void OnTimerUpperTaskbar(void)
 	else
 	if (rectTaskbar.right <= (GetSystemMetrics(SM_CXSCREEN)/2))
 	{
-		//¶ƒ^ƒXƒNƒo[
+		//å·¦ã‚¿ã‚¹ã‚¯ãƒãƒ¼
 		if (rectWnd.left < rectTaskbar.right)
 		{
 			MoveWindow(hActiveWnd, rectTaskbar.right, rectWnd.top,
@@ -3358,7 +3462,7 @@ void OnTimerUpperTaskbar(void)
 	else
 	if (rectTaskbar.left >= (GetSystemMetrics(SM_CXSCREEN)/2))
 	{
-		//‰Eƒ^ƒXƒNƒo[
+		//å³ã‚¿ã‚¹ã‚¯ãƒãƒ¼
 		if (rectWnd.right > rectTaskbar.left)
 		{
 			MoveWindow(hActiveWnd, rectTaskbar.left-(rectWnd.right-rectWnd.left) , rectWnd.top,
@@ -3367,7 +3471,7 @@ void OnTimerUpperTaskbar(void)
 	}
 	else
 	{
-		//‰ºƒ^ƒXƒNƒo[
+		//ä¸‹ã‚¿ã‚¹ã‚¯ãƒãƒ¼
 		if (rectWnd.bottom > rectTaskbar.top)
 		{
 			MoveWindow(hActiveWnd, rectWnd.left, rectTaskbar.top-(rectWnd.bottom-rectWnd.top),
@@ -3377,7 +3481,7 @@ void OnTimerUpperTaskbar(void)
 }
 
 /*------------------------------------------------
-@Œv‚Ì•`‰æ (2.5.0.2ˆÈ~‚Å‚Íg‚í‚ê‚Ä‚È‚¢B
+ã€€æ™‚è¨ˆã®æç”» (2.5.0.2ä»¥é™ã§ã¯ä½¿ã‚ã‚Œã¦ãªã„ã€‚
 --------------------------------------------------*/
 void DrawClock(HWND hwnd, HDC hdc)
 {
@@ -3402,8 +3506,8 @@ void DrawClock_New(HDC hdc, BOOL b_forceUpdateWin11Notify)
 	//	GetTaskbarColor_Win11Type2(TRUE);
 	//}
 
-	//‚±‚±‚ÅWin11 Notification‚à•`‰æ‚·‚éB
-	//æ‚ÉNotification‚ğ‘‚­BWin11Type==2‚É‚¨‚¢‚Ä’Ê’mXV‚ª‚ ‚Á‚½ê‡‚ÉƒƒCƒ“ƒNƒƒbƒN•`‰æ‚æ‚èæ‚ÉoriginalColorTaskbar_ForWin11Notify‚ªXV‚³‚ê‚éB
+	//ã“ã“ã§Win11 Notificationã‚‚æç”»ã™ã‚‹ã€‚
+	//å…ˆã«Notificationã‚’æ›¸ãã€‚Win11Type==2ã«ãŠã„ã¦é€šçŸ¥æ›´æ–°ãŒã‚ã£ãŸå ´åˆã«ãƒ¡ã‚¤ãƒ³ã‚¯ãƒ­ãƒƒã‚¯æç”»ã‚ˆã‚Šå…ˆã«originalColorTaskbar_ForWin11NotifyãŒæ›´æ–°ã•ã‚Œã‚‹ã€‚
 	if (bEnabledWin11Notify) DrawWin11Notify(b_forceUpdateWin11Notify);
 
 	if (hdcClock) {
@@ -3530,7 +3634,7 @@ static void GetHnadLinePos(WORD index, WORD sector, POINT tbl[], POINT pos[], in
 	pos[1].y = sy + dy;
 }
 
-//ƒrƒbƒgƒ}ƒbƒvƒwƒbƒ_[‚Ìƒ`ƒFƒbƒN
+//ãƒ“ãƒƒãƒˆãƒãƒƒãƒ—ãƒ˜ãƒƒãƒ€ãƒ¼ã®ãƒã‚§ãƒƒã‚¯
 static BOOL CheckBitmapHeader(LPBYTE top, DWORD dwFileSize)
 {
 	LPBITMAPFILEHEADER lpbmfh;
@@ -3539,17 +3643,17 @@ static BOOL CheckBitmapHeader(LPBYTE top, DWORD dwFileSize)
 	RGBQUAD			 *lprgb;
 
 	if (dwFileSize <= sizeof(BITMAPFILEHEADER) + sizeof(BITMAPINFOHEADER)) {
-		// ƒTƒCƒYˆÙí
+		// ã‚µã‚¤ã‚ºç•°å¸¸
 		return FALSE;
 	}
 
 	lpbmfh = (BITMAPFILEHEADER *)top;
 	if (lpbmfh->bfType != 0x4D42) { // BM
-		//ƒwƒbƒ_[ˆÙí
+		//ãƒ˜ãƒƒãƒ€ãƒ¼ç•°å¸¸
 		return FALSE;
 	}
 	if (lpbmfh->bfSize <= sizeof(BITMAPFILEHEADER) + sizeof(BITMAPINFOHEADER)) {
-		// ƒTƒCƒYˆÙí
+		// ã‚µã‚¤ã‚ºç•°å¸¸
 		return FALSE;
 	}
 	lpOffBits = (LPBYTE)(top + lpbmfh->bfOffBits);
@@ -3557,17 +3661,17 @@ static BOOL CheckBitmapHeader(LPBYTE top, DWORD dwFileSize)
 	lprgb = (RGBQUAD *)(lpbmih + sizeof(BITMAPINFOHEADER));
 
 	if (lpbmih->biSize != sizeof(BITMAPINFOHEADER)) {
-		// ƒrƒbƒgƒ}ƒbƒvƒCƒ“ƒtƒHƒwƒbƒ_[ƒTƒCƒYˆÙí
+		// ãƒ“ãƒƒãƒˆãƒãƒƒãƒ—ã‚¤ãƒ³ãƒ•ã‚©ãƒ˜ãƒƒãƒ€ãƒ¼ã‚µã‚¤ã‚ºç•°å¸¸
 		return FALSE;
 	}
 
 	if (lpbmih->biHeight == 0) {
-		//ƒrƒbƒgƒ}ƒbƒv‚Ì‚‚³‚ÌˆÙí
+		//ãƒ“ãƒƒãƒˆãƒãƒƒãƒ—ã®é«˜ã•ã®ç•°å¸¸
 		return FALSE;
 	}
 
 	if (lpbmih->biWidth == 0) {
-		//ƒrƒbƒgƒ}ƒbƒv‚Ì•‚ÌˆÙí
+		//ãƒ“ãƒƒãƒˆãƒãƒƒãƒ—ã®å¹…ã®ç•°å¸¸
 		return FALSE;
 	}
 	switch (lpbmih->biBitCount) {
@@ -3579,7 +3683,7 @@ static BOOL CheckBitmapHeader(LPBYTE top, DWORD dwFileSize)
 		case 32:
 			break;
 		default:
-			//ƒsƒNƒZƒ‹ƒTƒCƒY‚ÌˆÙí
+			//ãƒ”ã‚¯ã‚»ãƒ«ã‚µã‚¤ã‚ºã®ç•°å¸¸
 			return FALSE;
 	}
 	return TRUE;
@@ -3889,7 +3993,7 @@ static VOID MakePosTable(int cx, int cy)
 
 	// x2 = x * cosA - y * sinA
 	// y2 = x * sinA + y * cosA
-	// ƒ‰ƒWƒAƒ“ = (Šp“x)–iƒÎ/180j
+	// ãƒ©ã‚¸ã‚¢ãƒ³ = (è§’åº¦)ï¼Šï¼ˆÏ€/180ï¼‰
 	r = cx / 2;
 	sr = r;
 
@@ -3936,7 +4040,7 @@ static VOID SetAnalogClockSize(SIZE *s)
 static BOOL InitAnalogClockData(HWND hWnd)
 {
 	UNREFERENCED_PARAMETER(hWnd);
-	//ÀÛ‚É‚ÍhWnd = hwndClockMain
+	//å®Ÿéš›ã«ã¯hWnd = hwndClockMain
 	BOOL use;
 	int confNo;
 	TCHAR fname[MAX_PATH];
@@ -4191,45 +4295,45 @@ void Textout_Tclock_Win10_3(int x, int y, char* sp, int len, int infoval)
 		if (bClockShadow)
 		{
 			SetTextColor(hdcClock, textshadow);
-			TextOut(hdcClock, x + nShadowRange, y + nShadowRange, sp, len);
+			ClockTextOutCompat(hdcClock, x + nShadowRange, y + nShadowRange, sp, len);
 		}
 		if (bClockBorder)
 		{
 			SetTextColor(hdcClock, textshadow);
-			TextOut(hdcClock, x - 1, y + 1, sp, len);
-			TextOut(hdcClock, x + 1, y - 1, sp, len);
-			TextOut(hdcClock, x + 1, y + 1, sp, len);
-			TextOut(hdcClock, x, y - 1, sp, len);
-			TextOut(hdcClock, x + 1, y, sp, len);
-			TextOut(hdcClock, x - 1, y - 1, sp, len);
+			ClockTextOutCompat(hdcClock, x - 1, y + 1, sp, len);
+			ClockTextOutCompat(hdcClock, x + 1, y - 1, sp, len);
+			ClockTextOutCompat(hdcClock, x + 1, y + 1, sp, len);
+			ClockTextOutCompat(hdcClock, x, y - 1, sp, len);
+			ClockTextOutCompat(hdcClock, x + 1, y, sp, len);
+			ClockTextOutCompat(hdcClock, x - 1, y - 1, sp, len);
 		}
 		SetTextColor(hdcClock, textcol_temp);
-		TextOut(hdcClock, x, y, sp, len);
+		ClockTextOutCompat(hdcClock, x, y, sp, len);
 
 	}
 	else 
 	{
 		//3.4.5.2 (2021/10/14) by TTTT
-		//hdcClock_work‚É‚¢‚Á‚½‚ñ‘‚«‚ñ‚ÅƒtƒHƒ“ƒgü‚è‚Ìƒ¿‚ğæ“¾‚·‚é
-		//Rƒ`ƒƒƒlƒ‹->textcol
-		//Gƒ`ƒƒƒlƒ‹->textcol_DoWzone
-		//Bƒ`ƒƒƒlƒ‹->textshadow
-		//‚Ì‚»‚ê‚¼‚ê‚Ìƒ¿’l‚ª“¾‚ç‚ê‚é
+		//hdcClock_workã«ã„ã£ãŸã‚“æ›¸ãè¾¼ã‚“ã§ãƒ•ã‚©ãƒ³ãƒˆå‘¨ã‚Šã®Î±ã‚’å–å¾—ã™ã‚‹
+		//Rãƒãƒ£ãƒãƒ«->textcol
+		//Gãƒãƒ£ãƒãƒ«->textcol_DoWzone
+		//Bãƒãƒ£ãƒãƒ«->textshadow
+		//ã®ãã‚Œãã‚Œã®Î±å€¤ãŒå¾—ã‚‰ã‚Œã‚‹
 
 		if (bClockShadow)
 		{
 			SetTextColor(hdcClock_work, RGB(0, 0, 255));
-			TextOut(hdcClock_work, x + nShadowRange, y + nShadowRange, sp, len);
+			ClockTextOutCompat(hdcClock_work, x + nShadowRange, y + nShadowRange, sp, len);
 		}
 		if (bClockBorder)
 		{
 			SetTextColor(hdcClock_work, RGB(0, 0, 255));
-			TextOut(hdcClock_work, x - 1, y + 1, sp, len);
-			TextOut(hdcClock_work, x + 1, y - 1, sp, len);
-			TextOut(hdcClock_work, x + 1, y + 1, sp, len);
-			TextOut(hdcClock_work, x, y - 1, sp, len);
-			TextOut(hdcClock_work, x + 1, y, sp, len);
-			TextOut(hdcClock_work, x - 1, y - 1, sp, len);
+			ClockTextOutCompat(hdcClock_work, x - 1, y + 1, sp, len);
+			ClockTextOutCompat(hdcClock_work, x + 1, y - 1, sp, len);
+			ClockTextOutCompat(hdcClock_work, x + 1, y + 1, sp, len);
+			ClockTextOutCompat(hdcClock_work, x, y - 1, sp, len);
+			ClockTextOutCompat(hdcClock_work, x + 1, y, sp, len);
+			ClockTextOutCompat(hdcClock_work, x - 1, y - 1, sp, len);
 		}
 
 		{
@@ -4259,7 +4363,7 @@ void Textout_Tclock_Win10_3(int x, int y, char* sp, int len, int infoval)
 			}
 		}
 
-		TextOut(hdcClock_work, x, y, sp, len);
+		ClockTextOutCompat(hdcClock_work, x, y, sp, len);
 	}
 }
 
@@ -4282,7 +4386,7 @@ COLORREF TextColorFromInfoVal(int infoval)
 	{
 		colRet = textcol_DoWzone;
 	}
-	else if (infoval == 0x02)	//“ú•t
+	else if (infoval == 0x02)	//æ—¥ä»˜
 	{
 		if (bUseDateColor) {
 			colRet = textcol_DoWzone;
@@ -4291,7 +4395,7 @@ COLORREF TextColorFromInfoVal(int infoval)
 			colRet = ColorWeekdayText;
 		}
 	}
-	else if (infoval == 0x04)	//—j“ú
+	else if (infoval == 0x04)	//æ›œæ—¥
 	{
 		if (bUseDowColor) {
 			colRet = textcol_DoWzone;
@@ -4300,7 +4404,7 @@ COLORREF TextColorFromInfoVal(int infoval)
 			colRet = ColorWeekdayText;
 		}
 	}
-	else if (infoval == 0x08)	//
+	else if (infoval == 0x08)	//æ™‚åˆ»
 	{
 		if (bUseTimeColor) {
 			colRet = textcol_DoWzone;
@@ -4369,33 +4473,33 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
 
 
 	//3.4.5.2 (2021/10/14) by TTTT
-	//3.4.4.1‚Ü‚Å‚ÍˆÈ‰º‚Ì‚æ‚¤‚Éæ“¾‚µ‚½”wŒiF‚ğ”wŒi‚Æ‚µ‚Äİ’è‚µ‚Ä‚¢‚½BTextOut‚ÌÛ‚Ì‰‚ÌF‚É‰e‹¿‚ğ—^‚¦‚é‚½‚ßB
+	//3.4.4.1ã¾ã§ã¯ä»¥ä¸‹ã®ã‚ˆã†ã«å–å¾—ã—ãŸèƒŒæ™¯è‰²ã‚’èƒŒæ™¯ã¨ã—ã¦è¨­å®šã—ã¦ã„ãŸã€‚TextOutã®éš›ã®ç¸ã®è‰²ã«å½±éŸ¿ã‚’ä¸ãˆã‚‹ãŸã‚ã€‚
 //	SetBkColor(hdcClock, colorBG_original);
 
-	//3.4.5.2‚©‚ç‚ÍAŠ®‘S‚È“§‰ß‡¬‚Ìˆ—‚ª‚Å‚«‚é‚æ‚¤‚É‚È‚Á‚½‚Ì‚ÅA^‚Á•‚Å‘åä•v‚É‚È‚Á‚½(”wŒiF‚Íg‚í‚È‚¢‚Å‚àˆ—‚Å‚«‚é‚æ‚¤‚É‚È‚Á‚½B
-	//‚³‚ç‚É•¶š‚Í‚¢‚Á‚½‚ñhdcClock_work‚Éo—Í‚·‚é‚Ì‚ÅˆÈ‰º‚Ìs‚ÍÀÛ‚Í•s—v‚É‚È‚Á‚½BƒOƒ‰ƒt‚ÍhdcClock‚É’¼Úo—Í‚·‚é‚ªA‹«ŠE•”‚Å‚Ì’†ŠÔFˆ—‚ª‚È‚¢‚Ì‚Å”wŒiİ’è‚à•s—v
+	//3.4.5.2ã‹ã‚‰ã¯ã€å®Œå…¨ãªé€éåˆæˆã®å‡¦ç†ãŒã§ãã‚‹ã‚ˆã†ã«ãªã£ãŸã®ã§ã€çœŸã£é»’ã§å¤§ä¸ˆå¤«ã«ãªã£ãŸ(èƒŒæ™¯è‰²ã¯ä½¿ã‚ãªã„ã§ã‚‚å‡¦ç†ã§ãã‚‹ã‚ˆã†ã«ãªã£ãŸã€‚
+	//ã•ã‚‰ã«æ–‡å­—ã¯ã„ã£ãŸã‚“hdcClock_workã«å‡ºåŠ›ã™ã‚‹ã®ã§ä»¥ä¸‹ã®è¡Œã¯å®Ÿéš›ã¯ä¸è¦ã«ãªã£ãŸã€‚ã‚°ãƒ©ãƒ•ã¯hdcClockã«ç›´æ¥å‡ºåŠ›ã™ã‚‹ãŒã€å¢ƒç•Œéƒ¨ã§ã®ä¸­é–“è‰²å‡¦ç†ãŒãªã„ã®ã§èƒŒæ™¯è¨­å®šã‚‚ä¸è¦
 //	SetTextColor(hdcClock, textcol);
 //	SetBkColor(hdcClock, RGB(0, 0, 0));
 
 
-	SetBkColor(hdcClock_work, RGB(0,0,0));	//_work‚Ìƒrƒbƒgƒ}ƒbƒv‚Í”wŒi‚ğ•‚É‚µ‚ÄƒtƒHƒ“ƒg‚Ìƒ¿‚ğæ“¾‚·‚é‚½‚ß‚Ìƒ[ƒNƒGƒŠƒA‚Æ‚·‚éB
+	SetBkColor(hdcClock_work, RGB(0,0,0));	//_workã®ãƒ“ãƒƒãƒˆãƒãƒƒãƒ—ã¯èƒŒæ™¯ã‚’é»’ã«ã—ã¦ãƒ•ã‚©ãƒ³ãƒˆã®Î±ã‚’å–å¾—ã™ã‚‹ãŸã‚ã®ãƒ¯ãƒ¼ã‚¯ã‚¨ãƒªã‚¢ã¨ã™ã‚‹ã€‚
 
 	for (color = m_color_start; color < m_color_end; ++color) {
 		//To write memory, the order is 0xRRrrggbb, different from colorref = 0x00bbggrr
-		//rgbReserved(25-32ƒrƒbƒg)‚ÍƒAƒ‹ƒtƒ@’l‚Æ‚µ‚Ä—˜—p‚³‚ê‚é‚ªA‚±‚±‚Å‚Í‚¢‚Á‚½‚ñFF‚ğ“ü‚ê‚éBTextOutŠÖ”‚âƒOƒ‰ƒt‹Lqˆ—‚Å‘‚«Š·‚¦‚ª‹N‚±‚é‚Æ0‚É‚È‚é‚±‚Æ‚ğ—˜—p‚µ‚ÄŒã‚Ìˆ—‚ğs‚¤B
+		//rgbReserved(25-32ãƒ“ãƒƒãƒˆ)ã¯ã‚¢ãƒ«ãƒ•ã‚¡å€¤ã¨ã—ã¦åˆ©ç”¨ã•ã‚Œã‚‹ãŒã€ã“ã“ã§ã¯ã„ã£ãŸã‚“FFã‚’å…¥ã‚Œã‚‹ã€‚TextOuté–¢æ•°ã‚„ã‚°ãƒ©ãƒ•è¨˜è¿°å‡¦ç†ã§æ›¸ãæ›ãˆãŒèµ·ã“ã‚‹ã¨0ã«ãªã‚‹ã“ã¨ã‚’åˆ©ç”¨ã—ã¦å¾Œã®å‡¦ç†ã‚’è¡Œã†ã€‚
 
 
-		//3.4.4.1‚Ü‚Å‚ÍˆÈ‰º‚Ì‚æ‚¤‚Éæ“¾‚µ‚½”wŒiF‚ğ“ü‚ê‚Ä‚¢‚½BTextOut‚ÌÛ‚Ì‰‚ÌF‚É‰e‹¿‚ğ—^‚¦‚é‚½‚ßB
+		//3.4.4.1ã¾ã§ã¯ä»¥ä¸‹ã®ã‚ˆã†ã«å–å¾—ã—ãŸèƒŒæ™¯è‰²ã‚’å…¥ã‚Œã¦ã„ãŸã€‚TextOutã®éš›ã®ç¸ã®è‰²ã«å½±éŸ¿ã‚’ä¸ãˆã‚‹ãŸã‚ã€‚
 	//	*(unsigned*)color = 0xFF000000 | (colorBG_original & 0x0000FF00) | ((colorBG_original & 0xFF) << 16) | ((colorBG_original >> 16) & 0xFF);
-		//3.4.5.2 (2021/10/14)‚©‚ç‚ÍAŠ®‘S‚È“§‰ß‡¬‚Ìˆ—‚ª‚Å‚«‚é‚æ‚¤‚É‚È‚Á‚½‚Ì‚ÅA^‚Á•‚Å‘åä•v‚É‚È‚Á‚½(”wŒiF‚Íg‚í‚È‚¢‚Å‚àˆ—‚Å‚«‚é‚æ‚¤‚É‚È‚Á‚½B
+		//3.4.5.2 (2021/10/14)ã‹ã‚‰ã¯ã€å®Œå…¨ãªé€éåˆæˆã®å‡¦ç†ãŒã§ãã‚‹ã‚ˆã†ã«ãªã£ãŸã®ã§ã€çœŸã£é»’ã§å¤§ä¸ˆå¤«ã«ãªã£ãŸ(èƒŒæ™¯è‰²ã¯ä½¿ã‚ãªã„ã§ã‚‚å‡¦ç†ã§ãã‚‹ã‚ˆã†ã«ãªã£ãŸã€‚
 		*(unsigned*)color = 0xFF000000;
 	}
 
 
 	for (color = m_color_work_start; color < m_color_work_end; ++color) {
-		//“§‰ß•\¦—p‚Ìƒrƒbƒgƒ}ƒbƒv‚É‚à“¯—l‚Ìˆ—‚ğ{‚·B
+		//é€éè¡¨ç¤ºç”¨ã®ãƒ“ãƒƒãƒˆãƒãƒƒãƒ—ã«ã‚‚åŒæ§˜ã®å‡¦ç†ã‚’æ–½ã™ã€‚
 		//To write memory, the order is 0xRRrrggbb, different from colorref = 0x00bbggrr
-		//rgbReserved(25-32ƒrƒbƒg)‚ÍƒAƒ‹ƒtƒ@’l‚Æ‚µ‚Ä—˜—p‚³‚ê‚é‚ªA‚±‚±‚Å‚Í‚¢‚Á‚½‚ñFF‚ğ“ü‚ê‚éBTextOutŠÖ”‚âƒOƒ‰ƒt‹Lqˆ—‚Å‘‚«Š·‚¦‚ª‹N‚±‚é‚Æ0‚É‚È‚é‚±‚Æ‚ğ—˜—p‚µ‚ÄŒã‚Ìˆ—‚ğs‚¤B
+		//rgbReserved(25-32ãƒ“ãƒƒãƒˆ)ã¯ã‚¢ãƒ«ãƒ•ã‚¡å€¤ã¨ã—ã¦åˆ©ç”¨ã•ã‚Œã‚‹ãŒã€ã“ã“ã§ã¯ã„ã£ãŸã‚“FFã‚’å…¥ã‚Œã‚‹ã€‚TextOuté–¢æ•°ã‚„ã‚°ãƒ©ãƒ•è¨˜è¿°å‡¦ç†ã§æ›¸ãæ›ãˆãŒèµ·ã“ã‚‹ã¨0ã«ãªã‚‹ã“ã¨ã‚’åˆ©ç”¨ã—ã¦å¾Œã®å‡¦ç†ã‚’è¡Œã†ã€‚
 		*(unsigned*)color = 0xFF000000;	
 	}
 
@@ -4407,7 +4511,7 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
 	//FillClock();
 	FillBack(hdcClock, widthMainClockFrame, heightMainClockFrame);
 
-	//if (bWin11Main && (Win11Type == 2))		//Win11Type2‚Å‚Ìã’[‚ÌF‚ªˆá‚¤•”•ª‚ğÄŒ»‚·‚éB
+	//if (bWin11Main && (Win11Type == 2))		//Win11Type2ã§ã®ä¸Šç«¯ã®è‰²ãŒé•ã†éƒ¨åˆ†ã‚’å†ç¾ã™ã‚‹ã€‚
 	//{
 	//	for (color = m_color_end - widthMainClockFrame; color <m_color_end ; ++color) {
 	//		*(unsigned*)color = originalColorTaskbarEdge;
@@ -4469,7 +4573,7 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
 	LocalDrawAnalogClock(hdcClock, pt, xclock, yclock, wclock, hclock);
 
 	//3.4.5.2 (2021/10/14) by TTTT
-	//”wŒi“§‰ßƒ‚[ƒh‚ÅƒAƒiƒƒOŒv‚Ìü‚è‚Ì•‚ğ“§‰ß‚·‚éB
+	//èƒŒæ™¯é€éãƒ¢ãƒ¼ãƒ‰ã§ã‚¢ãƒŠãƒ­ã‚°æ™‚è¨ˆã®å‘¨ã‚Šã®é»’ã‚’é€éã™ã‚‹ã€‚
 	if (!fillbackcolor) {
 		for (color = m_color_start; color < m_color_end; ++color) {
 			if (*(unsigned*)color == 0x00000000) *(unsigned*)color = 0xFF000000;
@@ -4495,7 +4599,7 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
 
 
 
-	//ƒOƒ‰ƒt—Ş‚Ì•`‰æ on hdcClock
+	//ã‚°ãƒ©ãƒ•é¡ã®æç”» on hdcClock
 	if (b_UseBarMeterBL && b_BatteryLifeAvailable)
 	{
 		DrawBarMeter(hwndClockMain, hdcClock, wclock, hclock, BarMeterBL_Right, BarMeterBL_Left,
@@ -4572,7 +4676,7 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
 
 
 
-	//•¶š‚Ìo—Í
+	//æ–‡å­—ã®å‡ºåŠ›
 
 
 
@@ -4595,7 +4699,7 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
 		sp_info = p_info;
 		//xOffset = 0;
 
-		while (*p && *p != 0x0d)	//‘OÒ‚ª¬—§‚µ‚½‚Æ‚«‚É•¶š—ñI—¹‚Åƒ‹[ƒv‚©‚ç”²‚¯‚éB
+		while (*p && *p != 0x0d)	//å‰è€…ãŒæˆç«‹ã—ãŸã¨ãã«æ–‡å­—åˆ—çµ‚äº†ã§ãƒ«ãƒ¼ãƒ—ã‹ã‚‰æŠœã‘ã‚‹ã€‚
 		{
 			p++;
 			p_info++;
@@ -4605,12 +4709,12 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
 			p += 2;
 			*p_info = 0;
 			p_info += 2;
-		}		//‰üsƒ}[ƒN‚ğ•¶š—ñI’[ƒ}[ƒN‚É‚¢‚Á‚½‚ñ’uŠ· -> ÅIsˆÈŠO, p‚ÍŸs‚Ìæ“ªƒAƒhƒŒƒX
-		if (*p == 0 && sp == s)					//1sƒtƒH[ƒ}ƒbƒg‚Ìê‡
+		}		//æ”¹è¡Œãƒãƒ¼ã‚¯ã‚’æ–‡å­—åˆ—çµ‚ç«¯ãƒãƒ¼ã‚¯ã«ã„ã£ãŸã‚“ç½®æ› -> æœ€çµ‚è¡Œä»¥å¤–, pã¯æ¬¡è¡Œã®å…ˆé ­ã‚¢ãƒ‰ãƒ¬ã‚¹
+		if (*p == 0 && sp == s)					//1è¡Œãƒ•ã‚©ãƒ¼ãƒãƒƒãƒˆã®å ´åˆ
 		{
 			y = (hclock - tm.tmHeight) / 2 - tm.tmInternalLeading / 4 + yclock;
 		}
-		if (GetTextExtentPoint32(hdcClock, sp, (int)strlen(sp), &sz) == 0)
+		if (ClockGetTextExtentCompat(hdcClock, sp, (int)strlen(sp), &sz) == 0)
 		{
 			sz.cx = (LONG)strlen(sp) * tm.tmAveCharWidth;
 			sz.cy = tm.tmHeight;
@@ -4637,13 +4741,13 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
 
 			currentzoneval = (int)*sp_info;
 			zonelength = 0;
-			while (*sp_info && ((int)*sp_info == currentzoneval))	//s’[‚Í*sp_info‚ª0‚È‚Ì‚Å©“®“I‚É”²‚¯‚éB
+			while (*sp_info && ((int)*sp_info == currentzoneval))	//è¡Œç«¯ã¯*sp_infoãŒ0ãªã®ã§è‡ªå‹•çš„ã«æŠœã‘ã‚‹ã€‚
 			{
 				zonelength++;
 				*sp_info++;
 			}
 
-			GetTextExtentPoint32(hdcClock, sp, zonelength, &sz);
+			ClockGetTextExtentCompat(hdcClock, sp, zonelength, &sz);
 
 			if (nTextPos == 1)
 			{
@@ -4685,25 +4789,25 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
 
 
 	//3.4.5.2 (2021/10/14) by TTTT
-	//‚±‚Ì“_‚ÅA”ñ“§‰ß‚Ìê‡‚ÍhdcClock‚É“]‘—‚·‚×‚«‰æ‘œ‚ªo—ˆã‚ª‚Á‚Ä‚¨‚èA‚·‚×‚Ä‚Ì‰æ‘f‚ÅrgbReserved = 0‚É‚È‚Á‚Ä‚¢‚é‚Ì‚ÅA‚»‚ê‚ğ255‚É‚·‚ê‚Î‚æ‚¢B
-	//”wŒi“§‰ß‚Ìê‡‚ÍAˆÈ‰º‚ÌƒvƒƒZƒX‚É‚È‚éB
-	//hdcClock(ƒrƒbƒgƒ}ƒbƒvæ“ªƒAƒhƒŒƒX:m_color_start) ”wŒi‚Íƒe[ƒ}”wŒiF+rgbReserved=255AƒOƒ‰ƒt‘‚«‚ñ‚¾‚Æ‚±‚ë‚¾‚¯rgbReserved‚ª0‚É‚È‚Á‚Ä‚¢‚éB
-	//hdcClock_work(ƒrƒbƒgƒ}ƒbƒvæ“ªƒAƒhƒŒƒX:m_color_work_start)”wŒi‚Í•+rgbReserved=255A•¶š‘‚«‚ñ‚¾‚Æ‚±‚ë‚ªrgbReserved‚ª0‚É‚È‚Á‚Ä‚¢‚éB
-	//r‚ª0‚Å‚È‚¢‚Æ‚±‚ë‚Ítextcol, g‚ª0‚Å‚È‚¢‚Æ‚±‚ë‚Ítextcol_WoDzone, b‚ª0‚Å‚È‚¢‚Æ‚±‚ë‚Ítextshadow‚ÌF‚ğ‚Â‚¯‚é‚×‚«‚Æ‚±‚ëB
-	//r, g, b‚ğƒ¿‚Æ‚İ‚È‚µ‚ÄAcolor_work‚Ìƒf[ƒ^‚©‚çcolor‚Ìƒf[ƒ^‚ğì‚Á‚Ä‚¢‚­B
+	//ã“ã®æ™‚ç‚¹ã§ã€éé€éã®å ´åˆã¯hdcClockã«è»¢é€ã™ã¹ãç”»åƒãŒå‡ºæ¥ä¸ŠãŒã£ã¦ãŠã‚Šã€ã™ã¹ã¦ã®ç”»ç´ ã§rgbReserved = 0ã«ãªã£ã¦ã„ã‚‹ã®ã§ã€ãã‚Œã‚’255ã«ã™ã‚Œã°ã‚ˆã„ã€‚
+	//èƒŒæ™¯é€éã®å ´åˆã¯ã€ä»¥ä¸‹ã®ãƒ—ãƒ­ã‚»ã‚¹ã«ãªã‚‹ã€‚
+	//hdcClock(ãƒ“ãƒƒãƒˆãƒãƒƒãƒ—å…ˆé ­ã‚¢ãƒ‰ãƒ¬ã‚¹:m_color_start) èƒŒæ™¯ã¯ãƒ†ãƒ¼ãƒèƒŒæ™¯è‰²+rgbReserved=255ã€ã‚°ãƒ©ãƒ•æ›¸ãè¾¼ã‚“ã ã¨ã“ã‚ã ã‘rgbReservedãŒ0ã«ãªã£ã¦ã„ã‚‹ã€‚
+	//hdcClock_work(ãƒ“ãƒƒãƒˆãƒãƒƒãƒ—å…ˆé ­ã‚¢ãƒ‰ãƒ¬ã‚¹:m_color_work_start)èƒŒæ™¯ã¯é»’+rgbReserved=255ã€æ–‡å­—æ›¸ãè¾¼ã‚“ã ã¨ã“ã‚ãŒrgbReservedãŒ0ã«ãªã£ã¦ã„ã‚‹ã€‚
+	//rãŒ0ã§ãªã„ã¨ã“ã‚ã¯textcol, gãŒ0ã§ãªã„ã¨ã“ã‚ã¯textcol_WoDzone, bãŒ0ã§ãªã„ã¨ã“ã‚ã¯textshadowã®è‰²ã‚’ã¤ã‘ã‚‹ã¹ãã¨ã“ã‚ã€‚
+	//r, g, bã‚’Î±ã¨ã¿ãªã—ã¦ã€color_workã®ãƒ‡ãƒ¼ã‚¿ã‹ã‚‰colorã®ãƒ‡ãƒ¼ã‚¿ã‚’ä½œã£ã¦ã„ãã€‚
 
 
-	textcol = TextColorFromInfoVal(1);	//ˆø”1‚ÅAVPNF‚à‚µ‚­‚Í’ÊíF‚ª©“®“I‚É“¾‚ç‚ê‚éB
+	textcol = TextColorFromInfoVal(1);	//å¼•æ•°1ã§ã€VPNè‰²ã‚‚ã—ãã¯é€šå¸¸è‰²ãŒè‡ªå‹•çš„ã«å¾—ã‚‰ã‚Œã‚‹ã€‚
 	textshadow = TextColorFromInfoVal(99);
 	textcol_dow = TextColorFromInfoVal(88);
 
-//	if (fillbackcolor || (bWin11Main && (Win11Type == 2))) {	//”wŒi”ñ“§‰ß‚Ìê‡
-	if (fillbackcolor) {	//”wŒi”ñ“§‰ß‚Ìê‡
+//	if (fillbackcolor || (bWin11Main && (Win11Type == 2))) {	//èƒŒæ™¯éé€éã®å ´åˆ
+	if (fillbackcolor) {	//èƒŒæ™¯éé€éã®å ´åˆ
 		for (color = m_color_start; color < m_color_end; ++color) {
 			color->rgbReserved = 255;
 		}
 	}
-	else{			//”wŒi“§‰ß‚Ìê‡
+	else{			//èƒŒæ™¯é€éã®å ´åˆ
 		unsigned channel;
 		BYTE back_alpha = 0;
 		BOOL apply_auto_back_alpha = FALSE;
@@ -4736,8 +4840,8 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
 
 		for (color = m_color_start, color_work = m_color_work_start; color<m_color_end; ++color, ++color_work) {
 			//BYTE temp_rgbReserved = color->rgbReserved;
-//			if (color->rgbReserved == 255) {								//ƒOƒ‰ƒtƒhƒbƒg‚ª‚È‚¢‚Æ‚±‚ë
-			if (color_work->rgbReserved == 0) {								//•¶š‚ª‚ ‚é‚Æ‚±‚ë(ü•Ó‚Ì’á‹P“x—ÖŠs‚Ü‚ÅŠÜ‚Ş)
+//			if (color->rgbReserved == 255) {								//ã‚°ãƒ©ãƒ•ãƒ‰ãƒƒãƒˆãŒãªã„ã¨ã“ã‚
+			if (color_work->rgbReserved == 0) {								//æ–‡å­—ãŒã‚ã‚‹ã¨ã“ã‚(å‘¨è¾ºã®ä½è¼åº¦è¼ªéƒ­ã¾ã§å«ã‚€)
 				if (color_work->rgbRed > 10) {
 					//			*(unsigned*)color = ((unsigned)(color_work->rgbRed)) << 24 | (textcol & 0x0000FF00) | ((textcol & 0xFF) << 16) | ((textcol >> 16) & 0xFF);
 					temp_alpha = color_work->rgbRed;
@@ -4773,14 +4877,14 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
 
 				}
 				else {
-					*(unsigned*)color = 0x00000000;		//•¶š‚Ìü•Ó‚Å‹P“x‚ª’á‚¢‚Æ‚±‚ë=“§–¾
+					*(unsigned*)color = 0x00000000;		//æ–‡å­—ã®å‘¨è¾ºã§è¼åº¦ãŒä½ã„ã¨ã“ã‚=é€æ˜
 				}
 			}
-			else if (color->rgbReserved == 0) //ƒOƒ‰ƒtƒhƒbƒg‚ª‚ ‚é‚Æ‚±‚ë=”ñ“§–¾
+			else if (color->rgbReserved == 0) //ã‚°ãƒ©ãƒ•ãƒ‰ãƒƒãƒˆãŒã‚ã‚‹ã¨ã“ã‚=éé€æ˜
 			{								
 				color->rgbReserved = 255;	
 			}
-			else {//ƒOƒ‰ƒtƒhƒbƒg‚ª‚È‚¢‚Æ‚±‚ë=“§–¾
+			else {//ã‚°ãƒ©ãƒ•ãƒ‰ãƒƒãƒˆãŒãªã„ã¨ã“ã‚=é€æ˜
 				if (apply_auto_back_alpha && (back_alpha > 0)) {
 					if (back_alpha < 255) {
 						color->rgbRed = (BYTE)((unsigned)color->rgbRed * back_alpha / 255);
@@ -4796,21 +4900,21 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
 		}
 	}
 
-	//hdcClock_work‚Í‚±‚±‚Å‚¨–ğŒä–Æ‚È‚Ì‚ÅAƒTƒuƒNƒƒbƒN•`‰æ‚ÌÛ‚Ì“§‰ß—¦Zo—p‚ÉÄ—˜—p‚·‚é(Ôƒ`ƒƒƒlƒ‹‚¾‚¯)
+	//hdcClock_workã¯ã“ã“ã§ãŠå½¹å¾¡å…ãªã®ã§ã€ã‚µãƒ–ã‚¯ãƒ­ãƒƒã‚¯æç”»ã®éš›ã®é€éç‡ç®—å‡ºç”¨ã«å†åˆ©ç”¨ã™ã‚‹(èµ¤ãƒãƒ£ãƒãƒ«ã ã‘)
 	for (color = m_color_start, color_work = m_color_work_start; color < m_color_end; ++color, ++color_work) {
 		color_work->rgbRed = color->rgbReserved;
 	}
 
 
-	//202110Œ“_‚ÌWindows‚Å‚ÍrgbReserved‚ğ“§–¾“x(255:”ñ“§–¾, 0:“§–¾,‚½‚¾‚µƒNƒŠƒA)‚Æ‚µ‚Ähdc‚ÉƒRƒs[‚µ‚½‚çA‚»‚Ì‚Ì‚¿‚Íƒ¿ƒuƒŒƒ“ƒh‚µ‚Ä‚­‚ê‚éB
-	//‚½‚¾‚µr, g, b‚Ì’l‚à‚ ‚ç‚©‚¶‚ßƒ¿‚ğ‚©‚¯‚Ä‚¨‚­•K—v‚ª‚ ‚éB
-	//AlphaƒuƒŒƒ“ƒh‚Ìİ’è‚ÌAC_SRC_ALPHA‚Ì‚Æ‚±‚ë‚Ìà–¾‚ªŠY“–‚·‚éB
+	//202110æœˆæ™‚ç‚¹ã®Windowsã§ã¯rgbReservedã‚’é€æ˜åº¦(255:éé€æ˜, 0:é€æ˜,ãŸã ã—ã‚¯ãƒªã‚¢)ã¨ã—ã¦hdcã«ã‚³ãƒ”ãƒ¼ã—ãŸã‚‰ã€ãã®ã®ã¡ã¯Î±ãƒ–ãƒ¬ãƒ³ãƒ‰ã—ã¦ãã‚Œã‚‹ã€‚
+	//ãŸã ã—r, g, bã®å€¤ã‚‚ã‚ã‚‰ã‹ã˜ã‚Î±ã‚’ã‹ã‘ã¦ãŠãå¿…è¦ãŒã‚ã‚‹ã€‚
+	//Alphaãƒ–ãƒ¬ãƒ³ãƒ‰ã®è¨­å®šã®AC_SRC_ALPHAã®ã¨ã“ã‚ã®èª¬æ˜ãŒè©²å½“ã™ã‚‹ã€‚
 	//https://docs.microsoft.com/ja-jp/windows/win32/api/wingdi/ns-wingdi-blendfunction?redirectedfrom=MSDN
 
-	//TransparentBlt‚Æ‚©‚¢‚¤ŠÖ”‚ª‚ ‚é‚±‚Æ‚ğŒã‚©‚ç’m‚Á‚½‚ªA‚·‚Å‚É‚¤‚Ü‚­s‚Á‚Ä‚¢‚é‚Ì‚Å‚¢‚¶‚ç‚È‚¢B¢‚Á‚½‚ç’²‚×‚é‚±‚ÆB
+	//TransparentBltã¨ã‹ã„ã†é–¢æ•°ãŒã‚ã‚‹ã“ã¨ã‚’å¾Œã‹ã‚‰çŸ¥ã£ãŸãŒã€ã™ã§ã«ã†ã¾ãè¡Œã£ã¦ã„ã‚‹ã®ã§ã„ã˜ã‚‰ãªã„ã€‚å›°ã£ãŸã‚‰èª¿ã¹ã‚‹ã“ã¨ã€‚
 
 
-	//“_–Åˆ—‚ÍAƒtƒHƒ“ƒg‚Ì‚İ”½“]‚Æ‚µ‚ÄATextColorFromInfoVal()‚Ì‹@”\‚Æ‚µ‚ÄÀ‘•
+	//ç‚¹æ»…å‡¦ç†ã¯ã€ãƒ•ã‚©ãƒ³ãƒˆã®ã¿åè»¢ã¨ã—ã¦ã€TextColorFromInfoVal()ã®æ©Ÿèƒ½ã¨ã—ã¦å®Ÿè£…
 	if (!fillbackcolor) {
 		BLENDFUNCTION blend;
 		blend.BlendOp = 0;
@@ -4835,7 +4939,7 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
 	for (int i = 0; i < MAX_SUBSCREEN; i++) {
 		if (bEnableSpecificSubClk[i]) {
 			hdcSub = NULL;
-			hdcSub = GetDC(hwndClockSubClk[i]);		//ƒTƒuƒfƒBƒXƒvƒŒƒC‚ÌŒv‚ª‘¶İ‚·‚é‚ÆhdcSub‚ª‘¶İ‚·‚é‚±‚Æ‚É‚È‚éB
+			hdcSub = GetDC(hwndClockSubClk[i]);		//ã‚µãƒ–ãƒ‡ã‚£ã‚¹ãƒ—ãƒ¬ã‚¤ã®æ™‚è¨ˆãŒå­˜åœ¨ã™ã‚‹ã¨hdcSubãŒå­˜åœ¨ã™ã‚‹ã“ã¨ã«ãªã‚‹ã€‚
 			if (hdcSub != NULL)
 			{
 
@@ -4859,8 +4963,8 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
 				}
 				else
 				{
-				//StretchBlt‚ÍAHALFTONEƒ‚[ƒh+SRCCOPY‚Å‚È‚¢‚Æ‰æ¿‚ª—‚¿‚é‚ªA‚»‚Ì‘g‚İ‡‚í‚¹‚¾‚ÆrgbReserved‚Í‚·‚×‚Ä0‚É‚È‚Á‚Ä‚µ‚Ü‚¤B
-				//rgbReserved‚ğ‹‚ß‚é‚½‚ß‚ÉAhdcClock_work‚ÌÔƒ`ƒƒƒlƒ‹‚ğg‚Á‚Ä•Ê“rStretcBlt‚ÅŒvZ‚·‚éB
+				//StretchBltã¯ã€HALFTONEãƒ¢ãƒ¼ãƒ‰+SRCCOPYã§ãªã„ã¨ç”»è³ªãŒè½ã¡ã‚‹ãŒã€ãã®çµ„ã¿åˆã‚ã›ã ã¨rgbReservedã¯ã™ã¹ã¦0ã«ãªã£ã¦ã—ã¾ã†ã€‚
+				//rgbReservedã‚’æ±‚ã‚ã‚‹ãŸã‚ã«ã€hdcClock_workã®èµ¤ãƒãƒ£ãƒãƒ«ã‚’ä½¿ã£ã¦åˆ¥é€”StretcBltã§è¨ˆç®—ã™ã‚‹ã€‚
 
 
 					hdcSubBuffer = CreateCompatibleDC(hdcSub);
@@ -4910,8 +5014,8 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
 
 
 
-	//Œˆ‚µ‚Ä‚±‚±‚ÅRedrawTClock‚ğÀs‚µ‚Ä‚Í‚¢‚¯‚È‚¢I -> ƒR[ƒh“à‚Å–³ŒÀƒ‹[ƒv‚É‚È‚éII
-	//Œˆ‚µ‚Ä‚±‚±‚ÅRedrawMainTaskbar‚ğÀs‚µ‚Ä‚Í‚¢‚¯‚È‚¢I -> WindowsŒo—R‚Å–³ŒÀƒ‹[ƒv‚É‚È‚éII
+	//æ±ºã—ã¦ã“ã“ã§RedrawTClockã‚’å®Ÿè¡Œã—ã¦ã¯ã„ã‘ãªã„ï¼ -> ã‚³ãƒ¼ãƒ‰å†…ã§ç„¡é™ãƒ«ãƒ¼ãƒ—ã«ãªã‚‹ï¼ï¼
+	//æ±ºã—ã¦ã“ã“ã§RedrawMainTaskbarã‚’å®Ÿè¡Œã—ã¦ã¯ã„ã‘ãªã„ï¼ -> WindowsçµŒç”±ã§ç„¡é™ãƒ«ãƒ¼ãƒ—ã«ãªã‚‹ï¼ï¼
 
 //NG!!!!!	RedrawMainTaskbar();	
 }
@@ -4922,7 +5026,7 @@ paint graph, added by TTTT
 void DrawBarMeter(HWND hwnd, HDC hdc, int wclock, int hclock, int bar_right, int bar_left, int bar_bottom, int bar_top, int value, COLORREF color, BOOL b_Horizontal, BOOL b_ToLeft)
 {
 	UNREFERENCED_PARAMETER(hwnd);
-	//hwnd‚Íg‚í‚ê‚Ä‚¢‚È‚¢B
+	//hwndã¯ä½¿ã‚ã‚Œã¦ã„ãªã„ã€‚
 
 	RECT barRect;
 	HBRUSH hbr;
@@ -4970,7 +5074,7 @@ paint graph, added by TTTT
 void DrawBarMeter2(HWND hwnd, HDC hdc, int wclock, int hclock, int bar_right, int bar_left, int bar_bottom, int bar_top, int value, COLORREF color, BOOL b_Horizontal)
 {
 	UNREFERENCED_PARAMETER(hwnd);
-	//hwnd‚Íg‚í‚ê‚Ä‚¢‚È‚¢B
+	//hwndã¯ä½¿ã‚ã‚Œã¦ã„ãªã„ã€‚
 
 	RECT barRect;
 	HBRUSH hbr;
@@ -5090,7 +5194,7 @@ void DrawGraph(HDC hdc, int xclock, int yclock, int wclock, int hclock)
 
 
 
-		// ‰¡•ûŒü
+		// æ¨ªæ–¹å‘
 		if ( bGraphTate )
 		{
 			//one_dotr /= (double)(xclock + wclock);
@@ -5127,7 +5231,7 @@ void DrawGraph(HDC hdc, int xclock, int yclock, int wclock, int hclock)
 					if (graphSizeS < 0)graphSizeS = 0;
 					if (graphSizeR < 0)graphSizeR = 0;
 
-					if(GraphType == 1)	//–_ƒOƒ‰ƒt
+					if(GraphType == 1)	//æ£’ã‚°ãƒ©ãƒ•
 					{
 //						MoveToEx(hdc, (xclock + wclock) - 1, y, NULL);
 						MoveToEx(hdc, (xclock + wclock) , y, NULL);
@@ -5244,7 +5348,7 @@ void DrawGraph(HDC hdc, int xclock, int yclock, int wclock, int hclock)
 						}
 
 					}
-					else if(GraphType==2)	//Ü‚êü
+					else if(GraphType==2)	//æŠ˜ã‚Œç·š
 					{
 						if(i<MAXGRAPHLOG)
 						{
@@ -5322,7 +5426,7 @@ void DrawGraph(HDC hdc, int xclock, int yclock, int wclock, int hclock)
 			}
 		}
 
-    // c•ûŒü
+    // ç¸¦æ–¹å‘
 		else
 		{
 			//one_dotr/=(double)(yclock+hclock);
@@ -5359,7 +5463,7 @@ void DrawGraph(HDC hdc, int xclock, int yclock, int wclock, int hclock)
 					if (graphSizeS < 0)graphSizeS = 0;
 					if (graphSizeR < 0)graphSizeR = 0;
 
-					if(GraphType==1)	//–_ƒOƒ‰ƒt
+					if(GraphType==1)	//æ£’ã‚°ãƒ©ãƒ•
 					{
 //						MoveToEx(hdc, x, (yclock + hclock) - 1,NULL);
 						MoveToEx(hdc, x, (yclock + hclock) , NULL);
@@ -5475,7 +5579,7 @@ void DrawGraph(HDC hdc, int xclock, int yclock, int wclock, int hclock)
 							LineTo(hdc, x, max((yclock + hclock) - graphSizeR, yclock));
 						}
 					}
-					else if(GraphType==2)	//Ü‚êü
+					else if(GraphType==2)	//æŠ˜ã‚Œç·š
 					{
 						if(i<MAXGRAPHLOG)
 						{
@@ -5637,7 +5741,7 @@ void FillBack(HDC hdcTarget, int width, int height)
 			FillRect(hdcTarget, &tempRect, hbr);
 			DeleteObject(hbr);
 		}
-		else if ((width == widthWin11Notify) && (grad == 0) && bEnabledWin11Notify)	//‰¡ƒOƒ‰ƒf‚ÅWin11Notify‚ÌƒEƒBƒ“ƒhƒE‚Ìê‡‚Í‘æ2F‚Å“h‚è‚Â‚Ô‚·
+		else if ((width == widthWin11Notify) && (grad == 0) && bEnabledWin11Notify)	//æ¨ªã‚°ãƒ©ãƒ‡ã§Win11Notifyã®ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ã®å ´åˆã¯ç¬¬2è‰²ã§å¡—ã‚Šã¤ã¶ã™
 		{
 			col = colback2;
 			hbr = CreateSolidBrush(col);
@@ -5659,7 +5763,7 @@ void FillBack(HDC hdcTarget, int width, int height)
 
 
 
-//g‚í‚ê‚Ä‚¢‚È‚¢B“K“–‚Èƒ^ƒCƒ~ƒ“ƒO‚ÅÁ‚·B
+//ä½¿ã‚ã‚Œã¦ã„ãªã„ã€‚é©å½“ãªã‚¿ã‚¤ãƒŸãƒ³ã‚°ã§æ¶ˆã™ã€‚
 /*------------------------------------------------
   paint background of clock
 --------------------------------------------------*/
@@ -5679,9 +5783,9 @@ void FillClock()
 
 	if (!fillbackcolor)
 	{
-		//ˆÈ‘O‚Í‚±‚±‚ÉŒv”wŒi‚ğhdcClock‚Éû—e‚µ‚Ä‚»‚Ìã‚É‘‚«‚ŞƒR[ƒh‚ª‚ ‚Á‚½‚ªA2021”N10Œ“_‚Å‹@”\‚µ‚È‚¢‚à‚Ì‚É‚È‚Á‚Ä‚¢‚éB
-		//Windows‚Ìƒ^ƒXƒNƒo[\‘¢‚ªŠ®‘S‚É•Ï‚í‚Á‚Ä‚¢‚Ä‚»‚Ì•û®‚ª•œŠˆ‚·‚é‰Â”\«‚Í‚È‚¢‚Ì‚ÅAíœ
-		//“§–¾‰»‚ÍAŒv‚Ìƒrƒbƒgƒ}ƒbƒv‚ğ“§‰ß‡¬‘Î‰‚É‚µ‚ÄÀŒ»‚µ‚Ä‚¢‚éB
+		//ä»¥å‰ã¯ã“ã“ã«æ™‚è¨ˆèƒŒæ™¯ã‚’hdcClockã«åå®¹ã—ã¦ãã®ä¸Šã«æ›¸ãè¾¼ã‚€ã‚³ãƒ¼ãƒ‰ãŒã‚ã£ãŸãŒã€2021å¹´10æœˆæ™‚ç‚¹ã§æ©Ÿèƒ½ã—ãªã„ã‚‚ã®ã«ãªã£ã¦ã„ã‚‹ã€‚
+		//Windowsã®ã‚¿ã‚¹ã‚¯ãƒãƒ¼æ§‹é€ ãŒå®Œå…¨ã«å¤‰ã‚ã£ã¦ã„ã¦ãã®æ–¹å¼ãŒå¾©æ´»ã™ã‚‹å¯èƒ½æ€§ã¯ãªã„ã®ã§ã€å‰Šé™¤
+		//é€æ˜åŒ–ã¯ã€æ™‚è¨ˆã®ãƒ“ãƒƒãƒˆãƒãƒƒãƒ—ã‚’é€éåˆæˆå¯¾å¿œã«ã—ã¦å®Ÿç¾ã—ã¦ã„ã‚‹ã€‚
 	}
 	else 
 	{
@@ -5704,12 +5808,12 @@ void FillClock()
 	}
 }
 
-// TClock‚Ì’†g‚ÌƒTƒCƒY‚ğŒvZ
-// OnCalcRect‚ÌƒIƒŠƒWƒiƒ‹ƒR[ƒh‚ğˆøŒp‚¬
-// ŒvƒGƒŠƒA‚æ‚è¬‚³‚¢ê‡‚Ì•â³‚ğŠÜ‚Ü‚È‚¢B³‚µ‚¢•`‰æ—Ìˆæ‚ğŒˆ‚ß‚é‚É‚Í
-// CalcMainClockSize()‚ğŒÄ‚Ô‚±‚ÆB‚±‚ÌŠÖ”‚àŒÄ‚Î‚ê‚½ã‚ÅAŒvƒGƒŠƒA‚É‡‚¤‚æ‚¤‚É“KØ‚È•â³‚ª‚È‚³‚ê‚éB
-// ‚±‚ÌŠÖ”‚¾‚¯ŒÄ‚Ô‚ÆAwidthMainClockContent, heightMainClockContent‚Íƒ^ƒXƒNƒo[•(cƒ^ƒXƒNƒo[)‚âƒ^ƒXƒNƒo[‚‚³(‰¡ƒ^ƒXƒNƒo[)‚æ‚è¬‚³‚­‚È‚Á‚Ä‚µ‚Ü‚¤‚Ì‚ÅA
-// ’¼ÚŒÄ‚Î‚È‚¢‚±‚ÆB
+// TClockã®ä¸­èº«ã®ã‚µã‚¤ã‚ºã‚’è¨ˆç®—
+// OnCalcRectã®ã‚ªãƒªã‚¸ãƒŠãƒ«ã‚³ãƒ¼ãƒ‰ã‚’å¼•ç¶™ã
+// æ™‚è¨ˆã‚¨ãƒªã‚¢ã‚ˆã‚Šå°ã•ã„å ´åˆã®è£œæ­£ã‚’å«ã¾ãªã„ã€‚æ­£ã—ã„æç”»é ˜åŸŸã‚’æ±ºã‚ã‚‹ã«ã¯
+// CalcMainClockSize()ã‚’å‘¼ã¶ã“ã¨ã€‚ã“ã®é–¢æ•°ã‚‚å‘¼ã°ã‚ŒãŸä¸Šã§ã€æ™‚è¨ˆã‚¨ãƒªã‚¢ã«åˆã†ã‚ˆã†ã«é©åˆ‡ãªè£œæ­£ãŒãªã•ã‚Œã‚‹ã€‚
+// ã“ã®é–¢æ•°ã ã‘å‘¼ã¶ã¨ã€widthMainClockContent, heightMainClockContentã¯ã‚¿ã‚¹ã‚¯ãƒãƒ¼å¹…(ç¸¦ã‚¿ã‚¹ã‚¯ãƒãƒ¼)ã‚„ã‚¿ã‚¹ã‚¯ãƒãƒ¼é«˜ã•(æ¨ªã‚¿ã‚¹ã‚¯ãƒãƒ¼)ã‚ˆã‚Šå°ã•ããªã£ã¦ã—ã¾ã†ã®ã§ã€
+// ç›´æ¥å‘¼ã°ãªã„ã“ã¨ã€‚
 void CalcMainClockContentSize(void)
 {
 	SYSTEMTIME t;
@@ -5725,7 +5829,7 @@ void CalcMainClockContentSize(void)
 
 	hdc = GetDC(hwndClockMain);
 
-	if (hFon) hOldFont = SelectObject(hdc, hFon);	//‚±‚±‚ÅƒtƒHƒ“ƒg‚ğİ’è‚µ‚Ä‚¢‚éB
+	if (hFon) hOldFont = SelectObject(hdc, hFon);	//ã“ã“ã§ãƒ•ã‚©ãƒ³ãƒˆã‚’è¨­å®šã—ã¦ã„ã‚‹ã€‚
 	GetTextMetrics(hdc, &tm);
 
 	GetDisplayTime(&t, nDispBeat ? (&beat100) : NULL);
@@ -5738,7 +5842,7 @@ void CalcMainClockContentSize(void)
 		sp = p;
 		while (*p && *p != 0x0d) p++;
 		if (*p == 0x0d) { *p = 0; p += 2; }
-		if (GetTextExtentPoint32(hdc, sp, (int)strlen(sp), &sz) == 0)
+		if (ClockGetTextExtentCompat(hdc, sp, (int)strlen(sp), &sz) == 0)
 			sz.cx = (LONG)strlen(sp) * tm.tmAveCharWidth;
 		if (w < sz.cx) w = sz.cx;
 		h += hf; if (*p) h += 2 + dlineheight;
@@ -5760,7 +5864,7 @@ void CalcMainClockContentSize(void)
 	}
 	if (h < 4) h = 4;
 
-//	if (hFon) SelectObject(hdc, hOldFont);		//‚±‚Ìæ‚¸‚Á‚ÆTClock‚ª‰Ò“­‚·‚é‚Ì‚ÅA–ß‚³‚È‚­‚Ä‚æ‚¢B
+//	if (hFon) SelectObject(hdc, hOldFont);		//ã“ã®å…ˆãšã£ã¨TClockãŒç¨¼åƒã™ã‚‹ã®ã§ã€æˆ»ã•ãªãã¦ã‚ˆã„ã€‚
 	ReleaseDC(hwndClockMain, hdc);
 
 
@@ -5768,13 +5872,13 @@ void CalcMainClockContentSize(void)
 	widthMainClockContent = w;
 	heightMainClockContent = h;
 
-	//ƒ^ƒXƒNƒo[—Ìˆæ‚æ‚è¬‚³‚¢ê‡‚É‚ÍC³‚·‚éB
+	//ã‚¿ã‚¹ã‚¯ãƒãƒ¼é ˜åŸŸã‚ˆã‚Šå°ã•ã„å ´åˆã«ã¯ä¿®æ­£ã™ã‚‹ã€‚
 	if (g_bVertTaskbar) 
 	{
-		if (widthMainClockContent < widthMainClockFrame) widthMainClockContent = widthMainClockFrame;	//cƒ^ƒXƒNƒo[‚æ‚è•‚ª‹·‚¢ê‡‚É‚Í•‚ğƒ^ƒXƒNƒo[‚É‚ ‚í‚¹‚éB
+		if (widthMainClockContent < widthMainClockFrame) widthMainClockContent = widthMainClockFrame;	//ç¸¦ã‚¿ã‚¹ã‚¯ãƒãƒ¼ã‚ˆã‚Šå¹…ãŒç‹­ã„å ´åˆã«ã¯å¹…ã‚’ã‚¿ã‚¹ã‚¯ãƒãƒ¼ã«ã‚ã‚ã›ã‚‹ã€‚
 	}
 	else {
-		if (heightMainClockContent < heightMainClockFrame) heightMainClockContent = heightMainClockFrame; //‰¡ƒ^ƒXƒNƒo[‚æ‚è‚‚³‚ª‹·‚¢ê‡‚É‚Í‚‚³‚ğƒ^ƒXƒNƒo[‚É‚ ‚í‚¹‚é
+		if (heightMainClockContent < heightMainClockFrame) heightMainClockContent = heightMainClockFrame; //æ¨ªã‚¿ã‚¹ã‚¯ãƒãƒ¼ã‚ˆã‚Šé«˜ã•ãŒç‹­ã„å ´åˆã«ã¯é«˜ã•ã‚’ã‚¿ã‚¹ã‚¯ãƒãƒ¼ã«ã‚ã‚ã›ã‚‹
 	}
 
 	if (b_DebugLog) {
@@ -5784,13 +5888,13 @@ void CalcMainClockContentSize(void)
 
 }
 
-// TClock‚Ìû—eƒtƒŒ[ƒ€ƒTƒCƒY‚ğŒvZ
-// CalcMainClockCOntetSize‚ğŒÄ‚Ô‚Ì‚Å
-// Œv‚ÌƒRƒ“ƒeƒ“ƒc‚ÌƒTƒCƒY‚àŒvZ‚·‚é‚±‚Æ‚É‚È‚éB
-// ƒ^ƒXƒNƒo[•ûŒü‚Ì”»’è‚às‚¤B
-// Frame‚ÍContent‚Æ“¯‚¶‚©¬‚³‚¢
-// cŒ^‚Ìê‡‚Í‚‚³‚Íí‚É“¯‚¶‚ÅA•‚ÍContent‚Ì‰E‚ªØ‚ê‚é(Frame‚Í¶‚©‚çØ‚ê–Ú‚Ü‚Å)‰Â”\«‚ª‚ ‚éB
-// ‰¡Œ^‚Ìê‡‚Í•‚Íí‚É“¯‚¶‚ÅA‰º‚ÍContent‚Ì‰º‚ªØ‚ê‚é(Frame‚Íã‚©‚çØ‚ê–Ú‚Ü‚Å)‰Â”\«‚ª‚ ‚éB
+// TClockã®åå®¹ãƒ•ãƒ¬ãƒ¼ãƒ ã‚µã‚¤ã‚ºã‚’è¨ˆç®—
+// CalcMainClockCOntetSizeã‚’å‘¼ã¶ã®ã§
+// æ™‚è¨ˆã®ã‚³ãƒ³ãƒ†ãƒ³ãƒ„ã®ã‚µã‚¤ã‚ºã‚‚è¨ˆç®—ã™ã‚‹ã“ã¨ã«ãªã‚‹ã€‚
+// ã‚¿ã‚¹ã‚¯ãƒãƒ¼æ–¹å‘ã®åˆ¤å®šã‚‚è¡Œã†ã€‚
+// Frameã¯Contentã¨åŒã˜ã‹å°ã•ã„
+// ç¸¦å‹ã®å ´åˆã¯é«˜ã•ã¯å¸¸ã«åŒã˜ã§ã€å¹…ã¯Contentã®å³ãŒåˆ‡ã‚Œã‚‹(Frameã¯å·¦ã‹ã‚‰åˆ‡ã‚Œç›®ã¾ã§)å¯èƒ½æ€§ãŒã‚ã‚‹ã€‚
+// æ¨ªå‹ã®å ´åˆã¯å¹…ã¯å¸¸ã«åŒã˜ã§ã€ä¸‹ã¯Contentã®ä¸‹ãŒåˆ‡ã‚Œã‚‹(Frameã¯ä¸Šã‹ã‚‰åˆ‡ã‚Œç›®ã¾ã§)å¯èƒ½æ€§ãŒã‚ã‚‹ã€‚
 void CalcMainClockSize(void)
 {
 	RECT tempRect;
@@ -5807,9 +5911,9 @@ void CalcMainClockSize(void)
 	else {
 		widthMainClockFrame = widthMainClockContent;
 
-		//Win11Type2‚ÅWin11‚ÌŒv‚æ‚è¬‚³‚­‚È‚ç‚È‚¢‚æ‚¤‚É‚·‚éB-->•\¦‚ÍOK‚¾‚ªƒ^ƒXƒNƒgƒŒƒCƒI[ƒo[ƒtƒ[‚ÌƒNƒŠƒbƒN‚ª•Ê‚ÌƒgƒŒƒCƒAƒCƒRƒ“‚É“Í‚­‚Ì‚ğ”ğ‚¯‚é‚½‚ß•K—v
+		//Win11Type2ã§Win11ã®æ™‚è¨ˆã‚ˆã‚Šå°ã•ããªã‚‰ãªã„ã‚ˆã†ã«ã™ã‚‹ã€‚-->è¡¨ç¤ºã¯OKã ãŒã‚¿ã‚¹ã‚¯ãƒˆãƒ¬ã‚¤ã‚ªãƒ¼ãƒãƒ¼ãƒ•ãƒ­ãƒ¼ã®ã‚¯ãƒªãƒƒã‚¯ãŒåˆ¥ã®ãƒˆãƒ¬ã‚¤ã‚¢ã‚¤ã‚³ãƒ³ã«å±Šãã®ã‚’é¿ã‘ã‚‹ãŸã‚å¿…è¦
 		//if (bWin11Main && (Win11Type == 2)) {
-		//	int widthMinimum = defaultWin11ClockWidth + defaultWin11NotificationWidth; // +10;		//10ƒhƒbƒg•ª‚ÍAƒNƒŠƒbƒN‚Åƒƒjƒ…[‚ªŠJ‚¯‚é‚æ‚¤‚ÉB
+		//	int widthMinimum = defaultWin11ClockWidth + defaultWin11NotificationWidth; // +10;		//10ãƒ‰ãƒƒãƒˆåˆ†ã¯ã€ã‚¯ãƒªãƒƒã‚¯ã§ãƒ¡ãƒ‹ãƒ¥ãƒ¼ãŒé–‹ã‘ã‚‹ã‚ˆã†ã«ã€‚
 		//	if (bEnabledWin11Notify) {
 		//		widthMinimum -= widthWin11Notify;
 		//	}
@@ -5969,8 +6073,8 @@ LRESULT CALLBACK SubclassTrayProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM
 	UNREFERENCED_PARAMETER(hwnd);
 	UNREFERENCED_PARAMETER(uIdSubclass);
 	UNREFERENCED_PARAMETER(dwRefData);
-	//‚±‚ÌƒR[ƒh“à‚Å‚Íhwnd‚ªhwndTrayMain‚Å‚ ‚èA‘¼‚Ì‘½‚­‚Ìê‡(hwnd=hwndClockMain)‚ÆˆÙ‚È‚é‚È‚Ì‚Å’ˆÓ‚·‚é‚±‚ÆI
-	//ƒ^ƒXƒNƒgƒŒƒC‚ÍƒƒCƒ“‚Ìƒ^ƒXƒNƒo[‚É‚µ‚©‘¶İ‚µ‚È‚¢‚Ì‚ÅA‚»‚êˆÈŠO‚É‚Íg‚¦‚È‚¢ƒR[ƒ‹ƒoƒbƒNŠÖ”‚É‚È‚Á‚Ä‚¢‚éB
+	//ã“ã®ã‚³ãƒ¼ãƒ‰å†…ã§ã¯hwndãŒhwndTrayMainã§ã‚ã‚Šã€ä»–ã®å¤šãã®å ´åˆ(hwnd=hwndClockMain)ã¨ç•°ãªã‚‹ãªã®ã§æ³¨æ„ã™ã‚‹ã“ã¨ï¼
+	//ã‚¿ã‚¹ã‚¯ãƒˆãƒ¬ã‚¤ã¯ãƒ¡ã‚¤ãƒ³ã®ã‚¿ã‚¹ã‚¯ãƒãƒ¼ã«ã—ã‹å­˜åœ¨ã—ãªã„ã®ã§ã€ãã‚Œä»¥å¤–ã«ã¯ä½¿ãˆãªã„ã‚³ãƒ¼ãƒ«ãƒãƒƒã‚¯é–¢æ•°ã«ãªã£ã¦ã„ã‚‹ã€‚
 
 //	if (b_DebugLog)writeDebugLog_Win10("[tclock.c][SubclassTrayProc] Window Message was recevied, message = ", message);
 
@@ -5980,10 +6084,10 @@ LRESULT CALLBACK SubclassTrayProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM
 		{
 			if (b_DebugLog)writeDebugLog_Win10("[tclock.c][SubclassTrayProc] WM_USER + 100 (1124) recevied.", 999);
 
-			// Ä”z’u‘O‚ÉeƒEƒBƒ“ƒhƒE‚©‚ç‘—‚ç‚êAƒTƒCƒY‚ğ•Ô‚·ƒƒbƒZ[ƒWB
-			// DefSubClassTrayProc()‚ğŒÄ‚Ô‚ÆLRESULTŒ`®‚ÅAWindows•W€Œv‚ª“ü‚Á‚½ê‡‚ÌƒTƒCƒY‚ª‹A‚Á‚Ä‚­‚é‚Ì‚ÅA
-			// ‰ü‘¢‚µ‚½ê‡‚ÌƒTƒCƒY‚É·‚µ‘Ö‚¦‚Ä–ß‚·B
-			// ³‚µ‚¢’l‚ğ•Ô‚³‚È‚¢‚Æƒ^ƒXƒNƒgƒŒƒC‚ÌƒTƒCƒY‚ª‚¨‚©‚µ‚­‚È‚éB
+			// å†é…ç½®å‰ã«è¦ªã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ã‹ã‚‰é€ã‚‰ã‚Œã€ã‚µã‚¤ã‚ºã‚’è¿”ã™ãƒ¡ãƒƒã‚»ãƒ¼ã‚¸ã€‚
+			// DefSubClassTrayProc()ã‚’å‘¼ã¶ã¨LRESULTå½¢å¼ã§ã€Windowsæ¨™æº–æ™‚è¨ˆãŒå…¥ã£ãŸå ´åˆã®ã‚µã‚¤ã‚ºãŒå¸°ã£ã¦ãã‚‹ã®ã§ã€
+			// æ”¹é€ ã—ãŸå ´åˆã®ã‚µã‚¤ã‚ºã«å·®ã—æ›¿ãˆã¦æˆ»ã™ã€‚
+			// æ­£ã—ã„å€¤ã‚’è¿”ã•ãªã„ã¨ã‚¿ã‚¹ã‚¯ãƒˆãƒ¬ã‚¤ã®ã‚µã‚¤ã‚ºãŒãŠã‹ã—ããªã‚‹ã€‚
 
 			LRESULT ret;
 
@@ -6011,13 +6115,13 @@ LRESULT CALLBACK SubclassTrayProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM
 
 			return ret;
 		}
-		//		case (WM_NCCALCSIZE):	//ƒTƒuƒEƒBƒ“ƒhƒEƒNƒƒbƒN‚âWin11‚ÌSubClassTrayProc_Win11‚É‚Í“Í‚­‚ªAWin10‚ÌƒgƒŒƒC‚É‚Í‚±‚ÌƒƒbƒZ[ƒW‚Í—ˆ‚È‚¢
+		//		case (WM_NCCALCSIZE):	//ã‚µãƒ–ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ã‚¯ãƒ­ãƒƒã‚¯ã‚„Win11ã®SubClassTrayProc_Win11ã«ã¯å±ŠããŒã€Win10ã®ãƒˆãƒ¬ã‚¤ã«ã¯ã“ã®ãƒ¡ãƒƒã‚»ãƒ¼ã‚¸ã¯æ¥ãªã„
 		case WM_NOTIFY:
 		{
-			// Ä”z’u‚ª”­¶‚µ‚½‚çeƒEƒBƒ“ƒhƒE‚©‚ç‘—‚ç‚ê‚éB
-			// DefSubClassTrayProc()‚ğŒÄ‚Ô‚ÆLRESULTŒ`®‚Å•Ô“š‚·‚×‚«ƒR[ƒh‹A‚Á‚Ä‚­‚é‚Ì‚ÅA‚»‚Ì‚Ü‚Ü–ß‚¹‚ÎOK‚Ì‚æ‚¤‚¾B
-			// ‚±‚Ì“_‚ÅŒv‚Í‹­§“I‚É•W€WindowsŒv‚ÌƒTƒCƒY‚É•ÏX‚³‚ê‚ÄAƒ^ƒXƒNƒgƒŒƒC¶ãŠî€‚ÉƒAƒCƒeƒ€‚ª•À‚ñ‚¾ó‘Ô(ƒgƒŒƒC‚ÌƒTƒCƒY©‘Ì‚ÍWM_USER+100‚É³‚µ‚­•Ô‚µ‚Ä‚¢‚ê‚ÎŠm•Û‚³‚ê‚Ä‚¢‚é)B
-			// hwndClockMain‚ÌƒTƒCƒY‚ğ‰ü‘¢ŒãƒTƒCƒY‚ÉC³‚µ‚ÄA’Ê’m—Ìˆæ‚È‚Ç‚ÌêŠ‚ğC³‚·‚é•K—v‚ ‚è(SetMainClockOnTasktray‚ğŒÄ‚ÔB
+			// å†é…ç½®ãŒç™ºç”Ÿã—ãŸã‚‰è¦ªã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ã‹ã‚‰é€ã‚‰ã‚Œã‚‹ã€‚
+			// DefSubClassTrayProc()ã‚’å‘¼ã¶ã¨LRESULTå½¢å¼ã§è¿”ç­”ã™ã¹ãã‚³ãƒ¼ãƒ‰å¸°ã£ã¦ãã‚‹ã®ã§ã€ãã®ã¾ã¾æˆ»ã›ã°OKã®ã‚ˆã†ã ã€‚
+			// ã“ã®æ™‚ç‚¹ã§æ™‚è¨ˆã¯å¼·åˆ¶çš„ã«æ¨™æº–Windowsæ™‚è¨ˆã®ã‚µã‚¤ã‚ºã«å¤‰æ›´ã•ã‚Œã¦ã€ã‚¿ã‚¹ã‚¯ãƒˆãƒ¬ã‚¤å·¦ä¸ŠåŸºæº–ã«ã‚¢ã‚¤ãƒ†ãƒ ãŒä¸¦ã‚“ã çŠ¶æ…‹(ãƒˆãƒ¬ã‚¤ã®ã‚µã‚¤ã‚ºè‡ªä½“ã¯WM_USER+100ã«æ­£ã—ãè¿”ã—ã¦ã„ã‚Œã°ç¢ºä¿ã•ã‚Œã¦ã„ã‚‹)ã€‚
+			// hwndClockMainã®ã‚µã‚¤ã‚ºã‚’æ”¹é€ å¾Œã‚µã‚¤ã‚ºã«ä¿®æ­£ã—ã¦ã€é€šçŸ¥é ˜åŸŸãªã©ã®å ´æ‰€ã‚’ä¿®æ­£ã™ã‚‹å¿…è¦ã‚ã‚Š(SetMainClockOnTasktrayã‚’å‘¼ã¶ã€‚
 
 			LRESULT ret;
 			NMHDR *nmh = (NMHDR*)lParam;
@@ -6029,7 +6133,7 @@ LRESULT CALLBACK SubclassTrayProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM
 
 			if (nmh->code != PGN_CALCSIZE) break;
 
-			ret = DefSubclassProc(hwndTrayMain, message, wParam, lParam);	//hwnd‚ğ–¾¦‚µ‚½‚ªA‹@”\‚Í“¯‚¶B
+			ret = DefSubclassProc(hwndTrayMain, message, wParam, lParam);	//hwndã‚’æ˜ç¤ºã—ãŸãŒã€æ©Ÿèƒ½ã¯åŒã˜ã€‚
 
 			if (b_DebugLog)writeDebugLog_Win10("[tclock.c][SubclassTrayProc] SetMainClockOnTasktray called, initiated by WM_NOTIFY(78) + PGN_CALCSIZE.", 999);
 
@@ -6078,23 +6182,23 @@ Rearrange the notify area
 void SetMainClockOnTasktray(void)
 {
 	RECT tempRect;
-	//‚±‚ÌŠÖ”‚ÍSubClassTrayProc‚ÌWM_NOTIFY‚©‚ç‚µ‚©ŒÄ‚Î‚ê‚È‚¢(ó‘Ô‚ğˆÛ‚·‚é‚±‚ÆI)B
+	//ã“ã®é–¢æ•°ã¯SubClassTrayProcã®WM_NOTIFYã‹ã‚‰ã—ã‹å‘¼ã°ã‚Œãªã„(çŠ¶æ…‹ã‚’ç¶­æŒã™ã‚‹ã“ã¨ï¼)ã€‚
 
 
 
 
 
-	//Win10‚É‚¨‚¯‚éƒ^ƒXƒNƒgƒŒƒC“àÄ”z’u‚Ì•û–@
-	//ƒ^ƒXƒNƒgƒŒƒC“à‚Å‚Í¶ã‚ğ(0,0)‚Æ‚µ‚ÄƒAƒCƒeƒ€‚ª•À‚×‚ç‚ê‚Ä‚¢‚ÄA‚±‚Ì“_‚ÅŒv(hwndClockMain)‚Ì¶ã‚ÌÀ•W‚Í³‚µ‚¢
-	//(‚½‚¾‚µSubClassTrayProc‚ÌWM_USER + 100‚É‘Î‚·‚é•Ô“š‚Å³‚µ‚­“š‚¦‚Ä‚¢‚ê‚Î)‚Ì‚Å,Œv‚ğˆÚ“®‚·‚é•K—v‚Í‚È‚¢B
-	//‚µ‚©‚µƒTƒCƒY‚ÍWindows•W€‚ÌŒvƒTƒCƒY‚É‹­§“I‚É‹·‚ß‚ç‚ê‚Ä‚¢‚é(=origClockWidth,origClockHeight)B
-	//ƒ^ƒXƒNƒo[‚‚³“™‚Å”÷–­‚É•Ï‚í‚é‚Ì‚Å’ˆÓ‚ª•K—v‚¾‚ªA‚±‚ÌŠÖ”ƒR[ƒ‹‚Ì’¼‘O‚ÉSubClassTrayProc“à‚Åæ“¾‚Å‚«‚Ä‚¢‚é‚Í‚¸)B
-	//ƒgƒŒƒC‘S‘Ì•‚ÆÅV‚ÌorigClockHeigt, origClockWidth‚ğ‰Á–¡‚µ‚½’l‚ğ³‚µ‚­–ß‚µ‚Ä‚¢‚ê‚Î‚Ò‚Á‚½‚èû‚Ü‚é‚Í‚¸B
-	//TClock‚ÌƒTƒCƒY‚ğC³‚·‚é‚ÆA‚»‚ê‚æ‚è¶(or‰º)‚É‚ ‚éƒgƒŒƒC“à‚Ì\‘¢‚ğÄ”z’u‚µ‚Ä‚â‚é•K—v‚ª‚ ‚éB
-	//‚±‚Ì‘€ì‚Å³‚µ‚­û‚Ü‚ç‚È‚¯‚ê‚ÎASubClassTrayProc‚ÌWM_USER + 100‚É‘Î‚·‚é–ß‚¿’l(—v‹‚·‚éƒ^ƒXƒNƒgƒŒƒCƒTƒCƒY)‚ªŠÔˆá‚Á‚Ä‚¢‚éB
+	//Win10ã«ãŠã‘ã‚‹ã‚¿ã‚¹ã‚¯ãƒˆãƒ¬ã‚¤å†…å†é…ç½®ã®æ–¹æ³•
+	//ã‚¿ã‚¹ã‚¯ãƒˆãƒ¬ã‚¤å†…ã§ã¯å·¦ä¸Šã‚’(0,0)ã¨ã—ã¦ã‚¢ã‚¤ãƒ†ãƒ ãŒä¸¦ã¹ã‚‰ã‚Œã¦ã„ã¦ã€ã“ã®æ™‚ç‚¹ã§æ™‚è¨ˆ(hwndClockMain)ã®å·¦ä¸Šã®åº§æ¨™ã¯æ­£ã—ã„
+	//(ãŸã ã—SubClassTrayProcã®WM_USER + 100ã«å¯¾ã™ã‚‹è¿”ç­”ã§æ­£ã—ãç­”ãˆã¦ã„ã‚Œã°)ã®ã§,æ™‚è¨ˆã‚’ç§»å‹•ã™ã‚‹å¿…è¦ã¯ãªã„ã€‚
+	//ã—ã‹ã—ã‚µã‚¤ã‚ºã¯Windowsæ¨™æº–ã®æ™‚è¨ˆã‚µã‚¤ã‚ºã«å¼·åˆ¶çš„ã«ç‹­ã‚ã‚‰ã‚Œã¦ã„ã‚‹(=origClockWidth,origClockHeight)ã€‚
+	//ã‚¿ã‚¹ã‚¯ãƒãƒ¼é«˜ã•ç­‰ã§å¾®å¦™ã«å¤‰ã‚ã‚‹ã®ã§æ³¨æ„ãŒå¿…è¦ã ãŒã€ã“ã®é–¢æ•°ã‚³ãƒ¼ãƒ«ã®ç›´å‰ã«SubClassTrayProcå†…ã§å–å¾—ã§ãã¦ã„ã‚‹ã¯ãš)ã€‚
+	//ãƒˆãƒ¬ã‚¤å…¨ä½“å¹…ã¨æœ€æ–°ã®origClockHeigt, origClockWidthã‚’åŠ å‘³ã—ãŸå€¤ã‚’æ­£ã—ãæˆ»ã—ã¦ã„ã‚Œã°ã´ã£ãŸã‚Šåã¾ã‚‹ã¯ãšã€‚
+	//TClockã®ã‚µã‚¤ã‚ºã‚’ä¿®æ­£ã™ã‚‹ã¨ã€ãã‚Œã‚ˆã‚Šå·¦(orä¸‹)ã«ã‚ã‚‹ãƒˆãƒ¬ã‚¤å†…ã®æ§‹é€ ã‚’å†é…ç½®ã—ã¦ã‚„ã‚‹å¿…è¦ãŒã‚ã‚‹ã€‚
+	//ã“ã®æ“ä½œã§æ­£ã—ãåã¾ã‚‰ãªã‘ã‚Œã°ã€SubClassTrayProcã®WM_USER + 100ã«å¯¾ã™ã‚‹æˆ»ã¡å€¤(è¦æ±‚ã™ã‚‹ã‚¿ã‚¹ã‚¯ãƒˆãƒ¬ã‚¤ã‚µã‚¤ã‚º)ãŒé–“é•ã£ã¦ã„ã‚‹ã€‚
 
 
-	//‰‰ñ‹N“®ˆÈŠO‚ÍAg_OriginalClockWidth, g_OriginalClockHeight‚ª³‚µ‚¢’l‚ª•Û‚³‚ê‚Ä‚¢‚é‚ÆŠú‘Ò‚³‚ê‚éB
+	//åˆå›èµ·å‹•æ™‚ä»¥å¤–ã¯ã€g_OriginalClockWidth, g_OriginalClockHeightãŒæ­£ã—ã„å€¤ãŒä¿æŒã•ã‚Œã¦ã„ã‚‹ã¨æœŸå¾…ã•ã‚Œã‚‹ã€‚
 
 
 	if (b_DebugLog) writeDebugLog_Win10("[tclock.c] SetMainClockOnTasktray called. ", 999);
@@ -6102,25 +6206,25 @@ void SetMainClockOnTasktray(void)
 	HWND tempHwnd;
 
 
-	//Šm•Û‚·‚×‚«Œv‚ÌƒTƒCƒY‚ğæ“¾
+	//ç¢ºä¿ã™ã¹ãæ™‚è¨ˆã®ã‚µã‚¤ã‚ºã‚’å–å¾—
 	GetPrevMainClockSize();
 	CalcMainClockSize();
 
-	//’Ê’mƒ{ƒ^ƒ“AƒfƒXƒNƒgƒbƒv•\¦ƒ{ƒ^ƒ“‚ÌˆÚ“®‚·‚×‚«‹——£‚ğŒvZ
+	//é€šçŸ¥ãƒœã‚¿ãƒ³ã€ãƒ‡ã‚¹ã‚¯ãƒˆãƒƒãƒ—è¡¨ç¤ºãƒœã‚¿ãƒ³ã®ç§»å‹•ã™ã¹ãè·é›¢ã‚’è¨ˆç®—
 	shift.x = widthMainClockFrame - prevWidthMainClock;
 	shift.y = heightMainClockFrame - prevHeightMainClock;
 
 
-	//ƒTƒCƒY‚Æ‚µ‚ÄClockFrame‚ğg‚¤‚ÆÀÛŒ©‚¦‚Ä‚¢‚éƒTƒCƒY‚Ìƒrƒbƒgƒ}ƒbƒv‚ğì‚é‚±‚Æ‚É‚È‚éB
+	//ã‚µã‚¤ã‚ºã¨ã—ã¦ClockFrameã‚’ä½¿ã†ã¨å®Ÿéš›è¦‹ãˆã¦ã„ã‚‹ã‚µã‚¤ã‚ºã®ãƒ“ãƒƒãƒˆãƒãƒƒãƒ—ã‚’ä½œã‚‹ã“ã¨ã«ãªã‚‹ã€‚
 	SetWindowPos(hwndClockMain, NULL, 0, 0, widthMainClockFrame, heightMainClockFrame,
 		SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOZORDER | SWP_NOSENDCHANGING);
 
-	//Šeíˆ—‚Ì‚½‚ßƒƒCƒ“ƒNƒƒbƒNˆÊ’u‚ğXV
+	//å„ç¨®å‡¦ç†ã®ãŸã‚ãƒ¡ã‚¤ãƒ³ã‚¯ãƒ­ãƒƒã‚¯ä½ç½®ã‚’æ›´æ–°
 	GetWindowRect(hwndClockMain, &tempRect);
 	posXMainClock = tempRect.left;
 
 
-	//’Ê’mƒ{ƒ^ƒ“AƒfƒXƒNƒgƒbƒv•\¦ƒ{ƒ^ƒ“‚ğˆÚ“®
+	//é€šçŸ¥ãƒœã‚¿ãƒ³ã€ãƒ‡ã‚¹ã‚¯ãƒˆãƒƒãƒ—è¡¨ç¤ºãƒœã‚¿ãƒ³ã‚’ç§»å‹•
 	tempHwnd = FindWindowEx(hwndTrayMain, NULL, "TrayButton", NULL);
 	if (tempHwnd)
 	{
@@ -6155,11 +6259,11 @@ void SetMainClockOnTasktray(void)
 	}
 
 
-	//ƒTƒCƒYXV‚µ‚½‚çAhdcClock‚ğì‚è’¼‚·‚æ‚¤‚É‚·‚éB
+	//ã‚µã‚¤ã‚ºæ›´æ–°ã—ãŸã‚‰ã€hdcClockã‚’ä½œã‚Šç›´ã™ã‚ˆã†ã«ã™ã‚‹ã€‚
 	CreateClockDC();
 
-	//	SetAllSubClocks();	//ƒƒCƒ“ƒNƒƒbƒN‚Ìó‘Ô‚ª•Ï‚í‚Á‚½‚çA–ˆ‰ñƒTƒuƒNƒƒbƒN‚à”½‰f‚³‚¹‚é•K—v‚ ‚èB
-	//->‚·‚®‚ÉÀs‚·‚é‚Æ‚¤‚Ü‚­s‚©‚È‚¢•ˆ—‚ªŒJ‚è•Ô‚³‚ê‚é‚Ì‚ÅƒfƒBƒŒƒC‚ÅÀs
+	//	SetAllSubClocks();	//ãƒ¡ã‚¤ãƒ³ã‚¯ãƒ­ãƒƒã‚¯ã®çŠ¶æ…‹ãŒå¤‰ã‚ã£ãŸã‚‰ã€æ¯å›ã‚µãƒ–ã‚¯ãƒ­ãƒƒã‚¯ã‚‚åæ˜ ã•ã›ã‚‹å¿…è¦ã‚ã‚Šã€‚
+	//->ã™ãã«å®Ÿè¡Œã™ã‚‹ã¨ã†ã¾ãè¡Œã‹ãªã„ï¼†å‡¦ç†ãŒç¹°ã‚Šè¿”ã•ã‚Œã‚‹ã®ã§ãƒ‡ã‚£ãƒ¬ã‚¤ã§å®Ÿè¡Œ
 	if (bEnableSubClks) {
 		SetTimer(hwndClockMain, IDTIMERDLL_DELEYED_RESPONSE, 500, NULL);
 	}
@@ -6172,7 +6276,7 @@ void CheckPixel_Win10(int posX, int posY)
 	HDC tempDC = NULL;
 	COLORREF tempCol;
 
-	tempHwnd = GetDesktopWindow();	//GetDesktopWindow()‚ªƒfƒXƒNƒgƒbƒv
+	tempHwnd = GetDesktopWindow();	//GetDesktopWindow()ãŒãƒ‡ã‚¹ã‚¯ãƒˆãƒƒãƒ—
 	GetWindowRect(tempHwnd, &tempRect);
 	tempDC = GetDC(tempHwnd);
 	if (tempDC) {
@@ -6192,7 +6296,7 @@ void CheckPixel_Win10(int posX, int posY)
 
 
 
-void GetTaskbarColor_Win11Type2(BOOL bBoundary)	//bBoundary == TRUE‚¾‚ÆTClock‚Ì‹«ŠE•t‹ßAFALSE‚¾‚Ç¶’[
+void GetTaskbarColor_Win11Type2(BOOL bBoundary)	//bBoundary == TRUEã ã¨TClockã®å¢ƒç•Œä»˜è¿‘ã€FALSEã ã©å·¦ç«¯
 {
 	RECT tempRect;
 	//extern BOOL b_ShowingTClockBarWin11;
@@ -6218,15 +6322,15 @@ void GetTaskbarColor_Win11Type2(BOOL bBoundary)	//bBoundary == TRUE‚¾‚ÆTClock‚Ì‹
 	posY = tempRect.top;
 
 
-	tempHwnd = GetDesktopWindow();	//GetDesktopWindow()‚ªƒfƒXƒNƒgƒbƒv
+	tempHwnd = GetDesktopWindow();	//GetDesktopWindow()ãŒãƒ‡ã‚¹ã‚¯ãƒˆãƒƒãƒ—
 	GetWindowRect(tempHwnd, &tempRect);
 	tempDC = GetDC(tempHwnd);
 	if (tempDC) {
-//		originalColorTaskbar = GetPixel(tempDC, tempRect.left, tempRect.bottom - 1);	// bottom, right‚Í 1 ˆø‚©‚È‚¢‚Æ‚Í‚İo‚ÄCLR_INVALID‚É‚È‚éB
-//		originalColorTaskbarEdge = GetPixel(tempDC, tempRect.left, tempRect.bottom - originalHeightTaskbar);	// Taskbarã’[1ƒhƒbƒg‚¾‚¯F‚ªˆá‚¤EEE
+//		originalColorTaskbar = GetPixel(tempDC, tempRect.left, tempRect.bottom - 1);	// bottom, rightã¯ 1 å¼•ã‹ãªã„ã¨ã¯ã¿å‡ºã¦CLR_INVALIDã«ãªã‚‹ã€‚
+//		originalColorTaskbarEdge = GetPixel(tempDC, tempRect.left, tempRect.bottom - originalHeightTaskbar);	// Taskbarä¸Šç«¯1ãƒ‰ãƒƒãƒˆã ã‘è‰²ãŒé•ã†ãƒ»ãƒ»ãƒ»
 
-		originalColorTaskbar = GetPixel(tempDC, posX, tempRect.bottom - 1);	// bottom, right‚Í 1 ˆø‚©‚È‚¢‚Æ‚Í‚İo‚ÄCLR_INVALID‚É‚È‚éB
-		originalColorTaskbarEdge = GetPixel(tempDC, posX, posY);	// Taskbarã’[1ƒhƒbƒg‚¾‚¯F‚ªˆá‚¤B
+		originalColorTaskbar = GetPixel(tempDC, posX, tempRect.bottom - 1);	// bottom, rightã¯ 1 å¼•ã‹ãªã„ã¨ã¯ã¿å‡ºã¦CLR_INVALIDã«ãªã‚‹ã€‚
+		originalColorTaskbarEdge = GetPixel(tempDC, posX, posY);	// Taskbarä¸Šç«¯1ãƒ‰ãƒƒãƒˆã ã‘è‰²ãŒé•ã†ã€‚
 
 		ReleaseDC(tempHwnd, tempDC);
 
@@ -6267,7 +6371,7 @@ void GetTaskbarSize(void)
 
 	if (heightTaskbar == 0) {
 		if (b_DebugLog) writeDebugLog_Win10("[tclock.c][GetTaskbarSize] Failed to Get heightTaskbar. TClock will not work correctly....", 999);
-		heightTaskbar = 48;	//–œ‚ªˆê0‚¾‚Á‚½ê‡‚É100%‚Ìê‡‚Ì’l‚ğ“ü‚ê‚éB‚»‚¤‚µ‚È‚¢‚Æˆ—‚ªƒ‹[ƒv‚·‚éB‚Æ‚Í‚¢‚¦‚±‚¤‚È‚é‚Æ³í“®ì‚µ‚È‚¢B
+		heightTaskbar = 48;	//ä¸‡ãŒä¸€0ã ã£ãŸå ´åˆã«100%ã®å ´åˆã®å€¤ã‚’å…¥ã‚Œã‚‹ã€‚ãã†ã—ãªã„ã¨å‡¦ç†ãŒãƒ«ãƒ¼ãƒ—ã™ã‚‹ã€‚ã¨ã¯ã„ãˆã“ã†ãªã‚‹ã¨æ­£å¸¸å‹•ä½œã—ãªã„ã€‚
 	}
 
 
@@ -6288,7 +6392,7 @@ BOOL IsVertTaskbar(HWND temphwndTaskBarMain)
 }
 
 /*------------------------------------------------
-@SafeMode”»’è‚Æ‹N“®(Tick)•Û‘¶
+ã€€SafeModeåˆ¤å®šã¨èµ·å‹•æ™‚åˆ»(Tick)ä¿å­˜
  --------------------------------------------------*/
 void CheckSafeMode_Win10(void)
 {
@@ -6400,7 +6504,7 @@ COLORREF MyColorTT_BL(void)
 	return returnvalue;
 }
 
-//Ver4.0.4Œ»İ—˜—p‚µ‚Ä‚¢‚È‚¢
+//Ver4.0.4ç¾åœ¨åˆ©ç”¨ã—ã¦ã„ãªã„
 void checkDisplayStatus_Win10(void)
 {
 	DWORD dwFlags = 1;
@@ -6463,34 +6567,34 @@ BOOL IsHoliday_Win10(SYSTEMTIME* pt)
 
 	switch(Month) {
 		case 1:
-			if (Day == 1 || (Day == 2 && DoW == 1)) b_ret = TRUE;	//Œ³’U
-			if (Day > 7 && Day < 15 && DoW == 1) b_ret = TRUE;		//¬l‚Ì“ú
+			if (Day == 1 || (Day == 2 && DoW == 1)) b_ret = TRUE;	//å…ƒæ—¦
+			if (Day > 7 && Day < 15 && DoW == 1) b_ret = TRUE;		//æˆäººã®æ—¥
 			break;
 		case 2:
-			if (Day == 11 || (Day == 12 && DoW == 1)) b_ret = TRUE;	//Œš‘‹L”O“ú
-			if (Day == 23 || (Day == 24 && DoW == 1)) b_ret = TRUE;	//“Vc’a¶“ú
+			if (Day == 11 || (Day == 12 && DoW == 1)) b_ret = TRUE;	//å»ºå›½è¨˜å¿µæ—¥
+			if (Day == 23 || (Day == 24 && DoW == 1)) b_ret = TRUE;	//å¤©çš‡èª•ç”Ÿæ—¥
 			break;
-		case 3:		//t•ª‚Ì“ú
+		case 3:		//æ˜¥åˆ†ã®æ—¥
 			if (Year == 2020 || Year == 2021 || Year == 2024 || Year == 2025 || Year == 2026 || Year == 2028 || Year == 2029 || Year == 2030)
 				if (Day == 20 || (Day == 21 && DoW == 1)) b_ret = TRUE;
 			if (Year == 2022 || Year == 2023 || Year == 2027)
 				if (Day == 21 || (Day == 22 && DoW == 1)) b_ret = TRUE;
 			break;
 		case 4:
-			if (Day == 29 || (Day == 30 && DoW == 1)) b_ret = TRUE;	//º˜a‚Ì“ú
+			if (Day == 29 || (Day == 30 && DoW == 1)) b_ret = TRUE;	//æ˜­å’Œã®æ—¥
 			break;
 		case 5:
-			if (Day == 3) b_ret = TRUE;		//Œ›–@‹L”O“ú
-			if (Day == 4) b_ret = TRUE;		//‚İ‚Ç‚è‚Ì“ú
-			if (Day == 5) b_ret = TRUE;		//‚±‚Ç‚à‚Ì“ú
-			if (Day == 6 && (DoW == 1 || DoW == 2 || DoW == 3)) b_ret = TRUE;	//U‘Ö‹x“ú
+			if (Day == 3) b_ret = TRUE;		//æ†²æ³•è¨˜å¿µæ—¥
+			if (Day == 4) b_ret = TRUE;		//ã¿ã©ã‚Šã®æ—¥
+			if (Day == 5) b_ret = TRUE;		//ã“ã©ã‚‚ã®æ—¥
+			if (Day == 6 && (DoW == 1 || DoW == 2 || DoW == 3)) b_ret = TRUE;	//æŒ¯æ›¿ä¼‘æ—¥
 			break;
 		case 7:
 			//if (Year == 2020) {
 			//	if (Day == 23) b_ret = TRUE;
 			//}
 			//else {
-				if (Day > 14 && Day < 22 && DoW == 1) b_ret = TRUE;		//ŠC‚Ì“ú
+				if (Day > 14 && Day < 22 && DoW == 1) b_ret = TRUE;		//æµ·ã®æ—¥
 			//}
 			break;
 		case 8:
@@ -6498,12 +6602,12 @@ BOOL IsHoliday_Win10(SYSTEMTIME* pt)
 			//	if (Day == 10) b_ret = TRUE;
 			//}
 			//else {
-				if (Day == 11 || (Day == 12 && DoW == 1)) b_ret = TRUE;		//R‚Ì“ú
+				if (Day == 11 || (Day == 12 && DoW == 1)) b_ret = TRUE;		//å±±ã®æ—¥
 			//}
 			break;
 		case 9:
-			if (Day > 14 && Day < 22 && DoW == 1) b_ret = TRUE;		//Œh˜V‚Ì“ú
-			//ˆÈ‰ºAH•ª‚Ì“ú
+			if (Day > 14 && Day < 22 && DoW == 1) b_ret = TRUE;		//æ•¬è€ã®æ—¥
+			//ä»¥ä¸‹ã€ç§‹åˆ†ã®æ—¥
 			if (Year == 2020 || Year == 2024 || Year == 2028)
 				if (Day == 22 || (Day == 23 && DoW == 1)) b_ret = TRUE;
 			if (Year == 2021 || Year == 2022 || Year == 2023 || Year == 2025 || Year == 2026 || Year == 2027 || Year == 2029 || Year == 2030)
@@ -6511,12 +6615,12 @@ BOOL IsHoliday_Win10(SYSTEMTIME* pt)
 			break;
 		case 10:
 			if (Year != 2020) {
-				if (Day > 7 && Day < 15 && DoW == 1) b_ret = TRUE;	//ƒXƒ|[ƒc‚Ì“ú
+				if (Day > 7 && Day < 15 && DoW == 1) b_ret = TRUE;	//ã‚¹ãƒãƒ¼ãƒ„ã®æ—¥
 			}
 			break;
 		case 11:
-			if (Day == 3 || (Day == 4 && DoW == 1)) b_ret = TRUE;	//•¶‰»‚Ì“ú
-			if (Day == 23 || (Day == 24 && DoW == 1)) b_ret = TRUE;	//‹Î˜JŠ´Ó‚Ì“ú
+			if (Day == 3 || (Day == 4 && DoW == 1)) b_ret = TRUE;	//æ–‡åŒ–ã®æ—¥
+			if (Day == 23 || (Day == 24 && DoW == 1)) b_ret = TRUE;	//å‹¤åŠ´æ„Ÿè¬ã®æ—¥
 	}
 	return(b_ret);
 }
@@ -6540,7 +6644,7 @@ void SetWindowVisible_Win10(HWND targetHWND, BOOL bVisibility)
 
 
 
-//ˆÈ‰º‚ÌƒR[ƒh‚ÍŒ»İg‚Á‚Ä‚¢‚È‚¢B
+//ä»¥ä¸‹ã®ã‚³ãƒ¼ãƒ‰ã¯ç¾åœ¨ä½¿ã£ã¦ã„ãªã„ã€‚
 //void Check_Light_Theme_Win10(void)
 //{
 //	if (b_DebugLog)

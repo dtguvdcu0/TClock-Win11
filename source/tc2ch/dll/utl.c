@@ -12,6 +12,69 @@ extern HANDLE hmod;
 
 BOOL g_bIniSetting = TRUE;
 char g_inifile[MAX_PATH];
+static const char* k_FontUtf8HexKey = "FontUtf8Hex";
+
+static int tc_hex_digit(int v)
+{
+	if (v >= 0 && v <= 9) return '0' + v;
+	if (v >= 10 && v <= 15) return 'A' + (v - 10);
+	return '0';
+}
+
+static int tc_hex_value(int c)
+{
+	if (c >= '0' && c <= '9') return c - '0';
+	if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+	if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+	return -1;
+}
+
+static BOOL tc_encode_utf8_hex_from_ansi(const char* ansi, char* outHex, int outHexBytes)
+{
+	WCHAR wbuf[512];
+	char u8[1024];
+	int i;
+	int n;
+
+	if (!ansi || !outHex || outHexBytes <= 0) return FALSE;
+	if (tc_ansi_to_utf16(GetACP(), ansi, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) <= 0) return FALSE;
+	if (tc_utf16_to_utf8(wbuf, u8, (int)sizeof(u8)) <= 0) return FALSE;
+
+	n = lstrlen(u8);
+	if (n * 2 + 1 > outHexBytes) return FALSE;
+	for (i = 0; i < n; i++) {
+		unsigned char b = (unsigned char)u8[i];
+		outHex[i * 2] = (char)tc_hex_digit((b >> 4) & 0x0F);
+		outHex[i * 2 + 1] = (char)tc_hex_digit(b & 0x0F);
+	}
+	outHex[n * 2] = '\0';
+	return TRUE;
+}
+
+static BOOL tc_decode_utf8_hex_to_ansi(const char* hex, char* outAnsi, int outAnsiBytes)
+{
+	char u8[1024];
+	WCHAR wbuf[512];
+	int n;
+	int i;
+
+	if (!hex || !outAnsi || outAnsiBytes <= 0) return FALSE;
+	n = lstrlen(hex);
+	if ((n & 1) != 0) return FALSE;
+	if (n / 2 + 1 > (int)sizeof(u8)) return FALSE;
+
+	for (i = 0; i < n / 2; i++) {
+		int hi = tc_hex_value((unsigned char)hex[i * 2]);
+		int lo = tc_hex_value((unsigned char)hex[i * 2 + 1]);
+		if (hi < 0 || lo < 0) return FALSE;
+		u8[i] = (char)((hi << 4) | lo);
+	}
+	u8[n / 2] = '\0';
+
+	if (tc_utf8_to_utf16(u8, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) <= 0) return FALSE;
+	if (tc_utf16_to_ansi(GetACP(), wbuf, outAnsi, outAnsiBytes) <= 0) return FALSE;
+	return TRUE;
+}
 
 BOOL flag_LogClear = FALSE;
 
@@ -207,6 +270,17 @@ int GetMyRegStr(char* section, char* entry, char* val, int cbData,
 
 	{
 		if (tc_ini_utf8_detect_file(g_inifile, &isUtf8, NULL) && isUtf8) {
+			if (section && entry &&
+				lstrcmpi(section, "Color_Font") == 0 &&
+				lstrcmpi(entry, "Font") == 0) {
+				char hexbuf[1024];
+				if (tc_ini_utf8_read_string(g_inifile, key, (char*)k_FontUtf8HexKey, "", hexbuf, (int)sizeof(hexbuf)) > 0) {
+					if (tc_decode_utf8_hex_to_ansi(hexbuf, val, cbData)) {
+						r = lstrlen(val);
+						goto getmyregstr_done;
+					}
+				}
+			}
 			r = tc_ini_utf8_read_string(g_inifile, key, entry, defval ? defval : "", val, cbData);
 			if (r == 0) {
 				r = GetPrivateProfileString(key, entry, defval ? defval : "", val, cbData, g_inifile);
@@ -225,6 +299,8 @@ int GetMyRegStr(char* section, char* entry, char* val, int cbData,
 			r = lstrlen(val);
 		}
 	}
+
+getmyregstr_done:
 
 
 	extern BOOL b_DebugLog_RegAccess;
@@ -330,12 +406,11 @@ BOOL SetMyRegStr(char* section, char* entry, char* val)
 
 	if(section && *section)
 	{
-
-		strcat(key, section);
+		lstrcpyn(key, section, (int)sizeof(key));
 	}
 	else
 	{
-		strcpy(key, "Main");
+		lstrcpyn(key, "Main", (int)sizeof(key));
 	}
 
 		char *chk_val;
@@ -343,6 +418,7 @@ BOOL SetMyRegStr(char* section, char* entry, char* val)
 		char saveval[1024];
 
 		r = FALSE;
+		if (!val) val = "";
 		chk_val = val;
 		while(*chk_val)
 		{
@@ -354,16 +430,31 @@ BOOL SetMyRegStr(char* section, char* entry, char* val)
 
 		if (b_chkflg)
 		{
-			strcpy(saveval,"\"");
-			strcat(saveval,val);
-			strcat(saveval,"\"");
+			int vlen = lstrlen(val);
+			if (vlen > (int)sizeof(saveval) - 3) vlen = (int)sizeof(saveval) - 3;
+			saveval[0] = '\"';
+			if (vlen > 0) CopyMemory(saveval + 1, val, (SIZE_T)vlen);
+			saveval[1 + vlen] = '\"';
+			saveval[1 + vlen + 1] = '\0';
 		}
 		else
-			strcpy(saveval,val);
+			lstrcpyn(saveval, val, (int)sizeof(saveval));
 
 		if (tc_ini_utf8_detect_file(g_inifile, &isUtf8, NULL) && isUtf8) {
-			/* Temporary safety mode: avoid UTF-8 write path during startup crash triage. */
-			r = TRUE;
+			if (section && entry &&
+				lstrcmpi(section, "Color_Font") == 0 &&
+				lstrcmpi(entry, "Font") == 0) {
+				char hexbuf[1024];
+				if (tc_encode_utf8_hex_from_ansi(val, hexbuf, (int)sizeof(hexbuf))) {
+					r = WritePrivateProfileString(key, (char*)k_FontUtf8HexKey, hexbuf, g_inifile) ? TRUE : FALSE;
+				}
+				else {
+					r = FALSE;
+				}
+			}
+			else {
+				r = WritePrivateProfileString(key, entry, saveval, g_inifile) ? TRUE : FALSE;
+			}
 		}
 		else if (WritePrivateProfileString(key, entry, saveval, g_inifile)) {
 			r = TRUE;
@@ -409,8 +500,7 @@ BOOL SetMyRegLong(char* section, char* entry, DWORD val)
 		wsprintf(s, "%d", val);
 		r = FALSE;
 		if (tc_ini_utf8_detect_file(g_inifile, &isUtf8, NULL) && isUtf8) {
-			/* Temporary safety mode: avoid UTF-8 write path during startup crash triage. */
-			r = TRUE;
+			r = WritePrivateProfileString(key, entry, s, g_inifile) ? TRUE : FALSE;
 		}
 		else if (WritePrivateProfileString(key, entry, s, g_inifile)) {
 			r = TRUE;
@@ -580,6 +670,7 @@ BOOL DelMyReg_DLL(char* section, char* entry)
 	BOOL r = FALSE;
 	char key[80];
 	HKEY hkey;
+	BOOL isUtf8 = FALSE;
 
 	if (strlen(g_inifile) == 0) return 0;
 
@@ -594,11 +685,12 @@ BOOL DelMyReg_DLL(char* section, char* entry)
 		strcpy(key, "Main");
 	}
 
-
-	if (tc_ini_utf8_delete_key(g_inifile, key, entry)) {
+	if (tc_ini_utf8_detect_file(g_inifile, &isUtf8, NULL) && isUtf8) {
+		r = tc_ini_utf8_delete_key(g_inifile, key, entry) ? TRUE : FALSE;
+	}
+	else if (tc_ini_utf8_delete_key(g_inifile, key, entry)) {
 		r = TRUE;
 	}
-
 	return r;
 }
 
@@ -609,6 +701,7 @@ BOOL DelMyRegKey_DLL(char* section)
 {
 	BOOL r = FALSE;
 	char key[80];
+	BOOL isUtf8 = FALSE;
 
 	if (strlen(g_inifile) == 0) return 0;
 
@@ -623,10 +716,12 @@ BOOL DelMyRegKey_DLL(char* section)
 		strcpy(key, "Main");
 	}
 
-	if (tc_ini_utf8_delete_section(g_inifile, key)) {
+	if (tc_ini_utf8_detect_file(g_inifile, &isUtf8, NULL) && isUtf8) {
+		r = tc_ini_utf8_delete_section(g_inifile, key) ? TRUE : FALSE;
+	}
+	else if (tc_ini_utf8_delete_section(g_inifile, key)) {
 		r = TRUE;
 	}
-
 	return r;
 }
 

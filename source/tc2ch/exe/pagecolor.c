@@ -88,7 +88,7 @@ BOOL CALLBACK PageColorProc(HWND hDlg, UINT message,
 				if (code == CBN_SELCHANGE || code == CBN_EDITCHANGE)
 				{
 					RefreshFontSample(hDlg, FALSE);
-					//SetComboFontSize(hDlg, FALSE);	//����͂��܂������Ȃ��B
+					//SetComboFontSize(hDlg, FALSE);	//これはうまくいかない。
 					SendPSChanged(hDlg);
 				}
 				break;
@@ -187,20 +187,20 @@ void OnInit(HWND hDlg)
 
 
 
-	//�u�t�H���g�v�̐ݒ�
+	//「フォント」の設定
 	InitComboFont(hDlg);
 
 
 
 
-	//�u�t�H���g�T�C�Y�v�̐ݒ�
+	//「フォントサイズ」の設定
 	SetComboFontSize(hDlg, TRUE);
 
 	//RefreshFontSample(hDlg);
 
 
 
-	//�u�e�L�X�g�̈ʒu�v�̐ݒ�
+	//「テキストの位置」の設定
 	index = CBAddString(hDlg, IDC_TEXTPOS, (LPARAM)MyString(IDS_TEXTCENTER));
 //	CBSetItemData(hDlg, IDC_TEXTPOS, index, 0);
 	index = CBAddString(hDlg, IDC_TEXTPOS, (LPARAM)MyString(IDS_TEXTLEFT));
@@ -240,7 +240,7 @@ void OnInit(HWND hDlg)
 		(int)(short)GetMyRegLong("Color_Font", "ClockShadowRange", 1));
 	OnCheckShadow(hDlg, 0);
 
-	//�uBold�v�uItalic�v�̐ݒ�
+	//「Bold」「Italic」の設定
 	CheckDlgButton(hDlg, IDC_BOLD,
 		GetMyRegLong("Color_Font", "Bold", FALSE));
 	CheckDlgButton(hDlg, IDC_ITALIC,
@@ -285,9 +285,9 @@ void OnInit(HWND hDlg)
 void OnApply(HWND hDlg)
 {
 	DWORD dw;
-	char s[80];
+	char* s = NULL;
 
-	//�w�i�F�̕ۑ�
+	//背景色の保存
 	SetMyRegLong("Color_Font", "UseBackColor",
 		IsDlgButtonChecked(hDlg, IDC_CHKCOLOR));
 	dw = (DWORD)CBGetItemData(hDlg, IDC_COLBACK, CBGetCurSel(hDlg, IDC_COLBACK));
@@ -299,11 +299,11 @@ void OnApply(HWND hDlg)
 	SetMyRegLong("Color_Font", "BackColor2", dw);
 	SetMyRegLong("Color_Font", "GradDir", IsDlgButtonChecked(hDlg, IDC_CHKCOLORV));
 
-	//�����F�̕ۑ�
+	//文字色の保存
 	dw = (DWORD)CBGetItemData(hDlg, IDC_COLFORE, CBGetCurSel(hDlg, IDC_COLFORE));
 	SetMyRegLong("Color_Font", "ForeColor", dw);
 
-	//�e�̕ۑ�
+	//影の保存
 	SetMyRegLong("Color_Font", "ForeColorShadow",
 		IsDlgButtonChecked(hDlg, IDC_CHKCLKSHADOW));
 	SetMyRegLong("Color_Font", "ForeColorBORDER",
@@ -314,22 +314,30 @@ void OnApply(HWND hDlg)
 		SendDlgItemMessage(hDlg, IDC_SPINCLKSHADOW, UDM_GETPOS, 0, 0));
 
 
-	//�t�H���g���̕ۑ�
+	//フォント名の保存
 	{
 		int sel = CBGetCurSel(hDlg, IDC_FONT);
 		if (sel >= 0) {
-			CBGetLBText(hDlg, IDC_FONT, sel, s);
-			if (s[0] == '*' || s[0] == ' ') {
-				SetMyRegStr("Color_Font", "Font", s + 1);	//????????????????
-			}
-			else {
-				SetMyRegStr("Color_Font", "Font", s);
+			LRESULT len = SendDlgItemMessage(hDlg, IDC_FONT, CB_GETLBTEXTLEN, (WPARAM)sel, 0);
+			if (len >= 0 && len < 4096) {
+				s = (char*)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, (SIZE_T)len + 2);
+				if (s) {
+					CBGetLBText(hDlg, IDC_FONT, sel, s);
+					if (s[0] == '*' || s[0] == ' ') {
+						SetMyRegStr("Color_Font", "Font", s + 1);	//????????????????
+					}
+					else {
+						SetMyRegStr("Color_Font", "Font", s);
+					}
+					HeapFree(GetProcessHeap(), 0, s);
+					s = NULL;
+				}
 			}
 		}
 	}
 
-	//�t�H���g�T�C�Y�̕ۑ�
-	//5�ȉ��̃T�C�Y�͋����Ȃ�(���l�łȂ����̂��܂܂��)
+	//フォントサイズの保存
+	//5以下のサイズは許可しない(数値でないものも含まれる)
 	dw = GetDlgItemInt(hDlg, IDC_FONTSIZE, NULL, FALSE);
 	if(dw < 5)
 	{
@@ -338,10 +346,10 @@ void OnApply(HWND hDlg)
 	}
 	SetMyRegLong("Color_Font", "FontSize", dw);
 
-	//�e�L�X�g�ʒu�̕ۑ�
+	//テキスト位置の保存
 	SetMyRegLong("Color_Font", "TextPos", CBGetCurSel(hDlg, IDC_TEXTPOS));
 
-	//�uBold�v�uItalic�v�̕ۑ�
+	//「Bold」「Italic」の保存
 	SetMyRegLong("Color_Font", "Bold", IsDlgButtonChecked(hDlg, IDC_BOLD));
 	SetMyRegLong("Color_Font", "Italic", IsDlgButtonChecked(hDlg, IDC_ITALIC));
 
@@ -440,7 +448,7 @@ void OnCheckShadow(HWND hDlg, int id)
 	SendPSChanged(hDlg);
 }
 
-// �Q�l�FVisual C++ 4.x �̃T���v��WORDPAD��FORMATBA.CPP
+// 参考：Visual C++ 4.x のサンプルWORDPADのFORMATBA.CPP
 
 BOOL CALLBACK EnumFontFamExProc(ENUMLOGFONTEX* pelf,
 	NEWTEXTMETRICEX* lpntm, int FontType, LPARAM hCombo);
@@ -522,12 +530,12 @@ void InitComboFont(HWND hDlg)
 	CBSetCurSel(hDlg, IDC_FONT, i);
 
 
-	//���X�g���ڂ̕\�������w��
+	//リスト項目の表示数を指定
 	AdjustDlgConboBoxDropDown(hDlg, IDC_FONT, 12);
 }
 
 /*------------------------------------------------
-�@�u�t�H���g�T�C�Y�v�R���{�{�b�N�X�̐ݒ�
+　「フォントサイズ」コンボボックスの設定
 --------------------------------------------------*/
 void SetComboFontSize(HWND hDlg, BOOL bInit)
 {
@@ -536,13 +544,13 @@ void SetComboFontSize(HWND hDlg, BOOL bInit)
 	DWORD size;
 	LOGFONT lf;
 
-	//�ȑO��size��ۑ�
-	if(bInit) // WM_INITDIALOG�̂Ƃ�
+	//以前のsizeを保存
+	if(bInit) // WM_INITDIALOGのとき
 	{
 		size = GetMyRegLong("Color_Font", "FontSize", 9);
 		if(size == 0) size = 9;
 	}
-	else   // IDC_FONT���ύX���ꂽ�Ƃ�
+	else   // IDC_FONTが変更されたとき
 	{
 		size = GetDlgItemInt(hDlg, IDC_FONTSIZE, NULL, FALSE);
 	}
@@ -561,12 +569,12 @@ void SetComboFontSize(HWND hDlg, BOOL bInit)
 		WriteDebug_New2(strTemp);
 	}
 
-	// s = �t�H���g��
+	// s = フォント名
 	CBGetLBText(hDlg, IDC_FONT, CBGetCurSel(hDlg, IDC_FONT), (LPARAM)s);
 
-	//�t�H���g�̃T�C�Y��񋓂��ăR���{�{�b�N�X�ɓ����
+	//フォントのサイズを列挙してコンボボックスに入れる
 	memset(&lf, 0, sizeof(LOGFONT));
-	strcpy(lf.lfFaceName, s + 1); // +1 is to remove proportional mark
+	lstrcpyn(lf.lfFaceName, s + 1, LF_FACESIZE); // +1 is to remove proportional mark
 	lf.lfCharSet = (BYTE)CBGetItemData(hDlg, IDC_FONT, CBGetCurSel(hDlg, IDC_FONT));
 	EnumFontFamiliesEx(hdc, &lf, (FONTENUMPROC)EnumSizeProcEx,
 		(LPARAM)GetDlgItem(hDlg, IDC_FONTSIZE), 0);
@@ -576,10 +584,10 @@ void SetComboFontSize(HWND hDlg, BOOL bInit)
 
 	ReleaseDC(NULL, hdc);
 
-	// size���Z�b�g
+	// sizeをセット
 	SetDlgItemInt(hDlg, IDC_FONTSIZE, size, FALSE);
 
-	//���X�g���ڂ̕\�������w��
+	//リスト項目の表示数を指定
 	AdjustDlgConboBoxDropDown(hDlg, IDC_FONTSIZE, 5);
 
 	RefreshFontSample(hDlg, bInit);
@@ -679,8 +687,8 @@ BOOL CALLBACK EnumFontFamExProc(ENUMLOGFONTEX* pelf,
 }
 
 /*------------------------------------------------
-�@�t�H���g�̗񋓃R�[���o�b�N
-�@�R���{�{�b�N�X�Ƀt�H���g�T�C�Y������
+　フォントの列挙コールバック
+　コンボボックスにフォントサイズを入れる
 --------------------------------------------------*/
 BOOL CALLBACK EnumSizeProcEx(ENUMLOGFONTEX* pelf,
 	NEWTEXTMETRICEX* lpntm, int FontType, LPARAM hCombo)
@@ -692,12 +700,12 @@ BOOL CALLBACK EnumSizeProcEx(ENUMLOGFONTEX* pelf,
 	logfont_sample = pelf->elfLogFont;
 
 	UNREFERENCED_PARAMETER(pelf);
-	//�g�D���[�^�C�v�t�H���g�܂��́A
-	//�g�D���[�^�C�v�ł����X�^�t�H���g�ł��Ȃ��ꍇ
+	//トゥルータイプフォントまたは、
+	//トゥルータイプでもラスタフォントでもない場合
 	if((FontType & TRUETYPE_FONTTYPE) ||
 		!( (FontType & TRUETYPE_FONTTYPE) || (FontType & RASTER_FONTTYPE) ))
 	{
-		// nFontSizes�̐��������̂܂ܓ����
+		// nFontSizesの数字をそのまま入れる
 		for (i = 0; i < 16; i++)
 		{
 			wsprintf(s, "%d", nFontSizes[i]);
@@ -706,7 +714,7 @@ BOOL CALLBACK EnumSizeProcEx(ENUMLOGFONTEX* pelf,
 		return FALSE;
 	}
 
-	//����ȊO�̏ꍇ�A�P�P���������Ă���
+	//それ以外の場合、１つ１つ数字を入れていく
 	num = (lpntm->ntmTm.tmHeight - lpntm->ntmTm.tmInternalLeading) * 72 / logpixelsy;
 	count = SendMessage((HWND)hCombo, CB_GETCOUNT, 0, 0);
 	for(i = 0; i < count; i++)

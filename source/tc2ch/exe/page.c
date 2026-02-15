@@ -16,7 +16,7 @@ void ClearComboColor(HWND hDlg, WORD id)
 
 
 /*------------------------------------------------
-@uFvƒRƒ“ƒ{ƒ{ƒbƒNƒX‚Ì‰Šú‰»
+ã€€ã€Œè‰²ã€ã‚³ãƒ³ãƒœãƒœãƒƒã‚¯ã‚¹ã®åˆæœŸåŒ–
 --------------------------------------------------*/
 void InitComboColor(HWND hDlg, int numcol, COMBOCOLOR *pCombocolor, int maxcol, BOOL ex_flg)
 {
@@ -38,7 +38,7 @@ void InitComboColor(HWND hDlg, int numcol, COMBOCOLOR *pCombocolor, int maxcol, 
 	else strcpy(section, "");
 
 
-	//WindowsƒfƒtƒHƒ‹ƒg16F+ƒ{ƒ^ƒ“‚ÌF
+	//Windowsãƒ‡ãƒ•ã‚©ãƒ«ãƒˆ16è‰²+ãƒœã‚¿ãƒ³ã®è‰²
 	static COLORREF rgb[20] = {
 		RGB(0,0,0),
 		RGB(128,0,0),
@@ -70,14 +70,14 @@ void InitComboColor(HWND hDlg, int numcol, COMBOCOLOR *pCombocolor, int maxcol, 
 
 		ClearComboColor(hDlg, id);
 
-		// WinXP‚ÌƒoƒO‚Ö‚Ì‘Îˆ(VisualStyleg—p‚Í0‚ğ’Ç‰Á‚Å‚«‚È‚¢)
+		// WinXPã®ãƒã‚°ã¸ã®å¯¾å‡¦(VisualStyleä½¿ç”¨æ™‚ã¯0ã‚’è¿½åŠ ã§ããªã„)
 //		CBSetItemData(hDlg, id, CBAddString(hDlg, id, -1), rgb[0]);
-		for (j = 0; j < maxcol; j++) //•ˆÈŠO‚Ìc‚è‚ÌŠî–{16F+ƒ{ƒ^ƒ“‚ÌF
+		for (j = 0; j < maxcol; j++) //é»’ä»¥å¤–ã®æ®‹ã‚Šã®åŸºæœ¬16è‰²+ãƒœã‚¿ãƒ³ã®è‰²
 		{
 			CBAddString(hDlg, id, rgb[j]);
 		}
 
-		//ƒRƒ“ƒ{ƒ{ƒbƒNƒX‚ÌF‚ğ‘I‘ğ
+		//ã‚³ãƒ³ãƒœãƒœãƒƒã‚¯ã‚¹ã®è‰²ã‚’é¸æŠ
 		if (ex_flg)
 		{
 			if (pCombocolor[i].defcol == 0xFFFFFFFF)
@@ -98,17 +98,17 @@ void InitComboColor(HWND hDlg, int numcol, COMBOCOLOR *pCombocolor, int maxcol, 
 			if(col == (COLORREF)CBGetItemData(hDlg, id, j))
 				break;
 		}
-		if(j == maxcol) //20F’†‚É‚È‚¢‚Æ‚«
+		if(j == maxcol) //20è‰²ä¸­ã«ãªã„ã¨ã
 			CBAddString(hDlg, id, col);
 		CBSetCurSel(hDlg, id, j);
 
-		//ƒŠƒXƒg€–Ú‚Ì•\¦”‚ğw’è
+		//ãƒªã‚¹ãƒˆé …ç›®ã®è¡¨ç¤ºæ•°ã‚’æŒ‡å®š
 		AdjustDlgConboBoxDropDown(hDlg, id, 10);
 	}
 }
 
 /*------------------------------------------------
-@uFvƒRƒ“ƒ{ƒ{ƒbƒNƒX‚Ì‚‚³‚Ìİ’è
+ã€€ã€Œè‰²ã€ã‚³ãƒ³ãƒœãƒœãƒƒã‚¯ã‚¹ã®é«˜ã•ã®è¨­å®š
 --------------------------------------------------*/
 void OnMeasureItemColorCombo(LPARAM lParam)
 {
@@ -119,7 +119,7 @@ void OnMeasureItemColorCombo(LPARAM lParam)
 }
 
 /*------------------------------------------------
-@uFvƒRƒ“ƒ{ƒ{ƒbƒNƒX‚ÌƒI[ƒi[ƒhƒ[
+ã€€ã€Œè‰²ã€ã‚³ãƒ³ãƒœãƒœãƒƒã‚¯ã‚¹ã®ã‚ªãƒ¼ãƒŠãƒ¼ãƒ‰ãƒ­ãƒ¼
 --------------------------------------------------*/
 void OnDrawItemColorCombo(LPARAM lParam, int maxcol)
 {
@@ -175,7 +175,7 @@ void OnDrawItemColorCombo(LPARAM lParam, int maxcol)
 }
 
 /*------------------------------------------------
-@F‚Ì‘I‘ğ u...vƒ{ƒ^ƒ“
+ã€€è‰²ã®é¸æŠ ã€Œ...ã€ãƒœã‚¿ãƒ³
 --------------------------------------------------*/
 void OnChooseColor(HWND hDlg, WORD id, int maxcol)
 {
@@ -186,7 +186,7 @@ void OnChooseColor(HWND hDlg, WORD id, int maxcol)
 
 	idCombo = id - 1;
 
-	//Å‰‚É‘I‚Î‚ê‚Ä‚¢‚éF
+	//æœ€åˆã«é¸ã°ã‚Œã¦ã„ã‚‹è‰²
 	col = (COLORREF)CBGetItemData(hDlg, idCombo, CBGetCurSel(hDlg, idCombo));
 	if(col & 0x80000000) col = GetSysColor(col & 0x00ffffff);
 
@@ -207,7 +207,7 @@ void OnChooseColor(HWND hDlg, WORD id, int maxcol)
 		if(cc.rgbResult == (COLORREF)CBGetItemData(hDlg, idCombo, i))
 			break;
 	}
-	if(i == 16) //Šî–{16F‚Å‚Í‚È‚¢‚Æ‚«
+	if(i == 16) //åŸºæœ¬16è‰²ã§ã¯ãªã„ã¨ã
 	{
 		if(CBGetCount(hDlg, idCombo) == maxcol)
 			CBAddString(hDlg, idCombo, cc.rgbResult);

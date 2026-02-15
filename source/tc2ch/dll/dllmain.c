@@ -63,7 +63,7 @@ void WINAPI HookStart(HWND hwnd)
 
 	// get thread ID of taskbar (explorer)
 	// Specal thanks to T.Iwata.
-	// explorer.exe�̃^�X�N�o�[�̃X���b�hID���擾����
+	// explorer.exeのタスクバーのスレッドIDを取得する
 	ThreadID = GetWindowThreadProcessId(hwndTaskBarMain, NULL);
 	if(!ThreadID)
 	{
@@ -72,7 +72,7 @@ void WINAPI HookStart(HWND hwnd)
 	}
 
 	// install an hook to thread of taskbar
-	//�擾����explorer.exe�̃X���b�h��(CallWndProc�Ŏ󂯂���悤��)�t�b�N����
+	//取得したexplorer.exeのスレッドを(CallWndProcで受けられるように)フックする
 	hHookMain = SetWindowsHookEx(WH_CALLWNDPROC, (HOOKPROC)CallWndProc, hmod, ThreadID);
 	if(!hHookMain)
 	{
@@ -80,9 +80,9 @@ void WINAPI HookStart(HWND hwnd)
 		return;
 	}
 
-	//Explorer.exe�̃t�b�N�ɐ���������A���̏����TaskBar�ւ̃��b�Z�[�W��InitClock���g���K�����B
-	//�ȉ��̃R�[�h�͂Ȃ��Ă��������A���܂��Ȃ��Ƃ��āB
-	//�����ȍ~�ɏ������R�[�h�́AInitClock���O�Ɏ��s�����ۏ�͂Ȃ��B
+	//Explorer.exeのフックに成功したら、次の初回のTaskBarへのメッセージでInitClockがトリガされる。
+	//以下のコードはなくても動くが、おまじないとして。
+	//ここ以降に書いたコードは、InitClockより前に実行される保障はない。
 
 	if (hwndTaskBarMain) SendMessage(hwndTaskBarMain, WM_NULL, 0, 0);
 
@@ -103,8 +103,8 @@ void WINAPI HookEnd(void)
 	//// refresh the taskbar
 	//if(hwndTaskBarMain)
 	//{	
-	//	PostMessage(hwndTaskBarMain, WM_SIZE, SIZE_RESTORED, 0);	//���C���N���b�N�͂���𑗂�ƃ^�X�N�g���C�Ĕz�u�A�ĕ`�悵�Ă����B
-	//	//InvalidateRect(hwndTaskBarMain, NULL, TRUE);		//3.5.0.1���O�͂��̍s�����������A�����Ă��I����̍ĕ`��͏��PostMessage�����ł���Ă����悤���B
+	//	PostMessage(hwndTaskBarMain, WM_SIZE, SIZE_RESTORED, 0);	//メインクロックはこれを送るとタスクトレイ再配置、再描画してくれる。
+	//	//InvalidateRect(hwndTaskBarMain, NULL, TRUE);		//3.5.0.1より前はこの行があったが、無くても終了後の再描画は上のPostMessageだけでやってくれるようだ。
 	//}
 }
 
@@ -117,11 +117,11 @@ LRESULT CALLBACK CallWndProc(int nCode, WPARAM wParam, LPARAM lParam)
 
 	if(nCode == HC_ACTION && pcwps && pcwps->hwnd)
 	{
-		//�C�ӂ̃^�X�N�o�[�����b�Z�[�W���͂�����1�񂾂�InitClock���Ă�
+		//任意のタスクバー宛メッセージが届いたら1回だけInitClockを呼ぶ
 		if (!bStarted && pcwps->hwnd == hwndTaskBarMain)
 		{
 			bStarted = TRUE;
-			InitClock();	//�t�b�N�����v���V�[�W������InitClock���N�����邱�Ƃ�explorer�̃X���b�h�ɑg�ݍ��܂�ă^�X�N�o�[�ɃA�N�Z�X�ł���B
+			InitClock();	//フックしたプロシージャからInitClockを起動することでexplorerのスレッドに組み込まれてタスクバーにアクセスできる。
 		}
 	}
 	return CallNextHookEx(hHookMain, nCode, wParam, lParam);

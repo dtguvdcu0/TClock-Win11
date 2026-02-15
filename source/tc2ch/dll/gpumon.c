@@ -29,7 +29,7 @@ typedef PDH_STATUS(WINAPI *pfnPdhCollectQueryData)(PDH_HQUERY);
 typedef PDH_STATUS(WINAPI *pfnPdhGetFormattedCounterValue)(PDH_HCOUNTER, DWORD, LPDWORD, PPDH_FMT_COUNTERVALUE);
 typedef PDH_STATUS(WINAPI *pfnPdhCloseQuery)(PDH_HQUERY);
 typedef PDH_STATUS(WINAPI *pfnPdhRemoveCounter)(PDH_HCOUNTER);
-typedef PDH_STATUS(WINAPI *pfnPdhAddCounterA)(PDH_HQUERY, LPCSTR, DWORD_PTR, PDH_HCOUNTER*);
+typedef PDH_STATUS(WINAPI *pfnPdhAddCounter)(PDH_HQUERY, LPCSTR, DWORD_PTR, PDH_HCOUNTER*);
 
 static pfnPdhOpenQueryW pPdhOpenQueryW;
 static pfnPdhAddCounterW pPdhAddCounterW;
@@ -37,7 +37,7 @@ static pfnPdhCollectQueryData pPdhCollectQueryData;
 static pfnPdhGetFormattedCounterValue pPdhGetFormattedCounterValue;
 static pfnPdhCloseQuery pPdhCloseQuery;
 static pfnPdhRemoveCounter pPdhRemoveCounter;
-static pfnPdhAddCounterA pPdhAddCounterA;
+static pfnPdhAddCounter pPdhAddCounter;
 
 void GPUMoni_start(void)
 {
@@ -54,7 +54,7 @@ void GPUMoni_start(void)
 
 		pPdhOpenQueryW = (pfnPdhOpenQueryW)GetProcAddress(hmodPDH, "PdhOpenQueryW");
 		pPdhAddCounterW = (pfnPdhAddCounterW)GetProcAddress(hmodPDH, "PdhAddCounterW");
-		pPdhAddCounterA = (pfnPdhAddCounterA)GetProcAddress(hmodPDH, "PdhAddCounterA");
+		pPdhAddCounter = (pfnPdhAddCounter)GetProcAddress(hmodPDH, "PdhAddCounterA");
 		pPdhRemoveCounter = (pfnPdhRemoveCounter)GetProcAddress(hmodPDH, "PdhRemoveCounter");
 		pPdhCollectQueryData = (pfnPdhCollectQueryData)GetProcAddress(hmodPDH, "PdhCollectQueryData");
 		pPdhGetFormattedCounterValue = (pfnPdhGetFormattedCounterValue)GetProcAddress(hmodPDH, "PdhGetFormattedCounterValue");
@@ -62,7 +62,7 @@ void GPUMoni_start(void)
 
 		if (pPdhOpenQueryW == NULL ||
 			pPdhAddCounterW == NULL ||
-			pPdhAddCounterA == NULL ||
+			pPdhAddCounter == NULL ||
 			pPdhCollectQueryData == NULL ||
 			pPdhRemoveCounter == NULL ||
 			pPdhGetFormattedCounterValue == NULL ||
@@ -119,7 +119,7 @@ int SetGPUUsageCounter(void)
 	LPSTR pTemp = NULL;
 
 	// Determine the required buffer size for the data. 
-	status = PdhEnumObjectItemsA(
+	status = PdhEnumObjectItems(
 		NULL,                   // real-time source
 		NULL,                   // local machine
 		COUNTER_OBJECT,         // object to enumerate
@@ -138,7 +138,7 @@ int SetGPUUsageCounter(void)
 
 		if (NULL != pwsCounterListBuffer && NULL != pwsInstanceListBuffer)
 		{
-			status = PdhEnumObjectItemsA(
+			status = PdhEnumObjectItems(
 				NULL,                   // real-time source
 				NULL,                   // local machine
 				COUNTER_OBJECT,         // object to enumerate
@@ -207,7 +207,7 @@ int SetGPUUsageCounter(void)
 //							if (strstr(pTemp, "_0_eng_0_engtype_3D") || strstr(pTemp, "_0_eng_0_engtype_VideoDecode"))	//Currently use limited instances
 							{
 								snprintf(counterName, PDH_MAX_COUNTER_PATH, "\\GPU Engine(%s)\\Utilization Percentage", pTemp);	//shoud be "%%" because of using wsprintfW
-								if (pPdhAddCounterA(hQueryGPU, counterName, 0, &hGPUCounter[count]) == ERROR_SUCCESS)
+								if (pPdhAddCounter(hQueryGPU, counterName, 0, &hGPUCounter[count]) == ERROR_SUCCESS)
 								{
 									count++;
 									if (count >= MAX_GPU_COUNTER)

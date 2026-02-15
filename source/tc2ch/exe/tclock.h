@@ -258,10 +258,10 @@ void parsechar(char *dst, char *src, char ch, int n);
 void str0cat(char* dst, const char* src);
 char* MyString(UINT id);
 int MyMessageBox(HWND hwnd, char* msg, char* title, UINT uType, UINT uBeep);
-int GetLocaleInfoWA(int ilang, LCTYPE LCType, char* dst, int n);
+int GetLocaleInfoCompat(int ilang, LCTYPE LCType, char* dst, int n);
 DWORDLONG M32x32to64(DWORD a, DWORD b);
 void SetForegroundWindow98(HWND hwnd);
-//void WriteDebug(const char* s);	 //WriteDebug_New2()�Ɉڍs by TTTT
+//void WriteDebug(const char* s);	 //WriteDebug_New2()に移行 by TTTT
 //void WriteDebug_New(const char* s);		//Added by TTTT
 void WriteDebug_New2(const char* s);		//Added by TTTT
 void WriteNormalLog(const char* s);		//Added by TTTT
@@ -282,7 +282,7 @@ int CheckWindowStatus_TClockExe(HWND hwnd);
 BOOL IsTClockWindow(HWND hwnd);
 
 
-// tcdll.dll��API
+// tcdll.dllのAPI
 void WINAPI HookStart(HWND hwnd);
 void WINAPI HookEnd(void);
 int WINAPI CheckWinVersion_Win10(void);

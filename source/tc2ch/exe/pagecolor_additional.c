@@ -147,7 +147,7 @@ void OnApply(HWND hDlg)
 
 //	char s[80];
 //
-//	//”wŒiF‚Ì•Û‘¶
+//	//èƒŒæ™¯è‰²ã®ä¿å­˜
 //	SetMyRegLong("Color_Font", "UseBackColor",
 //		IsDlgButtonChecked(hDlg, IDC_CHKCOLOR));
 //	dw = (DWORD)CBGetItemData(hDlg, IDC_COLBACK, CBGetCurSel(hDlg, IDC_COLBACK));
@@ -159,11 +159,11 @@ void OnApply(HWND hDlg)
 //	SetMyRegLong("Color_Font", "BackColor2", dw);
 //	SetMyRegLong("Color_Font", "GradDir", IsDlgButtonChecked(hDlg, IDC_CHKCOLORV));
 //
-//	//•¶šF‚Ì•Û‘¶
+//	//æ–‡å­—è‰²ã®ä¿å­˜
 //	dw = (DWORD)CBGetItemData(hDlg, IDC_COLFORE, CBGetCurSel(hDlg, IDC_COLFORE));
 //	SetMyRegLong("Color_Font", "ForeColor", dw);
 //
-//	//‰e‚Ì•Û‘¶
+//	//å½±ã®ä¿å­˜
 //	SetMyRegLong("Color_Font", "ForeColorShadow",
 //		IsDlgButtonChecked(hDlg, IDC_CHKCLKSHADOW));
 //	SetMyRegLong("Color_Font", "ForeColorBORDER",
@@ -174,14 +174,14 @@ void OnApply(HWND hDlg)
 //		SendDlgItemMessage(hDlg, IDC_SPINCLKSHADOW, UDM_GETPOS, 0, 0));
 //
 //
-//	//ƒtƒHƒ“ƒg–¼‚Ì•Û‘¶
+//	//ãƒ•ã‚©ãƒ³ãƒˆåã®ä¿å­˜
 //	CBGetLBText(hDlg, IDC_FONT, CBGetCurSel(hDlg, IDC_FONT), s);
 //	//SetMyRegStr("Color_Font", "Font", s);
 //
-//	SetMyRegStr("Color_Font", "Font", s+1);	//æ“ªƒ}[ƒN‚ğœ‹‚µ‚Ä‹L˜^‚·‚éê‡
+//	SetMyRegStr("Color_Font", "Font", s+1);	//å…ˆé ­ãƒãƒ¼ã‚¯ã‚’é™¤å»ã—ã¦è¨˜éŒ²ã™ã‚‹å ´åˆ
 //
-//	//ƒtƒHƒ“ƒgƒTƒCƒY‚Ì•Û‘¶
-//	//5ˆÈ‰º‚ÌƒTƒCƒY‚Í‹–‰Â‚µ‚È‚¢(”’l‚Å‚È‚¢‚à‚Ì‚àŠÜ‚Ü‚ê‚é)
+//	//ãƒ•ã‚©ãƒ³ãƒˆã‚µã‚¤ã‚ºã®ä¿å­˜
+//	//5ä»¥ä¸‹ã®ã‚µã‚¤ã‚ºã¯è¨±å¯ã—ãªã„(æ•°å€¤ã§ãªã„ã‚‚ã®ã‚‚å«ã¾ã‚Œã‚‹)
 //	dw = GetDlgItemInt(hDlg, IDC_FONTSIZE, NULL, FALSE);
 //	if(dw < 5)
 //	{
@@ -190,10 +190,10 @@ void OnApply(HWND hDlg)
 //	}
 //	SetMyRegLong("Color_Font", "FontSize", dw);
 //
-//	//ƒeƒLƒXƒgˆÊ’u‚Ì•Û‘¶
+//	//ãƒ†ã‚­ã‚¹ãƒˆä½ç½®ã®ä¿å­˜
 //	SetMyRegLong("Color_Font", "TextPos", CBGetCurSel(hDlg, IDC_TEXTPOS));
 //
-//	//uBoldvuItalicv‚Ì•Û‘¶
+//	//ã€ŒBoldã€ã€ŒItalicã€ã®ä¿å­˜
 //	SetMyRegLong("Color_Font", "Bold", IsDlgButtonChecked(hDlg, IDC_BOLD));
 //	SetMyRegLong("Color_Font", "Italic", IsDlgButtonChecked(hDlg, IDC_ITALIC));
 //

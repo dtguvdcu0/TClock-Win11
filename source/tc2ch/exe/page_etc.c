@@ -1,6 +1,6 @@
 /*-------------------------------------------
   pagedataplan.c
-     uƒf[ƒ^—˜—pó‹µİ’èv
+     ã€Œãƒ‡ãƒ¼ã‚¿åˆ©ç”¨çŠ¶æ³è¨­å®šã€
      by TTTT
 ---------------------------------------------*/
 
@@ -33,7 +33,7 @@ static HFONT hfontb;
 BOOL b_TempAvailable = TRUE;
 
 /*------------------------------------------------
-@uƒo[ƒWƒ‡ƒ“î•ñvƒy[ƒW—pƒ_ƒCƒAƒƒOƒvƒƒV[ƒWƒƒ
+ã€€ã€Œãƒãƒ¼ã‚¸ãƒ§ãƒ³æƒ…å ±ã€ãƒšãƒ¼ã‚¸ç”¨ãƒ€ã‚¤ã‚¢ãƒ­ã‚°ãƒ—ãƒ­ã‚·ãƒ¼ã‚¸ãƒ£
 --------------------------------------------------*/
 
 INT_PTR CALLBACK PageEtcProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
@@ -44,7 +44,7 @@ INT_PTR CALLBACK PageEtcProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPar
 		case WM_INITDIALOG:
 			OnInit(hDlg);
 			return TRUE;
-		case WM_TIMER:		//WM_TIMER‚É‘Î‚·‚éˆ—
+		case WM_TIMER:		//WM_TIMERã«å¯¾ã™ã‚‹å‡¦ç†
 			if (wParam == IDTIMER_UPDATE_TEMP)
 			{
 				OnUpdate(hDlg);
@@ -126,7 +126,7 @@ static void OnInit(HWND hDlg)
 
 		if (Language_Offset == LANGUAGE_OFFSET_JAPANESE) {
 			wchar_t tempStr[64];
-			wsprintfW(tempStr, L"Œ»İ’l: %d ", tempInt % 200);
+			wsprintfW(tempStr, L"ç¾åœ¨å€¤: %d â„ƒ", tempInt % 200);
 			SendDlgItemMessageW(hDlg, IDC_LABEL_CURRENT_TEMP, WM_SETTEXT, NULL, tempStr);
 		}
 		else {
@@ -144,7 +144,7 @@ static void OnInit(HWND hDlg)
 
 		if (Language_Offset == LANGUAGE_OFFSET_JAPANESE) {
 			wchar_t tempStr[64];
-			wsprintfW(tempStr, L"æ“¾•s‰Â");
+			wsprintfW(tempStr, L"å–å¾—ä¸å¯");
 			SendDlgItemMessageW(hDlg, IDC_LABEL_CURRENT_TEMP, WM_SETTEXT, NULL, tempStr);
 		}
 		else {
@@ -183,7 +183,7 @@ static void OnUpdate(HWND hDlg)
 
 	if (Language_Offset == LANGUAGE_OFFSET_JAPANESE) {
 		wchar_t tempStr[64];
-		wsprintfW(tempStr, L"Œ»İ’l: %d ", tempInt % 200);
+		wsprintfW(tempStr, L"ç¾åœ¨å€¤: %d â„ƒ", tempInt % 200);
 		SendDlgItemMessageW(hDlg, IDC_LABEL_CURRENT_TEMP, WM_SETTEXT, NULL, tempStr);
 	}
 	else {

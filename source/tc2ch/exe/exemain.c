@@ -7,7 +7,7 @@
 #include <winver.h>
 #include <shellapi.h>
 
-#define AUTORESTART_WAIT_WIN11	5000	//Win11‚Å‚Ìb_AutoRestart‚ÌƒEƒFƒCƒg(ms)
+#define AUTORESTART_WAIT_WIN11	5000	//Win11ã§ã®b_AutoRestartæ™‚ã®ã‚¦ã‚§ã‚¤ãƒˆ(ms)
 
 // Globals
 HINSTANCE g_hInst;           // instance handle
@@ -21,7 +21,7 @@ char      g_mydir[MAX_PATH]; // path to tclock.exe
 char      g_langdllname[MAX_PATH];  // language dll name
 //BOOL      g_bIniSetting = TRUE;
 
-char      g_inifile[MAX_PATH];		//ƒtƒ‹ƒpƒX‚Â‚«*.iniƒtƒ@ƒCƒ‹–¼
+char      g_inifile[MAX_PATH];		//ãƒ•ãƒ«ãƒ‘ã‚¹ã¤ã*.iniãƒ•ã‚¡ã‚¤ãƒ«å
 
 BOOL	b_DisplayChanged = FALSE;
 
@@ -30,8 +30,8 @@ BOOL	b_DisplayChanged = FALSE;
 
 
 
-// ƒXƒƒbƒvƒAƒEƒg‚³‚¹‚é /WS:AGGRESSIVE			
-// 20181125 Ver3.3.2.1‚ÅƒR[ƒh‚©‚ç‚ÍƒRƒƒ“ƒgƒAƒEƒg‚µ‚Ä—lq‚ğŒ©‚éBƒXƒƒbƒvƒAƒEƒg‚µ‚Ä‚à0.3-2MB’ö“x‚ªAƒXƒƒbƒv‚µ‚È‚¯‚ê‚ÎÅ‘å3.5MB’ö“xB
+// ã‚¹ãƒ¯ãƒƒãƒ—ã‚¢ã‚¦ãƒˆã•ã›ã‚‹ /WS:AGGRESSIVE			
+// 20181125 Ver3.3.2.1ã§ã‚³ãƒ¼ãƒ‰ã‹ã‚‰ã¯ã‚³ãƒ¡ãƒ³ãƒˆã‚¢ã‚¦ãƒˆã—ã¦æ§˜å­ã‚’è¦‹ã‚‹ã€‚ã‚¹ãƒ¯ãƒƒãƒ—ã‚¢ã‚¦ãƒˆã—ã¦ã‚‚0.3-2MBç¨‹åº¦ãŒã€ã‚¹ãƒ¯ãƒƒãƒ—ã—ãªã‘ã‚Œã°æœ€å¤§3.5MBç¨‹åº¦ã€‚
 #define DO_WS_AGGRESSIVE() \
           SetProcessWorkingSetSize(GetCurrentProcess(), (SIZE_T)-1, (SIZE_T)-1);
 
@@ -49,11 +49,11 @@ static DWORD exeVersionM = 0;
 static DWORD exeVersionL = 0;
 char exeVersionString[32];
 
-LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);	//tclock.exe–{‘Ì‚ÌƒEƒBƒ“ƒhƒEƒvƒƒV[ƒWƒƒƒR[ƒ‹ƒoƒbƒN
+LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);	//tclock.exeæœ¬ä½“ã®ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ãƒ—ãƒ­ã‚·ãƒ¼ã‚¸ãƒ£ã‚³ãƒ¼ãƒ«ãƒãƒƒã‚¯
 
 
 char szClassName[] = "TClockMainClass"; // window class name
-char szWindowText[] = "TClock";         // caption of the window	(TClock-Win10‚É‚·‚éH)
+char szWindowText[] = "TClock";         // caption of the window	(TClock-Win10ã«ã™ã‚‹ï¼Ÿ)
 
 static BOOL bMenuOpened = FALSE;
 static BOOL bDestroy = FALSE;
@@ -294,12 +294,12 @@ BOOL WaitQuitPrevTClock(int cycle)
 
 	for (int i = 0; i < cycle; i++)
 	{
-		hwnd = FindWindow(szClassName, szWindowText);		//ƒvƒƒZƒX‚ª‚·‚Å‚É‹N“®‚µ‚Ä‚¢‚½‚çhwnd != NULL‚É‚È‚é
+		hwnd = FindWindow(szClassName, szWindowText);		//ãƒ—ãƒ­ã‚»ã‚¹ãŒã™ã§ã«èµ·å‹•ã—ã¦ã„ãŸã‚‰hwnd != NULLã«ãªã‚‹
 		if (hwnd == NULL) return FALSE;
 		Sleep(100);
 	}
 
-	MessageBox(NULL, "TClock-Win10‚ÌÄ‹N“®‚ª‚¤‚Ü‚­‚¢‚©‚È‚©‚Á‚½‰Â”\«‚ª‚ ‚è‚Ü‚·BŒ»“_‚Å³í‚ÉŒv‚ª‰ü‘¢‚³‚ê‚Ä‚¢‚È‚¢ê‡‚ÍAƒ^ƒXƒNƒ}ƒl[ƒWƒƒ[‚©‚çTClock-Win10‚ÌƒvƒƒZƒX‚ğ‹­§I—¹‚µ‚Ä‚­‚¾‚³‚¢B\n\nRestarting TClock-Win10 may be unsuccessful. If you don't see the modified Clock on Taskbar, please kill the previous TClock-Win10 in the Taskmanager.",
+	MessageBox(NULL, "TClock-Win10ã®å†èµ·å‹•ãŒã†ã¾ãã„ã‹ãªã‹ã£ãŸå¯èƒ½æ€§ãŒã‚ã‚Šã¾ã™ã€‚ç¾æ™‚ç‚¹ã§æ­£å¸¸ã«æ™‚è¨ˆãŒæ”¹é€ ã•ã‚Œã¦ã„ãªã„å ´åˆã¯ã€ã‚¿ã‚¹ã‚¯ãƒãƒãƒ¼ã‚¸ãƒ£ãƒ¼ã‹ã‚‰TClock-Win10ã®ãƒ—ãƒ­ã‚»ã‚¹ã‚’å¼·åˆ¶çµ‚äº†ã—ã¦ãã ã•ã„ã€‚\n\nRestarting TClock-Win10 may be unsuccessful. If you don't see the modified Clock on Taskbar, please kill the previous TClock-Win10 in the Taskmanager.",
 		"TClock-Win10", MB_ICONEXCLAMATION | MB_SETFOREGROUND);
 
 	return TRUE;
@@ -354,15 +354,15 @@ static UINT WINAPI TclockExeMain(void)
 
 	//if (b_RestartDLL)
 	//{
-	//	hwnd = FindWindow(szClassName, szWindowText);		//ƒvƒƒZƒX‚ª‚·‚Å‚É‹N“®‚µ‚Ä‚¢‚½‚çhwnd != NULL‚É‚È‚é
+	//	hwnd = FindWindow(szClassName, szWindowText);		//ãƒ—ãƒ­ã‚»ã‚¹ãŒã™ã§ã«èµ·å‹•ã—ã¦ã„ãŸã‚‰hwnd != NULLã«ãªã‚‹
 	//	for (int i = 0; i < 10; i++)
 	//	{
 	//		if (hwnd != NULL) Sleep(500);
-	//		hwnd = FindWindow(szClassName, szWindowText);		//ƒvƒƒZƒX‚ª‚·‚Å‚É‹N“®‚µ‚Ä‚¢‚½‚çhwnd != NULL‚É‚È‚é
+	//		hwnd = FindWindow(szClassName, szWindowText);		//ãƒ—ãƒ­ã‚»ã‚¹ãŒã™ã§ã«èµ·å‹•ã—ã¦ã„ãŸã‚‰hwnd != NULLã«ãªã‚‹
 	//	}
 	//	if (hwnd != NULL)
 	//	{
-	//		MessageBox(NULL, "Šù‘¶‚ÌTClock-Win10‚ÌƒvƒƒZƒXI—¹‚ÉŠÔ‚ª‚©‚©‚Á‚Ä‚¢‚Ü‚·BwOKx‚ğ‰Ÿ‚µ‚Ä‚àÄ‹N“®‚µ‚È‚¢ê‡‚É‚Íƒ^ƒXƒNƒ}ƒl[ƒWƒƒ[‚©‚çTClock-Win10‚ÌƒvƒƒZƒX‚ğ‹­§I—¹‚µ‚Ä‚­‚¾‚³‚¢B\n\nTerminating Previous TClock-Win10 is taking a long time. If you do not have the restarted TClock-Win10 even after clicking \"OK\", please kill the previous TClock-Win10 in the Taskmanager.",
+	//		MessageBox(NULL, "æ—¢å­˜ã®TClock-Win10ã®ãƒ—ãƒ­ã‚»ã‚¹çµ‚äº†ã«æ™‚é–“ãŒã‹ã‹ã£ã¦ã„ã¾ã™ã€‚ã€OKã€ã‚’æŠ¼ã—ã¦ã‚‚å†èµ·å‹•ã—ãªã„å ´åˆã«ã¯ã‚¿ã‚¹ã‚¯ãƒãƒãƒ¼ã‚¸ãƒ£ãƒ¼ã‹ã‚‰TClock-Win10ã®ãƒ—ãƒ­ã‚»ã‚¹ã‚’å¼·åˆ¶çµ‚äº†ã—ã¦ãã ã•ã„ã€‚\n\nTerminating Previous TClock-Win10 is taking a long time. If you do not have the restarted TClock-Win10 even after clicking \"OK\", please kill the previous TClock-Win10 in the Taskmanager.",
 	//			"TClock-Win10", MB_ICONEXCLAMATION | MB_SETFOREGROUND);
 	//		hwnd = FindWindow(szClassName, szWindowText);
 	//		if (hwnd != NULL) return 1;
@@ -374,7 +374,7 @@ static UINT WINAPI TclockExeMain(void)
 
 	// check wow64
 	if (IsWow64()) {
-		MessageBox(NULL, "–{Àsƒtƒ@ƒCƒ‹‚Í32bit (x86)ƒoƒCƒiƒŠ‚Å‚·B\n64bitŠÂ‹«‚Å‚Íx64ƒoƒCƒiƒŠ‚ğg—p‚·‚é•K—v‚ª‚ ‚è‚Ü‚·B\n\nThis is 32bit (x86) binary.\nx64 binary is required for 64bit Windows.",
+		MessageBox(NULL, "æœ¬å®Ÿè¡Œãƒ•ã‚¡ã‚¤ãƒ«ã¯32bit (x86)ãƒã‚¤ãƒŠãƒªã§ã™ã€‚\n64bitç’°å¢ƒã§ã¯x64ãƒã‚¤ãƒŠãƒªã‚’ä½¿ç”¨ã™ã‚‹å¿…è¦ãŒã‚ã‚Šã¾ã™ã€‚\n\nThis is 32bit (x86) binary.\nx64 binary is required for 64bit Windows.",
 			"TClock-Win10", MB_ICONERROR | MB_SETFOREGROUND);
 		return 1;
 	}
@@ -382,8 +382,8 @@ static UINT WINAPI TclockExeMain(void)
 
 
 	// for Vista 
-	if (IsUserAdmin()) {		//ŠÇ—ÒŒ ŒÀ‚ª‚ ‚ê‚Î
-		AddMessageFilters();	//ƒƒbƒZ[ƒWƒtƒBƒ‹ƒ^(ƒEƒBƒ“ƒhƒEƒvƒƒV[ƒWƒƒ‚Ì)‚ğİ’è‚·‚é(AddMessageFilters)
+	if (IsUserAdmin()) {		//ç®¡ç†è€…æ¨©é™ãŒã‚ã‚Œã°
+		AddMessageFilters();	//ãƒ¡ãƒƒã‚»ãƒ¼ã‚¸ãƒ•ã‚£ãƒ«ã‚¿(ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ãƒ—ãƒ­ã‚·ãƒ¼ã‚¸ãƒ£ã®)ã‚’è¨­å®šã™ã‚‹(AddMessageFilters)
 	}	
 
 
@@ -391,7 +391,7 @@ static UINT WINAPI TclockExeMain(void)
 	// Call WINAPI CheckWinVersion_Win10() in tcdll.dll
 	if (CheckWinVersion_Win10() < 0x0400) // = WIN10, 1024
 	{
-		MessageBox(NULL, "–{ƒAƒvƒŠƒP[ƒVƒ‡ƒ“‚ÍWindows10ˆÈ~—p‚Å‚·B\n\nThis application works on Windows 10(Anniversary Update) or later.",
+		MessageBox(NULL, "æœ¬ã‚¢ãƒ—ãƒªã‚±ãƒ¼ã‚·ãƒ§ãƒ³ã¯Windows10ä»¥é™ç”¨ã§ã™ã€‚\n\nThis application works on Windows 10(Anniversary Update) or later.",
 			"TClock-Win10", MB_ICONERROR | MB_SETFOREGROUND);
 		return 1;
 	}
@@ -400,17 +400,17 @@ static UINT WINAPI TclockExeMain(void)
 
 
 	// get the path where .exe is positioned
-	GetModuleFileName(g_hInst, g_mydir, MAX_PATH);	//‚±‚Ì“_‚Å‚Íƒtƒ‹ƒpƒX•t‚«‚ÌtclockÀsƒtƒ@ƒCƒ‹–¼‚ğæ“¾
+	GetModuleFileName(g_hInst, g_mydir, MAX_PATH);	//ã“ã®æ™‚ç‚¹ã§ã¯ãƒ•ãƒ«ãƒ‘ã‚¹ä»˜ãã®tclockå®Ÿè¡Œãƒ•ã‚¡ã‚¤ãƒ«åã‚’å–å¾—
 	char fname[MAX_PATH];
-	strcpy(fname, g_mydir);		//exe‚Ìƒtƒ@ƒCƒ‹–¼‚ª‚Â‚¢‚½‚Ü‚Ü‚Ìg_mydir‚ğfname‚É“ü‚ê‚Ä
-	getExeVersion(fname);		//fileƒo[ƒWƒ‡ƒ“‚ğæ“¾‚µ‚ÄexeVersionM, exeVersionL‚ğæ“¾->DLLƒo[ƒWƒ‡ƒ“ƒ`ƒFƒbƒN‚É—˜—p
-	del_title(g_mydir);		//g_mydir‚Í‚±‚êˆÈ~ATClock‚ÌƒtƒHƒ‹ƒ_‚Ö‚ÌƒpƒX‚Æ‚µ‚Ä—˜—p‚³‚ê‚é
+	strcpy(fname, g_mydir);		//exeã®ãƒ•ã‚¡ã‚¤ãƒ«åãŒã¤ã„ãŸã¾ã¾ã®g_mydirã‚’fnameã«å…¥ã‚Œã¦
+	getExeVersion(fname);		//fileãƒãƒ¼ã‚¸ãƒ§ãƒ³ã‚’å–å¾—ã—ã¦exeVersionM, exeVersionLã‚’å–å¾—->DLLãƒãƒ¼ã‚¸ãƒ§ãƒ³ãƒã‚§ãƒƒã‚¯ã«åˆ©ç”¨
+	del_title(g_mydir);		//g_mydirã¯ã“ã‚Œä»¥é™ã€TClockã®ãƒ•ã‚©ãƒ«ãƒ€ã¸ã®ãƒ‘ã‚¹ã¨ã—ã¦åˆ©ç”¨ã•ã‚Œã‚‹
 
 
 
 	//CheckRegistry();
-	if (!CheckRegistry_Win10()) {		//–¼‘O‚É‚ÍRegistry‚Æ‚ ‚é‚ªAiniƒtƒ@ƒCƒ‹‚ğ’T‚µA‚È‚¯‚ê‚Îì¬‚·‚éŠÖ”
-		MessageBox(NULL, "tclock-win11.ini‚ªŒ©“–‚½‚ç‚¸A‚Ü‚½ì¬‚É¸”s‚µ‚Ü‚µ‚½BƒAƒvƒŠƒP[ƒVƒ‡ƒ“‚ğI—¹‚µ‚Ü‚·B\n\nCould not access / create tclock-win11.ini.",
+	if (!CheckRegistry_Win10()) {		//åå‰ã«ã¯Registryã¨ã‚ã‚‹ãŒã€iniãƒ•ã‚¡ã‚¤ãƒ«ã‚’æ¢ã—ã€ãªã‘ã‚Œã°ä½œæˆã™ã‚‹é–¢æ•°
+		MessageBox(NULL, "tclock-win11.iniãŒè¦‹å½“ãŸã‚‰ãšã€ã¾ãŸä½œæˆã«å¤±æ•—ã—ã¾ã—ãŸã€‚ã‚¢ãƒ—ãƒªã‚±ãƒ¼ã‚·ãƒ§ãƒ³ã‚’çµ‚äº†ã—ã¾ã™ã€‚\n\nCould not access / create tclock-win11.ini.",
 			"TClock-Win10", MB_ICONERROR | MB_SETFOREGROUND);
 		return 1;
 	}
@@ -420,31 +420,31 @@ static UINT WINAPI TclockExeMain(void)
 
 	// not to execute the program twice
 	hwnd = FindWindow(szClassName, szWindowText);
-	if(hwnd != NULL)				//‚·‚Å‚ÉƒvƒƒZƒX‚ª‹N“®‚µ‚Ä‚¢‚ê‚ÎA	
+	if(hwnd != NULL)				//ã™ã§ã«ãƒ—ãƒ­ã‚»ã‚¹ãŒèµ·å‹•ã—ã¦ã„ã‚Œã°ã€	
 	{
-		CheckCommandLine(hwnd);		//ƒRƒ}ƒ“ƒhƒ‰ƒCƒ“ƒIƒvƒVƒ‡ƒ“‚ğƒ`ƒFƒbƒN("/exit"‚Ìê‡‚Ì‚½‚ß)‚µ‚Ä	
+		CheckCommandLine(hwnd);		//ã‚³ãƒãƒ³ãƒ‰ãƒ©ã‚¤ãƒ³ã‚ªãƒ—ã‚·ãƒ§ãƒ³ã‚’ãƒã‚§ãƒƒã‚¯("/exit"ã®å ´åˆã®ãŸã‚)ã—ã¦	
 
 		if (b_Exit) return 1;
 		else if (b_RestartNOW)
 		{
 			//SetMyRegLong("Status_DoNotEdit", "LastLaunchTimeStamp", 0);
-			PostMessage(hwnd, WM_CLOSE, 0, 0);		//ƒƒCƒ“ƒEƒBƒ“ƒhƒE‚ÉWM_CLOSE(102)‚ğ‘—o‚·‚éBX¸”s‚·‚é‚ªA‚¾‚¢‚½‚¢‚¤‚Ü‚­‚¢‚­B
+			PostMessage(hwnd, WM_CLOSE, 0, 0);		//ãƒ¡ã‚¤ãƒ³ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ã«WM_CLOSE(102)ã‚’é€å‡ºã™ã‚‹ã€‚æ™‚ã€…å¤±æ•—ã™ã‚‹ãŒã€ã ã„ãŸã„ã†ã¾ãã„ãã€‚
 			if (WaitQuitPrevTClock(50))	return 1;
 		}
 		else
 		{
-			int reply = MessageBox(NULL, "TClock‚ÌƒvƒƒZƒX‚ª‰Ò“­’†‚Å‚·BÄ‹N“®‚µ‚Ü‚·‚©H\nwOKx‚ğ‘I‚Ô‚ÆŒ»İ‚ÌƒvƒƒZƒX‚ğI—¹‚µ‚ÄVƒvƒƒZƒX‚ÅÄ‹N“®‚µ‚Ü‚·B\nwƒLƒƒƒ“ƒZƒ‹x‚ğ‘I‚Ô‚ÆŒ»İ‚ÌƒvƒƒZƒX‚ğˆÛ‚µ‚Ü‚·B\n\nPrevious TClock process is still running. Will you restart TClock?\nChoosing:\n\"OK\" initiates restarting from existing TClock Process.\n\"Cancel\" simply aborts this new process",
+			int reply = MessageBox(NULL, "TClockã®ãƒ—ãƒ­ã‚»ã‚¹ãŒç¨¼åƒä¸­ã§ã™ã€‚å†èµ·å‹•ã—ã¾ã™ã‹ï¼Ÿ\nã€OKã€ã‚’é¸ã¶ã¨ç¾åœ¨ã®ãƒ—ãƒ­ã‚»ã‚¹ã‚’çµ‚äº†ã—ã¦æ–°ãƒ—ãƒ­ã‚»ã‚¹ã§å†èµ·å‹•ã—ã¾ã™ã€‚\nã€ã‚­ãƒ£ãƒ³ã‚»ãƒ«ã€ã‚’é¸ã¶ã¨ç¾åœ¨ã®ãƒ—ãƒ­ã‚»ã‚¹ã‚’ç¶­æŒã—ã¾ã™ã€‚\n\nPrevious TClock process is still running. Will you restart TClock?\nChoosing:\n\"OK\" initiates restarting from existing TClock Process.\n\"Cancel\" simply aborts this new process",
 				"TClock-Win10", MB_ICONEXCLAMATION | MB_OKCANCEL | MB_DEFBUTTON1 | MB_SETFOREGROUND);
 			if (reply == IDOK)
 			{
 				SetMyRegLong("Status_DoNotEdit", "LastLaunchTimeStamp", 0);
-				PostMessage(hwnd, WM_CLOSE, 0, 0);		//ƒƒCƒ“ƒEƒBƒ“ƒhƒE‚ÉWM_CLOSE(102)‚ğ‘—o‚·‚éBX¸”s‚·‚é‚ªA‚¾‚¢‚½‚¢‚¤‚Ü‚­‚¢‚­B			
+				PostMessage(hwnd, WM_CLOSE, 0, 0);		//ãƒ¡ã‚¤ãƒ³ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ã«WM_CLOSE(102)ã‚’é€å‡ºã™ã‚‹ã€‚æ™‚ã€…å¤±æ•—ã™ã‚‹ãŒã€ã ã„ãŸã„ã†ã¾ãã„ãã€‚			
 				if (WaitQuitPrevTClock(50))	return 1;
-				b_RestartNOW = TRUE;	//NormalLog‚Ö‚Ì˜A—‚Ì‚½‚ß‚ÉÄ—˜—pB
+				b_RestartNOW = TRUE;	//NormalLogã¸ã®é€£çµ¡ã®ãŸã‚ã«å†åˆ©ç”¨ã€‚
 			}
 			else
 			{
-				return 1;					//I—¹‚·‚é
+				return 1;					//çµ‚äº†ã™ã‚‹
 			}
 		}
 	}
@@ -497,10 +497,10 @@ static UINT WINAPI TclockExeMain(void)
 	b_AutoRestart = GetMyRegLong(NULL, "AutoRestart", TRUE);
 	SetMyRegLong(NULL, "AutoRestart", b_AutoRestart);
 
-	//‹N“®‚É‘O‰ñI—¹‚Ì˜A‘±ƒŠƒXƒ^[ƒg‰ñ”‚ğæ“¾‚·‚é
+	//èµ·å‹•æ™‚ã«å‰å›çµ‚äº†æ™‚ã®é€£ç¶šãƒªã‚¹ã‚¿ãƒ¼ãƒˆå›æ•°ã‚’å–å¾—ã™ã‚‹
 	countRestart = GetMyRegLong("Status_DoNotEdit", "CountAutoRestart", 0);
 	if (countRestart >= MAX_AUTORESTART) {
-		MessageBox(NULL, "ƒNƒ‰ƒbƒVƒ…ƒ‹[ƒv‚ğŒŸo‚µ‚Ü‚µ‚½BƒAƒvƒŠƒP[ƒVƒ‡ƒ“‚ğI—¹‚µ‚Ü‚·B\n\nTClock is terminated because of repeting crash.",
+		MessageBox(NULL, "ã‚¯ãƒ©ãƒƒã‚·ãƒ¥ãƒ«ãƒ¼ãƒ—ã‚’æ¤œå‡ºã—ã¾ã—ãŸã€‚ã‚¢ãƒ—ãƒªã‚±ãƒ¼ã‚·ãƒ§ãƒ³ã‚’çµ‚äº†ã—ã¾ã™ã€‚\n\nTClock is terminated because of repeting crash.",
 			"TClock-Win10", MB_ICONERROR | MB_SETFOREGROUND);
 		SetMyRegLong("Status_DoNotEdit", "CountAutoRestart", 0);
 		return 1;
@@ -522,10 +522,10 @@ static UINT WINAPI TclockExeMain(void)
 
 	InitializeMenuItems();
 
-	if(!CheckTCDLL()) { return 1; }	//tclock.dll‚Ìƒo[ƒWƒ‡ƒ“ƒ`ƒFƒbƒN
+	if(!CheckTCDLL()) { return 1; }	//tclock.dllã®ãƒãƒ¼ã‚¸ãƒ§ãƒ³ãƒã‚§ãƒƒã‚¯
 
-	g_hInstResource = LoadLanguageDLL(g_langdllname);		//langja.dll‚Ìƒ[ƒh‚ğ‚İ‚é
-	if(g_hInstResource == NULL) { return 1; }				//langja.dll‚ªƒ[ƒh‚Å‚«‚È‚¯‚ê‚Î’â~
+	g_hInstResource = LoadLanguageDLL(g_langdllname);		//langja.dllã®ãƒ­ãƒ¼ãƒ‰ã‚’è©¦ã¿ã‚‹
+	if(g_hInstResource == NULL) { return 1; }				//langja.dllãŒãƒ­ãƒ¼ãƒ‰ã§ããªã‘ã‚Œã°åœæ­¢
 
 	CheckUnplugDrive();
 
@@ -560,29 +560,29 @@ static UINT WINAPI TclockExeMain(void)
 
 	// create a hidden window
 	//DO_WS_AGGRESSIVE();	// Comment out by TTTT 20181125
-	hwnd = CreateWindowEx(WS_EX_TOOLWINDOW, szClassName, szWindowText,		//‚±‚±‚ÅxzClassName, szWindowText“™‚ğ“o˜^‚µ‚ÄAhwnd‚ğæ“¾
+	hwnd = CreateWindowEx(WS_EX_TOOLWINDOW, szClassName, szWindowText,		//ã“ã“ã§xzClassName, szWindowTextç­‰ã‚’ç™»éŒ²ã—ã¦ã€hwndã‚’å–å¾—
 		0, CW_USEDEFAULT,CW_USEDEFAULT,CW_USEDEFAULT,CW_USEDEFAULT,
 		NULL, NULL, g_hInst, NULL);
-	//ShowWindow(hwnd, SW_SHOW);	//Œ©‚¦‚È‚¢ƒEƒBƒ“ƒhƒE‚ª‘¶İ‚µ‚Ä‚¢‚éB‚±‚Ìs‚ÌƒRƒƒ“ƒgƒAƒEƒg‚ğŠO‚·‚ÆŒ©‚¦‚éB‚±‚ê‚ª"hwnd"
+	//ShowWindow(hwnd, SW_SHOW);	//è¦‹ãˆãªã„ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ãŒå­˜åœ¨ã—ã¦ã„ã‚‹ã€‚ã“ã®è¡Œã®ã‚³ãƒ¡ãƒ³ãƒˆã‚¢ã‚¦ãƒˆã‚’å¤–ã™ã¨è¦‹ãˆã‚‹ã€‚ã“ã‚ŒãŒ"hwnd"
 	//UpdateWindow(hwnd);
 
 
 	if (b_DebugLog) WriteDebug_New2("[exemain.c][TclockExeMain] Hidden Main Window Created");
 
 
-	if(OleInitialize(NULL) != S_OK){	//STAiƒVƒ“ƒOƒ‹ƒXƒŒƒbƒhƒAƒp[ƒgƒƒ“ƒgjƒXƒŒƒbƒh‚Æ‚µ‚Ä‰Šú‰»‚µAOLE—p‚Ì’Ç‰Áˆ—‚ğs‚¤c‚ç‚µ‚¢B
-		MessageBox(NULL, "OLE‚Ì‰Šú‰»‚É¸”s‚µ‚Ü‚µ‚½B\n\nFailed to initialize OLE.", "TClock-Win10", MB_ICONERROR);
+	if(OleInitialize(NULL) != S_OK){	//STAï¼ˆã‚·ãƒ³ã‚°ãƒ«ã‚¹ãƒ¬ãƒƒãƒ‰ã‚¢ãƒ‘ãƒ¼ãƒˆãƒ¡ãƒ³ãƒˆï¼‰ã‚¹ãƒ¬ãƒƒãƒ‰ã¨ã—ã¦åˆæœŸåŒ–ã—ã€OLEç”¨ã®è¿½åŠ å‡¦ç†ã‚’è¡Œã†â€¦ã‚‰ã—ã„ã€‚
+		MessageBox(NULL, "OLEã®åˆæœŸåŒ–ã«å¤±æ•—ã—ã¾ã—ãŸã€‚\n\nFailed to initialize OLE.", "TClock-Win10", MB_ICONERROR);
 	}
 
-	g_hwndMain = hwnd;	//ƒƒCƒ“‰B‚µƒEƒBƒ“ƒhƒE‚Ìƒnƒ“ƒhƒ‹‚ğƒOƒ[ƒoƒ‹•Ï”‚Ìg_hwndMain‚ÉƒRƒs[
+	g_hwndMain = hwnd;	//ãƒ¡ã‚¤ãƒ³éš ã—ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ã®ãƒãƒ³ãƒ‰ãƒ«ã‚’ã‚°ãƒ­ãƒ¼ãƒãƒ«å¤‰æ•°ã®g_hwndMainã«ã‚³ãƒ”ãƒ¼
 
 	CreateTClockTrayIcon(GetMyRegLong(NULL, "ShowTrayIcon", TRUE));
 	SetMyRegLong(NULL, "ShowTrayIcon", b_ShowTrayIcon);
 
-	SetIdlePriority();	//ƒfƒtƒHƒ‹ƒg‚Å‚ÍIDLE_PRIORITY_CLASS‚Æ‚·‚é	added by TTTT
+	SetIdlePriority();	//ãƒ‡ãƒ•ã‚©ãƒ«ãƒˆã§ã¯IDLE_PRIORITY_CLASSã¨ã™ã‚‹	added by TTTT
 
-	CheckCommandLine(hwnd);		//ƒRƒ}ƒ“ƒhƒ‰ƒCƒ“ƒ`ƒFƒbƒNB‚±‚Ì“_‚Å‚Íƒ^ƒXƒNƒgƒŒƒC‚Ì‰ü‘¢‚Ís‚Á‚Ä‚¢‚È‚¢B‚±‚Ì’†‚ÅŠJnƒEƒFƒCƒg‚àİ’è‚³‚ê‚Ä‚¢‚é(?)
-	//b_RestartDLL = FALSE;		//‚Ç‚¤‚¹‚±‚Ì‚ ‚Æg‚í‚È‚¢‚ªA‹C‚¿ˆ«‚¢‚Ì‚ÅƒNƒŠƒA
+	CheckCommandLine(hwnd);		//ã‚³ãƒãƒ³ãƒ‰ãƒ©ã‚¤ãƒ³ãƒã‚§ãƒƒã‚¯ã€‚ã“ã®æ™‚ç‚¹ã§ã¯ã‚¿ã‚¹ã‚¯ãƒˆãƒ¬ã‚¤ã®æ”¹é€ ã¯è¡Œã£ã¦ã„ãªã„ã€‚ã“ã®ä¸­ã§é–‹å§‹ã‚¦ã‚§ã‚¤ãƒˆã‚‚è¨­å®šã•ã‚Œã¦ã„ã‚‹(?)
+	//b_RestartDLL = FALSE;		//ã©ã†ã›ã“ã®ã‚ã¨ä½¿ã‚ãªã„ãŒã€æ°—æŒã¡æ‚ªã„ã®ã§ã‚¯ãƒªã‚¢
 	
 	HPOWERNOTIFY handle_PowerNotify = NULL;
 	b_ModernStandbySupported = CheckModernStandbyCapability_Win10();
@@ -591,29 +591,29 @@ static UINT WINAPI TclockExeMain(void)
 		handle_PowerNotify = RegisterPowerSettingNotification(hwnd, &GUID_CONSOLE_DISPLAY_STATE, DEVICE_NOTIFY_WINDOW_HANDLE);
 	}
 
-	while(GetMessage(&msg, NULL, 0, 0))		//ƒLƒ…[‚©‚çƒƒbƒZ[ƒW‚ğó‚¯æ‚éGetMessage‚Ì–ß‚è’l‚ª0‚É‚È‚é(WM_QUIT‚ªƒ|ƒXƒg‚³‚ê‚é) ‚Ü‚ÅA
-											//æ“¾‚µ‚½ƒƒbƒZ[ƒW‚ğƒEƒBƒ“ƒhƒEƒvƒƒV[ƒWƒƒ‚É‘—‚è‚Â‚Ã‚¯‚é
+	while(GetMessage(&msg, NULL, 0, 0))		//ã‚­ãƒ¥ãƒ¼ã‹ã‚‰ãƒ¡ãƒƒã‚»ãƒ¼ã‚¸ã‚’å—ã‘å–ã‚‹GetMessageã®æˆ»ã‚Šå€¤ãŒ0ã«ãªã‚‹(ï¼WM_QUITãŒãƒã‚¹ãƒˆã•ã‚Œã‚‹) ã¾ã§ã€
+											//å–å¾—ã—ãŸãƒ¡ãƒƒã‚»ãƒ¼ã‚¸ã‚’ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ãƒ—ãƒ­ã‚·ãƒ¼ã‚¸ãƒ£ã«é€ã‚Šã¤ã¥ã‘ã‚‹
 	{
 		if(g_hwndPropDlg && IsWindow(g_hwndPropDlg)
-			&& IsDialogMessage(g_hwndPropDlg, &msg))	//g_hwndPropDlg‚ÌƒƒbƒZ[ƒW‚Í–³‹
+			&& IsDialogMessage(g_hwndPropDlg, &msg))	//g_hwndPropDlgã®ãƒ¡ãƒƒã‚»ãƒ¼ã‚¸ã¯ç„¡è¦–
 			;
 		//else if(g_hDlgTimer && IsWindow(g_hDlgTimer)
-		//	&& IsDialogMessage(g_hDlgTimer, &msg))		//g_hDlgTimer‚ÌƒƒbƒZ[ƒW‚Í–³‹
+		//	&& IsDialogMessage(g_hDlgTimer, &msg))		//g_hDlgTimerã®ãƒ¡ãƒƒã‚»ãƒ¼ã‚¸ã¯ç„¡è¦–
 		//	;
-		else		//‚»‚êˆÈŠO‚ÍˆÈ‰º‚Ì2ŠÖ”‚Åˆ—
+		else		//ãã‚Œä»¥å¤–ã¯ä»¥ä¸‹ã®2é–¢æ•°ã§å‡¦ç†
 		{
-			TranslateMessage(&msg);	//TranslateMessage: ‰¼‘zƒL[ƒƒbƒZ[ƒW‚ğ•¶šƒƒbƒZ[ƒW‚Ö•ÏŠ·(?)
-			DispatchMessage(&msg);	// DispatchMessage‚Åó‚¯æ‚Á‚½ƒƒbƒZ[ƒW‚ğƒEƒBƒ“ƒhƒEƒvƒƒV[ƒWƒƒ(?)‚É‘—o.
+			TranslateMessage(&msg);	//TranslateMessage: ä»®æƒ³ã‚­ãƒ¼ãƒ¡ãƒƒã‚»ãƒ¼ã‚¸ã‚’æ–‡å­—ãƒ¡ãƒƒã‚»ãƒ¼ã‚¸ã¸å¤‰æ›(?)
+			DispatchMessage(&msg);	// DispatchMessageã§å—ã‘å–ã£ãŸãƒ¡ãƒƒã‚»ãƒ¼ã‚¸ã‚’ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ãƒ—ãƒ­ã‚·ãƒ¼ã‚¸ãƒ£(?)ã«é€å‡º.
 		}
 	}
 
 	if (b_DebugLog) WriteDebug_New2("[exemain.c][TclockExeMain] Got out from the main message loop");
 
-	if(g_hMenu) DestroyMenu(g_hMenu);				//‰EƒNƒŠƒbƒNƒƒjƒ…•\¦’†‚È‚çAƒƒjƒ…[‚ğÁ‚·
+	if(g_hMenu) DestroyMenu(g_hMenu);				//å³ã‚¯ãƒªãƒƒã‚¯ãƒ¡ãƒ‹ãƒ¥è¡¨ç¤ºä¸­ãªã‚‰ã€ãƒ¡ãƒ‹ãƒ¥ãƒ¼ã‚’æ¶ˆã™
 
-	if(g_hInstResource) FreeLibrary(g_hInstResource);		//langja.dll‚ğƒAƒ“ƒ[ƒh
+	if(g_hInstResource) FreeLibrary(g_hInstResource);		//langja.dllã‚’ã‚¢ãƒ³ãƒ­ãƒ¼ãƒ‰
 
-	UnregisterClass(szClassName, g_hInst);	// for TTBASE c‚Æ‘‚¢‚Ä‚ ‚Á‚½‚ªA‚½‚Ô‚ñ•K—v 
+	UnregisterClass(szClassName, g_hInst);	// for TTBASE â€¦ã¨æ›¸ã„ã¦ã‚ã£ãŸãŒã€ãŸã¶ã‚“å¿…è¦ 
 
 	if (b_ModernStandbySupported && handle_PowerNotify) UnregisterPowerSettingNotification(handle_PowerNotify);
 
@@ -675,39 +675,39 @@ void CheckCommandLine(HWND hwnd)
 		if(*p == '/')
 		{
 			p++;
-			if(_strnicmp(p, "prop", 4) == 0)	//propƒIƒvƒVƒ‡ƒ“FƒvƒƒpƒeƒB‚ğŠJ‚­
+			if(_strnicmp(p, "prop", 4) == 0)	//propã‚ªãƒ—ã‚·ãƒ§ãƒ³ï¼šãƒ—ãƒ­ãƒ‘ãƒ†ã‚£ã‚’é–‹ã
 			{
 				//if (b_DebugLog) WriteDebug_New2("[exemain.c][CheckCommandLine] Launched with  prop option");
 				PostMessage(hwnd, WM_COMMAND, IDC_SHOWPROP, 0);
 				p += 4;
 			}
-			//else if (_strnicmp(p, "restartdll", 10) == 0)	//exitƒIƒvƒVƒ‡ƒ“FI—¹ˆ—‚ğs‚¤
+			//else if (_strnicmp(p, "restartdll", 10) == 0)	//exitã‚ªãƒ—ã‚·ãƒ§ãƒ³ï¼šçµ‚äº†å‡¦ç†ã‚’è¡Œã†
 			//{
 			//	//if (b_DebugLog) WriteDebug_New2("[exemain.c][CheckCommandLine] Launched with  restartdll option");
 			//	b_RestartDLL = TRUE;
 			//	p += 10;
 			//}
-			else if (_strnicmp(p, "restart", 7) == 0)	//exitƒIƒvƒVƒ‡ƒ“FI—¹ˆ—‚ğs‚¤
+			else if (_strnicmp(p, "restart", 7) == 0)	//exitã‚ªãƒ—ã‚·ãƒ§ãƒ³ï¼šçµ‚äº†å‡¦ç†ã‚’è¡Œã†
 			{
 				//if (b_DebugLog) WriteDebug_New2("[exemain.c][CheckCommandLine] Launched with  restart option");
 				b_RestartNOW = TRUE;
 				p += 10;
 			}
-			else if(_strnicmp(p, "exit", 4) == 0)	//exitƒIƒvƒVƒ‡ƒ“FI—¹ˆ—‚ğs‚¤
+			else if(_strnicmp(p, "exit", 4) == 0)	//exitã‚ªãƒ—ã‚·ãƒ§ãƒ³ï¼šçµ‚äº†å‡¦ç†ã‚’è¡Œã†
 			{
 				//if (b_DebugLog) WriteDebug_New2("[exemain.c][CheckCommandLine] Launched with  exit option");
 				b_Exit = TRUE;
-				PostMessage(hwnd, WM_CLOSE, 0, 0);		//ƒƒCƒ“ƒEƒBƒ“ƒhƒE‚ÉWM_CLOSE(102)‚ğ‘—o‚·‚é
+				PostMessage(hwnd, WM_CLOSE, 0, 0);		//ãƒ¡ã‚¤ãƒ³ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ã«WM_CLOSE(102)ã‚’é€å‡ºã™ã‚‹
 				p += 4;
 			}
-			else if(_strnicmp(p, "nowait", 6) == 0)	//nowaitƒIƒvƒVƒ‡ƒ“F’x‰„ƒXƒ^[ƒg‚ğ–³‹
+			else if(_strnicmp(p, "nowait", 6) == 0)	//nowaitã‚ªãƒ—ã‚·ãƒ§ãƒ³ï¼šé…å»¶ã‚¹ã‚¿ãƒ¼ãƒˆã‚’ç„¡è¦–
 			{
 				//if (b_DebugLog) WriteDebug_New2("[exemain.c][CheckCommandLine] Launched with nowait option");
-				KillTimer(hwnd, IDTIMER_START);				//Œ»İ“®‚¢‚Ä‚¢‚éIDTIMER_START‚ğ’â~
-				SetTimer(hwnd, IDTIMER_START, 100, NULL);	//100msƒEƒFƒCƒg‚ÅIDTIMER_START‚ğŠJn, ƒ^ƒCƒ€ƒAƒEƒg‚É‚ÍƒƒbƒZ[ƒW‘—o
+				KillTimer(hwnd, IDTIMER_START);				//ç¾åœ¨å‹•ã„ã¦ã„ã‚‹IDTIMER_STARTã‚’åœæ­¢
+				SetTimer(hwnd, IDTIMER_START, 100, NULL);	//100msã‚¦ã‚§ã‚¤ãƒˆã§IDTIMER_STARTã‚’é–‹å§‹, ã‚¿ã‚¤ãƒ ã‚¢ã‚¦ãƒˆæ™‚ã«ã¯ãƒ¡ãƒƒã‚»ãƒ¼ã‚¸é€å‡º
 				p += 6;
 			}
-			else if(_strnicmp(p, "idle", 4) == 0)	//idleƒIƒvƒVƒ‡ƒ“F—Dæ“x‚ğIDLE‚É‚µ‚Ä‹N“®
+			else if(_strnicmp(p, "idle", 4) == 0)	//idleã‚ªãƒ—ã‚·ãƒ§ãƒ³ï¼šå„ªå…ˆåº¦ã‚’IDLEã«ã—ã¦èµ·å‹•
 			{
 				//if (b_DebugLog) WriteDebug_New2("[exemain.c][CheckCommandLine] Launched with  idle option");
 				HANDLE op = OpenProcess(PROCESS_ALL_ACCESS, TRUE, GetCurrentProcessId());
@@ -715,7 +715,7 @@ void CheckCommandLine(HWND hwnd)
 				Sleep(10);
 				p += 4;
 			}
-			else if (_strnicmp(p, "normal", 4) == 0)	//normalƒIƒvƒVƒ‡ƒ“F—Dæ“x‚ğNORMAL‚É‚µ‚Ä‹N“®
+			else if (_strnicmp(p, "normal", 4) == 0)	//normalã‚ªãƒ—ã‚·ãƒ§ãƒ³ï¼šå„ªå…ˆåº¦ã‚’NORMALã«ã—ã¦èµ·å‹•
 			{
 				//if (b_DebugLog) WriteDebug_New2("[exemain.c][CheckCommandLine] Launched with  normal option");
 				HANDLE op = OpenProcess(PROCESS_ALL_ACCESS, TRUE, GetCurrentProcessId());
@@ -733,7 +733,7 @@ void CheckCommandLine(HWND hwnd)
 /*-------------------------------------------
    the window procedure	
 ---------------------------------------------*/
-LRESULT CALLBACK WndProc(HWND hwnd,	UINT message, WPARAM wParam, LPARAM lParam)	//messageƒ‹[ƒv‚Ì’†‚ÌDispatchMessage()‚©‚ç‚ÌƒƒbƒZ[ƒW‚ğó‚¯‚Ä‚éH
+LRESULT CALLBACK WndProc(HWND hwnd,	UINT message, WPARAM wParam, LPARAM lParam)	//messageãƒ«ãƒ¼ãƒ—ã®ä¸­ã®DispatchMessage()ã‹ã‚‰ã®ãƒ¡ãƒƒã‚»ãƒ¼ã‚¸ã‚’å—ã‘ã¦ã‚‹ï¼Ÿ
 {
 	switch (message)
 	{
@@ -743,33 +743,33 @@ LRESULT CALLBACK WndProc(HWND hwnd,	UINT message, WPARAM wParam, LPARAM lParam)	
 			int nDelay;
 			bDestroy = FALSE;
 			InitFormat(); // initialize a Date/Time format
-			nDelay = GetMyRegLong(NULL, "DelayStart", 0);		//İ’èƒtƒ@ƒCƒ‹‚©‚ç’x‰„ƒXƒ^[ƒg•b”‚ğ“Ç‚İ‚İ
+			nDelay = GetMyRegLong(NULL, "DelayStart", 0);		//è¨­å®šãƒ•ã‚¡ã‚¤ãƒ«ã‹ã‚‰é…å»¶ã‚¹ã‚¿ãƒ¼ãƒˆç§’æ•°ã‚’èª­ã¿è¾¼ã¿
 			if(nDelay > 0)
 			{
-				SetTimer(hwnd, IDTIMER_START, nDelay * 1000, NULL);		//ƒ^ƒCƒ}[‚ğ‹N“®(ƒ^ƒCƒ€ƒAƒEƒg‚ÉƒƒCƒ“ƒEƒBƒ“ƒhƒE‚ ‚ÄWM_TIMER, IDTIMER_START)ƒƒbƒZ[ƒW
-				bcontractTimer = TRUE;									//‹N“®ƒ^ƒCƒ}[“®ì’†ƒtƒ‰ƒOTRUE
+				SetTimer(hwnd, IDTIMER_START, nDelay * 1000, NULL);		//ã‚¿ã‚¤ãƒãƒ¼ã‚’èµ·å‹•(ã‚¿ã‚¤ãƒ ã‚¢ã‚¦ãƒˆæ™‚ã«ãƒ¡ã‚¤ãƒ³ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ã‚ã¦WM_TIMER, IDTIMER_START)ãƒ¡ãƒƒã‚»ãƒ¼ã‚¸
+				bcontractTimer = TRUE;									//èµ·å‹•ã‚¿ã‚¤ãƒãƒ¼å‹•ä½œä¸­ãƒ•ãƒ©ã‚°TRUE
 			}
-			else SendMessage(hwnd, WM_TIMER, IDTIMER_START, 0);			//ƒ^ƒCƒ}[‚Ì‘ã‚í‚è‚ÉƒƒCƒ“ƒEƒBƒ“ƒhƒE‚É‘¦IDTIMER_STARTƒƒbƒZ[ƒW
+			else SendMessage(hwnd, WM_TIMER, IDTIMER_START, 0);			//ã‚¿ã‚¤ãƒãƒ¼ã®ä»£ã‚ã‚Šã«ãƒ¡ã‚¤ãƒ³ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ã«å³åˆ»IDTIMER_STARTãƒ¡ãƒƒã‚»ãƒ¼ã‚¸
 			InitMouseFunction(hwnd);
-			SetTimer(hwnd, IDTIMER_MAIN, 1000, NULL);		//ƒƒCƒ“ƒ‹[ƒvƒ^ƒCƒ}[(IDTIMER_MAIN)üŠú‚ğ1•b‚Éİ’è, Œ»“_‚Å‚Í‰½‚Ìˆ—‚às‚Á‚Ä‚¢‚È‚¢B
-			SetTimer(hwnd, IDTIMER_CREATE, 5000, NULL);		//ƒNƒŠƒGƒCƒgƒ^ƒCƒ}[(IDTIMER_CREATE)üŠú‚ğ5•b‚Éİ’è
+			SetTimer(hwnd, IDTIMER_MAIN, 1000, NULL);		//ãƒ¡ã‚¤ãƒ³ãƒ«ãƒ¼ãƒ—ã‚¿ã‚¤ãƒãƒ¼(IDTIMER_MAIN)å‘¨æœŸã‚’1ç§’ã«è¨­å®š, ç¾æ™‚ç‚¹ã§ã¯ä½•ã®å‡¦ç†ã‚‚è¡Œã£ã¦ã„ãªã„ã€‚
+			SetTimer(hwnd, IDTIMER_CREATE, 5000, NULL);		//ã‚¯ãƒªã‚¨ã‚¤ãƒˆã‚¿ã‚¤ãƒãƒ¼(IDTIMER_CREATE)å‘¨æœŸã‚’5ç§’ã«è¨­å®š
 			//DO_WS_AGGRESSIVE(); // Comment out by TTTT 20181125
 			return 0;
 		}
-		case WM_TIMER:		//WM_TIMER‚É‘Î‚·‚éˆ—
-			if(wParam == IDTIMER_START)		//‹N“®—pƒ^ƒCƒ}[‚Ìƒ^ƒCƒ€ƒAƒEƒg‚Ìˆ—
+		case WM_TIMER:		//WM_TIMERã«å¯¾ã™ã‚‹å‡¦ç†
+			if(wParam == IDTIMER_START)		//èµ·å‹•ç”¨ã‚¿ã‚¤ãƒãƒ¼ã®ã‚¿ã‚¤ãƒ ã‚¢ã‚¦ãƒˆã®å‡¦ç†
 			{
 				if (b_DebugLog) WriteDebug_New2("[exemain.c][WndProc] WM_TIMER(IDTIMER_START) received");
-				if(bcontractTimer) KillTimer(hwnd, wParam);		//ƒ^ƒCƒ}[’â~
-				bcontractTimer = FALSE;							//‹N“®ƒ^ƒCƒ}[“®ì’†ƒtƒ‰ƒOFALSE
-				HookStart(hwnd);				// install a hook	dllmain.c‚Ì’†‚É‚ ‚éBd—vBƒ^ƒXƒNƒgƒŒƒC‚ÌƒƒbƒZ[ƒW‚ğƒtƒbƒNBƒRƒA‹@”\‚Ì‹N“®
+				if(bcontractTimer) KillTimer(hwnd, wParam);		//ã‚¿ã‚¤ãƒãƒ¼åœæ­¢
+				bcontractTimer = FALSE;							//èµ·å‹•ã‚¿ã‚¤ãƒãƒ¼å‹•ä½œä¸­ãƒ•ãƒ©ã‚°FALSE
+				HookStart(hwnd);				// install a hook	dllmain.cã®ä¸­ã«ã‚ã‚‹ã€‚é‡è¦ã€‚ã‚¿ã‚¹ã‚¯ãƒˆãƒ¬ã‚¤ã®ãƒ¡ãƒƒã‚»ãƒ¼ã‚¸ã‚’ãƒ•ãƒƒã‚¯ã€‚ã‚³ã‚¢æ©Ÿèƒ½ã®èµ·å‹•
 
 				SetTimer(hwnd, IDTIMER_ZOMBIECHECK, zombieCheckInterval * 1000, NULL);	//
 
-				//nCountFindingClock = 0;			// ŒvƒJƒEƒ“ƒ^(ƒGƒ‰[ŒŸo—pH)
+				//nCountFindingClock = 0;			// æ™‚è¨ˆã‚«ã‚¦ãƒ³ã‚¿(ã‚¨ãƒ©ãƒ¼æ¤œå‡ºç”¨ï¼Ÿ)
 				//DO_WS_AGGRESSIVE(); // Comment out by TTTT 20181125
 			}
-			else if (wParam == IDTIMER_MAIN)	//ƒƒCƒ“ƒ‹[ƒvƒ^ƒCƒ}[(ƒfƒtƒHƒ‹ƒg1•b)‚Ìƒ^ƒCƒ€ƒAƒEƒg‚Ìˆ—
+			else if (wParam == IDTIMER_MAIN)	//ãƒ¡ã‚¤ãƒ³ãƒ«ãƒ¼ãƒ—ã‚¿ã‚¤ãƒãƒ¼(ãƒ‡ãƒ•ã‚©ãƒ«ãƒˆ1ç§’)ã®ã‚¿ã‚¤ãƒ ã‚¢ã‚¦ãƒˆã®å‡¦ç†
 			{
 				//if (b_DebugLog) WriteDebug_New2("[exemain.c][WndProc] WM_TIMER(IDTIMER_MAIN) received");
 				OnTimerMain(hwnd);
@@ -779,35 +779,35 @@ LRESULT CALLBACK WndProc(HWND hwnd,	UINT message, WPARAM wParam, LPARAM lParam)	
 				//if (b_DebugLog) WriteDebug_New2("[exemain.c][WndProc] WM_TIMER(IDTIMER_MOUSE) received");
 				OnTimerMouse(hwnd);
 			}
-			else if(wParam == IDTIMER_CREATE)	//ƒNƒŠƒGƒCƒgƒ^ƒCƒ}[(ƒfƒtƒHƒ‹ƒg5•b)‚Ìƒ^ƒCƒ€ƒAƒEƒg‚Ìˆ—
+			else if(wParam == IDTIMER_CREATE)	//ã‚¯ãƒªã‚¨ã‚¤ãƒˆã‚¿ã‚¤ãƒãƒ¼(ãƒ‡ãƒ•ã‚©ãƒ«ãƒˆ5ç§’)ã®ã‚¿ã‚¤ãƒ ã‚¢ã‚¦ãƒˆã®å‡¦ç†
 			{
 				//if (b_DebugLog) WriteDebug_New2("[exemain.c][WndProc] WM_TIMER(IDTIMER_CREATE) received");
-				SetTimer(hwnd, IDTIMER_CREATE, 60000, NULL);	//ˆÈ~‚Íƒ^ƒCƒ€ƒAƒEƒg‚ğ60•b‚Éê‡
+				SetTimer(hwnd, IDTIMER_CREATE, 60000, NULL);	//ä»¥é™ã¯ã‚¿ã‚¤ãƒ ã‚¢ã‚¦ãƒˆã‚’60ç§’ã«å ´åˆ
 				//DO_WS_AGGRESSIVE(); // Comment out by TTTT 20181125
 			}
-			else if (wParam == IDTIMER_ZOMBIECHECK)	//ƒ]ƒ“ƒrƒ`ƒFƒbƒN‚Ìƒ^ƒCƒ€ƒAƒEƒg‚Ìˆ— by TTTT 20181125
+			else if (wParam == IDTIMER_ZOMBIECHECK)	//ã‚¾ãƒ³ãƒ“ãƒã‚§ãƒƒã‚¯ã®ã‚¿ã‚¤ãƒ ã‚¢ã‚¦ãƒˆã®å‡¦ç† by TTTT 20181125
 			{
 				//if (b_DebugLog) WriteDebug_New2("[exemain.c][WndProc] WM_TIMER(IDTIMER_ZOMBIECHECK) received");
 //				OnTimerZombieCheck(hwnd);
 				OnTimerZombieCheck2(hwnd);
 			}
 			return 0;
-		case WM_CLOSE:		//è“®‚Å‚ÌC—¹ˆ—‚Í‚±‚¿‚ç‚©‚çs‚¤B
+		case WM_CLOSE:		//æ‰‹å‹•ã§ã®ä¿®äº†å‡¦ç†ã¯ã“ã¡ã‚‰ã‹ã‚‰è¡Œã†ã€‚
 			if (b_DebugLog) WriteDebug_New2("[exemain.c][WndProc] WM_CLOSE received");
 			TerminateTClock(hwnd);
 			return 0;
-		case WM_DESTROY:	//I—¹ˆ—BÀÛ‚É‚Í‚·‚×‚ÄI‚í‚Á‚Ä‚©‚ç“Í‚­‚æ‚¤‚É‚È‚Á‚Ä‚¢‚éB
+		case WM_DESTROY:	//çµ‚äº†æ™‚å‡¦ç†ã€‚å®Ÿéš›ã«ã¯ã™ã¹ã¦çµ‚ã‚ã£ã¦ã‹ã‚‰å±Šãã‚ˆã†ã«ãªã£ã¦ã„ã‚‹ã€‚
 			if (b_DebugLog) WriteDebug_New2("[exemain.c][WndProc] WM_DESTROY received");
 			return 0;
-		case WM_ENDSESSION:	//ƒZƒbƒVƒ‡ƒ“I—¹‚ÌTClockI—¹‚Í‚±‚¿‚ç‚©‚ç
+		case WM_ENDSESSION:	//ã‚»ãƒƒã‚·ãƒ§ãƒ³çµ‚äº†æ™‚ã®TClockçµ‚äº†ã¯ã“ã¡ã‚‰ã‹ã‚‰
 			if (b_DebugLog) WriteDebug_New2("[exemain.c][WndProc] WM_ENDSESSION received. TClock is terminated from now.");
 			//if(wParam) TerminateTClock(hwnd);
 			PostMessage(g_hwndMain, WM_CLOSE, 0, 0);
 			break;
-		case WM_QUERYENDSESSION:	//ƒZƒbƒVƒ‡ƒ“I—¹‚Ì–‘OŠm”F‚Ì‚æ‚¤‚È‚à‚ÌBC—¹ˆ—‚ÍWM_ENDSESSION‚ÉÀ‘•‚·‚éB
+		case WM_QUERYENDSESSION:	//ã‚»ãƒƒã‚·ãƒ§ãƒ³çµ‚äº†æ™‚ã®äº‹å‰ç¢ºèªã®ã‚ˆã†ãªã‚‚ã®ã€‚ä¿®äº†å‡¦ç†ã¯WM_ENDSESSIONã«å®Ÿè£…ã™ã‚‹ã€‚
 			if (b_DebugLog) WriteDebug_New2("[exemain.c][WndProc] WM_QUERYENDSESSION received");
 			if (b_NormalLog) WriteNormalLog("Exit TClock-Win10 by EndSession.");
-			break;		//DefWindowProc‚ª1‚ğ•Ô‚µ‚Ä‚­‚ê‚é‚Ì‚Å”C‚¹‚éB
+			break;		//DefWindowProcãŒ1ã‚’è¿”ã—ã¦ãã‚Œã‚‹ã®ã§ä»»ã›ã‚‹ã€‚
 		case WM_PAINT:
 		{
 			if (b_DebugLog) WriteDebug_New2("[exemain.c][WndProc] WM_PAINT received");
@@ -820,7 +820,7 @@ LRESULT CALLBACK WndProc(HWND hwnd,	UINT message, WPARAM wParam, LPARAM lParam)	
 
 		// Messages sent/posted from tclock.dll
 		case WM_USER:
-			if (b_DebugLog) WriteDebug_New2("[exemain.c][WndProc] WM_USER received");	//DLL Window¶¬‚Éƒnƒ“ƒhƒ‹‚ğ’Ê’m
+			if (b_DebugLog) WriteDebug_New2("[exemain.c][WndProc] WM_USER received");	//DLL Windowç”Ÿæˆæ™‚ã«ãƒãƒ³ãƒ‰ãƒ«ã‚’é€šçŸ¥
 			//nCountFindingClock = -1;
 			g_hwndClock = (HWND)lParam;
 			return 0;
@@ -828,35 +828,35 @@ LRESULT CALLBACK WndProc(HWND hwnd,	UINT message, WPARAM wParam, LPARAM lParam)	
 			if (b_DebugLog) {
 				char tempString[256];
 				wsprintf(tempString, "[exemain.c][WndProc] WM_USER+1 received from dllmain.c, with error code = %d", (int)lParam);
-				WriteDebug_New2(tempString);	//DLL Window¶¬‚ÌƒGƒ‰[
+				WriteDebug_New2(tempString);	//DLL Windowç”Ÿæˆæ™‚ã®ã‚¨ãƒ©ãƒ¼
 			}
 			//nCountFindingClock = -1;
 			InitError((int)lParam);
 			PostMessage(hwnd, WM_CLOSE, 0, 0);
 			return 0;
-		case (WM_USER + 2):   // exit (from tclock.c EndClock())	‚±‚ÌƒR[ƒh‚ÍVer4.0.3ˆÈ~‚Å‚ÍC—¹ˆ—‚Æ‚µ‚ÄŒÄ‚Î‚ê‚È‚­‚È‚Á‚Ä‚¢‚é(‚Í‚¸)B“K“–‚ÈŠú‚Éíœ‚·‚é‚±‚ÆB
+		case (WM_USER + 2):   // exit (from tclock.c EndClock())	ã“ã®ã‚³ãƒ¼ãƒ‰ã¯Ver4.0.3ä»¥é™ã§ã¯ä¿®äº†å‡¦ç†ã¨ã—ã¦å‘¼ã°ã‚Œãªããªã£ã¦ã„ã‚‹(ã¯ãš)ã€‚é©å½“ãªæ™‚æœŸã«å‰Šé™¤ã™ã‚‹ã“ã¨ã€‚
 			if (b_DebugLog) WriteDebug_New2("[exemain.c][WndProc] WM_USER+2 received");
 
-			TerminateTClockFromDLL(hwnd);	//tcdlll(tclock.c‚©‚çŒÄ‚Î‚ê‚é‚Æ‚«‚ÍFromDLL‚ğÀs‚·‚é)
-			////ƒ^ƒCƒ}‹@”\‚Ì‚È‚²‚è
+			TerminateTClockFromDLL(hwnd);	//tcdlll(tclock.cã‹ã‚‰å‘¼ã°ã‚Œã‚‹ã¨ãã¯FromDLLã‚’å®Ÿè¡Œã™ã‚‹)
+			////ã‚¿ã‚¤ãƒæ©Ÿèƒ½ã®ãªã”ã‚Š
 			////if(g_hDlgTimer && IsWindow(g_hDlgTimer))
 			////	PostMessage(g_hDlgTimer, WM_CLOSE, 0, 0);
 			////g_hDlgTimer = NULL;
 			return 0;
 		case CLOCKM_DLLALIVE:
-			OnDLLAliveMessage(wParam);	//wParam‚Éî•ñ‚ğ“ü‚ê‚é‘z’è(–¢g—p)
+			OnDLLAliveMessage(wParam);	//wParamã«æƒ…å ±ã‚’å…¥ã‚Œã‚‹æƒ³å®š(æœªä½¿ç”¨)
 			return 0;
-		case WM_WININICHANGE:		//‰æ–Êƒe[ƒ}‚ª•Ï‚í‚Á‚½‚Ì‘Î‰
+		case WM_WININICHANGE:		//ç”»é¢ãƒ†ãƒ¼ãƒãŒå¤‰ã‚ã£ãŸæ™‚ã®å¯¾å¿œ
 		{
 			if (b_DebugLog) WriteDebug_New2("[exemain.c][WndProc] WM_WININICHANGE received");
 			PostMessage(g_hwndClock, WM_COMMAND, (WPARAM)CLOCKM_BGCOLOR_UPDATE, 0);
 			return 0;
 		}
-		case WM_SYSCOLORCHANGE:		//SYSCOLOR‚ª•Ï‚í‚Á‚½ê‡‚ÍAƒAƒCƒRƒ“–¼”wŒi“§–¾‰»‚Ìƒ^ƒCƒ}[(IDTIMER_DESKTOPICON)‚ğì“®‚³‚¹‚é‚¾‚¯B•s—v‚©B
+		case WM_SYSCOLORCHANGE:		//SYSCOLORãŒå¤‰ã‚ã£ãŸå ´åˆã¯ã€ã‚¢ã‚¤ã‚³ãƒ³åèƒŒæ™¯é€æ˜åŒ–ã®ã‚¿ã‚¤ãƒãƒ¼(IDTIMER_DESKTOPICON)ã‚’ä½œå‹•ã•ã›ã‚‹ã ã‘ã€‚ä¸è¦ã‹ã€‚
 			if (b_DebugLog) WriteDebug_New2("[exemain.c][WndProc] WM_SYSCOLORCHANGE received");
 			PostMessage(hwnd, WM_USER+10, 1,0);
 			return 0;
-		case (WM_USER+10):		//WM_USER+10‚ÍDESKCALŠÖ˜A‚Ì‚æ‚¤‚È‚Ì‚ÅAíœ‚µ‚Ä‚à‚æ‚¢‚©B‚»‚à‚»‚àƒtƒBƒ‹ƒ^‚³‚ê‚Ä“Í‚©‚È‚¢‚©‚àB
+		case (WM_USER+10):		//WM_USER+10ã¯DESKCALé–¢é€£ã®ã‚ˆã†ãªã®ã§ã€å‰Šé™¤ã—ã¦ã‚‚ã‚ˆã„ã‹ã€‚ãã‚‚ãã‚‚ãƒ•ã‚£ãƒ«ã‚¿ã•ã‚Œã¦å±Šã‹ãªã„ã‹ã‚‚ã€‚
 		{
 			if (b_DebugLog) WriteDebug_New2("[exemain.c][WndProc] WM_USER+10 received");
 			return 0;
@@ -881,7 +881,7 @@ LRESULT CALLBACK WndProc(HWND hwnd,	UINT message, WPARAM wParam, LPARAM lParam)	
 
 
 		// return from power saving
-		case WM_POWERBROADCAST:		//‚±‚ê‚àƒJƒŒƒ“ƒ_[ŠÖŒW‚Ì‚İ‚ÌƒR[ƒhB•s—v‚©B
+		case WM_POWERBROADCAST:		//ã“ã‚Œã‚‚ã‚«ãƒ¬ãƒ³ãƒ€ãƒ¼é–¢ä¿‚ã®ã¿ã®ã‚³ãƒ¼ãƒ‰ã€‚ä¸è¦ã‹ã€‚
 		{
 			if (b_DebugLog) WriteDebug_New2("[exemain.c][WndProc] WM_POWERBROADCAST received");
 			if (wParam == PBT_APMPOWERSTATUSCHANGE)
@@ -927,19 +927,19 @@ LRESULT CALLBACK WndProc(HWND hwnd,	UINT message, WPARAM wParam, LPARAM lParam)	
 		}
 
 		// context menu
-		case WM_COMMAND:	//‰EƒNƒŠƒbƒNƒƒjƒ…[‚©‚çƒRƒ}ƒ“ƒhÀs‚³‚ê‚½ê‡‚Í‚±‚±‚ğ’Ê‚Á‚Ämenu.c‚ÌƒR[ƒh‚É“Í‚¯‚ç‚ê‚é–Í—l
+		case WM_COMMAND:	//å³ã‚¯ãƒªãƒƒã‚¯ãƒ¡ãƒ‹ãƒ¥ãƒ¼ã‹ã‚‰ã‚³ãƒãƒ³ãƒ‰å®Ÿè¡Œã•ã‚ŒãŸå ´åˆã¯ã“ã“ã‚’é€šã£ã¦menu.cã®ã‚³ãƒ¼ãƒ‰ã«å±Šã‘ã‚‰ã‚Œã‚‹æ¨¡æ§˜
 			if (b_DebugLog) WriteDebug_New2("[exemain.c][WndProc] WM_COMMAND received");
 			OnTClockCommand(hwnd, LOWORD(wParam), HIWORD(wParam)); // menu.c
 			//DO_WS_AGGRESSIVE(); // Comment out by TTTT 20181125
 			return 0;
 		// messages transfered from the dll
-		case WM_CONTEXTMENU:	//‰EƒNƒŠƒbƒN‚³‚ê‚½ê‡->ƒƒjƒ…[‚ğŠJ‚­ŠÖ”(OnContextMenu())‚ğƒR[ƒ‹
+		case WM_CONTEXTMENU:	//å³ã‚¯ãƒªãƒƒã‚¯ã•ã‚ŒãŸå ´åˆ->ãƒ¡ãƒ‹ãƒ¥ãƒ¼ã‚’é–‹ãé–¢æ•°(OnContextMenu())ã‚’ã‚³ãƒ¼ãƒ«
 			if (b_DebugLog) WriteDebug_New2("[exemain.c][WndProc] WM_CONTEXTMENU received");
 			// menu.c
 			OnContextMenu(hwnd, (HWND)wParam, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
 			//DO_WS_AGGRESSIVE(); // Comment out by TTTT 20181125
 			return 0;
-		case WM_DROPFILES:	//ƒtƒ@ƒCƒ‹‚ªƒhƒƒbƒv‚³‚ê‚½ê‡‚Ìˆ—A—vŠm”F
+		case WM_DROPFILES:	//ãƒ•ã‚¡ã‚¤ãƒ«ãŒãƒ‰ãƒ­ãƒƒãƒ—ã•ã‚ŒãŸå ´åˆã®å‡¦ç†ã€è¦ç¢ºèª
 			OnDropFiles(hwnd, (HDROP)wParam); // mouse.c
 			//DO_WS_AGGRESSIVE(); // Comment out by TTTT 20181125
 			return 0;
@@ -959,27 +959,27 @@ LRESULT CALLBACK WndProc(HWND hwnd,	UINT message, WPARAM wParam, LPARAM lParam)	
 		case WM_MOUSEWHEEL:
 			OnMouseMsg(hwnd, message, wParam, lParam); // mouse.c
 			return 0;
-		case WM_ENTERMENULOOP:	//‰EƒNƒŠƒbƒNƒƒjƒ…[‚Ì“ü—Í‘Ò‚¿ƒ‹[ƒv‚É“ü‚Á‚½‚Éo‚éB
+		case WM_ENTERMENULOOP:	//å³ã‚¯ãƒªãƒƒã‚¯ãƒ¡ãƒ‹ãƒ¥ãƒ¼ã®å…¥åŠ›å¾…ã¡ãƒ«ãƒ¼ãƒ—ã«å…¥ã£ãŸæ™‚ã«å‡ºã‚‹ã€‚
 			if (b_DebugLog) WriteDebug_New2("[exemain.c][WndProc] WM_ENTERMENULOOP received");
 			bMenuOpened = TRUE;
 			break;
-		case WM_EXITMENULOOP:	//‰EƒNƒŠƒbƒNƒƒjƒ…[‚Ì“ü—Í‘Ò‚¿ƒ‹[ƒv‚©‚ço‚½‚Éo‚éB
+		case WM_EXITMENULOOP:	//å³ã‚¯ãƒªãƒƒã‚¯ãƒ¡ãƒ‹ãƒ¥ãƒ¼ã®å…¥åŠ›å¾…ã¡ãƒ«ãƒ¼ãƒ—ã‹ã‚‰å‡ºãŸæ™‚ã«å‡ºã‚‹ã€‚
 			if (b_DebugLog) WriteDebug_New2("[exemain.c][WndProc] WM_EXITMENULOOP received");
 			bMenuOpened = FALSE;
 			break;
-		case WM_HOTKEY:	//Hotkey‹@”\B—v”Û—vŒŸ“¢
+		case WM_HOTKEY:	//Hotkeyæ©Ÿèƒ½ã€‚è¦å¦è¦æ¤œè¨
 			OnHotkey(hwnd, (int)wParam);
 			break;
-		case WM_MEASUREITEM:	//ƒtƒ@ƒCƒ‹ƒŠƒXƒgŠÖŒW
+		case WM_MEASUREITEM:	//ãƒ•ã‚¡ã‚¤ãƒ«ãƒªã‚¹ãƒˆé–¢ä¿‚
 			OnMeasureItem(hwnd, wParam, lParam); // filelist.c
 			break;
-		case WM_DRAWITEM:	//ƒtƒ@ƒCƒ‹ƒŠƒXƒgŠÖŒW
+		case WM_DRAWITEM:	//ãƒ•ã‚¡ã‚¤ãƒ«ãƒªã‚¹ãƒˆé–¢ä¿‚
 			OnDrawItem(hwnd, wParam, lParam); // filelist.c
 			break;
-		case WM_INITMENUPOPUP:	//ƒtƒ@ƒCƒ‹ƒŠƒXƒgŠÖŒW
+		case WM_INITMENUPOPUP:	//ãƒ•ã‚¡ã‚¤ãƒ«ãƒªã‚¹ãƒˆé–¢ä¿‚
 			OnInitMenuPopup(hwnd, wParam, lParam); // filelist.c
 			break;
-		case WM_MENURBUTTONUP:	//ƒtƒ@ƒCƒ‹ƒŠƒXƒgŠÖŒW
+		case WM_MENURBUTTONUP:	//ãƒ•ã‚¡ã‚¤ãƒ«ãƒªã‚¹ãƒˆé–¢ä¿‚
 			OnMenuRButtonUp(hwnd, wParam, lParam); //filelist.c
 			break;
 		case WM_DISPLAYCHANGE:	//added by TTTT
@@ -1013,7 +1013,7 @@ LRESULT CALLBACK WndProc(HWND hwnd,	UINT message, WPARAM wParam, LPARAM lParam)	
 		{
 
 			if (GetMyRegLong("Status_DoNotEdit", "Win11TClockMain", 0) == 1) {
-				Sleep(AUTORESTART_WAIT_WIN11);	//Win11‚Ìê‡‚ÍExplorer‚ÌÄ‹N“®‚ÉŠÔ‚ª‚©‚©‚é‚Ì‚Å‘Ò‚Â
+				Sleep(AUTORESTART_WAIT_WIN11);	//Win11ã®å ´åˆã¯Explorerã®å†èµ·å‹•ã«æ™‚é–“ãŒã‹ã‹ã‚‹ã®ã§å¾…ã¤
 			}
 
 			if (b_DebugLog) WriteDebug_New2("[exemain.c][WndProc] Windows Taskbar restarted. b_AutoRestart = TRUE, Restart TClock-Win10.");
@@ -1031,7 +1031,7 @@ LRESULT CALLBACK WndProc(HWND hwnd,	UINT message, WPARAM wParam, LPARAM lParam)	
 			if (b_DebugLog) WriteDebug_New2("[exemain.c][WndProc] Windows Taskbar restarted. b_AutoRestart = FALSE. Quit TClock.");
 			if (b_NormalLog) WriteNormalLog("b_AutoRestart = FALSE, Quit TClock-Win10");
 
-			PostMessage(hwnd, WM_CLOSE, 0, 0);		//ƒƒCƒ“ƒEƒBƒ“ƒhƒE‚ÉWM_CLOSE(102)‚ğ‘—o‚·‚éB(‚±‚ÌI—¹“®ì‚Ídllæs‚Å‚Í‚È‚­‚Äexemain‚©‚ç‚È‚Ì‚Å)
+			PostMessage(hwnd, WM_CLOSE, 0, 0);		//ãƒ¡ã‚¤ãƒ³ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ã«WM_CLOSE(102)ã‚’é€å‡ºã™ã‚‹ã€‚(ã“ã®çµ‚äº†å‹•ä½œã¯dllå…ˆè¡Œã§ã¯ãªãã¦exemainã‹ã‚‰ãªã®ã§)
 
 		}
 	}
@@ -1041,22 +1041,22 @@ LRESULT CALLBACK WndProc(HWND hwnd,	UINT message, WPARAM wParam, LPARAM lParam)	
 
 void TerminateTClock(HWND hwnd)
 {
-	//TClock‚ª“®ì’†‚©‚çI—¹‚·‚éê‡‚É‚ÍA‚±‚¿‚ç‚ÅI—¹‚·‚éB
+	//TClockãŒå‹•ä½œä¸­ã‹ã‚‰çµ‚äº†ã™ã‚‹å ´åˆã«ã¯ã€ã“ã¡ã‚‰ã§çµ‚äº†ã™ã‚‹ã€‚
 
 	if (b_DebugLog) WriteDebug_New2("[exemain.c] TerminateTClock called.");
 
 	if (g_hwndClock)
 	{
 		SendMessage(g_hwndClock, WM_COMMAND, IDC_EXIT, 0);
-		g_hwndClock = NULL;		//EndClock‚©‚çŒÄ‚Î‚ê‚½‚±‚Æ(EndClockÀsÏ‚İ‚ÌŠm”F‚Ì‚½‚ß‚ÉÁ‚·)
+		g_hwndClock = NULL;		//EndClockã‹ã‚‰å‘¼ã°ã‚ŒãŸã“ã¨(EndClockå®Ÿè¡Œæ¸ˆã¿ã®ç¢ºèªã®ãŸã‚ã«æ¶ˆã™)
 	}
 	if (g_hwndPropDlg && IsWindow(g_hwndPropDlg))
 		PostMessage(g_hwndPropDlg, WM_CLOSE, 0, 0);
 	g_hwndPropDlg = NULL;
 
-	HookEnd();  // uninstall a hook, Ver 4.0.5.3ˆÈ~‚Å‚Í‚·‚Å‚ÉƒtƒbƒNŠO‚ê‚Ä‚¢‚é‚Í‚¸‚¾‚ª”O‚Ì‚½‚ßB
+	HookEnd();  // uninstall a hook, Ver 4.0.5.3ä»¥é™ã§ã¯ã™ã§ã«ãƒ•ãƒƒã‚¯å¤–ã‚Œã¦ã„ã‚‹ã¯ãšã ãŒå¿µã®ãŸã‚ã€‚
 
-	if (bDestroy == TRUE) return 0;	//‚QdI—¹‚µ‚È‚¢‚æ‚¤‚É
+	if (bDestroy == TRUE) return 0;	//ï¼’é‡çµ‚äº†ã—ãªã„ã‚ˆã†ã«
 
 	bDestroy = TRUE;
 	EndMouseFunction(hwnd);
@@ -1088,20 +1088,20 @@ void TerminateTClockFromDLL(HWND hwnd)
 {
 	if (b_DebugLog) WriteDebug_New2("[exemain.c] TerminateTClockFromDLL called.");
 
-	//FromDLL‚ÍAŒv‚Ì‚Ù‚¤‚ÅI—¹ˆ—(EndClock)‚µ‚Ä‚©‚çŒÄ‚Î‚ê‚é(WM_USER+2Œo—R)ó‹µ‚Åg‚¤B
+	//FromDLLã¯ã€æ™‚è¨ˆã®ã»ã†ã§çµ‚äº†å‡¦ç†(EndClock)ã—ã¦ã‹ã‚‰å‘¼ã°ã‚Œã‚‹(WM_USER+2çµŒç”±)çŠ¶æ³ã§ä½¿ã†ã€‚
 
 	if (g_hwndClock)
 	{
 //		SendMessage(g_hwndClock, WM_COMMAND, IDC_EXIT, 0);
-		g_hwndClock = NULL;		//EndClock‚©‚çŒÄ‚Î‚ê‚½‚±‚Æ(EndClockÀsÏ‚İ‚ÌŠm”F‚Ì‚½‚ß‚ÉÁ‚·)
+		g_hwndClock = NULL;		//EndClockã‹ã‚‰å‘¼ã°ã‚ŒãŸã“ã¨(EndClockå®Ÿè¡Œæ¸ˆã¿ã®ç¢ºèªã®ãŸã‚ã«æ¶ˆã™)
 	}
 	if (g_hwndPropDlg && IsWindow(g_hwndPropDlg))
 		PostMessage(g_hwndPropDlg, WM_CLOSE, 0, 0);
 	g_hwndPropDlg = NULL;
 
-	HookEnd();  // uninstall a hook, Ver 4.0.5.3ˆÈ~‚Å‚Í‚·‚Å‚ÉƒtƒbƒNŠO‚ê‚Ä‚¢‚é‚Í‚¸‚¾‚ª”O‚Ì‚½‚ßB
+	HookEnd();  // uninstall a hook, Ver 4.0.5.3ä»¥é™ã§ã¯ã™ã§ã«ãƒ•ãƒƒã‚¯å¤–ã‚Œã¦ã„ã‚‹ã¯ãšã ãŒå¿µã®ãŸã‚ã€‚
 
-	if (bDestroy == TRUE) return 0;	//‚QdI—¹‚µ‚È‚¢‚æ‚¤‚É
+	if (bDestroy == TRUE) return 0;	//ï¼’é‡çµ‚äº†ã—ãªã„ã‚ˆã†ã«
 
 	bDestroy = TRUE;
 	EndMouseFunction(hwnd);
@@ -1142,12 +1142,12 @@ void InitError(int n)
    Timer
    synchronize, alarm, timer, execute Desktop Calendar...
 ---------------------------------------------------------*/
-void OnTimerMain(HWND hwnd)		//ƒƒCƒ“ƒ‹[ƒvƒ^ƒCƒ}[(ƒfƒtƒHƒ‹ƒg1•b)‚Ìƒ^ƒCƒ€ƒAƒEƒg‚Ìˆ—
+void OnTimerMain(HWND hwnd)		//ãƒ¡ã‚¤ãƒ³ãƒ«ãƒ¼ãƒ—ã‚¿ã‚¤ãƒãƒ¼(ãƒ‡ãƒ•ã‚©ãƒ«ãƒˆ1ç§’)ã®ã‚¿ã‚¤ãƒ ã‚¢ã‚¦ãƒˆã®å‡¦ç†
 {
-	//ŒvƒEƒBƒ“ƒhƒE‚Ìƒ^ƒCƒ}[“®ì‚ª’â~‚µ‚Ä2•b‚µ‚½‚çƒtƒ‰ƒO‚ª—§‚ÂB
-	//•‰‰×‚ª¬‚³‚¢‚Ì‚Åc‚µ‚Ä‚ ‚é‚ªAŒ»İ‚Ì‚Æ‚±‚ë’â~“®ì“™‚ÍÀ‘•‚³‚ê‚Ä‚¢‚È‚¢B
-	//Ver4.0.4“_‚Å•s‘ª‚Ì©‘Ì‚É‘Î‚·‚é‘Îˆ‚ÍOnTimerZombieCheck2‚Ås‚Á‚Ä‚¢‚éB
-	//ƒXƒŠ[ƒv“™‚Åƒtƒ‰ƒO‚ªŒo‚Â‚Ì‚Å‚·‚®‚ÉI—¹‚µ‚Ä‚Í‚¢‚¯‚È‚¢B
+	//æ™‚è¨ˆã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ã®ã‚¿ã‚¤ãƒãƒ¼å‹•ä½œãŒåœæ­¢ã—ã¦2ç§’ã—ãŸã‚‰ãƒ•ãƒ©ã‚°ãŒç«‹ã¤ã€‚
+	//è² è·ãŒå°ã•ã„ã®ã§æ®‹ã—ã¦ã‚ã‚‹ãŒã€ç¾åœ¨ã®ã¨ã“ã‚åœæ­¢å‹•ä½œç­‰ã¯å®Ÿè£…ã•ã‚Œã¦ã„ãªã„ã€‚
+	//Ver4.0.4æ™‚ç‚¹ã§ä¸æ¸¬ã®è‡ªä½“ã«å¯¾ã™ã‚‹å¯¾å‡¦ã¯OnTimerZombieCheck2ã§è¡Œã£ã¦ã„ã‚‹ã€‚
+	//ã‚¹ãƒªãƒ¼ãƒ—ç­‰ã§ãƒ•ãƒ©ã‚°ãŒçµŒã¤ã®ã§ã™ãã«çµ‚äº†ã—ã¦ã¯ã„ã‘ãªã„ã€‚
 
 	FILETIME currentFileTime;
 	ULARGE_INTEGER currentUll;
@@ -1158,7 +1158,7 @@ void OnTimerMain(HWND hwnd)		//ƒƒCƒ“ƒ‹[ƒvƒ^ƒCƒ}[(ƒfƒtƒHƒ‹ƒg1•b)‚Ìƒ^ƒCƒ€ƒAƒEƒg
 
 	if ((currentUll.QuadPart - lastFileTimeDLLAlive) > 20000000ULL)
 	{
-		b_FlagDLLAlive = FALSE;	//AliveƒƒbƒZ[ƒW‚ª2•bŠJ‚­‚ÆDLL‰¹M•s’Êƒtƒ‰ƒO‚ğ—§‚Ä‚é(•œŠˆ‰Â”\)
+		b_FlagDLLAlive = FALSE;	//Aliveãƒ¡ãƒƒã‚»ãƒ¼ã‚¸ãŒ2ç§’é–‹ãã¨DLLéŸ³ä¿¡ä¸é€šãƒ•ãƒ©ã‚°ã‚’ç«‹ã¦ã‚‹(å¾©æ´»å¯èƒ½)
 	}
 	else 
 	{
@@ -1184,16 +1184,16 @@ void OnTimerZombieCheck2(HWND hwnd)
 		{
 
 			if (GetMyRegLong("Status_DoNotEdit", "Win11TClockMain", 0) == 1) {
-				//Win11‚Ìê‡‚Í•’Ê‚ÉExplorer‚ªÄ‹N“®‚µ‚½‚ç‚±‚±‚É—ˆ‚éB–³‹‚µ‚ÄExe‚ğ¶‚©‚µ‚Ä‚¨‚¢‚½‚çOS‚©‚çNotification‚ª—ˆ‚é‚Ì‚Å‚»‚Ì‚É‘Îˆ‚·‚éB
+				//Win11ã®å ´åˆã¯æ™®é€šã«ExplorerãŒå†èµ·å‹•ã—ãŸã‚‰ã“ã“ã«æ¥ã‚‹ã€‚ç„¡è¦–ã—ã¦Exeã‚’ç”Ÿã‹ã—ã¦ãŠã„ãŸã‚‰OSã‹ã‚‰NotificationãŒæ¥ã‚‹ã®ã§ãã®æ™‚ã«å¯¾å‡¦ã™ã‚‹ã€‚
 				//if (b_DebugLog) WriteDebug_New2("[exemain.c][OnTimerZombieCheck2](Win11) No responce from DLL. Explorer.exe may be restarted. Continue operation to wait notification from OS.");
 				//if (b_NormalLog) WriteNormalLog("(Win11) No responce from DLL. Explorer.exe may be restarted. Continue operation to wait notification from OS.");
 				return;
 			}
 			else {
-				//Win10‚Ìê‡‚É‚Í‚±‚±‚É—ˆ‚½“_‚Å‚©‚È‚èˆÙí‚È‚Ì‚Å‚»‚Ì‚Ü‚ÜI‚í‚é‚±‚Æ‚É‚·‚éB‚Ó‚Â‚¤‚Í‹N‚«‚È‚¢B
+				//Win10ã®å ´åˆã«ã¯ã“ã“ã«æ¥ãŸæ™‚ç‚¹ã§ã‹ãªã‚Šç•°å¸¸ãªã®ã§ãã®ã¾ã¾çµ‚ã‚ã‚‹ã“ã¨ã«ã™ã‚‹ã€‚ãµã¤ã†ã¯èµ·ããªã„ã€‚
 				if (b_DebugLog) WriteDebug_New2("[exemain.c][OnTimerZombieCheck2](Win10) No responce from DLL. TClock may be unexpectedly dead. Quit TClock, regardless b_AutoRestart.");
 				if (b_NormalLog) WriteNormalLog("(Win10) No responce from DLL. TClock may be unexpectedly dead. Quit TClock, regardless b_AutoRestart.");
-				TerminateTClockFromDLL(hwnd);		//‚·‚Å‚ÉTClock‚Ì‰ü‘¢•”‚ÍI—¹/Á¸‚µ‚Ä‚¢‚é‚Æ”»’f‚³‚ê‚é‚½‚ßAFromDLL‚Å‚ÌI—¹“®ì‚ğs‚¤B
+				TerminateTClockFromDLL(hwnd);		//ã™ã§ã«TClockã®æ”¹é€ éƒ¨ã¯çµ‚äº†/æ¶ˆå¤±ã—ã¦ã„ã‚‹ã¨åˆ¤æ–­ã•ã‚Œã‚‹ãŸã‚ã€FromDLLã§ã®çµ‚äº†å‹•ä½œã‚’è¡Œã†ã€‚
 			}
 
 
@@ -1211,7 +1211,7 @@ void OnTimerZombieCheck2(HWND hwnd)
 			//{
 			//	if (b_DebugLog) WriteDebug_New2("[exemain.c][OnTimerZombieCheck2] TClock is dead. b_AutoRestart = FALSE. Quit TClock.");
 			//	if (b_NormalLog) WriteNormalLog("TClock is unexpectedly dead. b_AutoRestart = FALSE, Quit TClock-Win10");
-			//	TerminateTClockFromDLL(hwnd);		//‚·‚Å‚ÉTClock‚Ì‰ü‘¢•”‚ÍI—¹/Á¸‚µ‚Ä‚¢‚é‚Æ”»’f‚³‚ê‚é‚½‚ßAFromDLL‚Å‚ÌI—¹“®ì‚ğs‚¤B
+			//	TerminateTClockFromDLL(hwnd);		//ã™ã§ã«TClockã®æ”¹é€ éƒ¨ã¯çµ‚äº†/æ¶ˆå¤±ã—ã¦ã„ã‚‹ã¨åˆ¤æ–­ã•ã‚Œã‚‹ãŸã‚ã€FromDLLã§ã®çµ‚äº†å‹•ä½œã‚’è¡Œã†ã€‚
 			//}
 		}
 	}
@@ -1219,7 +1219,7 @@ void OnTimerZombieCheck2(HWND hwnd)
 
 
 
-//void OnTimerZombieCheck(HWND hwnd)	//ƒ]ƒ“ƒrƒ`ƒFƒbƒN by TTTT, Ver 4.0.4ˆÈ~‚Íg‚í‚ê‚Ä‚¢‚È‚¢B
+//void OnTimerZombieCheck(HWND hwnd)	//ã‚¾ãƒ³ãƒ“ãƒã‚§ãƒƒã‚¯ by TTTT, Ver 4.0.4ä»¥é™ã¯ä½¿ã‚ã‚Œã¦ã„ãªã„ã€‚
 //{
 //	HWND hwndTaskBar;
 //
@@ -1261,7 +1261,7 @@ void OnTimerZombieCheck2(HWND hwnd)
 //				if (b_NormalLog) WriteNormalLog("b_AutoRestart = FALSE, Quit TClock-Win10");
 //
 //
-//				PostMessage(hwnd, WM_CLOSE, 0, 0);		//ƒƒCƒ“ƒEƒBƒ“ƒhƒE‚ÉWM_CLOSE(102)‚ğ‘—o‚·‚éB
+//				PostMessage(hwnd, WM_CLOSE, 0, 0);		//ãƒ¡ã‚¤ãƒ³ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ã«WM_CLOSE(102)ã‚’é€å‡ºã™ã‚‹ã€‚
 //			}
 //		}
 //	}
@@ -1668,7 +1668,7 @@ void CreateDefaultIniFile_Win10(char *fname)
 	}
 	else
 	{
-		MessageBox(NULL, "tclock-win11.ini‚Ìì¬‚É¸”s‚µ‚Ü‚µ‚½B‘‚«‚İ‰Â”\‚ÈƒtƒHƒ‹ƒ_‚ÅÀs‚µ‚Ä‚­‚¾‚³‚¢",
+		MessageBox(NULL, "tclock-win11.iniã®ä½œæˆã«å¤±æ•—ã—ã¾ã—ãŸã€‚æ›¸ãè¾¼ã¿å¯èƒ½ãªãƒ•ã‚©ãƒ«ãƒ€ã§å®Ÿè¡Œã—ã¦ãã ã•ã„",
 			"TClock-Win10", MB_ICONERROR | MB_OK);
 	}
 }
@@ -1731,16 +1731,16 @@ BOOL CheckRegistry_Win10(void)
 		//}
 
 		//if ((strcmp(s, "") != 0) && (strcmp(s, exeVersionString) != 0)) {
-		//	//Version Up‚Ì‚Ìƒ_ƒCƒAƒƒO•\¦
+		//	//Version Upã®æ™‚ã®ãƒ€ã‚¤ã‚¢ãƒ­ã‚°è¡¨ç¤º
 		//	char tempString[1024];
 		//	wsprintf(tempString, "%s%s%s%s%s%s%s%s",
-		//		"ƒAƒbƒvƒf[ƒgî•ñ(",
+		//		"ã‚¢ãƒƒãƒ—ãƒ‡ãƒ¼ãƒˆæƒ…å ±(",
 		//		exeVersionString,
-		//		")\n\nƒTƒuƒ‚ƒjƒ^‚Ö‚ÌŒv•\¦‹@”\’Ç‰Á (\"‘®\"İ’èƒpƒlƒ‹)\n¦‹N“®“_‚ÅƒƒCƒ“‚Æ“¯‚¶•ûŒü‚Ìƒ^ƒXƒNƒo[‚Ì‚İBƒTƒuƒ‚ƒjƒ^ƒNƒƒbƒN‚Å‚ÍƒNƒŠƒbƒN“™‚Ì‹@”\‚Í“­‚«‚Ü‚¹‚ñB",
-		//		"\n\nƒc[ƒ‹ƒ`ƒbƒv‚Ì–³Œø‰»İ’è’Ç‰Á (\"ƒc[ƒ‹ƒ`ƒbƒv\"İ’èƒpƒlƒ‹)",
+		//		")\n\nã‚µãƒ–ãƒ¢ãƒ‹ã‚¿ã¸ã®æ™‚è¨ˆè¡¨ç¤ºæ©Ÿèƒ½è¿½åŠ  (\"æ›¸å¼\"è¨­å®šãƒ‘ãƒãƒ«)\nâ€»èµ·å‹•æ™‚ç‚¹ã§ãƒ¡ã‚¤ãƒ³ã¨åŒã˜æ–¹å‘ã®ã‚¿ã‚¹ã‚¯ãƒãƒ¼ã®ã¿ã€‚ã‚µãƒ–ãƒ¢ãƒ‹ã‚¿ã‚¯ãƒ­ãƒƒã‚¯ã§ã¯ã‚¯ãƒªãƒƒã‚¯ç­‰ã®æ©Ÿèƒ½ã¯åƒãã¾ã›ã‚“ã€‚",
+		//		"\n\nãƒ„ãƒ¼ãƒ«ãƒãƒƒãƒ—ã®ç„¡åŠ¹åŒ–è¨­å®šè¿½åŠ  (\"ãƒ„ãƒ¼ãƒ«ãƒãƒƒãƒ—\"è¨­å®šãƒ‘ãƒãƒ«)",
 		//		"\n\n\nUpdate Information (",
 		//		exeVersionString,
-		//		")\n\nTClocks on sub monitors (On \"Format\" settings)\n¦Only same-direction taskbars. No TClock functions available on sub monitors",
+		//		")\n\nTClocks on sub monitors (On \"Format\" settings)\nâ€»Only same-direction taskbars. No TClock functions available on sub monitors",
 		//		"\n\nTooltip can be disabled (On \"Tooltip\" settings)"
 		//		);
 
@@ -1881,7 +1881,7 @@ int WINAPI WinMain(HINSTANCE hinst,HINSTANCE hinstPrev,LPSTR lpszCmdLine, int nS
 
 	g_hInst = GetModuleHandle(NULL);
 
-	SetProcessShutdownParameters(0x1FF, 0); // ÅŒã‚Ì•û‚ÅƒVƒƒƒbƒgƒ_ƒEƒ“‚·‚éƒAƒvƒŠƒP[ƒVƒ‡ƒ“
+	SetProcessShutdownParameters(0x1FF, 0); // æœ€å¾Œã®æ–¹ã§ã‚·ãƒ£ãƒƒãƒˆãƒ€ã‚¦ãƒ³ã™ã‚‹ã‚¢ãƒ—ãƒªã‚±ãƒ¼ã‚·ãƒ§ãƒ³
 
 	ExitProcess(TclockExeMain());
 }

@@ -1,7 +1,7 @@
 /*--------------------------------------------------
    filelist.c
-      ƒtƒ@ƒCƒ‹ƒŠƒXƒg•\¦
-   ŸFDQ3TClock 2003
+      ãƒ•ã‚¡ã‚¤ãƒ«ãƒªã‚¹ãƒˆè¡¨ç¤º
+   â—†FDQ3TClock 2003
 ----------------------------------------------------*/
 
 #include "tclock.h"
@@ -199,7 +199,7 @@ BOOL AddUserMenu(HMENU hMenu, LPMALLOC pMalloc, LPCTSTR path)
 	PUSERMENU     *ppUserMenu    = &g_ptUserMenu;
 	PODMENUITEM   *pptODMenuItem = &g_ptODMenuItem;
 
-	//\‘¢‘Ì˜AŒ‹ƒŠƒXƒg‚ÌÅŒã‚Ü‚Å‚¢‚­B
+	//æ§‹é€ ä½“é€£çµãƒªã‚¹ãƒˆã®æœ€å¾Œã¾ã§ã„ãã€‚
 	while((*pptODMenuItem) != NULL)
 		pptODMenuItem = &(*pptODMenuItem)->next;
 	while((*pptListIDL) != NULL)
@@ -233,7 +233,7 @@ BOOL AddUserMenu(HMENU hMenu, LPMALLOC pMalloc, LPCTSTR path)
 	}
 	pDesktop->lpVtbl->Release(pDesktop);
 
-	//ƒtƒHƒ‹ƒ_‚ğ‚·‚×‚Äæ“¾
+	//ãƒ•ã‚©ãƒ«ãƒ€ã‚’ã™ã¹ã¦å–å¾—
 	if(pFolder->lpVtbl->EnumObjects(pFolder, NULL, SHCONTF_FOLDERS, &pEnumIDFolder) != NOERROR)
 	{
 		pFolder->lpVtbl->Release(pFolder);
@@ -305,7 +305,7 @@ BOOL AddUserMenu(HMENU hMenu, LPMALLOC pMalloc, LPCTSTR path)
 
 			(*pptODMenuItem)->hMenuIcon = tSHFileInfo.hIcon;
 
-			// ƒTƒuƒƒjƒ…[ì¬
+			// ã‚µãƒ–ãƒ¡ãƒ‹ãƒ¥ãƒ¼ä½œæˆ
 			*ppUserMenu = (PUSERMENU)malloc(sizeof(USERMENU));
 			if(*ppUserMenu == NULL){
 				nResult = -1;
@@ -327,7 +327,7 @@ BOOL AddUserMenu(HMENU hMenu, LPMALLOC pMalloc, LPCTSTR path)
 			(*ppUserMenu)->next  = NULL;
 			strcpy((*ppUserMenu)->path,tmpPath);
 
-			AddMenuItem((*ppUserMenu)->hMenu, uItemID, MFT_STRING, "ƒtƒHƒ‹ƒ_‚ğŠJ‚­", NULL);
+			AddMenuItem((*ppUserMenu)->hMenu, uItemID, MFT_STRING, "ãƒ•ã‚©ãƒ«ãƒ€ã‚’é–‹ã", NULL);
 			AddMenuItem(hMenu, uItemID, MFT_OWNERDRAW, itemName, (*ppUserMenu)->hMenu);
 			strcpy((*pptODMenuItem)->sMenuStr, itemName);
 		}
@@ -350,7 +350,7 @@ BOOL AddUserMenu(HMENU hMenu, LPMALLOC pMalloc, LPCTSTR path)
 
 	if (path[0] != 0)
 	{
-		//‰B‚µƒtƒ@ƒCƒ‹ˆÈŠO‚Ìƒtƒ@ƒCƒ‹‚Ì‚İ
+		//éš ã—ãƒ•ã‚¡ã‚¤ãƒ«ä»¥å¤–ã®ãƒ•ã‚¡ã‚¤ãƒ«ã®ã¿
 		if(pFolder->lpVtbl->EnumObjects(pFolder, NULL, SHCONTF_NONFOLDERS, &pEnumIDFile) != NOERROR){
 			pFolder->lpVtbl->Release(pFolder);
 			return FALSE;
@@ -524,7 +524,7 @@ void OnMenuRButtonUp(HWND hwnd, WPARAM wParam, LPARAM lParam)
 	BOOL bmainMenu = TRUE;
 	char path[MAX_PATH];
 
-	//ƒƒjƒ…[‚ğŒŸõ
+	//ãƒ¡ãƒ‹ãƒ¥ãƒ¼ã‚’æ¤œç´¢
 	while(pMenuScan != NULL)
 	{
 		if (pMenuScan->hMenu == (HMENU)lParam)
@@ -600,18 +600,18 @@ void OnMenuRButtonUp(HWND hwnd, WPARAM wParam, LPARAM lParam)
 			pItemIDL = (LPITEMIDLIST)((LPBYTE)pItemIDL + pItemIDL->mkid.cb);
 		}
 
-		//ƒtƒ@ƒCƒ‹‚ÌƒAƒCƒeƒ€ID
+		//ãƒ•ã‚¡ã‚¤ãƒ«ã®ã‚¢ã‚¤ãƒ†ãƒ ID
 		pFileIDL = (LPITEMIDLIST)pMalloc->lpVtbl->Alloc(pMalloc, pItemIDL->mkid.cb + sizeof(USHORT));
 		memcpy(pFileIDL, pItemIDL, pItemIDL->mkid.cb);
 		memset((LPBYTE)pItemIDL + pItemIDL->mkid.cb, 0, sizeof(USHORT));
 
-		//eƒfƒBƒŒƒNƒgƒŠ‚ÌƒAƒCƒeƒ€IDƒŠƒXƒg
+		//è¦ªãƒ‡ã‚£ãƒ¬ã‚¯ãƒˆãƒªã®ã‚¢ã‚¤ãƒ†ãƒ IDãƒªã‚¹ãƒˆ
 		pParentIDL = (LPITEMIDLIST)pMalloc->lpVtbl->Alloc(pMalloc, iSize + sizeof(USHORT));
 		memcpy(pParentIDL, pAllIDL, iSize);
 		memset((LPBYTE)pParentIDL + iSize, 0, sizeof(USHORT));
 		pMalloc->lpVtbl->Free(pMalloc, pAllIDL);
 
-		//eƒfƒBƒŒƒNƒgƒŠ‚ÉƒoƒCƒ“ƒh
+		//è¦ªãƒ‡ã‚£ãƒ¬ã‚¯ãƒˆãƒªã«ãƒã‚¤ãƒ³ãƒ‰
 		if (pDesktop->lpVtbl->BindToObject(pDesktop, pParentIDL, 0, &IID_IShellFolder, (LPVOID *)&pFolder)!=NOERROR)
 		{
 			pFolder->lpVtbl->Release(pFolder);
@@ -624,7 +624,7 @@ void OnMenuRButtonUp(HWND hwnd, WPARAM wParam, LPARAM lParam)
 		pMalloc->lpVtbl->Free(pMalloc, pParentIDL);
 		pDesktop->lpVtbl->Release(pDesktop);
 
-		//ƒRƒ“ƒeƒLƒXƒgƒƒjƒ…[‚ÌƒCƒ“ƒ^[ƒtƒFƒCƒXæ“¾
+		//ã‚³ãƒ³ãƒ†ã‚­ã‚¹ãƒˆãƒ¡ãƒ‹ãƒ¥ãƒ¼ã®ã‚¤ãƒ³ã‚¿ãƒ¼ãƒ•ã‚§ã‚¤ã‚¹å–å¾—
 		hr = pFolder->lpVtbl->GetUIObjectOf(pFolder, hwnd, 1, (LPCITEMIDLIST *)&pFileIDL, &IID_IContextMenu, 0, (LPVOID *)&pConMenu);
 		pMalloc->lpVtbl->Free(pMalloc, pFileIDL);
 		pFolder->lpVtbl->Release(pFolder);
@@ -635,7 +635,7 @@ void OnMenuRButtonUp(HWND hwnd, WPARAM wParam, LPARAM lParam)
 			hFileMenu=CreatePopupMenu();
 			if(hFileMenu)
 			{
-				hr = pConMenu->lpVtbl->QueryContextMenu(pConMenu, hFileMenu, 0, 1, 0x7fff, CMF_DEFAULTONLY|CMF_NORMAL); //‚Ù‚©‚Ì‚ğİ’è‚·‚é‚ÆTrackPopupMenu‚Å—‚¿‚éB
+				hr = pConMenu->lpVtbl->QueryContextMenu(pConMenu, hFileMenu, 0, 1, 0x7fff, CMF_DEFAULTONLY|CMF_NORMAL); //ã»ã‹ã®ã‚’è¨­å®šã™ã‚‹ã¨TrackPopupMenuã§è½ã¡ã‚‹ã€‚
 				if (SUCCEEDED(hr))
 				{
 					uIDSysMenu = TrackPopupMenu(hFileMenu,

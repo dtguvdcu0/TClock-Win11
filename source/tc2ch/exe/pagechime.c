@@ -133,7 +133,7 @@ void OnInit(HWND hDlg)
 	SendDlgItemMessage(hDlg, IDC_SPIN_CHIME_OFFSET_S, UDM_SETPOS, 0,
 		(int)(short)GetMyRegLong("Chime", "OffsetChimeSec", 0));
 
-	//à»â∫ÇÃçsÇÕOnChangeEnable()Ç≈ê›íËÇ≥ÇÍÇÈÅB
+	//‰ª•‰∏ã„ÅÆË°å„ÅØOnChangeEnable()„ÅßË®≠ÂÆö„Åï„Çå„Çã„ÄÇ
 	//CheckDlgButton(hDlg, IDC_CHECK_ENABLE_CHIME2,
 	//	GetMyRegLong("Chime", "EnableSecondaryChime", FALSE));
 	SendDlgItemMessage(hDlg, IDC_SPIN_CHIME_OFFSET_S2, UDM_SETRANGE, 0,

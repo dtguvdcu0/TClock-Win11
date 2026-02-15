@@ -35,7 +35,7 @@ extern void GetDisplayTime(SYSTEMTIME* pt, int* beat100);
 #define WS_EX_COMPOSITED 0x02000000L
 #endif
 
-/* ƒc[ƒ‹ƒ`ƒbƒv‚Ì‹–—e—Ê */
+/* ãƒ„ãƒ¼ãƒ«ãƒãƒƒãƒ—ã®è¨±å®¹é‡ */
 #define LEN_TOOLTIP   10240
 
 enum
@@ -106,19 +106,35 @@ static void TooltipApplySetting(void)
 		//SetWindowLongPtr(hwndTooltip, GWL_EXSTYLE, exstyle);
 		if (hFonTooltip) SendMessage(hwndTooltip, WM_SETFONT, (WPARAM)hFonTooltip, TRUE);
 
-		//ˆÈ‰º‚Ìs(TTM_SETTIPBKCOLOR“™‚ÍÀÛ‚É‚ÍŒø‚¢‚Ä‚¢‚È‚¢c
+		//ä»¥ä¸‹ã®è¡Œ(TTM_SETTIPBKCOLORç­‰ã¯å®Ÿéš›ã«ã¯åŠ¹ã„ã¦ã„ãªã„â€¦
 		SendMessage(hwndTooltip, TTM_SETTIPBKCOLOR, colTooltipBack, 0);
 		//SendMessage(hwndTooltip, TTM_SETTIPTEXTCOLOR, colTooltipText, 0);
-		SendMessage(hwndTooltip, TTM_SETTIPTEXTCOLOR, colTooltipBack, 0);	//‚±‚±‚Ìİ’è‚Íˆêu‚ÌƒVƒXƒeƒ€‚É‚æ‚é•\¦—p‚È‚Ì‚ÅA‚ ‚¦‚Ä”wŒi‚Æ“¯‚¶‚É‚µ‚ÄŒ©‚¦‚È‚­‚·‚éB
+		SendMessage(hwndTooltip, TTM_SETTIPTEXTCOLOR, colTooltipBack, 0);	//ã“ã“ã®è¨­å®šã¯ä¸€ç¬ã®ã‚·ã‚¹ãƒ†ãƒ ã«ã‚ˆã‚‹è¡¨ç¤ºç”¨ãªã®ã§ã€ã‚ãˆã¦èƒŒæ™¯ã¨åŒã˜ã«ã—ã¦è¦‹ãˆãªãã™ã‚‹ã€‚
 	}
 }
 
 static void TooltipUpdateText(void);
 static void TooltipUpdate2(HDC hdc, LPRECT lprcDraw, LPRECT lprect, UINT uDrawFlags);
+static int TooltipDrawTextLogged(HDC hdc, LPCTSTR pszText, int cchText, LPRECT prc, UINT format, int tag);
+
+static int TooltipDrawTextLogged(HDC hdc, LPCTSTR pszText, int cchText, LPRECT prc, UINT format, int tag)
+{
+	int ret = DrawText(hdc, pszText, cchText, prc, format);
+	if (ret == 0 && b_DebugLog) {
+		static DWORD s_lastLogTick = 0;
+		DWORD now = GetTickCount();
+		if ((now - s_lastLogTick) >= 2000) {
+			writeDebugLog_Win10("[tooltip.c][DrawText] failed, tag=", tag);
+			writeDebugLog_Win10("[tooltip.c][DrawText] GetLastError=", (int)GetLastError());
+			s_lastLogTick = now;
+		}
+	}
+	return ret;
+}
 
 
 /*------------------------------------------------
-@ƒc[ƒ‹ƒ`ƒbƒvƒEƒBƒ“ƒhƒE‚Ìì¬
+ã€€ãƒ„ãƒ¼ãƒ«ãƒãƒƒãƒ—ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ã®ä½œæˆ
 --------------------------------------------------*/
 void TooltipInit(HWND hwnd)
 {
@@ -145,10 +161,10 @@ void TooltipInit(HWND hwnd)
 	ti.uId = 1;
 
 	if (bWin11Main) {
-		ti.uFlags = 0;	//Win11‚Å‚ÍTTF_SUBCLASS‚ğ“ü‚ê‚é‚ÆI—¹‚ÉƒNƒ‰ƒbƒVƒ…‚·‚éBƒ}ƒEƒX‚ª“ü‚Á‚½Û‚Ì1‰ñÁ‚¦‚é–â‘è‚Ío‚È‚¢–Í—lH
+		ti.uFlags = 0;	//Win11ã§ã¯TTF_SUBCLASSã‚’å…¥ã‚Œã‚‹ã¨çµ‚äº†æ™‚ã«ã‚¯ãƒ©ãƒƒã‚·ãƒ¥ã™ã‚‹ã€‚ãƒã‚¦ã‚¹ãŒå…¥ã£ãŸéš›ã®1å›æ¶ˆãˆã‚‹å•é¡Œã¯å‡ºãªã„æ¨¡æ§˜ï¼Ÿ
 	}
 	else {
-		ti.uFlags = TTF_SUBCLASS;	//TTF_SUBCLASS‚ğ“ü‚ê‚È‚¢‚ÆAƒ}ƒEƒX‚ª“ü‚Á‚½Û‚ÌÀ•W‚ª¶‚ÉˆÚ“®‚µ‚½Û‚É1‰ñÁ‚¦‚é(“_–Å‚·‚é)BVer4.1ˆÈ~
+		ti.uFlags = TTF_SUBCLASS;	//TTF_SUBCLASSã‚’å…¥ã‚Œãªã„ã¨ã€ãƒã‚¦ã‚¹ãŒå…¥ã£ãŸéš›ã®åº§æ¨™ãŒå·¦ã«ç§»å‹•ã—ãŸéš›ã«1å›æ¶ˆãˆã‚‹(ç‚¹æ»…ã™ã‚‹)ã€‚Ver4.1ä»¥é™
 	}
 
 
@@ -159,7 +175,7 @@ void TooltipInit(HWND hwnd)
 	//ti.rect.right = 480;
 	//ti.rect.bottom = 480;
 
-	//‚±‚ê‚ğŒÄ‚Î‚ê‚é“_‚ÅƒƒCƒ“ƒNƒƒbƒNƒTƒCƒY‚ªŠm’è‚µ‚Ä‚¢‚é‚Í‚¸‚È‚Ì‚ÅF
+	//ã“ã‚Œã‚’å‘¼ã°ã‚Œã‚‹æ™‚ç‚¹ã§ãƒ¡ã‚¤ãƒ³ã‚¯ãƒ­ãƒƒã‚¯ã‚µã‚¤ã‚ºãŒç¢ºå®šã—ã¦ã„ã‚‹ã¯ãšãªã®ã§ï¼š
 	ti.rect.right = widthMainClockFrame;
 	ti.rect.bottom = heightMainClockFrame;
 
@@ -191,10 +207,10 @@ void TooltipAddSubClock(int index)
 
 	if (bWin11Main) 
 	{
-		tempTooltipInfo.uFlags = 0;	//Win11‚Å‚ÍTTF_SUBCLASS‚ğ“ü‚ê‚é‚ÆI—¹‚ÉƒNƒ‰ƒbƒVƒ…‚·‚éBƒ}ƒEƒX‚ª“ü‚Á‚½Û‚Ì1‰ñÁ‚¦‚é–â‘è‚Ío‚È‚¢–Í—lH
+		tempTooltipInfo.uFlags = 0;	//Win11ã§ã¯TTF_SUBCLASSã‚’å…¥ã‚Œã‚‹ã¨çµ‚äº†æ™‚ã«ã‚¯ãƒ©ãƒƒã‚·ãƒ¥ã™ã‚‹ã€‚ãƒã‚¦ã‚¹ãŒå…¥ã£ãŸéš›ã®1å›æ¶ˆãˆã‚‹å•é¡Œã¯å‡ºãªã„æ¨¡æ§˜ï¼Ÿ
 	}
 	else {
-		tempTooltipInfo.uFlags = TTF_SUBCLASS;	//TTF_SUBCLASS‚ğ“ü‚ê‚È‚¢‚ÆAƒ}ƒEƒX‚ª“ü‚Á‚½Û‚ÌÀ•W‚ª¶‚ÉˆÚ“®‚µ‚½Û‚É1‰ñÁ‚¦‚é(“_–Å‚·‚é)BVer4.1ˆÈ~
+		tempTooltipInfo.uFlags = TTF_SUBCLASS;	//TTF_SUBCLASSã‚’å…¥ã‚Œãªã„ã¨ã€ãƒã‚¦ã‚¹ãŒå…¥ã£ãŸéš›ã®åº§æ¨™ãŒå·¦ã«ç§»å‹•ã—ãŸéš›ã«1å›æ¶ˆãˆã‚‹(ç‚¹æ»…ã™ã‚‹)ã€‚Ver4.1ä»¥é™
 	}
 
 	tempTooltipInfo.hinst = NULL;
@@ -265,15 +281,15 @@ void TooltipOnRefresh(HWND hwnd)
 //	2002/11/27 - 635 modified.
 //-------------------------------------------------
 //	GetTooltipText
-//		Tooltip‚ÌƒeƒLƒXƒg‚ğAƒŒƒWƒXƒgƒŠ‚©‚ç‚Å‚Í‚È‚­AƒeƒLƒXƒgƒtƒ@ƒCƒ‹‚©‚ç“Ç‚İ‚İ‚Ü‚·B
-//	ˆø”F	[char * pszText]	“Ç‚İ‚ñ‚¾•¶š—ñ‚ğŠi”[‚·‚é•Ï”‚Ö‚Ìƒ|ƒCƒ“ƒ^
-//	–ß‚è’lF0		ƒGƒ‰[BƒeƒLƒXƒgƒtƒ@ƒCƒ‹‚ª‘¶İ‚µ‚È‚©‚Á‚½Bƒtƒ@ƒCƒ‹‚Í‘¶İ‚µ‚½‚ªA‹ó‚¾‚Á‚½B‚È‚Ç
-//			0ˆÈŠO	¬Œ÷
+//		Tooltipã®ãƒ†ã‚­ã‚¹ãƒˆã‚’ã€ãƒ¬ã‚¸ã‚¹ãƒˆãƒªã‹ã‚‰ã§ã¯ãªãã€ãƒ†ã‚­ã‚¹ãƒˆãƒ•ã‚¡ã‚¤ãƒ«ã‹ã‚‰èª­ã¿è¾¼ã¿ã¾ã™ã€‚
+//	å¼•æ•°ï¼š	[char * pszText]	èª­ã¿è¾¼ã‚“ã æ–‡å­—åˆ—ã‚’æ ¼ç´ã™ã‚‹å¤‰æ•°ã¸ã®ãƒã‚¤ãƒ³ã‚¿
+//	æˆ»ã‚Šå€¤ï¼š0		ã‚¨ãƒ©ãƒ¼ã€‚ãƒ†ã‚­ã‚¹ãƒˆãƒ•ã‚¡ã‚¤ãƒ«ãŒå­˜åœ¨ã—ãªã‹ã£ãŸã€‚ãƒ•ã‚¡ã‚¤ãƒ«ã¯å­˜åœ¨ã—ãŸãŒã€ç©ºã ã£ãŸã€‚ãªã©
+//			0ä»¥å¤–	æˆåŠŸ
 //-------------------------------------------------
 static BOOL GetTooltipText(PSTR pszText)
 {
 	HANDLE	hFile;
-	char	szFilePath[MAX_PATH];	//	ƒeƒLƒXƒgƒtƒ@ƒCƒ‹‚ÌƒpƒX
+	char	szFilePath[MAX_PATH];	//	ãƒ†ã‚­ã‚¹ãƒˆãƒ•ã‚¡ã‚¤ãƒ«ã®ãƒ‘ã‚¹
 	DWORD	dwReadSize;
 	DWORD	dwFileSize;
 	size_t	len;
@@ -286,7 +302,7 @@ static BOOL GetTooltipText(PSTR pszText)
 
 	if(!pszText)
 	{
-		//	’l‚ğŠi”[‚·‚éƒAƒhƒŒƒX‚ª‘¶İ‚µ‚È‚¢‚Ì‚ÅAFALSE‚ğ•Ô‚µ‚ÄI—¹
+		//	å€¤ã‚’æ ¼ç´ã™ã‚‹ã‚¢ãƒ‰ãƒ¬ã‚¹ãŒå­˜åœ¨ã—ãªã„ã®ã§ã€FALSEã‚’è¿”ã—ã¦çµ‚äº†
 		return FALSE;
 	}
 
@@ -302,7 +318,7 @@ static BOOL GetTooltipText(PSTR pszText)
 		}
 	}
 	if (bAbsPath == FALSE) {
-		// TClock‚ÌˆÊ’u‚ğŠî€ƒpƒX‚Æ‚µ‚Äw’è•¶š—ñ‚ğ‘Š‘ÎƒpƒX‚Æ‚µ‚Ä’Ç‰Á
+		// TClockã®ä½ç½®ã‚’åŸºæº–ãƒ‘ã‚¹ã¨ã—ã¦æŒ‡å®šæ–‡å­—åˆ—ã‚’ç›¸å¯¾ãƒ‘ã‚¹ã¨ã—ã¦è¿½åŠ 
 		GetModuleFileName(hmod, szFilePath, sizeof(szFilePath));
 		del_title(szFilePath);
 		if (len + strlen(szFilePath) >= MAX_PATH) {
@@ -311,12 +327,12 @@ static BOOL GetTooltipText(PSTR pszText)
 		add_title(szFilePath, pszText);
 		*pszText = '\0';
 	} else {
-		//635@p5 ƒtƒ@ƒCƒ‹–¼‚ğæ“¾‚µ‚Äƒc[ƒ‹ƒ`ƒbƒv‚ğƒNƒŠƒAB
+		//635@p5 ãƒ•ã‚¡ã‚¤ãƒ«åã‚’å–å¾—ã—ã¦ãƒ„ãƒ¼ãƒ«ãƒãƒƒãƒ—ã‚’ã‚¯ãƒªã‚¢ã€‚
 		strcpy(szFilePath, pszText);
 		*pszText = '\0';
 	}
 
-	//	ƒtƒ@ƒCƒ‹‚ğ“Ç‚İ‚Ş
+	//	ãƒ•ã‚¡ã‚¤ãƒ«ã‚’èª­ã¿è¾¼ã‚€
 	hFile = CreateFile(szFilePath,
 					   GENERIC_READ,
 					   FILE_SHARE_READ,
@@ -326,7 +342,7 @@ static BOOL GetTooltipText(PSTR pszText)
 					   NULL);
 	if(hFile == INVALID_HANDLE_VALUE)
 	{
-		//	ƒtƒ@ƒCƒ‹‚ª‘¶İ‚µ‚È‚¢‚Ì‚ÅAFALSE‚ğ•Ô‚µ‚ÄI—¹
+		//	ãƒ•ã‚¡ã‚¤ãƒ«ãŒå­˜åœ¨ã—ãªã„ã®ã§ã€FALSEã‚’è¿”ã—ã¦çµ‚äº†
 		return FALSE;
 	}
 
@@ -335,21 +351,21 @@ static BOOL GetTooltipText(PSTR pszText)
 	if ( dwFileSize > (DWORD)LEN_TOOLTIP)
 		dwFileSize = (DWORD)(LEN_TOOLTIP-1);
 
-	//	ƒtƒ@ƒCƒ‹“Ç‚İ‚İ
+	//	ãƒ•ã‚¡ã‚¤ãƒ«èª­ã¿è¾¼ã¿
 	ReadFile(hFile, pszText, dwFileSize, &dwReadSize, NULL);
-	//	ƒtƒ@ƒCƒ‹‚ğƒNƒ[ƒY
+	//	ãƒ•ã‚¡ã‚¤ãƒ«ã‚’ã‚¯ãƒ­ãƒ¼ã‚º
 	CloseHandle(hFile);
 
 	if(strcmp(pszText, "") == 0)
 	{
-		//	•¶š—ñæ“¾‚É¸”sBƒŒƒWƒXƒgƒŠæ“¾‚Ö‘–‚ç‚¹‚é‚½‚ß‚ÉFALSE‚ğ•Ô‚µ‚ÄI—¹
+		//	æ–‡å­—åˆ—å–å¾—ã«å¤±æ•—ã€‚ãƒ¬ã‚¸ã‚¹ãƒˆãƒªå–å¾—ã¸èµ°ã‚‰ã›ã‚‹ãŸã‚ã«FALSEã‚’è¿”ã—ã¦çµ‚äº†
 		return FALSE;
 	}
 
-	//	•¶š—ñ‚Ì––”ö‚ÉA‹­§“I‚ÉNULL String‚ğ•t‰Ái^^;
+	//	æ–‡å­—åˆ—ã®æœ«å°¾ã«ã€å¼·åˆ¶çš„ã«NULL Stringã‚’ä»˜åŠ ï¼ˆ^^;
 	pszText[dwFileSize] = '\0';
 
-	//	¬Œ÷‚µ‚½‚Ì‚ÅTRUE‚ğ•Ô‚·
+	//	æˆåŠŸã—ãŸã®ã§TRUEã‚’è¿”ã™
 	return TRUE;
 }
 
@@ -360,9 +376,9 @@ static BOOL GetTooltipText(PSTR pszText)
 
 /*------------------------------------------------
 draw tooltip	
-Ver4.1ˆÈ~B
-ƒVƒXƒeƒ€•`‰æEƒ^ƒCƒgƒ‹•Ê•`‰æ‚ğg‚í‚È‚¢‘O’ñ‚ÌV‚µ‚¢ŠÖ”B‚¿‚ç‚Â‚«‚Í‚¾‚¢‚½‚¢—}§‚Å‚«‚éB
-ƒTƒCƒY‚ÍƒVƒXƒeƒ€‘¤‚Å³‚µ‚­İ’è‚³‚ê‚Ä‚¢‚é(•¶šXV‚ğ’Ê‚µ‚Ä)‚à‚Ì‚Æ‚µ‚ÄÄ’²®‚ğs‚í‚È‚¢‚±‚Æ‚Å‰‚Ì‚¿‚ç‚Â‚«‚à—}§‰Â”\B
+Ver4.1ä»¥é™ã€‚
+ã‚·ã‚¹ãƒ†ãƒ æç”»ãƒ»ã‚¿ã‚¤ãƒˆãƒ«åˆ¥æç”»ã‚’ä½¿ã‚ãªã„å‰æã®æ–°ã—ã„é–¢æ•°ã€‚ã¡ã‚‰ã¤ãã¯ã ã„ãŸã„æŠ‘åˆ¶ã§ãã‚‹ã€‚
+ã‚µã‚¤ã‚ºã¯ã‚·ã‚¹ãƒ†ãƒ å´ã§æ­£ã—ãè¨­å®šã•ã‚Œã¦ã„ã‚‹(æ–‡å­—æ›´æ–°ã‚’é€šã—ã¦)ã‚‚ã®ã¨ã—ã¦å†èª¿æ•´ã‚’è¡Œã‚ãªã„ã“ã¨ã§ç¸ã®ã¡ã‚‰ã¤ãã‚‚æŠ‘åˆ¶å¯èƒ½ã€‚
 --------------------------------------------------*/
 static void TooltipUpdate2(HDC hdc, LPRECT lprcDraw, LPRECT lprect, UINT uDrawFlags)
 {
@@ -391,7 +407,7 @@ static void TooltipUpdate2(HDC hdc, LPRECT lprcDraw, LPRECT lprect, UINT uDrawFl
 	//	writeDebugLog_Win10("[tooltip.c][TooltipUpdate2] *lprcDraw.bottom =", rcall.bottom);
 	//}
 
-	if (lprect)	//‚±‚ÌŠÖ”‚Å‚ÍƒTƒCƒY•ÏX‚ğs‚í‚È‚¢‚Ì‚Å‚»‚Ì‚Ü‚ÜƒTƒCƒY‚ğ•Ô‚·
+	if (lprect)	//ã“ã®é–¢æ•°ã§ã¯ã‚µã‚¤ã‚ºå¤‰æ›´ã‚’è¡Œã‚ãªã„ã®ã§ãã®ã¾ã¾ã‚µã‚¤ã‚ºã‚’è¿”ã™
 	{
 		lprect->top = rcall.top;
 		lprect->left = rcall.left;
@@ -403,10 +419,10 @@ static void TooltipUpdate2(HDC hdc, LPRECT lprcDraw, LPRECT lprect, UINT uDrawFl
 
 
 
-//	SelectObject(hdc, hFonTooltip);		//‚±‚ê‚ÍŒø‚¢‚Ä‚¢‚È‚¢‚Ì‚ÅƒRƒƒ“ƒgƒAƒEƒg(Ver 4.11)
+//	SelectObject(hdc, hFonTooltip);		//ã“ã‚Œã¯åŠ¹ã„ã¦ã„ãªã„ã®ã§ã‚³ãƒ¡ãƒ³ãƒˆã‚¢ã‚¦ãƒˆ(Ver 4.11)
 
 	rc = rcall;
-	top = rcall.top;		//top‚ªŸ‚Ìo—Í‚ÌYˆÊ’u(ã)
+	top = rcall.top;		//topãŒæ¬¡ã®å‡ºåŠ›ã®Yä½ç½®(ä¸Š)
 	maxwidth = 0;
 
 	HDC hdcTemp;
@@ -420,7 +436,7 @@ static void TooltipUpdate2(HDC hdc, LPRECT lprcDraw, LPRECT lprect, UINT uDrawFl
 		HBITMAP hbmpTemp;
 
 
-		//ƒ^ƒCƒgƒ‹•\¦
+		//ã‚¿ã‚¤ãƒˆãƒ«è¡¨ç¤º
 		if (titleTooltip[0] != 0) {
 			SelectObject(hdcTemp, hFonTooltipTitle);
 			SetTextColor(hdcTemp, colTooltipTitle);
@@ -431,15 +447,15 @@ static void TooltipUpdate2(HDC hdc, LPRECT lprcDraw, LPRECT lprect, UINT uDrawFl
 				while (pszText[len] && pszText[len] != '\r' && pszText[len] != '\n') len++;
 				rc = rcall;
 				rc.top = top;
-				rc.right = 1980;	//‰üs‚µ‚È‚¢‚æ‚¤‚É‰¼‘zRECT‚ğ’·‚­‚·‚éB
+				rc.right = 1980;	//æ”¹è¡Œã—ãªã„ã‚ˆã†ã«ä»®æƒ³RECTã‚’é•·ãã™ã‚‹ã€‚
 				if (len)
 				{
-					height = DrawText(hdcTemp, pszText, len, &rc, uDrawFlags | DT_CALCRECT);
+					height = TooltipDrawTextLogged(hdcTemp, pszText, len, &rc, uDrawFlags | DT_CALCRECT, 1);
 					width = rc.right - rc.left;
 				}
 				else
 				{
-					height = DrawText(hdcTemp, " ", 1, &rc, uDrawFlags | DT_CALCRECT);
+					height = TooltipDrawTextLogged(hdcTemp, " ", 1, &rc, uDrawFlags | DT_CALCRECT, 2);
 				}
 
 				hbmpTemp = NULL;
@@ -458,7 +474,7 @@ static void TooltipUpdate2(HDC hdc, LPRECT lprcDraw, LPRECT lprect, UINT uDrawFl
 					{
 						rc.left = ((rcall.right - rcall.left) - width) / 2;
 						//rc.right = ((rcall.right - rcall.left) + width) / 2;
-						DrawText(hdcTemp, pszText, len, &rc, uDrawFlags | DT_SINGLELINE);
+						TooltipDrawTextLogged(hdcTemp, pszText, len, &rc, uDrawFlags | DT_SINGLELINE, 3);
 					}
 					BitBlt(hdc, rcall.left, top, rcall.right - rcall.left, height, hdcTemp, 0, 0, SRCCOPY);
 					DeleteObject(hbmpTemp);
@@ -479,7 +495,7 @@ static void TooltipUpdate2(HDC hdc, LPRECT lprcDraw, LPRECT lprect, UINT uDrawFl
 
 		pszText = formatTooltip;
 
-		if (titleTooltip[0] != 0) {		//ƒ^ƒCƒgƒ‹—ÌˆæŠm•Û—p‚Ì‰üs‚ğ2‚Âíœ‚·‚éB
+		if (titleTooltip[0] != 0) {		//ã‚¿ã‚¤ãƒˆãƒ«é ˜åŸŸç¢ºä¿ç”¨ã®æ”¹è¡Œã‚’2ã¤å‰Šé™¤ã™ã‚‹ã€‚
 			if (*pszText == 0x0d/*'\r'*/) pszText++;
 			if (*pszText == 0x0a/*'\n'*/) pszText++;
 			if (*pszText == 0x0d/*'\r'*/) pszText++;
@@ -496,11 +512,11 @@ static void TooltipUpdate2(HDC hdc, LPRECT lprcDraw, LPRECT lprect, UINT uDrawFl
 
 			if (len)
 			{
-				height = DrawText(hdcTemp, pszText, len, &rc, uDrawFlags | DT_CALCRECT);
+				height = TooltipDrawTextLogged(hdcTemp, pszText, len, &rc, uDrawFlags | DT_CALCRECT, 1);
 			}
 			else
 			{
-				height = DrawText(hdcTemp, " ", 1, &rc, uDrawFlags | DT_CALCRECT);
+				height = TooltipDrawTextLogged(hdcTemp, " ", 1, &rc, uDrawFlags | DT_CALCRECT, 2);
 			}
 
 			//HBITMAP hbmpTemp;
@@ -519,7 +535,7 @@ static void TooltipUpdate2(HDC hdc, LPRECT lprcDraw, LPRECT lprect, UINT uDrawFl
 				FillRect(hdcTemp, &rc, hBrushTooltipBack);
 				if (len)
 				{
-					DrawText(hdcTemp, pszText, len, &rc, uDrawFlags);
+					TooltipDrawTextLogged(hdcTemp, pszText, len, &rc, uDrawFlags, 4);
 				}
 				BitBlt(hdc, rcall.left, top, rcall.right - rcall.left, height, hdcTemp, 0, 0, SRCCOPY);
 				DeleteObject(hbmpTemp);
@@ -529,7 +545,7 @@ static void TooltipUpdate2(HDC hdc, LPRECT lprcDraw, LPRECT lprect, UINT uDrawFl
 			pszText += len;
 
 			if (*pszText == 0x0d/*'\r'*/) pszText++;
-			if (*pszText == 0x0a/*'\n'*/) pszText++;	//‰üs1‚ÂƒXƒLƒbƒv‚³‚ê‚é
+			if (*pszText == 0x0a/*'\n'*/) pszText++;	//æ”¹è¡Œ1ã¤ã‚¹ã‚­ãƒƒãƒ—ã•ã‚Œã‚‹
 		}
 	}
 	DeleteDC(hdcTemp);
@@ -553,7 +569,7 @@ static void TooltipUpdate2(HDC hdc, LPRECT lprcDraw, LPRECT lprect, UINT uDrawFl
 
 
 /*------------------------------------------------
-@ƒc[ƒ‹ƒ`ƒbƒv‚Ì•\¦“à—eæ“¾
+ã€€ãƒ„ãƒ¼ãƒ«ãƒãƒƒãƒ—ã®è¡¨ç¤ºå†…å®¹å–å¾—
 --------------------------------------------------*/
 static void TooltipUpdateText(void)
 {
@@ -568,7 +584,7 @@ static void TooltipUpdateText(void)
 
 
 	if (hFonTooltip) {
-		SendMessage(hwndTooltip, WM_SETFONT, (WPARAM)hFonTooltip, TRUE);	//ƒAƒbƒvƒf[ƒg‚Ì‚½‚Ñ‚ÉƒtƒHƒ“ƒg‚ğİ’è‚µ‚È‚¨‚·B(2022/3/14 5chw“E‘Î‰)
+		SendMessage(hwndTooltip, WM_SETFONT, (WPARAM)hFonTooltip, TRUE);	//ã‚¢ãƒƒãƒ—ãƒ‡ãƒ¼ãƒˆã®ãŸã³ã«ãƒ•ã‚©ãƒ³ãƒˆã‚’è¨­å®šã—ãªãŠã™ã€‚(2022/3/14 5chæŒ‡æ‘˜å¯¾å¿œ)
 	}
 
 	bTooltipUpdated = TRUE;
@@ -626,7 +642,7 @@ static void TooltipUpdateText(void)
 	{
 		memmove( fmt, fmt + 5, (size_t)((strchr(fmt,'\0')-1)-fmt));
 		if(!GetTooltipText(fmt)){
-			strcpy(fmt, "ƒtƒ@ƒCƒ‹æ“¾¸”s");
+			strcpy(fmt, "ãƒ•ã‚¡ã‚¤ãƒ«å–å¾—å¤±æ•—");
 		}
 	}
 	if(fmt[0] == 0)
@@ -642,7 +658,7 @@ static void TooltipUpdateText(void)
 	{
 		MakeFormat(tipt, tipt_info, &t, beat100, tiptitle);
 		strcpy(titleTooltip, tipt);
-		sprintf(formatTooltip, "\n\n\n%s", s);	//ƒ^ƒCƒgƒ‹‚ª‚ ‚éê‡‚Í‚‚³Šm•Û‚Ì‚½‚ß‚Ì‹ósx3‚ğ“ü‚ê‚éB
+		sprintf(formatTooltip, "\n\n\n%s", s);	//ã‚¿ã‚¤ãƒˆãƒ«ãŒã‚ã‚‹å ´åˆã¯é«˜ã•ç¢ºä¿ã®ãŸã‚ã®ç©ºè¡Œx3ã‚’å…¥ã‚Œã‚‹ã€‚
 	}
 	else
 	{
@@ -652,14 +668,14 @@ static void TooltipUpdateText(void)
 }
 
 /*------------------------------------------------
-@ƒc[ƒ‹ƒ`ƒbƒv‚Ì•\¦XV
+ã€€ãƒ„ãƒ¼ãƒ«ãƒãƒƒãƒ—ã®è¡¨ç¤ºæ›´æ–°
 --------------------------------------------------*/
 void TooltipOnTimer(HWND hwnd, BOOL bForce)
 {
 
-	//Ver 4.1ˆÈ~‚ÍOnTimer_Win10‚©‚çs‚¤‚±‚Æ‚Æ‚·‚éB
-	//‚»‚Ì‚½‚ß‚ÌŒ³‚Ì200ms‚²‚Æ‚ÌƒJƒEƒ“ƒg‚Í–³Œø‰»
-	//if (++iTooltipDispIntervalCount < iTooltipDispInterval * 5) return;		//200ms’PˆÊ‚È‚Ì‚Å5‰ñ‚É1‰ñ‚µ‚©’Ê‰ß‚µ‚È‚¢B
+	//Ver 4.1ä»¥é™ã¯OnTimer_Win10ã‹ã‚‰è¡Œã†ã“ã¨ã¨ã™ã‚‹ã€‚
+	//ãã®ãŸã‚ã®å…ƒã®200msã”ã¨ã®ã‚«ã‚¦ãƒ³ãƒˆã¯ç„¡åŠ¹åŒ–
+	//if (++iTooltipDispIntervalCount < iTooltipDispInterval * 5) return;		//200mså˜ä½ãªã®ã§5å›ã«1å›ã—ã‹é€šéã—ãªã„ã€‚
 	//iTooltipDispIntervalCount = 0;
 
 	if (b_DebugLog)writeDebugLog_Win10("[tooltip.c] TooltipOnTimer called, bTooltipShow =", bTooltipShow);
@@ -673,7 +689,7 @@ void TooltipOnTimer(HWND hwnd, BOOL bForce)
 	{
 		TooltipUpdateText();
 
-		//ˆÈ‰º‚Ìs‚ğs‚¤‚±‚Æ‚ÅAƒc[ƒ‹ƒ`ƒbƒv‚ªƒ^ƒCƒ€ƒAƒEƒg‚ÅÁ‚¦‚È‚­‚È‚éBhwnd‚ÆuId‚ğƒc[ƒ‹ƒ`ƒbƒv‚ğo‚µ‚Ä‚¢‚éŒv‚É‡‚í‚¹‚é•K—v‚ ‚èB
+		//ä»¥ä¸‹ã®è¡Œã‚’è¡Œã†ã“ã¨ã§ã€ãƒ„ãƒ¼ãƒ«ãƒãƒƒãƒ—ãŒã‚¿ã‚¤ãƒ ã‚¢ã‚¦ãƒˆã§æ¶ˆãˆãªããªã‚‹ã€‚hwndã¨uIdã‚’ãƒ„ãƒ¼ãƒ«ãƒãƒƒãƒ—ã‚’å‡ºã—ã¦ã„ã‚‹æ™‚è¨ˆã«åˆã‚ã›ã‚‹å¿…è¦ã‚ã‚Šã€‚
 		TOOLINFO ti;
 		ti.cbSize = sizeof(TOOLINFO);
 		ti.hwnd = hwndCurrentTooltipOwner;
@@ -862,10 +878,10 @@ DWORD TooltipFindFormat(void)
 
 
 	strcpy(tip, fmtToolTip1);
-	//ƒtƒ@ƒCƒ‹w’è‚Å‚ ‚Á‚½ê‡
+	//ãƒ•ã‚¡ã‚¤ãƒ«æŒ‡å®šã§ã‚ã£ãŸå ´åˆ
 	if(tip[0] == 'f' && tip[1] == 'i' && tip[2] == 'l' && tip[3] == 'e' && tip[4] == ':')
 	{
-		//Path‚ğØ‚èo‚·
+		//Pathã‚’åˆ‡ã‚Šå‡ºã™
 		memmove( tip, tip + 5, (size_t)((strchr(tip,'\0')-1)-tip));
 		strcpy(tip_path, tip);
 		del_title(tip_path);
@@ -884,23 +900,23 @@ DWORD TooltipFindFormat(void)
 			wsprintf(strDebug, "%s%s", "[tooltip.c][TooltipFindFormat] tip_title: ", tip_title);
 			writeDebugLog_Win10(strDebug, 999);
 		}
-		if (!strcmp(tip_path, g_mydir_dll) || !GetTooltipText(tip))		//Path‚ªƒAƒvƒŠƒpƒX‚Æ“¯ˆê‚©H
+		if (!strcmp(tip_path, g_mydir_dll) || !GetTooltipText(tip))		//PathãŒã‚¢ãƒ—ãƒªãƒ‘ã‚¹ã¨åŒä¸€ã‹ï¼Ÿ
 		{
-			//Path‚ªƒAƒvƒŠƒpƒX‚Æ“¯ˆêA‚à‚µ‚­‚Íƒtƒ@ƒCƒ‹æ“¾¸”s‚Ìê‡‚ÍƒpƒX‚ğíœ‚·‚éB
+			//PathãŒã‚¢ãƒ—ãƒªãƒ‘ã‚¹ã¨åŒä¸€ã€ã‚‚ã—ãã¯ãƒ•ã‚¡ã‚¤ãƒ«å–å¾—å¤±æ•—ã®å ´åˆã¯ãƒ‘ã‚¹ã‚’å‰Šé™¤ã™ã‚‹ã€‚
 			if (b_DebugLog) writeDebugLog_Win10("tip_path and g_mydir_dll are identical", 999);
 			strcpy(tip_temp, "file:");
 			strcat(tip_temp, tip_title);
 			strcpy(tip, tip_title);
 			if (!GetTooltipText(tip))
 			{
-				//ƒtƒ@ƒCƒ‹‚ª‘¶İ‚µ‚È‚¢ê‡‚ÍƒfƒtƒHƒ‹ƒgƒtƒ@ƒCƒ‹–¼‚É’¼‚µ‚ÄƒŠƒgƒ‰ƒC
+				//ãƒ•ã‚¡ã‚¤ãƒ«ãŒå­˜åœ¨ã—ãªã„å ´åˆã¯ãƒ‡ãƒ•ã‚©ãƒ«ãƒˆãƒ•ã‚¡ã‚¤ãƒ«åã«ç›´ã—ã¦ãƒªãƒˆãƒ©ã‚¤
 				strcpy(tip, "tclock_tooltip1.txt");
 				if (!GetTooltipText(tip))
 				{
 					strcpy(tip, "tclock_tooltip.txt");
 					if (!GetTooltipText(tip))
 					{
-						strcpy(tip, "ƒtƒ@ƒCƒ‹æ“¾¸”s(ToolTip1)");
+						strcpy(tip, "ãƒ•ã‚¡ã‚¤ãƒ«å–å¾—å¤±æ•—(ToolTip1)");
 						//SetMyRegStr("Tooltip", "Tooltip", "TClock <%LDATE%>");
 					}
 					else
@@ -920,13 +936,13 @@ DWORD TooltipFindFormat(void)
 		}
 	}
 	dwInfoTooltip |= FindFormat(tip);
-	//	Tooltip‚ÌƒeƒLƒXƒg‚ğƒŒƒWƒXƒgƒŠ‚©‚ç“Ç‚İ‚Ş
+	//	Tooltipã®ãƒ†ã‚­ã‚¹ãƒˆã‚’ãƒ¬ã‚¸ã‚¹ãƒˆãƒªã‹ã‚‰èª­ã¿è¾¼ã‚€
 	//GetMyRegStr("Tooltip", "Tooltip2", tip, sizeof(tip), "");
 	strcpy(tip, fmtToolTip2);
-	//ƒtƒ@ƒCƒ‹w’è‚Å‚ ‚Á‚½ê‡
+	//ãƒ•ã‚¡ã‚¤ãƒ«æŒ‡å®šã§ã‚ã£ãŸå ´åˆ
 	if(tip[0] == 'f' && tip[1] == 'i' && tip[2] == 'l' && tip[3] == 'e' && tip[4] == ':')
 	{
-		//Path‚ğØ‚èo‚·
+		//Pathã‚’åˆ‡ã‚Šå‡ºã™
 		memmove( tip, tip + 5, (size_t)((strchr(tip,'\0')-1)-tip));
 		strcpy(tip_path, tip);
 		del_title(tip_path);
@@ -945,20 +961,20 @@ DWORD TooltipFindFormat(void)
 			wsprintf(strDebug, "%s%s", "[tooltip.c][TooltipFindFormat] tip_title: ", tip_title);
 			writeDebugLog_Win10(strDebug, 999);
 		}
-		if (!strcmp(tip_path, g_mydir_dll) || !GetTooltipText(tip))		//Path‚ªƒAƒvƒŠƒpƒX‚Æ“¯ˆê‚©H
+		if (!strcmp(tip_path, g_mydir_dll) || !GetTooltipText(tip))		//PathãŒã‚¢ãƒ—ãƒªãƒ‘ã‚¹ã¨åŒä¸€ã‹ï¼Ÿ
 		{
-			//Path‚ªƒAƒvƒŠƒpƒX‚Æ“¯ˆêA‚à‚µ‚­‚Íƒtƒ@ƒCƒ‹æ“¾¸”s‚Ìê‡‚ÍƒpƒX‚ğíœ‚·‚éB
+			//PathãŒã‚¢ãƒ—ãƒªãƒ‘ã‚¹ã¨åŒä¸€ã€ã‚‚ã—ãã¯ãƒ•ã‚¡ã‚¤ãƒ«å–å¾—å¤±æ•—ã®å ´åˆã¯ãƒ‘ã‚¹ã‚’å‰Šé™¤ã™ã‚‹ã€‚
 			if (b_DebugLog) writeDebugLog_Win10("tip_path and g_mydir_dll are identical", 999);
 			strcpy(tip_temp, "file:");
 			strcat(tip_temp, tip_title);
 			strcpy(tip, tip_title);
 			if (!GetTooltipText(tip))
 			{
-				//ƒtƒ@ƒCƒ‹‚ª‘¶İ‚µ‚È‚¢ê‡‚ÍƒfƒtƒHƒ‹ƒgƒtƒ@ƒCƒ‹–¼‚É’¼‚µ‚ÄƒŠƒgƒ‰ƒC
+				//ãƒ•ã‚¡ã‚¤ãƒ«ãŒå­˜åœ¨ã—ãªã„å ´åˆã¯ãƒ‡ãƒ•ã‚©ãƒ«ãƒˆãƒ•ã‚¡ã‚¤ãƒ«åã«ç›´ã—ã¦ãƒªãƒˆãƒ©ã‚¤
 				strcpy(tip, "tclock_tooltip2.txt");
 				if (!GetTooltipText(tip))
 				{
-					strcpy(tip, "ƒtƒ@ƒCƒ‹æ“¾¸”s(ToolTip2)");
+					strcpy(tip, "ãƒ•ã‚¡ã‚¤ãƒ«å–å¾—å¤±æ•—(ToolTip2)");
 					//SetMyRegStr("Tooltip", "Tooltip2", "TClock <%LDATE%>");
 				}
 				else
@@ -973,13 +989,13 @@ DWORD TooltipFindFormat(void)
 		}
 	}
 	dwInfoTooltip |= FindFormat(tip);
-	//	Tooltip‚ÌƒeƒLƒXƒg‚ğƒŒƒWƒXƒgƒŠ‚©‚ç“Ç‚İ‚Ş
+	//	Tooltipã®ãƒ†ã‚­ã‚¹ãƒˆã‚’ãƒ¬ã‚¸ã‚¹ãƒˆãƒªã‹ã‚‰èª­ã¿è¾¼ã‚€
 	//GetMyRegStr("Tooltip", "Tooltip3", tip, sizeof(tip), "");
 	strcpy(tip, fmtToolTip3);
-	//ƒtƒ@ƒCƒ‹w’è‚Å‚ ‚Á‚½ê‡
+	//ãƒ•ã‚¡ã‚¤ãƒ«æŒ‡å®šã§ã‚ã£ãŸå ´åˆ
 	if(tip[0] == 'f' && tip[1] == 'i' && tip[2] == 'l' && tip[3] == 'e' && tip[4] == ':')
 	{
-		//Path‚ğØ‚èo‚·
+		//Pathã‚’åˆ‡ã‚Šå‡ºã™
 		memmove( tip, tip + 5, (size_t)((strchr(tip,'\0')-1)-tip));
 		strcpy(tip_path, tip);
 		del_title(tip_path);
@@ -998,20 +1014,20 @@ DWORD TooltipFindFormat(void)
 			wsprintf(strDebug, "%s%s", "[tooltip.c][TooltipFindFormat] tip_title: ", tip_title);
 			writeDebugLog_Win10(strDebug, 999);
 		}
-		if (!strcmp(tip_path, g_mydir_dll) || !GetTooltipText(tip))		//Path‚ªƒAƒvƒŠƒpƒX‚Æ“¯ˆê‚©H
+		if (!strcmp(tip_path, g_mydir_dll) || !GetTooltipText(tip))		//PathãŒã‚¢ãƒ—ãƒªãƒ‘ã‚¹ã¨åŒä¸€ã‹ï¼Ÿ
 		{
-			//Path‚ªƒAƒvƒŠƒpƒX‚Æ“¯ˆêA‚à‚µ‚­‚Íƒtƒ@ƒCƒ‹æ“¾¸”s‚Ìê‡‚ÍƒpƒX‚ğíœ‚·‚éB
+			//PathãŒã‚¢ãƒ—ãƒªãƒ‘ã‚¹ã¨åŒä¸€ã€ã‚‚ã—ãã¯ãƒ•ã‚¡ã‚¤ãƒ«å–å¾—å¤±æ•—ã®å ´åˆã¯ãƒ‘ã‚¹ã‚’å‰Šé™¤ã™ã‚‹ã€‚
 			if (b_DebugLog) writeDebugLog_Win10("tip_path and g_mydir_dll are identical", 999);
 			strcpy(tip_temp, "file:");
 			strcat(tip_temp, tip_title);
 			strcpy(tip, tip_title);
 			if (!GetTooltipText(tip))
 			{
-				//ƒtƒ@ƒCƒ‹‚ª‘¶İ‚µ‚È‚¢ê‡‚ÍƒfƒtƒHƒ‹ƒgƒtƒ@ƒCƒ‹–¼‚É’¼‚µ‚ÄƒŠƒgƒ‰ƒC
+				//ãƒ•ã‚¡ã‚¤ãƒ«ãŒå­˜åœ¨ã—ãªã„å ´åˆã¯ãƒ‡ãƒ•ã‚©ãƒ«ãƒˆãƒ•ã‚¡ã‚¤ãƒ«åã«ç›´ã—ã¦ãƒªãƒˆãƒ©ã‚¤
 				strcpy(tip, "tclock_tooltip3.txt");
 				if (!GetTooltipText(tip))
 				{
-					strcpy(tip, "ƒtƒ@ƒCƒ‹æ“¾¸”s(ToolTip3)");
+					strcpy(tip, "ãƒ•ã‚¡ã‚¤ãƒ«å–å¾—å¤±æ•—(ToolTip3)");
 				}
 				else
 				{
@@ -1047,9 +1063,9 @@ void TooltipOnMouseEvent(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam, 
 	msg.pt.x = GET_X_LPARAM(GetMessagePos());
 	msg.pt.y = GET_Y_LPARAM(GetMessagePos());
 
-	//ƒ}ƒEƒX‚ªTClock“à•”‚Å¶‚ÉˆÚ“®‚·‚éê‡A‚Ç‚¤‚â‚Á‚Ä‚àƒc[ƒ‹ƒ`ƒbƒv‚ªÅ‰‚Éˆê‰ñÁ‚¦‚é‚½‚ßA“_–Å‚µ‚Ä‚µ‚Ü‚¤B
-	//‚±‚±‚ÅÀ•W‚ğ×H‚µ‚Ä‚àÀÛ‚É‚ÍV‚½‚Éƒ}ƒEƒXÀ•W‚ğæ“¾‚µ‚Äˆ—‚·‚é‚½‚ß‰ğŒˆ‚Å‚«‚È‚¢B
-	//Œ‹‹Ç‚ÍAƒc[ƒ‹“o˜^‚ÌÛ‚Éti.uFlags‚ÉTTF_SUBCLASS‚ğ“ü‚ê‚½‚ç‰ğŒˆ‚µ‚½B
+	//ãƒã‚¦ã‚¹ãŒTClockå†…éƒ¨ã§å·¦ã«ç§»å‹•ã™ã‚‹å ´åˆã€ã©ã†ã‚„ã£ã¦ã‚‚ãƒ„ãƒ¼ãƒ«ãƒãƒƒãƒ—ãŒæœ€åˆã«ä¸€å›æ¶ˆãˆã‚‹ãŸã‚ã€ç‚¹æ»…ã—ã¦ã—ã¾ã†ã€‚
+	//ã“ã“ã§åº§æ¨™ã‚’ç´°å·¥ã—ã¦ã‚‚å®Ÿéš›ã«ã¯æ–°ãŸã«ãƒã‚¦ã‚¹åº§æ¨™ã‚’å–å¾—ã—ã¦å‡¦ç†ã™ã‚‹ãŸã‚è§£æ±ºã§ããªã„ã€‚
+	//çµå±€ã¯ã€ãƒ„ãƒ¼ãƒ«ç™»éŒ²ã®éš›ã«ti.uFlagsã«TTF_SUBCLASSã‚’å…¥ã‚ŒãŸã‚‰è§£æ±ºã—ãŸã€‚
 
 
 	if (hwndTooltip)

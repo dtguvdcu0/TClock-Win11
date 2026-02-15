@@ -53,7 +53,7 @@ void OnInit(HWND hDlg, LPARAM lParam)
 	CBResetContent(hDlg, IDC_AMSYMBOL);
 	GetMyRegStr("Format", "AMsymbol", s, 80, "");
 	if(s[0]) CBAddString(hDlg, IDC_AMSYMBOL, (LPARAM)s);
-	GetLocaleInfoWA(ilang, LOCALE_S1159, s2, 10);
+	GetLocaleInfoCompat(ilang, LOCALE_S1159, s2, 10);
 	if(s2[0] && strcmp(s, s2) != 0)
 		CBAddString(hDlg, IDC_AMSYMBOL, (LPARAM)s2);
 	if(strcmp(s, "AM") != 0 && strcmp(s2, "AM") != 0)
@@ -65,7 +65,7 @@ void OnInit(HWND hDlg, LPARAM lParam)
 	CBResetContent(hDlg, IDC_PMSYMBOL);
 	GetMyRegStr("Format", "PMsymbol", s, 80, "");
 	if(s[0]) CBAddString(hDlg, IDC_PMSYMBOL, (LPARAM)s);
-	GetLocaleInfoWA(ilang, LOCALE_S2359, s2, 10);
+	GetLocaleInfoCompat(ilang, LOCALE_S2359, s2, 10);
 	if(s2[0] && strcmp(s, s2) != 0)
 		CBAddString(hDlg, IDC_PMSYMBOL, (LPARAM)s2);
 	if(strcmp(s, "PM") != 0 && strcmp(s2, "PM") != 0)

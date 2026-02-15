@@ -1,6 +1,6 @@
 /*-------------------------------------------
   pageabout.c
-     uƒo[ƒWƒ‡ƒ“î•ñv
+     ã€Œãƒãƒ¼ã‚¸ãƒ§ãƒ³æƒ…å ±ã€
      KAZUBON 1997-1998
 ---------------------------------------------*/
 
@@ -11,8 +11,8 @@ static void OnApply(HWND hDlg);
 
 static void OnLinkClicked(HWND hDlg, UINT id);
 
-static HFONT hfontLink;  //ƒŠƒ“ƒNƒ‰ƒxƒ‹ƒtƒHƒ“ƒg
-// ƒŠƒ“ƒNƒ‰ƒxƒ‹—pƒTƒuƒNƒ‰ƒXƒvƒƒV[ƒWƒƒ
+static HFONT hfontLink;  //ãƒªãƒ³ã‚¯ãƒ©ãƒ™ãƒ«ãƒ•ã‚©ãƒ³ãƒˆ
+// ãƒªãƒ³ã‚¯ãƒ©ãƒ™ãƒ«ç”¨ã‚µãƒ–ã‚¯ãƒ©ã‚¹ãƒ—ãƒ­ã‚·ãƒ¼ã‚¸ãƒ£
 static WNDPROC oldLabProc = NULL;
 LRESULT CALLBACK LabLinkProc(HWND, UINT, WPARAM, LPARAM);
 static HCURSOR hCurHand = NULL;
@@ -31,7 +31,7 @@ extern BOOL b_EnglishMenu;
 extern int Language_Offset;
 
 /*------------------------------------------------
-@uƒo[ƒWƒ‡ƒ“î•ñvƒy[ƒW—pƒ_ƒCƒAƒƒOƒvƒƒV[ƒWƒƒ
+ã€€ã€Œãƒãƒ¼ã‚¸ãƒ§ãƒ³æƒ…å ±ã€ãƒšãƒ¼ã‚¸ç”¨ãƒ€ã‚¤ã‚¢ãƒ­ã‚°ãƒ—ãƒ­ã‚·ãƒ¼ã‚¸ãƒ£
 --------------------------------------------------*/
 
 INT_PTR CALLBACK PageAboutProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
@@ -47,7 +47,7 @@ INT_PTR CALLBACK PageAboutProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
 			id = LOWORD(wParam); code = HIWORD(wParam);
 			switch (id)
 			{
-				//  iniƒtƒ@ƒCƒ‹‚ğƒGƒfƒBƒbƒg
+				//  iniãƒ•ã‚¡ã‚¤ãƒ«ã‚’ã‚¨ãƒ‡ã‚£ãƒƒãƒˆ
 			case IDC_EDITINI:
 			{
 				char fname[1024];
@@ -57,7 +57,7 @@ INT_PTR CALLBACK PageAboutProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
 				ShellExecute(NULL, "open", "notepad.exe", fname, NULL, SW_SHOWNORMAL);
 			}
 				break;
-				//  readme.txt‚ğŠJ‚­
+				//  readme.txtã‚’é–‹ã
 			case IDC_README2:
 			{
 				char fname[1024];

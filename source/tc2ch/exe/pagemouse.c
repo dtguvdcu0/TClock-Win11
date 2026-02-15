@@ -1,7 +1,7 @@
 /*-------------------------------------------
   pagemouse.c
-@@uƒ}ƒEƒX‘€ìvƒvƒƒpƒeƒBƒy[ƒW
-@@KAZUBON 1997-1998
+ã€€ã€€ã€Œãƒã‚¦ã‚¹æ“ä½œã€ãƒ—ãƒ­ãƒ‘ãƒ†ã‚£ãƒšãƒ¼ã‚¸
+ã€€ã€€KAZUBON 1997-1998
 ---------------------------------------------*/
 
 #include "tclock.h"
@@ -42,7 +42,7 @@ extern BOOL b_EnglishMenu;
 extern int Language_Offset;
 
 /*------------------------------------------------
-@uƒ}ƒEƒX‘€ìvƒy[ƒW—pƒ_ƒCƒAƒƒOƒvƒƒV[ƒWƒƒ
+ã€€ã€Œãƒã‚¦ã‚¹æ“ä½œã€ãƒšãƒ¼ã‚¸ç”¨ãƒ€ã‚¤ã‚¢ãƒ­ã‚°ãƒ—ãƒ­ã‚·ãƒ¼ã‚¸ãƒ£
 --------------------------------------------------*/
 BOOL CALLBACK PageMouseProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 {
@@ -128,7 +128,7 @@ BOOL CALLBACK PageMouseProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
 }
 
 /*------------------------------------------------
-@ƒy[ƒW‚Ì‰Šú‰»
+ã€€ãƒšãƒ¼ã‚¸ã®åˆæœŸåŒ–
 --------------------------------------------------*/
 void OnInit(HWND hDlg)
 {
@@ -206,7 +206,7 @@ void OnInit(HWND hDlg)
 }
 
 /*------------------------------------------------
-@XV
+ã€€æ›´æ–°
 --------------------------------------------------*/
 void OnApply(HWND hDlg)
 {
@@ -259,7 +259,7 @@ void OnDestroy(HWND hDlg)
 }
 
 /*------------------------------------------------
-@uƒtƒ@ƒCƒ‹‚Ìƒhƒƒbƒvv
+ã€€ã€Œãƒ•ã‚¡ã‚¤ãƒ«ã®ãƒ‰ãƒ­ãƒƒãƒ—ã€
 --------------------------------------------------*/
 void OnDropFilesChange(HWND hDlg)
 {
@@ -282,6 +282,7 @@ void OnMouseButton(HWND hDlg)
 
 	n = CBGetCurSel(hDlg, IDC_MOUSEBUTTON);
 	button = n;
+	if (!pData || button < 0 || button >= 28) return;
 	//if(n > 0) button = n + 1;
 
 	for(j = 0; j < 4; j++)
@@ -329,8 +330,10 @@ void OnMouseClickTime(HWND hDlg, int id)
 
 	n = CBGetCurSel(hDlg, IDC_MOUSEBUTTON);
 	button = n;
+	if (!pData || button < 0 || button >= 28) return;
 
 	click = id - IDC_RADSINGLE;
+	if (click < 0 || click >= 4) return;
 	func = pData[button].func[click];
 
 	count = CBGetCount(hDlg, IDC_MOUSEFUNC);
@@ -361,17 +364,20 @@ void OnMouseFunc(HWND hDlg)
 
 	n = CBGetCurSel(hDlg, IDC_MOUSEBUTTON);
 	button = n;
+	if (!pData || button < 0 || button >= 28) return;
 
 	for(j = 0; j < 4; j++)
 	{
 		if(IsDlgButtonChecked(hDlg, IDC_RADSINGLE + j))
 			break;
 	}
-	if(j == 5) return;
+	if(j == 4) return;
 	click = j;
 
 	index = CBGetCurSel(hDlg, IDC_MOUSEFUNC);
+	if (index == CB_ERR) return;
 	func = CBGetItemData(hDlg, IDC_MOUSEFUNC, index);
+	if (func == CB_ERR) return;
 	pData[button].func[click] = func;
 
 	if (button == (IDS_HOTKEY - IDS_LEFTBUTTON))
@@ -402,24 +408,27 @@ void OnMouseFileChange(HWND hDlg)
 
 	n = CBGetCurSel(hDlg, IDC_MOUSEBUTTON);
 	button = n;
+	if (!pData || button < 0 || button >= 28) return;
 
 	for(j = 0; j < 4; j++)
 	{
 		if(IsDlgButtonChecked(hDlg, IDC_RADSINGLE + j))
 			break;
 	}
-	if(j == 5) return;
+	if(j == 4) return;
 	click = j;
 
 	index = CBGetCurSel(hDlg, IDC_MOUSEFUNC);
+	if (index == CB_ERR) return;
 	func = CBGetItemData(hDlg, IDC_MOUSEFUNC, index);
+	if (func == CB_ERR) return;
 
 	if(func == MOUSEFUNC_OPENFILE || func == MOUSEFUNC_FILELIST)
-		GetDlgItemText(hDlg, IDC_MOUSEFILE, pData[button].fname[click], 1024);
+		GetDlgItemText(hDlg, IDC_MOUSEFILE, pData[button].fname[click], (int)sizeof(pData[button].fname[click]));
 }
 
 /*------------------------------------------------
-@u...v@ƒtƒ@ƒCƒ‹‚ÌQÆ
+ã€€ã€Œ...ã€ã€€ãƒ•ã‚¡ã‚¤ãƒ«ã®å‚ç…§
 --------------------------------------------------*/
 void OnSansho(HWND hDlg, WORD id)
 {
@@ -479,11 +488,11 @@ void InitMouseFuncList(HWND hDlg)
 	pmfl = GetMouseFuncList();
 	for (i = 0; i < cnt; i++)
 	{
-		//ƒŠƒXƒg‚ÌŠe€–Ú‚ğ’Ç‰Á
+		//ãƒªã‚¹ãƒˆã®å„é …ç›®ã‚’è¿½åŠ 
 		index = CBAddString(hDlg, IDC_MOUSEFUNC, (LPARAM)MyString(pmfl[i].idstring));
 		CBSetItemData(hDlg, IDC_MOUSEFUNC, index, pmfl[i].mousefunc);
 	}
-	//ƒŠƒXƒg€–Ú‚Ì•\¦”‚ğw’è
+	//ãƒªã‚¹ãƒˆé …ç›®ã®è¡¨ç¤ºæ•°ã‚’æŒ‡å®š
 	AdjustDlgConboBoxDropDown(hDlg, IDC_MOUSEFUNC, 29);
 
 }

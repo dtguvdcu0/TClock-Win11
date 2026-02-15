@@ -187,12 +187,12 @@ void OnDropFiles(HWND hwnd, HDROP hdrop)
 	for(i = 0; i < num; i++)
 	{
 		DragQueryFile(hdrop, i, fname, MAX_PATH);
-		if(nType == 1 || nType == 3 || nType == 4)  // ‚²‚İ” AƒRƒs[AˆÚ“®
-		{                             // '\0'‚Å‹æØ‚ç‚ê‚½ƒtƒ@ƒCƒ‹–¼
+		if(nType == 1 || nType == 3 || nType == 4)  // ã”ã¿ç®±ã€ã‚³ãƒ”ãƒ¼ã€ç§»å‹•
+		{                             // '\0'ã§åŒºåˆ‡ã‚‰ã‚ŒãŸãƒ•ã‚¡ã‚¤ãƒ«å
 			strcpy(p, fname); p += strlen(p) + 1;
 		}
-		else if(nType == 2) //ƒvƒƒOƒ‰ƒ€‚ÅŠJ‚­F
-		{                   //ƒXƒy[ƒX‚Å‹æØ‚ç‚ê‚½’Z‚¢ƒtƒ@ƒCƒ‹–¼
+		else if(nType == 2) //ãƒ—ãƒ­ã‚°ãƒ©ãƒ ã§é–‹ãï¼š
+		{                   //ã‚¹ãƒšãƒ¼ã‚¹ã§åŒºåˆ‡ã‚‰ã‚ŒãŸçŸ­ã„ãƒ•ã‚¡ã‚¤ãƒ«å
 			if(num > 1) GetShortPathName(fname, sname, MAX_PATH);
 			else wsprintf(sname, "\"%s\"", fname);
 			strcpy(p, sname);
@@ -205,7 +205,7 @@ void OnDropFiles(HWND hwnd, HDROP hdrop)
 
 	GetMyRegStr(reg_section, "DropFilesApp", app, 1024, "");
 
-	if(nType == 1 || nType == 3 || nType == 4)  // ‚²‚İ” AƒRƒs[AˆÚ“®
+	if(nType == 1 || nType == 3 || nType == 4)  // ã”ã¿ç®±ã€ã‚³ãƒ”ãƒ¼ã€ç§»å‹•
 	{
 		memset(&shfos, 0, sizeof(SHFILEOPSTRUCT));
 		shfos.hwnd = NULL;
@@ -217,7 +217,7 @@ void OnDropFiles(HWND hwnd, HDROP hdrop)
 		shfos.fFlags = FOF_ALLOWUNDO|FOF_NOCONFIRMATION;
 		SHFileOperation(&shfos);
 	}
-	else if(nType == 2) //ƒtƒ@ƒCƒ‹‚ÅŠJ‚­
+	else if(nType == 2) //ãƒ•ã‚¡ã‚¤ãƒ«ã§é–‹ã
 	{
 		char *command;
 		DWORD len = lstrlen(app) + 1 + lstrlen(buf) + 1;
@@ -477,7 +477,7 @@ void ExecuteMouseFunction(HWND hwnd, LONG fnc, int btn, int clk)
 		{
 			POINT tPoint;
 
-			//Œ»İ‚Ìƒ}ƒEƒXƒJ[ƒ\ƒ‹ˆÊ’u‚ğæ“¾
+			//ç¾åœ¨ã®ãƒã‚¦ã‚¹ã‚«ãƒ¼ã‚½ãƒ«ä½ç½®ã‚’å–å¾—
 			GetCursorPos(&tPoint);
 
 			showUserMenu(hwnd, 0, tPoint.x, tPoint.y, btn, clk);

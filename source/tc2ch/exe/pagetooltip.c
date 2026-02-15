@@ -1,7 +1,7 @@
 /*-------------------------------------------
   pagetooltip.c
-@@uƒc[ƒ‹ƒ`ƒbƒvvƒvƒƒpƒeƒBƒy[ƒW
-@@KAZUBON 1997-1998 / 635@p5
+ã€€ã€€ã€Œãƒ„ãƒ¼ãƒ«ãƒãƒƒãƒ—ã€ãƒ—ãƒ­ãƒ‘ãƒ†ã‚£ãƒšãƒ¼ã‚¸
+ã€€ã€€KAZUBON 1997-1998 / 635@p5
 ---------------------------------------------*/
 
 #include "tclock.h"
@@ -52,7 +52,7 @@ __inline void SendPSChanged(HWND hDlg)
 }
 
 /*------------------------------------------------
-@uƒc[ƒ‹ƒ`ƒbƒvvƒy[ƒW—pƒ_ƒCƒAƒƒOƒvƒƒV[ƒWƒƒ
+ã€€ã€Œãƒ„ãƒ¼ãƒ«ãƒãƒƒãƒ—ã€ãƒšãƒ¼ã‚¸ç”¨ãƒ€ã‚¤ã‚¢ãƒ­ã‚°ãƒ—ãƒ­ã‚·ãƒ¼ã‚¸ãƒ£
 --------------------------------------------------*/
 BOOL CALLBACK PageTooltipProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 {
@@ -181,7 +181,7 @@ BOOL CALLBACK PageTooltipProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
 }
 
 /*------------------------------------------------
-@ƒy[ƒW‚Ì‰Šú‰»
+ã€€ãƒšãƒ¼ã‚¸ã®åˆæœŸåŒ–
 --------------------------------------------------*/
 void OnInit(HWND hDlg)
 {
@@ -222,9 +222,9 @@ void OnInit(HWND hDlg)
 		logfont_sample_height_tip = logfont_sample.lfHeight;
 	}
 
-	//uƒtƒHƒ“ƒgv‚Ìİ’è
+	//ã€Œãƒ•ã‚©ãƒ³ãƒˆã€ã®è¨­å®š
 	InitComboFontTip(hDlg);
-	//uƒtƒHƒ“ƒgƒTƒCƒYv‚Ìİ’è
+	//ã€Œãƒ•ã‚©ãƒ³ãƒˆã‚µã‚¤ã‚ºã€ã®è¨­å®š
 	SetComboFontSizeTip(hDlg, TRUE);
 
 
@@ -318,7 +318,7 @@ void OnInit(HWND hDlg)
 
 
 /*------------------------------------------------
-@XV
+ã€€æ›´æ–°
 --------------------------------------------------*/
 void OnApply(HWND hDlg)
 {
@@ -344,12 +344,12 @@ void OnApply(HWND hDlg)
 	SetMyRegLong("Tooltip", "Tip3Update", IsDlgButtonChecked(hDlg, IDC_UPDATETIP3));
 	//SetMyRegLong("Tooltip", "TipEnableDoubleBuffering", IsDlgButtonChecked(hDlg, IDC_ENABLEDOUBLEBUFFERING));
 
-	//ƒtƒHƒ“ƒg–¼‚Ì•Û‘¶
+	//ãƒ•ã‚©ãƒ³ãƒˆåã®ä¿å­˜
 	CBGetLBText(hDlg, IDC_TFONT, CBGetCurSel(hDlg, IDC_TFONT), s);
 	SetMyRegStr("Tooltip", "TipFont", s + 1); // +1 is to remove proportinal mark "*"
 
-	//ƒtƒHƒ“ƒgƒTƒCƒY‚Ì•Û‘¶
-	//5ˆÈ‰º‚ÌƒTƒCƒY‚Í‹–‰Â‚µ‚È‚¢(”’l‚Å‚È‚¢‚à‚Ì‚àŠÜ‚Ü‚ê‚é)
+	//ãƒ•ã‚©ãƒ³ãƒˆã‚µã‚¤ã‚ºã®ä¿å­˜
+	//5ä»¥ä¸‹ã®ã‚µã‚¤ã‚ºã¯è¨±å¯ã—ãªã„(æ•°å€¤ã§ãªã„ã‚‚ã®ã‚‚å«ã¾ã‚Œã‚‹)
 	dw = GetDlgItemInt(hDlg, IDC_TFONTSIZE, NULL, FALSE);
 	if(dw < 5)
 	{
@@ -358,7 +358,7 @@ void OnApply(HWND hDlg)
 	}
 	SetMyRegLong("Tooltip", "TipFontSize", dw);
 
-	//uBoldvuItalicv‚Ì•Û‘¶
+	//ã€ŒBoldã€ã€ŒItalicã€ã®ä¿å­˜
 	SetMyRegLong("Tooltip", "TipBold", IsDlgButtonChecked(hDlg, IDC_TBOLD));
 	SetMyRegLong("Tooltip", "TipItalic", IsDlgButtonChecked(hDlg, IDC_TITALIC));
 	SetMyRegLong("Tooltip", "BalloonFlg", CBGetCurSel(hDlg, IDC_BALLOONFLG));
@@ -408,7 +408,7 @@ void OnDestroy(HWND hDlg)
 }
 
 /*------------------------------------------------
-@u...v@ƒtƒ@ƒCƒ‹‚ÌQÆ
+ã€€ã€Œ...ã€ã€€ãƒ•ã‚¡ã‚¤ãƒ«ã®å‚ç…§
 --------------------------------------------------*/
 void OnSansho(HWND hDlg, WORD id)
 {
@@ -508,12 +508,12 @@ void InitComboFontTip(HWND hDlg)
 
 	CBSetCurSel(hDlg, IDC_TFONT, i);
 
-	//ƒŠƒXƒg€–Ú‚Ì•\¦”‚ğw’è
+	//ãƒªã‚¹ãƒˆé …ç›®ã®è¡¨ç¤ºæ•°ã‚’æŒ‡å®š
 	AdjustDlgConboBoxDropDown(hDlg, IDC_TFONT, 12);
 }
 
 /*------------------------------------------------
-@uƒtƒHƒ“ƒgƒTƒCƒYvƒRƒ“ƒ{ƒ{ƒbƒNƒX‚Ìİ’è
+ã€€ã€Œãƒ•ã‚©ãƒ³ãƒˆã‚µã‚¤ã‚ºã€ã‚³ãƒ³ãƒœãƒœãƒƒã‚¯ã‚¹ã®è¨­å®š
 --------------------------------------------------*/
 void SetComboFontSizeTip(HWND hDlg, BOOL bInit)
 {
@@ -522,14 +522,14 @@ void SetComboFontSizeTip(HWND hDlg, BOOL bInit)
 	DWORD size;
 	LOGFONT lf;
 
-	//ˆÈ‘O‚Ìsize‚ğ•Û‘¶
-	if(bInit) // WM_INITDIALOG‚Ì‚Æ‚«
+	//ä»¥å‰ã®sizeã‚’ä¿å­˜
+	if(bInit) // WM_INITDIALOGã®ã¨ã
 	{
 		size = GetMyRegLong("Tooltip", "TipFontSize", 9);
 		if(size == 0) size = 9;
 
 	}
-	else   // IDC_TFONT‚ª•ÏX‚³‚ê‚½‚Æ‚«
+	else   // IDC_TFONTãŒå¤‰æ›´ã•ã‚ŒãŸã¨ã
 	{
 		size = GetDlgItemInt(hDlg, IDC_TFONTSIZE, NULL, FALSE);
 	}
@@ -548,12 +548,12 @@ void SetComboFontSizeTip(HWND hDlg, BOOL bInit)
 		WriteDebug_New2(strTemp);
 	}
 
-	// s = ƒtƒHƒ“ƒg–¼
+	// s = ãƒ•ã‚©ãƒ³ãƒˆå
 	CBGetLBText(hDlg, IDC_TFONT, CBGetCurSel(hDlg, IDC_TFONT), (LPARAM)s);
 
-	//ƒtƒHƒ“ƒg‚ÌƒTƒCƒY‚ğ—ñ‹“‚µ‚ÄƒRƒ“ƒ{ƒ{ƒbƒNƒX‚É“ü‚ê‚é
+	//ãƒ•ã‚©ãƒ³ãƒˆã®ã‚µã‚¤ã‚ºã‚’åˆ—æŒ™ã—ã¦ã‚³ãƒ³ãƒœãƒœãƒƒã‚¯ã‚¹ã«å…¥ã‚Œã‚‹
 	memset(&lf, 0, sizeof(LOGFONT));
-	strcpy(lf.lfFaceName, s + 1); // +1 is to remove proportinal mark "*"
+	lstrcpyn(lf.lfFaceName, s + 1, LF_FACESIZE); // +1 is to remove proportinal mark "*"
 	lf.lfCharSet = (BYTE)CBGetItemData(hDlg, IDC_TFONT, CBGetCurSel(hDlg, IDC_TFONT));
 	EnumFontFamiliesEx(hdc, &lf, (FONTENUMPROC)EnumSizeProcEx,
 		(LPARAM)GetDlgItem(hDlg, IDC_TFONTSIZE), 0);
@@ -562,11 +562,11 @@ void SetComboFontSizeTip(HWND hDlg, BOOL bInit)
 
 	ReleaseDC(NULL, hdc);
 
-	// size‚ğƒZƒbƒg
+	// sizeã‚’ã‚»ãƒƒãƒˆ
 	SetDlgItemInt(hDlg, IDC_TFONTSIZE, size, FALSE);
 
 
-	//ƒŠƒXƒg€–Ú‚Ì•\¦”‚ğw’è
+	//ãƒªã‚¹ãƒˆé …ç›®ã®è¡¨ç¤ºæ•°ã‚’æŒ‡å®š
 	AdjustDlgConboBoxDropDown(hDlg, IDC_TFONTSIZE, 10);
 
 	RefreshFontSample_ToolTip(hDlg);

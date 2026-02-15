@@ -391,6 +391,9 @@ static UINT WINAPI TclockExeMain(void)
 	MSG msg;
 	WNDCLASSW wndclass;
 	HWND hwnd;
+	HANDLE hSingleMutex;
+	BOOL mutexAlreadyExists = FALSE;
+	BOOL isRestartArg = FALSE;
 
 	//CheckCommandLine(hwnd);
 
@@ -412,9 +415,12 @@ static UINT WINAPI TclockExeMain(void)
 	//		if (hwnd != NULL) return 1;
 	//	}
 	//}
-
-
-
+	/* Use process mutex to prevent duplicate launch races; /restart is explicitly allowed. */
+	isRestartArg = HasCommandLineOption(L"restart");
+	hSingleMutex = CreateMutexW(NULL, FALSE, L"Local\\TClock-Win11-SingleInstance");
+	if (hSingleMutex && GetLastError() == ERROR_ALREADY_EXISTS) {
+		mutexAlreadyExists = TRUE;
+	}
 
 	// check wow64
 	if (IsWow64()) {
@@ -463,6 +469,22 @@ static UINT WINAPI TclockExeMain(void)
 
 
 	// not to execute the program twice
+	if (mutexAlreadyExists && !isRestartArg)
+	{
+		for (int i = 0; i < 50; i++) {
+			hwnd = FindWindowW(szClassName, szWindowText);
+			if (hwnd != NULL) break;
+			Sleep(100);
+		}
+		if (hwnd == NULL) {
+			MessageBoxUtf8Compat(NULL,
+				"TClock-Win11 is already launching in another process. Please wait a moment and retry.",
+				"TClock-Win11", MB_ICONEXCLAMATION | MB_SETFOREGROUND);
+			return 1;
+		}
+		/* hwnd exists: continue to the legacy duplicate-process dialog flow below. */
+	}
+
 	hwnd = FindWindowW(szClassName, szWindowText);
 	if(hwnd != NULL)				//すでにプロセスが起動していれば、	
 	{
@@ -1068,6 +1090,9 @@ LRESULT CALLBACK WndProc(HWND hwnd,	UINT message, WPARAM wParam, LPARAM lParam)	
 			add_title(fname, "TClock-Win11.exe");
             b_SkipHideClockRestore = TRUE;
 			ShellExecuteUtf8Compat(NULL, "open", fname, "/restart", NULL, SW_HIDE);
+			/* Avoid double-restart: this path already spawned a new process. */
+			g_hwndClock = NULL;
+			PostMessage(hwnd, WM_CLOSE, 0, 0);
 
 		}
 		else

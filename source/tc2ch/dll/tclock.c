@@ -6612,6 +6612,12 @@ void RestartTClockFromDLL(void)
 	strcpy(fname, g_mydir_dll);
 	add_title(fname, "TClock-Win11.exe");
 	ShellExecuteUtf8Compat_DLL(NULL, "open", fname, "/restart", NULL, SW_HIDE);
+	/* Prevent WM_DESTROY auto-restart from launching a second child process. */
+	bAutoRestart = FALSE;
+	/* Ensure old EXE process is terminated even when WM_DESTROY branch is skipped. */
+	if (IsWindow(hwndTClockExeMain)) {
+		PostMessage(hwndTClockExeMain, WM_USER + 2, 0, 0);
+	}
 	EndClock();
 }
 

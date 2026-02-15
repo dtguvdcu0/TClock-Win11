@@ -1286,10 +1286,10 @@ LRESULT CALLBACK WndProcWin11Notify(HWND hwnd, UINT message, WPARAM wParam, LPAR
 				//http://katsura-kotonoha.sakura.ne.jp/prog/win/tip00024.shtml
 				//https://andromemo.blog.jp/archives/35317591.html
 				if (b_DebugLog)("[for_win11.c][WndProcWin11Notify] ToggleDesktop caled.", 999);
-				ShellExecute(NULL, "open", "explorer.exe", "shell:::{3080F90D-D7AD-11D9-BD98-0000947B0257}", NULL, SW_SHOWNORMAL);
+				ShellExecuteW(NULL, L"open", L"explorer.exe", L"shell:::{3080F90D-D7AD-11D9-BD98-0000947B0257}", NULL, SW_SHOWNORMAL);
 			}
 			else {
-				ShellExecute(NULL, "open", "ms-actioncenter:", NULL, NULL, SW_SHOWNORMAL);
+				ShellExecuteW(NULL, L"open", L"ms-actioncenter:", NULL, NULL, SW_SHOWNORMAL);
 			}
 			break;
 		case WM_RBUTTONDOWN:

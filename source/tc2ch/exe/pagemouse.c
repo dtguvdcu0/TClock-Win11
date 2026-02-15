@@ -134,9 +134,7 @@ void OnInit(HWND hDlg)
 {
 	char s[256];
 	char entry[20];
-	BOOL b;
 	int i, j;
-	HWND hDlgPage;
 	HFONT hfont;
 
 	hfont = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
@@ -155,7 +153,7 @@ void OnInit(HWND hDlg)
 	CBSetCurSel(hDlg, IDC_DROPFILES,
 		GetMyRegLong(reg_section, "DropFiles", 0));
 	GetMyRegStr(reg_section, "DropFilesApp", s, 256, "");
-	SetDlgItemText(hDlg, IDC_DROPFILESAPP, s);
+	SetDlgItemTextUTF8(hDlg, IDC_DROPFILESAPP, s);
 
 	pData = malloc(sizeof(CLICKDATA) * 28);
 
@@ -216,7 +214,7 @@ void OnApply(HWND hDlg)
 
 	n = CBGetCurSel(hDlg, IDC_DROPFILES);
 	SetMyRegLong(reg_section, "DropFiles", n);
-	GetDlgItemText(hDlg, IDC_DROPFILESAPP, s, 256);
+	GetDlgItemTextUTF8(hDlg, IDC_DROPFILESAPP, s, 256);
 	SetMyRegStr(reg_section, "DropFilesApp", s);
 
 	SetMyRegLong("Mouse", "RightClickMenu",
@@ -265,7 +263,7 @@ void OnDropFilesChange(HWND hDlg)
 {
 	int i, n;
 	n = CBGetCurSel(hDlg, IDC_DROPFILES);
-	SetDlgItemText(hDlg, IDC_LABDROPFILESAPP,
+	SetDlgItemTextUTF8(hDlg, IDC_LABDROPFILESAPP,
 		MyString(n >= 3?IDS_LABFOLDER:IDS_LABPROGRAM));
 	for(i = IDC_LABDROPFILESAPP; i <= IDC_DROPFILESAPPSANSHO; i++)
 		ShowDlgItem(hDlg, i, (2 <= n && n <= 4));
@@ -376,7 +374,7 @@ void OnMouseFunc(HWND hDlg)
 
 	index = CBGetCurSel(hDlg, IDC_MOUSEFUNC);
 	if (index == CB_ERR) return;
-	func = CBGetItemData(hDlg, IDC_MOUSEFUNC, index);
+	func = (int)(INT_PTR)CBGetItemData(hDlg, IDC_MOUSEFUNC, index);
 	if (func == CB_ERR) return;
 	pData[button].func[click] = func;
 
@@ -392,8 +390,8 @@ void OnMouseFunc(HWND hDlg)
 
 	if(func == MOUSEFUNC_OPENFILE || func == MOUSEFUNC_FILELIST)
 	{
-		SetDlgItemText(hDlg, IDC_LABMOUSEFILE, MyString(IDS_FILE));
-		SetDlgItemText(hDlg, IDC_MOUSEFILE, pData[button].fname[click]);
+		SetDlgItemTextUTF8(hDlg, IDC_LABMOUSEFILE, MyString(IDS_FILE));
+		SetDlgItemTextUTF8(hDlg, IDC_MOUSEFILE, pData[button].fname[click]);
 	}
 
 }
@@ -420,11 +418,11 @@ void OnMouseFileChange(HWND hDlg)
 
 	index = CBGetCurSel(hDlg, IDC_MOUSEFUNC);
 	if (index == CB_ERR) return;
-	func = CBGetItemData(hDlg, IDC_MOUSEFUNC, index);
+	func = (int)(INT_PTR)CBGetItemData(hDlg, IDC_MOUSEFUNC, index);
 	if (func == CB_ERR) return;
 
 	if(func == MOUSEFUNC_OPENFILE || func == MOUSEFUNC_FILELIST)
-		GetDlgItemText(hDlg, IDC_MOUSEFILE, pData[button].fname[click], (int)sizeof(pData[button].fname[click]));
+		GetDlgItemTextUTF8(hDlg, IDC_MOUSEFILE, pData[button].fname[click], (int)sizeof(pData[button].fname[click]));
 }
 
 /*------------------------------------------------
@@ -449,7 +447,7 @@ void OnSansho(HWND hDlg, WORD id)
 			if(pidl)
 			{
 				SHGetPathFromIDList(pidl, fname);
-				SetDlgItemText(hDlg, id - 1, fname);
+				SetDlgItemTextUTF8(hDlg, id - 1, fname);
 				PostMessage(hDlg, WM_NEXTDLGCTL, 1, FALSE);
 				SendPSChanged(hDlg);
 			}
@@ -466,12 +464,12 @@ void OnSansho(HWND hDlg, WORD id)
 	str0cat(filter, MyString(IDS_ALLFILE));
 	str0cat(filter, "*.*");
 
-	GetDlgItemText(hDlg, id - 1, deffile, MAX_PATH);
+	GetDlgItemTextUTF8(hDlg, id - 1, deffile, MAX_PATH);
 
 	if(!SelectMyFile(hDlg, filter, 0, deffile, fname)) // propsheet.c
 		return;
 
-	SetDlgItemText(hDlg, id - 1, fname);
+	SetDlgItemTextUTF8(hDlg, id - 1, fname);
 	PostMessage(hDlg, WM_NEXTDLGCTL, 1, FALSE);
 	SendPSChanged(hDlg);
 }

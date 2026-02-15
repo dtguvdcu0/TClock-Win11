@@ -7,6 +7,7 @@
 #include <windows.h>
 #include <pdh.h>
 #include <pdhmsg.h>
+#include <stdio.h>
 //#include <sysinfoapi.h>
 #include "tcdll.h"
 
@@ -47,13 +48,12 @@ static pfnPdhGetFormattedCounterValue pPdhGetFormattedCounterValue;
 static pfnPdhCloseQuery pPdhCloseQuery;
 static pfnPdhRemoveCounter pPdhRemoveCounter;
 static pfnPdhAddCounter pPdhAddCounter;
+int SetThermalZoneCounter(void);
 
 extern BOOL b_DebugLog;
 
 void TempMoni_start(void)
 {
-	int i;
-
 	if (b_DebugLog) writeDebugLog_Win10("[permon.c]TemoMoni_start called.", 999);
 
 
@@ -117,9 +117,7 @@ FAILURE_PDH_COUNTER_INITIALIZATION:
 
 int TempMoni_get(int zone)
 {
-	double tempDouble = 0.0;
-	long tempLong = 0;
-	int i = 0, ret = 0;
+	int ret = 0;
 	PDH_FMT_COUNTERVALUE FmtValue;
 
 	if (zone >= numThermalZone) {
@@ -173,7 +171,6 @@ int SetThermalZoneCounter(void)
 
 	extern BOOL b_DebugLog;
 	if (b_DebugLog)writeDebugLog_Win10("[newCodes_Win10.cpp] SetThermalZoneCounter called.", 999);
-	int count = 0;
 	CONST PSTR COUNTER_OBJECT = "Thermal Zone Information";
 
 

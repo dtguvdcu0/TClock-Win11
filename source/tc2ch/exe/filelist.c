@@ -65,7 +65,7 @@ char *Unicode2Ansi(LPCWSTR psUnicode)
 	return psAnsi;
 }
 
-BOOL AddMenuItem(HMENU hMenu, UINT uItemID, UINT uType, char *sDisplayName, HMENU hSubMenu)
+BOOL AddMenuItem(HMENU hMenu, UINT itemId, UINT uType, char *sDisplayName, HMENU hSubMenu)
 {
 	MENUITEMINFO tMenuItemInfo;
 
@@ -73,11 +73,11 @@ BOOL AddMenuItem(HMENU hMenu, UINT uItemID, UINT uType, char *sDisplayName, HMEN
 	tMenuItemInfo.cbSize = sizeof(tMenuItemInfo);
 	tMenuItemInfo.fMask = MIIM_ID | MIIM_TYPE | MIIM_SUBMENU;
 	tMenuItemInfo.fType = uType;
-	tMenuItemInfo.wID = uItemID;
+	tMenuItemInfo.wID = itemId;
 	tMenuItemInfo.hSubMenu = hSubMenu;
 	tMenuItemInfo.dwTypeData = sDisplayName;
 
-	return InsertMenuItem(hMenu, uItemID, FALSE, &tMenuItemInfo);
+	return InsertMenuItem(hMenu, itemId, FALSE, &tMenuItemInfo);
 }
 
 void DestroyUserMenu(void)

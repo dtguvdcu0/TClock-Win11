@@ -205,6 +205,7 @@ static BOOL tc_ini_utf8_rewrite_key(const char* iniPath, const char* text, DWORD
     const char* sec = tc_section_or_main(section);
     const char* eol = "\r\n";
     tc_dynbuf_t out;
+    UNREFERENCED_PARAMETER(iniPath);
 
     if (!tc_buf_init(&out)) return FALSE;
     if (!tc_buf_reserve(&out, size + (DWORD)lstrlen(sec) + (DWORD)lstrlen(key) + (DWORD)lstrlen(utf8Value) + 256)) {

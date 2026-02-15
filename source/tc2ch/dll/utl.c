@@ -267,9 +267,17 @@ void parse(char *dst, char *src, int n)
 char* MyString(UINT id)
 {
 	static char buf[80];
+	WCHAR wbuf[80];
+	int n;
 
-	if(LoadString(hmod, id, buf, 80) == 0)
-		buf[0] = 0;
+	buf[0] = 0;
+	wbuf[0] = L'\0';
+	n = LoadStringW(hmod, id, wbuf, 80);
+	if(n > 0)
+	{
+		if(tc_utf16_to_ansi_compat(CP_ACP, wbuf, buf, 80) <= 0)
+			buf[0] = 0;
+	}
 
 	return buf;
 }
@@ -283,10 +291,6 @@ int GetMyRegStr(char* section, char* entry, char* val, int cbData,
 	char* defval)
 {
 	char key[80];
-	HKEY hkey;
-	DWORD regtype;
-	DWORD size;
-	BOOL b;
 	int r = 0;
 	BOOL isUtf8 = FALSE;
 	BOOL needsHexBackfill = FALSE;
@@ -369,10 +373,6 @@ getmyregstr_done:
 LONG GetMyRegLong(char* section, char* entry, LONG defval)
 {
 	char key[80];
-	HKEY hkey;
-	DWORD regtype;
-	DWORD size;
-	BOOL b;
 	LONG r = 0;
 
 
@@ -441,7 +441,6 @@ LONG GetMyRegLong(char* section, char* entry, LONG defval)
 ---------------------------------------------*/
 BOOL SetMyRegStr(char* section, char* entry, char* val)
 {
-	HKEY hkey;
 	BOOL r;
 	char key[80];
 	BOOL isUtf8 = FALSE;
@@ -524,7 +523,6 @@ BOOL SetMyRegStr(char* section, char* entry, char* val)
 ---------------------------------------------*/
 BOOL SetMyRegLong(char* section, char* entry, DWORD val)
 {
-	HKEY hkey;
 	BOOL r;
 	char key[80];
 	BOOL isUtf8 = FALSE;
@@ -629,14 +627,14 @@ void WriteDebugDLL_New(LPSTR s)
 
 // 与えられたファイル名が相対パスならば
 // TClockのフォルダからの絶対パスに変換
-PSTR CreateFullPathName(HINSTANCE hmod, PSTR fname)
+PSTR CreateFullPathName(HINSTANCE hinst, PSTR fname)
 {
-	int len;
-	int tlen;
+	size_t len;
+	size_t tlen;
 	char szTClockPath[MAX_PATH];
 	PSTR pstr;
 
-	if (hmod == NULL) {
+	if (hinst == NULL) {
 		return NULL;
 	}
 	if (fname == NULL) {
@@ -661,7 +659,7 @@ PSTR CreateFullPathName(HINSTANCE hmod, PSTR fname)
 	}
 
 	// TClockの位置を基準パスとして指定文字列を相対パスとして追加
-	if (GetModuleFileName(hmod, szTClockPath, MAX_PATH) == 0) {
+	if (GetModuleFileName(hinst, szTClockPath, MAX_PATH) == 0) {
 		return NULL;
 	}
 	del_title(szTClockPath);
@@ -723,11 +721,62 @@ void WriteNormalLog_DLL(const char* s)
 /*-------------------------------------------
 　レジストリの値を削除
  ---------------------------------------------*/
+int GetWindowTextUTF8_DLL(HWND hwnd, char* text, int textBytes)
+{
+	wchar_t wText[1024];
+	if (!text || textBytes <= 0) return 0;
+	text[0] = '\0';
+	if (!hwnd) return 0;
+	if (GetWindowTextW(hwnd, wText, (int)(sizeof(wText) / sizeof(wText[0]))) <= 0) return 0;
+	if (tc_utf16_to_utf8(wText, text, textBytes) > 0) return lstrlen(text);
+	if (tc_utf16_to_ansi_compat(CP_ACP, wText, text, textBytes) > 0) return lstrlen(text);
+	text[0] = '\0';
+	return 0;
+}
+
+int GetClassNameUTF8_DLL(HWND hwnd, char* text, int textBytes)
+{
+	wchar_t wText[1024];
+	if (!text || textBytes <= 0) return 0;
+	text[0] = '\0';
+	if (!hwnd) return 0;
+	if (GetClassNameW(hwnd, wText, (int)(sizeof(wText) / sizeof(wText[0]))) <= 0) return 0;
+	if (tc_utf16_to_utf8(wText, text, textBytes) > 0) return lstrlen(text);
+	if (tc_utf16_to_ansi_compat(CP_ACP, wText, text, textBytes) > 0) return lstrlen(text);
+	text[0] = '\0';
+	return 0;
+}
+
+HINSTANCE ShellExecuteUtf8Compat_DLL(HWND hwnd, const char* op, const char* file, const char* params, const char* dir, int showCmd)
+{
+	wchar_t wOp[64];
+	wchar_t wFile[2048];
+	wchar_t wParams[2048];
+	wchar_t wDir[MAX_PATH];
+	const wchar_t* pOp = NULL;
+	const wchar_t* pFile = NULL;
+	const wchar_t* pParams = NULL;
+	const wchar_t* pDir = NULL;
+
+	if (op && tc_ansi_to_utf16_compat(CP_UTF8, op, wOp, (int)(sizeof(wOp) / sizeof(wOp[0]))) > 0) pOp = wOp;
+	else if (op && tc_ansi_to_utf16_compat(CP_ACP, op, wOp, (int)(sizeof(wOp) / sizeof(wOp[0]))) > 0) pOp = wOp;
+
+	if (file && tc_ansi_to_utf16_compat(CP_UTF8, file, wFile, (int)(sizeof(wFile) / sizeof(wFile[0]))) > 0) pFile = wFile;
+	else if (file && tc_ansi_to_utf16_compat(CP_ACP, file, wFile, (int)(sizeof(wFile) / sizeof(wFile[0]))) > 0) pFile = wFile;
+
+	if (params && tc_ansi_to_utf16_compat(CP_UTF8, params, wParams, (int)(sizeof(wParams) / sizeof(wParams[0]))) > 0) pParams = wParams;
+	else if (params && tc_ansi_to_utf16_compat(CP_ACP, params, wParams, (int)(sizeof(wParams) / sizeof(wParams[0]))) > 0) pParams = wParams;
+
+	if (dir && tc_ansi_to_utf16_compat(CP_UTF8, dir, wDir, (int)(sizeof(wDir) / sizeof(wDir[0]))) > 0) pDir = wDir;
+	else if (dir && tc_ansi_to_utf16_compat(CP_ACP, dir, wDir, (int)(sizeof(wDir) / sizeof(wDir[0]))) > 0) pDir = wDir;
+
+	return ShellExecuteW(hwnd, pOp, pFile, pParams, pDir, showCmd);
+}
+
 BOOL DelMyReg_DLL(char* section, char* entry)
 {
 	BOOL r = FALSE;
 	char key[80];
-	HKEY hkey;
 	BOOL isUtf8 = FALSE;
 
 	if (strlen(g_inifile) == 0) return 0;

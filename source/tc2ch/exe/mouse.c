@@ -248,7 +248,6 @@ void OnMouseMsg(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 	LONG n_func;
 	int button;
 	UINT doubleclick_time;
-	char s[10];
 	int i;
 	BOOL bDown = FALSE;
 
@@ -438,7 +437,7 @@ void ExecuteMouseFunction(HWND hwnd, LONG fnc, int btn, int clk)
 			{ 
 				wParam = IDC_DATETIME;
 			}
-			hwndTray = FindWindow("Shell_TrayWnd", NULL);
+			hwndTray = FindWindowW(L"Shell_TrayWnd", NULL);
 			if(hwndTray) PostMessage(hwndTray, WM_COMMAND, wParam, 0);
 			break;
 		}
@@ -486,7 +485,7 @@ void ExecuteMouseFunction(HWND hwnd, LONG fnc, int btn, int clk)
 		//  Added by TTTT to execute Task Manager
 		case MOUSEFUNC_TASKMGR:
 		{
-			ShellExecute(NULL, "open", "taskmgr", NULL, NULL, SW_SHOWNORMAL);
+			ShellExecuteW(NULL, L"open", L"taskmgr", NULL, NULL, SW_SHOWNORMAL);
 			SetWindowPos(GetActiveWindow(), HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
 			break;
 		}
@@ -494,7 +493,7 @@ void ExecuteMouseFunction(HWND hwnd, LONG fnc, int btn, int clk)
 		//  Added by TTTT to execute Control Panel
 		case MOUSEFUNC_CONTROLPNL:
 		{
-			ShellExecute(NULL, "open", "control", NULL, NULL, SW_SHOWNORMAL);
+			ShellExecuteW(NULL, L"open", L"control", NULL, NULL, SW_SHOWNORMAL);
 //			SetWindowPos(GetActiveWindow(), HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
 			break;
 		}
@@ -502,7 +501,7 @@ void ExecuteMouseFunction(HWND hwnd, LONG fnc, int btn, int clk)
 		//  Added by TTTT to execute Setting Application
 		case MOUSEFUNC_SETTING:
 		{
-			ShellExecute(NULL, "open", "ms-settings:", NULL, NULL, SW_SHOWNORMAL);
+			ShellExecuteW(NULL, L"open", L"ms-settings:", NULL, NULL, SW_SHOWNORMAL);
 			//			SetWindowPos(GetActiveWindow(), HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
 			break;
 		}
@@ -510,27 +509,27 @@ void ExecuteMouseFunction(HWND hwnd, LONG fnc, int btn, int clk)
 		//  Added by TTTT to open Command prompt
 		case MOUSEFUNC_CMD:
 		{
-			ShellExecute(NULL, "open", "cmd.exe", "/k cd \\", NULL, SW_SHOWNORMAL);
+			ShellExecuteW(NULL, L"open", L"cmd.exe", L"/k cd \\", NULL, SW_SHOWNORMAL);
 			break;
 		}
 
 		//  Added by TTTT to open Power Management Panel
 		case MOUSEFUNC_POWERPNL:
 		{
-			ShellExecute(NULL, "open", "control", "/name Microsoft.PowerOptions /page pageGlobalSettings", NULL, SW_SHOWNORMAL);
+			ShellExecuteW(NULL, L"open", L"control", L"/name Microsoft.PowerOptions /page pageGlobalSettings", NULL, SW_SHOWNORMAL);
 			break;
 		}
 
 		//  Added by TTTT to open Network Setting Panel
 		case MOUSEFUNC_NETWORKSTG:
 		{
-			ShellExecute(NULL, "open", "ms-settings:network-status", NULL, NULL, SW_SHOWNORMAL);
+			ShellExecuteW(NULL, L"open", L"ms-settings:network-status", NULL, NULL, SW_SHOWNORMAL);
 			break;
 		}
 
 		case MOUSEFUNC_NETWORKPNL:
 		{
-			ShellExecute(NULL, "open", "control", "ncpa.cpl", NULL, SW_SHOWNORMAL);
+			ShellExecuteW(NULL, L"open", L"control", L"ncpa.cpl", NULL, SW_SHOWNORMAL);
 			break;
 		}
 
@@ -539,13 +538,13 @@ void ExecuteMouseFunction(HWND hwnd, LONG fnc, int btn, int clk)
 		//  Added by TTTT to open DataPlan Usage Panel
 		case MOUSEFUNC_DATAUSAGE:
 		{
-			ShellExecute(NULL, "open", "ms-settings:datausage", NULL, NULL, SW_SHOWNORMAL);
+			ShellExecuteW(NULL, L"open", L"ms-settings:datausage", NULL, NULL, SW_SHOWNORMAL);
 			break;
 		}
 
 		case MOUSEFUNC_ALARM_CLOCK:
 		{
-			ShellExecute(NULL, "open", "ms-clock:", NULL, NULL, SW_SHOWNORMAL);
+			ShellExecuteW(NULL, L"open", L"ms-clock:", NULL, NULL, SW_SHOWNORMAL);
 			break;
 		}
 
@@ -553,7 +552,7 @@ void ExecuteMouseFunction(HWND hwnd, LONG fnc, int btn, int clk)
 		{
 			extern int PullBackIndex;
 			PullBackIndex = 0;
-			EnumWindows(PullBackOBWindow, NULL);
+			EnumWindows(PullBackOBWindow, (LPARAM)0);
 			break;
 		}
 	}

@@ -9,6 +9,7 @@
 static void OnInit(HWND hDlg);
 static void OnApply(HWND hDlg);
 static void ArrangeItems(HWND hDlg);
+static DWORD GetSpinPos(HWND hDlg, int ctrlId);
 
 INT_PTR CALLBACK DlgProcBarmeterColor(HWND, UINT, WPARAM, LPARAM);
 //void CreateBarMeterColorDialog(int index);
@@ -18,6 +19,11 @@ __inline void SendPSChanged(HWND hDlg)
 {
 	g_bApplyClock = TRUE;
 	SendMessage(GetParent(hDlg), PSM_CHANGED, (WPARAM)(hDlg), 0);
+}
+
+static DWORD GetSpinPos(HWND hDlg, int ctrlId)
+{
+	return (DWORD)(UINT_PTR)SendDlgItemMessage(hDlg, ctrlId, UDM_GETPOS, 0, 0);
 }
 
 extern char g_mydir[];
@@ -113,13 +119,13 @@ static void OnInit(HWND hDlg)
 		wchar_t tempStr[64];
 		wsprintfW(tempStr, L"現在の時計の幅 = %d, 高さ = %d"
 			, (int)GetMyRegLong("Status_DoNotEdit", "ClockWidth", 0), (int)GetMyRegLong("Status_DoNotEdit", "ClockHeight", 0));
-		SendDlgItemMessageW(hDlg, IDC_LABEL_HEIGHT, WM_SETTEXT, NULL, tempStr);
+		SetDlgItemTextW(hDlg, IDC_LABEL_HEIGHT, tempStr);
 	}
 	else {
 		char tempStr[64];
 		wsprintf(tempStr, "Current Clock Width = %d, Clock Height = %d"
 			, (int)GetMyRegLong("Status_DoNotEdit", "ClockWidth", 0), (int)GetMyRegLong("Status_DoNotEdit", "ClockHeight", 0));
-		SendDlgItemMessage(hDlg, IDC_LABEL_HEIGHT, WM_SETTEXT, NULL, tempStr);
+		SetWindowTextUTF8(GetDlgItem(hDlg, IDC_LABEL_HEIGHT), tempStr);
 	}
 
 	LOGFONT logfont;
@@ -337,13 +343,13 @@ void OnApply(HWND hDlg)
 	SetMyRegLong("BarMeter", "BarMeterVL_Horizontal", IsDlgButtonChecked(hDlg, IDC_BARVOLHORIZONTAL));
 
 	SetMyRegLong("BarMeter", "BarMeterVL_Right",
-		SendDlgItemMessage(hDlg, IDC_SPGBARVOLRIGHT, UDM_GETPOS, 0, 0));
+		GetSpinPos(hDlg, IDC_SPGBARVOLRIGHT));
 	SetMyRegLong("BarMeter", "BarMeterVL_Width",
-		SendDlgItemMessage(hDlg, IDC_SPGBARVOLWIDTH, UDM_GETPOS, 0, 0));
+		GetSpinPos(hDlg, IDC_SPGBARVOLWIDTH));
 	SetMyRegLong("BarMeter", "BarMeterVL_Bottom",
-		SendDlgItemMessage(hDlg, IDC_SPGBARVOLBOTTOM, UDM_GETPOS, 0, 0));
+		GetSpinPos(hDlg, IDC_SPGBARVOLBOTTOM));
 	SetMyRegLong("BarMeter", "BarMeterVL_Top",
-		SendDlgItemMessage(hDlg, IDC_SPGBARVOLHEIGHT, UDM_GETPOS, 0, 0));
+		GetSpinPos(hDlg, IDC_SPGBARVOLHEIGHT));
 
 
 	SetMyRegLong("BarMeter", "UseBarMeterCU",
@@ -351,25 +357,25 @@ void OnApply(HWND hDlg)
 	SetMyRegLong("BarMeter", "BarMeterCU_Horizontal", IsDlgButtonChecked(hDlg, IDC_BARCPUHORIZONTAL));
 
 	SetMyRegLong("BarMeter", "BarMeterCU_Right",
-		SendDlgItemMessage(hDlg, IDC_SPGBARCPURIGHT, UDM_GETPOS, 0, 0));
+		GetSpinPos(hDlg, IDC_SPGBARCPURIGHT));
 	SetMyRegLong("BarMeter", "BarMeterCU_Width",
-		SendDlgItemMessage(hDlg, IDC_SPGBARCPUWIDTH, UDM_GETPOS, 0, 0));
+		GetSpinPos(hDlg, IDC_SPGBARCPUWIDTH));
 	SetMyRegLong("BarMeter", "BarMeterCU_Bottom",
-		SendDlgItemMessage(hDlg, IDC_SPGBARCPUBOTTOM, UDM_GETPOS, 0, 0));
+		GetSpinPos(hDlg, IDC_SPGBARCPUBOTTOM));
 	SetMyRegLong("BarMeter", "BarMeterCU_Top",
-		SendDlgItemMessage(hDlg, IDC_SPGBARCPUHEIGHT, UDM_GETPOS, 0, 0));
+		GetSpinPos(hDlg, IDC_SPGBARCPUHEIGHT));
 
 
 	SetMyRegLong("BarMeter", "UseBarMeterGU",
 		IsDlgButtonChecked(hDlg, IDC_USEBARCPU2));
 
 	SetMyRegLong("BarMeter", "BarMeterGU_Right",
-		SendDlgItemMessage(hDlg, IDC_SPGBARCPURIGHT2, UDM_GETPOS, 0, 0));
+		GetSpinPos(hDlg, IDC_SPGBARCPURIGHT2));
 
 	SetMyRegLong("BarMeter", "BarMeterGU_Bottom",
-		SendDlgItemMessage(hDlg, IDC_SPGBARCPUBOTTOM2, UDM_GETPOS, 0, 0));
+		GetSpinPos(hDlg, IDC_SPGBARCPUBOTTOM2));
 	SetMyRegLong("BarMeter", "BarMeterGU_Top",
-		SendDlgItemMessage(hDlg, IDC_SPGBARCPUHEIGHT2, UDM_GETPOS, 0, 0));
+		GetSpinPos(hDlg, IDC_SPGBARCPUHEIGHT2));
 
 
 
@@ -378,13 +384,13 @@ void OnApply(HWND hDlg)
 	SetMyRegLong("BarMeter", "BarMeterBL_Horizontal", IsDlgButtonChecked(hDlg, IDC_BARBATHORIZONTAL));
 
 	SetMyRegLong("BarMeter", "BarMeterBL_Right",
-		SendDlgItemMessage(hDlg, IDC_SPGBARBATRIGHT, UDM_GETPOS, 0, 0));
+		GetSpinPos(hDlg, IDC_SPGBARBATRIGHT));
 	SetMyRegLong("BarMeter", "BarMeterBL_Width",
-		SendDlgItemMessage(hDlg, IDC_SPGBARBATWIDTH, UDM_GETPOS, 0, 0));
+		GetSpinPos(hDlg, IDC_SPGBARBATWIDTH));
 	SetMyRegLong("BarMeter", "BarMeterBL_Bottom",
-		SendDlgItemMessage(hDlg, IDC_SPGBARBATBOTTOM, UDM_GETPOS, 0, 0));
+		GetSpinPos(hDlg, IDC_SPGBARBATBOTTOM));
 	SetMyRegLong("BarMeter", "BarMeterBL_Top",
-		SendDlgItemMessage(hDlg, IDC_SPGBARBATHEIGHT, UDM_GETPOS, 0, 0));
+		GetSpinPos(hDlg, IDC_SPGBARBATHEIGHT));
 
 
 
@@ -398,21 +404,21 @@ void OnApply(HWND hDlg)
 	//SetMyRegLong("BarMeter", "BarMeterNet_Float", IsDlgButtonChecked(hDlg, IDC_BARNETFLOAT));
 
 	SetMyRegLong("BarMeter", "BarMeterNet_Width",
-		SendDlgItemMessage(hDlg, IDC_SPGBARNETWIDTH, UDM_GETPOS, 0, 0));
+		GetSpinPos(hDlg, IDC_SPGBARNETWIDTH));
 	SetMyRegLong("BarMeter", "BarMeterNetRecv_Top",
-		SendDlgItemMessage(hDlg, IDC_SPGBARNETHEIGHT, UDM_GETPOS, 0, 0));
+		GetSpinPos(hDlg, IDC_SPGBARNETHEIGHT));
 	SetMyRegLong("BarMeter", "BarMeterNetSend_Top",
-		SendDlgItemMessage(hDlg, IDC_SPGBARNETHEIGHT2, UDM_GETPOS, 0, 0));
+		GetSpinPos(hDlg, IDC_SPGBARNETHEIGHT2));
 
 	SetMyRegLong("BarMeter", "BarMeterNetSend_Right",
-		SendDlgItemMessage(hDlg, IDC_SPGBARNETSENDRIGHT, UDM_GETPOS, 0, 0));
+		GetSpinPos(hDlg, IDC_SPGBARNETSENDRIGHT));
 	SetMyRegLong("BarMeter", "BarMeterNetSend_Bottom",
-		SendDlgItemMessage(hDlg, IDC_SPGBARNETSENDBOTTOM, UDM_GETPOS, 0, 0));
+		GetSpinPos(hDlg, IDC_SPGBARNETSENDBOTTOM));
 
 	SetMyRegLong("BarMeter", "BarMeterNetRecv_Right",
-		SendDlgItemMessage(hDlg, IDC_SPGBARNETRCVRIGHT, UDM_GETPOS, 0, 0));
+		GetSpinPos(hDlg, IDC_SPGBARNETRCVRIGHT));
 	SetMyRegLong("BarMeter", "BarMeterNetRecv_Bottom",
-		SendDlgItemMessage(hDlg, IDC_SPGBARNETRCVBOTTOM, UDM_GETPOS, 0, 0));
+		GetSpinPos(hDlg, IDC_SPGBARNETRCVBOTTOM));
 
 	SetMyRegLong("BarMeter", "BarMeterVL_HorizontalToLeft", IsDlgButtonChecked(hDlg, IDC_BARHORIZ_LEFT_VL));
 	SetMyRegLong("BarMeter", "BarMeterBL_HorizontalToLeft", IsDlgButtonChecked(hDlg, IDC_BARHORIZ_LEFT_BL));

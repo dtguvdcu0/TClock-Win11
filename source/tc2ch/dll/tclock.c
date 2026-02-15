@@ -95,7 +95,7 @@ static BOOL CALLBACK EnumFindClassContainsProc_Win11(HWND hwnd, LPARAM lParam)
 
 	if (!ctx || !ctx->needle || ctx->found) return FALSE;
 	className[0] = 0;
-	GetClassName(hwnd, className, sizeof(className));
+	GetClassNameUTF8_DLL(hwnd, className, sizeof(className));
 	if (className[0] && StrStrI(className, ctx->needle)) {
 		ctx->found = hwnd;
 		return FALSE;
@@ -1091,8 +1091,8 @@ static BOOL CALLBACK EnumTaskbarChildrenProc_Win11(HWND hwnd, LPARAM lParam)
 
 	className[0] = 0;
 	title[0] = 0;
-	GetClassName(hwnd, className, sizeof(className));
-	GetWindowText(hwnd, title, sizeof(title));
+	GetClassNameUTF8_DLL(hwnd, className, sizeof(className));
+	GetWindowTextUTF8_DLL(hwnd, title, sizeof(title));
 	wsprintf(strLog, "[tclock.c][Win11HandleDump][%d] class=%s title=%s", ctx->count, className, title);
 	WriteDebugDLL_New(strLog);
 	ctx->count++;
@@ -2028,7 +2028,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 			if (b_DebugLog) writeDebugLog_Win10("[tclock.c][WndProc() CLOCKM_VISTACALENDAR received", 999);
 			if (bWin11Main)
 			{
-				ShellExecute(NULL, "open", "ms-actioncenter:", NULL, NULL, SW_SHOWNORMAL);
+				ShellExecuteW(NULL, L"open", L"ms-actioncenter:", NULL, NULL, SW_SHOWNORMAL);
 			}
 			else
 			{
@@ -2040,7 +2040,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 		case CLOCKM_SHOWAVAILABLENETWORKS:
 			if (b_DebugLog) writeDebugLog_Win10("[tclock.c][WndProc() CLOCKM_SHOWAVAILABLENETWORKS received", 999);
 			{
-				ShellExecute(NULL, "open", "ms-availablenetworks:", NULL, NULL, SW_SHOWNORMAL);
+				ShellExecuteW(NULL, L"open", L"ms-availablenetworks:", NULL, NULL, SW_SHOWNORMAL);
 			}
 			return 0;
 
@@ -6610,7 +6610,7 @@ void RestartTClockFromDLL(void)
 	char fname[MAX_PATH];
 	strcpy(fname, g_mydir_dll);
 	add_title(fname, "TClock-Win11.exe");
-	ShellExecute(NULL, "open", fname, "/restart", NULL, SW_HIDE);
+	ShellExecuteUtf8Compat_DLL(NULL, "open", fname, "/restart", NULL, SW_HIDE);
 	EndClock();
 }
 

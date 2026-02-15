@@ -12,6 +12,7 @@
 static void OnInit(HWND hDlg);
 static void OnApply(HWND hDlg);
 static void OnBrowseAnalogClockBitmapFile(HWND hDlg);
+static int GetSpinPos(HWND hDlg, int ctrlId);
 
 //extern int confNo;
 
@@ -27,6 +28,11 @@ __inline void SendPSChanged(HWND hDlg)
 {
 	g_bApplyClock = TRUE;
 	SendMessage(GetParent(hDlg), PSM_CHANGED, (WPARAM)(hDlg), 0);
+}
+
+static int GetSpinPos(HWND hDlg, int ctrlId)
+{
+	return (int)(short)SendDlgItemMessage(hDlg, ctrlId, UDM_GETPOS, 0, 0);
 }
 
 /*------------------------------------------------
@@ -158,7 +164,7 @@ void OnInit(HWND hDlg)
 		(int)(short)GetMyRegLong("AnalogClock", "AnalogClockSize", 0));
 
 	index = GetMyRegStr("AnalogClock", "AnalogClockBmp", fname, MAX_PATH, "..\\tclock.bmp");
-	SetDlgItemText(hDlg, IDC_ACLOCKBMP, fname);
+	SetDlgItemTextUTF8(hDlg, IDC_ACLOCKBMP, fname);
 }
 
 /*------------------------------------------------
@@ -188,16 +194,16 @@ void OnApply(HWND hDlg)
 		IsDlgButtonChecked(hDlg, IDC_CHECK_ACLOCK));
 
 	SetMyRegLong("AnalogClock", "AnalogClockHPos",
-		SendDlgItemMessage(hDlg, IDC_SPIN_ACLOCK_HPOS, UDM_GETPOS, 0, 0));
+		GetSpinPos(hDlg, IDC_SPIN_ACLOCK_HPOS));
 
 	SetMyRegLong("AnalogClock", "AnalogClockVPos",
-		SendDlgItemMessage(hDlg, IDC_SPIN_ACLOCK_VPOS, UDM_GETPOS, 0, 0));
+		GetSpinPos(hDlg, IDC_SPIN_ACLOCK_VPOS));
 
-	GetDlgItemText(hDlg, IDC_ACLOCKBMP, fname, MAX_PATH);
+	GetDlgItemTextUTF8(hDlg, IDC_ACLOCKBMP, fname, MAX_PATH);
 	SetMyRegStr("AnalogClock", "AnalogClockBmp", fname);
 
 	SetMyRegLong("AnalogClock", "AnalogClockSize",
-		SendDlgItemMessage(hDlg, IDC_SPIN_ACLOCK_SIZE, UDM_GETPOS, 0, 0));
+		GetSpinPos(hDlg, IDC_SPIN_ACLOCK_SIZE));
 
 }
 
@@ -211,13 +217,13 @@ static void OnBrowseAnalogClockBitmapFile(HWND hDlg)
 	str0cat(filter, MyString(IDS_BMPFILE)); str0cat(filter, "*.bmp");
 	str0cat(filter, MyString(IDS_ALLFILE)); str0cat(filter, "*.*");
 
-	GetDlgItemText(hDlg, IDC_ACLOCKBMP, deffile, MAX_PATH);
+	GetDlgItemTextUTF8(hDlg, IDC_ACLOCKBMP, deffile, MAX_PATH);
 
 	if (!SelectMyFile(hDlg, filter, 0, deffile, fname)) {// propsheet.c
 		return;
 	}
 
-	SetDlgItemText(hDlg, IDC_ACLOCKBMP, fname);
+	SetDlgItemTextUTF8(hDlg, IDC_ACLOCKBMP, fname);
 
 	PostMessage(hDlg, WM_NEXTDLGCTL, 1, FALSE);
 

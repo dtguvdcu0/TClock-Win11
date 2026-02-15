@@ -7,6 +7,7 @@
 #include <windows.h>
 #include <pdh.h>
 #include <pdhmsg.h>
+#include <stdio.h>
 //#include <sysinfoapi.h>
 #include "tcdll.h"
 
@@ -42,9 +43,6 @@ static pfnPdhAddCounter pPdhAddCounter;
 void GPUMoni_start(void)
 {
 	if (b_DebugLog) writeDebugLog_Win10("[gpumon.c] GPUMoni_start called.", 999);
-
-
-	int i;
 
 	if (hQueryGPU)GPUMoni_end();
 
@@ -260,9 +258,7 @@ int SetGPUUsageCounter(void)
 
 int GPUMoni_get(void)
 {
-	double tempDouble = 0.0;
 	long tempLong = 0;
-	int i = 0;
 	PDH_FMT_COUNTERVALUE FmtValue;
 
 	//if (b_DebugLog) writeDebugLog_Win10("[gpumon.c] GPUMoni_get called", 999);
@@ -271,9 +267,9 @@ int GPUMoni_get(void)
 
 	if (hQueryGPU) {
 		pPdhCollectQueryData(hQueryGPU);
-		for (int i = 0; i < numberGPUCounter; i++)
+		for (int counterIndex = 0; counterIndex < numberGPUCounter; counterIndex++)
 		{
-			if (pPdhGetFormattedCounterValue(hGPUCounter[i], PDH_FMT_LONG | PDH_FMT_1000, NULL, &FmtValue) == ERROR_SUCCESS)
+			if (pPdhGetFormattedCounterValue(hGPUCounter[counterIndex], PDH_FMT_LONG | PDH_FMT_1000, NULL, &FmtValue) == ERROR_SUCCESS)
 			{
 				tempLong += FmtValue.longValue;
 			}

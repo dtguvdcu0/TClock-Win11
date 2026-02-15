@@ -1068,11 +1068,11 @@ BEGIN
         BEGIN
             VALUE "Comments", "TClock-Win11 Language DLL（日本語/English）"
             VALUE "FileDescription", "TClock-Win11 Language DLL（日本語/English）"
-            VALUE "FileVersion", "0.1.0.0"
+            VALUE "FileVersion", "0.1.1.0"
             VALUE "InternalName", "LANGJA"
             VALUE "OriginalFilename", "tclang-win11.dll"
             VALUE "ProductName", "TClock-Win11"
-            VALUE "ProductVersion", "0.1.0 beta"
+            VALUE "ProductVersion", "0.1.1 beta"
         END
     END
     BLOCK "VarFileInfo"

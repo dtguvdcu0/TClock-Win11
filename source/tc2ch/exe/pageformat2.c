@@ -82,9 +82,9 @@ void OnOK(HWND hDlg)
 {
 	char s[80];
 
-	GetDlgItemText(hDlg, IDC_AMSYMBOL, s, 1024);
+	GetDlgItemTextUTF8(hDlg, IDC_AMSYMBOL, s, 1024);
 	SetMyRegStr("Format", "AMsymbol", s);
-	GetDlgItemText(hDlg, IDC_PMSYMBOL, s, 1024);
+	GetDlgItemTextUTF8(hDlg, IDC_PMSYMBOL, s, 1024);
 	SetMyRegStr("Format", "PMsymbol", s);
 
 	SetMyRegLong("Format", "HourZero",

@@ -53,8 +53,8 @@ char exeVersionString[32];
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);	//tclock.exe本体のウィンドウプロシージャコールバック
 
 
-char szClassName[] = "TClockMainClass"; // window class name
-char szWindowText[] = "TClock";         // caption of the window	(TClock-Win10にする？)
+wchar_t szClassName[] = L"TClockMainClass"; // window class name
+wchar_t szWindowText[] = L"TClock";         // caption of the window	(TClock-Win10にする？)
 
 static BOOL bMenuOpened = FALSE;
 static BOOL bDestroy = FALSE;
@@ -88,7 +88,8 @@ static BOOL IsUserAdmin(void);
 
 
 static BOOL AddMessageFilters(void);
-static BOOL HasCommandLineOption(const char *option);
+static BOOL HasCommandLineOption(const wchar_t *option);
+static BOOL PrefixEqualsNoCaseW(const wchar_t* text, const wchar_t* prefix, int prefixLen);
 static int MessageBoxUtf8Compat(HWND hwnd, const char* text, const char* caption, UINT type);
 static int DecodeDialogAnsiToWide(const char* ansi, wchar_t* wide, int wideCch);
 static BOOL SetHideClockPolicyValue(DWORD value);
@@ -187,17 +188,24 @@ int GetMouseFuncCount(void)
 	return sizeof(mouse_func_list) / sizeof(MOUSE_FUNC_INFO);
 }
 
-static BOOL HasCommandLineOption(const char *option)
+static BOOL PrefixEqualsNoCaseW(const wchar_t* text, const wchar_t* prefix, int prefixLen)
 {
-    char *p = GetCommandLine();
-    size_t n = strlen(option);
+	if (!text || !prefix || prefixLen <= 0) return FALSE;
+	return CompareStringOrdinal(text, prefixLen, prefix, prefixLen, TRUE) == CSTR_EQUAL;
+}
+
+static BOOL HasCommandLineOption(const wchar_t *option)
+{
+    wchar_t *p = GetCommandLineW();
+    size_t n = 0;
+    while (option && option[n]) n++;
 
     while (*p) {
         while (*p && *p != '/' && *p != '-') p++;
         if (!*p) break;
         p++;
-        if (_strnicmp(p, option, n) == 0) return TRUE;
-        while (*p && *p != ' ') p++;
+        if (PrefixEqualsNoCaseW(p, option, (int)n)) return TRUE;
+        while (*p && *p != L' ') p++;
     }
 	return FALSE;
 }
@@ -275,9 +283,9 @@ static BOOL WaitExplorerReady(DWORD timeoutMs)
     HWND hwndTray;
 
     do {
-        hwndShell = FindWindow(TEXT("Shell_TrayWnd"), NULL);
+        hwndShell = FindWindowW(L"Shell_TrayWnd", NULL);
         if (hwndShell) {
-            hwndTray = FindWindowEx(hwndShell, NULL, TEXT("TrayNotifyWnd"), NULL);
+            hwndTray = FindWindowExW(hwndShell, NULL, L"TrayNotifyWnd", NULL);
             if (hwndTray) {
                 Sleep(500);
                 return TRUE;
@@ -292,9 +300,9 @@ static BOOL WaitExplorerReady(DWORD timeoutMs)
 static void RestartExplorerForHideClock(void)
 {
     b_IgnoreTaskbarRestartForHideClock = TRUE;
-    ShellExecute(NULL, TEXT("open"), TEXT("taskkill.exe"), TEXT("/F /IM explorer.exe"), NULL, SW_HIDE);
+    ShellExecuteW(NULL, L"open", L"taskkill.exe", L"/F /IM explorer.exe", NULL, SW_HIDE);
     Sleep(1200);
-    ShellExecute(NULL, TEXT("open"), TEXT("explorer.exe"), NULL, NULL, SW_SHOWDEFAULT);
+    ShellExecuteW(NULL, L"open", L"explorer.exe", NULL, NULL, SW_SHOWDEFAULT);
     WaitExplorerReady(20000);
 }
 
@@ -329,7 +337,7 @@ BOOL WaitQuitPrevTClock(int cycle)
 
 	for (int i = 0; i < cycle; i++)
 	{
-		hwnd = FindWindow(szClassName, szWindowText);		//プロセスがすでに起動していたらhwnd != NULLになる
+		hwnd = FindWindowW(szClassName, szWindowText);		//プロセスがすでに起動していたらhwnd != NULLになる
 		if (hwnd == NULL) return FALSE;
 		Sleep(100);
 	}
@@ -381,7 +389,7 @@ void OnDLLAliveMessage(WPARAM tempwParam)
 static UINT WINAPI TclockExeMain(void)
 {
 	MSG msg;
-	WNDCLASS wndclass;
+	WNDCLASSW wndclass;
 	HWND hwnd;
 
 	//CheckCommandLine(hwnd);
@@ -390,17 +398,17 @@ static UINT WINAPI TclockExeMain(void)
 
 	//if (b_RestartDLL)
 	//{
-	//	hwnd = FindWindow(szClassName, szWindowText);		//プロセスがすでに起動していたらhwnd != NULLになる
+	//	hwnd = FindWindowW(szClassName, szWindowText);		//プロセスがすでに起動していたらhwnd != NULLになる
 	//	for (int i = 0; i < 10; i++)
 	//	{
 	//		if (hwnd != NULL) Sleep(500);
-	//		hwnd = FindWindow(szClassName, szWindowText);		//プロセスがすでに起動していたらhwnd != NULLになる
+	//		hwnd = FindWindowW(szClassName, szWindowText);		//プロセスがすでに起動していたらhwnd != NULLになる
 	//	}
 	//	if (hwnd != NULL)
 	//	{
 	//		MessageBoxUtf8Compat(NULL, "既存のTClock-Win10のプロセス終了に時間がかかっています。『OK』を押しても再起動しない場合にはタスクマネージャーからTClock-Win10のプロセスを強制終了してください。\n\nTerminating Previous TClock-Win10 is taking a long time. If you do not have the restarted TClock-Win10 even after clicking \"OK\", please kill the previous TClock-Win10 in the Taskmanager.",
 	//			"TClock-Win10", MB_ICONEXCLAMATION | MB_SETFOREGROUND);
-	//		hwnd = FindWindow(szClassName, szWindowText);
+	//		hwnd = FindWindowW(szClassName, szWindowText);
 	//		if (hwnd != NULL) return 1;
 	//	}
 	//}
@@ -455,7 +463,7 @@ static UINT WINAPI TclockExeMain(void)
 
 
 	// not to execute the program twice
-	hwnd = FindWindow(szClassName, szWindowText);
+	hwnd = FindWindowW(szClassName, szWindowText);
 	if(hwnd != NULL)				//すでにプロセスが起動していれば、	
 	{
 		CheckCommandLine(hwnd);		//コマンドラインオプションをチェック("/exit"の場合のため)して	
@@ -500,10 +508,10 @@ static UINT WINAPI TclockExeMain(void)
     b_UseHideClockPolicyFlow = GetMyRegLong("ETC", "UseHideClockPolicyFlow", TRUE);
     SetMyRegLong("ETC", "UseHideClockPolicyFlow", b_UseHideClockPolicyFlow);
     b_HideClockPolicyWasEnabled = IsHideClockPolicyEnabled();
-    if (HasCommandLineOption("restart")) {
+    if (HasCommandLineOption(L"restart")) {
         b_HideClockPolicyApplied = FALSE;
     }
-    else if (HasCommandLineOption("exit")) {
+    else if (HasCommandLineOption(L"exit")) {
         b_UseHideClockPolicyFlow = FALSE;
     }
     else {
@@ -571,7 +579,7 @@ static UINT WINAPI TclockExeMain(void)
 	// Message of the taskbar recreating
 	// Special thanks to Mr.Inuya
 	//https://isobe.exblog.jp/113279/
-	s_uTaskbarRestart = RegisterWindowMessage(TEXT("TaskbarCreated"));
+	s_uTaskbarRestart = RegisterWindowMessageW(L"TaskbarCreated");
 
 	g_hIconTClock = LoadIcon(g_hInst, MAKEINTRESOURCE(IDI_ICON1));
 
@@ -589,14 +597,14 @@ static UINT WINAPI TclockExeMain(void)
 	wndclass.hbrBackground = (HBRUSH)(COLOR_WINDOW+1);
 	wndclass.lpszMenuName  = NULL;
 	wndclass.lpszClassName = szClassName;
-	RegisterClass(&wndclass);
+	RegisterClassW(&wndclass);
 
 	if (b_DebugLog) WriteDebug_New2("[exemain.c][TclockExeMain] Window Class Registered");
 
 
 	// create a hidden window
 	//DO_WS_AGGRESSIVE();	// Comment out by TTTT 20181125
-	hwnd = CreateWindowEx(WS_EX_TOOLWINDOW, szClassName, szWindowText,		//ここでxzClassName, szWindowText等を登録して、hwndを取得
+	hwnd = CreateWindowExW(WS_EX_TOOLWINDOW, szClassName, szWindowText,		//ここでxzClassName, szWindowText等を登録して、hwndを取得
 		0, CW_USEDEFAULT,CW_USEDEFAULT,CW_USEDEFAULT,CW_USEDEFAULT,
 		NULL, NULL, g_hInst, NULL);
 	//ShowWindow(hwnd, SW_SHOW);	//見えないウィンドウが存在している。この行のコメントアウトを外すと見える。これが"hwnd"
@@ -649,7 +657,7 @@ static UINT WINAPI TclockExeMain(void)
 
 	if(g_hInstResource) FreeLibrary(g_hInstResource);		//langja.dllをアンロード
 
-	UnregisterClass(szClassName, g_hInst);	// for TTBASE …と書いてあったが、たぶん必要 
+	UnregisterClassW(szClassName, g_hInst);	// for TTBASE …と書いてあったが、たぶん必要 
 
 	if (b_ModernStandbySupported && handle_PowerNotify) UnregisterPowerSettingNotification(handle_PowerNotify);
 
@@ -704,46 +712,46 @@ void CreateTClockTrayIcon(BOOL bCreate)
 void CheckCommandLine(HWND hwnd)
 {
 
-	char *p;
-	p = GetCommandLine();
+	wchar_t *p;
+	p = GetCommandLineW();
 	while(*p)
 	{
 		if(*p == '/')
 		{
 			p++;
-			if(_strnicmp(p, "prop", 4) == 0)	//propオプション：プロパティを開く
+			if(PrefixEqualsNoCaseW(p, L"prop", 4))	//propオプション：プロパティを開く
 			{
 				//if (b_DebugLog) WriteDebug_New2("[exemain.c][CheckCommandLine] Launched with  prop option");
 				PostMessage(hwnd, WM_COMMAND, IDC_SHOWPROP, 0);
 				p += 4;
 			}
-			//else if (_strnicmp(p, "restartdll", 10) == 0)	//exitオプション：終了処理を行う
+			//else if (PrefixEqualsNoCaseW(p, L"restartdll", 10))	//exitオプション：終了処理を行う
 			//{
 			//	//if (b_DebugLog) WriteDebug_New2("[exemain.c][CheckCommandLine] Launched with  restartdll option");
 			//	b_RestartDLL = TRUE;
 			//	p += 10;
 			//}
-			else if (_strnicmp(p, "restart", 7) == 0)	//exitオプション：終了処理を行う
+			else if (PrefixEqualsNoCaseW(p, L"restart", 7))	//exitオプション：終了処理を行う
 			{
 				//if (b_DebugLog) WriteDebug_New2("[exemain.c][CheckCommandLine] Launched with  restart option");
 				b_RestartNOW = TRUE;
 				p += 10;
 			}
-			else if(_strnicmp(p, "exit", 4) == 0)	//exitオプション：終了処理を行う
+			else if(PrefixEqualsNoCaseW(p, L"exit", 4))	//exitオプション：終了処理を行う
 			{
 				//if (b_DebugLog) WriteDebug_New2("[exemain.c][CheckCommandLine] Launched with  exit option");
 				b_Exit = TRUE;
 				PostMessage(hwnd, WM_CLOSE, 0, 0);		//メインウィンドウにWM_CLOSE(102)を送出する
 				p += 4;
 			}
-			else if(_strnicmp(p, "nowait", 6) == 0)	//nowaitオプション：遅延スタートを無視
+			else if(PrefixEqualsNoCaseW(p, L"nowait", 6))	//nowaitオプション：遅延スタートを無視
 			{
 				//if (b_DebugLog) WriteDebug_New2("[exemain.c][CheckCommandLine] Launched with nowait option");
 				KillTimer(hwnd, IDTIMER_START);				//現在動いているIDTIMER_STARTを停止
 				SetTimer(hwnd, IDTIMER_START, 100, NULL);	//100msウェイトでIDTIMER_STARTを開始, タイムアウト時にはメッセージ送出
 				p += 6;
 			}
-			else if(_strnicmp(p, "idle", 4) == 0)	//idleオプション：優先度をIDLEにして起動
+			else if(PrefixEqualsNoCaseW(p, L"idle", 4))	//idleオプション：優先度をIDLEにして起動
 			{
 				//if (b_DebugLog) WriteDebug_New2("[exemain.c][CheckCommandLine] Launched with  idle option");
 				HANDLE op = OpenProcess(PROCESS_ALL_ACCESS, TRUE, GetCurrentProcessId());
@@ -751,7 +759,7 @@ void CheckCommandLine(HWND hwnd)
 				Sleep(10);
 				p += 4;
 			}
-			else if (_strnicmp(p, "normal", 4) == 0)	//normalオプション：優先度をNORMALにして起動
+			else if (PrefixEqualsNoCaseW(p, L"normal", 4))	//normalオプション：優先度をNORMALにして起動
 			{
 				//if (b_DebugLog) WriteDebug_New2("[exemain.c][CheckCommandLine] Launched with  normal option");
 				HANDLE op = OpenProcess(PROCESS_ALL_ACCESS, TRUE, GetCurrentProcessId());
@@ -1059,7 +1067,7 @@ LRESULT CALLBACK WndProc(HWND hwnd,	UINT message, WPARAM wParam, LPARAM lParam)	
 			strcpy(fname, g_mydir);
 			add_title(fname, "TClock-Win11.exe");
             b_SkipHideClockRestore = TRUE;
-			ShellExecute(NULL, "open", fname, "/restart", NULL, SW_HIDE);
+			ShellExecuteUtf8Compat(NULL, "open", fname, "/restart", NULL, SW_HIDE);
 
 		}
 		else
@@ -1414,7 +1422,7 @@ void My2chHelp(HWND hwnd)
 		SetMyRegStr("ETC", "2chHelpURL", helpurl);
 	}
 
-	ShellExecute(hwnd, NULL, helpurl, NULL, "", SW_SHOW);
+	ShellExecuteUtf8Compat(hwnd, NULL, helpurl, NULL, "", SW_SHOW);
 }
 
 
@@ -1847,7 +1855,7 @@ static BOOL AddMessageFilters(void)
 		WM_USER+2,
 	};
 
-	HMODULE hUser32 = GetModuleHandle("user32.dll");
+	HMODULE hUser32 = GetModuleHandleW(L"user32.dll");
 	pfnChangeWindowMessageFilter ChangeWindowMessageFilter = (pfnChangeWindowMessageFilter)
 		GetProcAddress(hUser32, "ChangeWindowMessageFilter");
 	if (!ChangeWindowMessageFilter)
@@ -1917,7 +1925,7 @@ int WINAPI WinMain(HINSTANCE hinst,HINSTANCE hinstPrev,LPSTR lpszCmdLine, int nS
 	UNREFERENCED_PARAMETER(nShow);
 #endif
 
-	g_hInst = GetModuleHandle(NULL);
+	g_hInst = GetModuleHandleW(NULL);
 
 	SetProcessShutdownParameters(0x1FF, 0); // 最後の方でシャットダウンするアプリケーション
 
@@ -2005,7 +2013,7 @@ static BOOL IsWow64(void)
 
 	typedef BOOL(WINAPI* LPFN_ISWOW64PROCESS)(HANDLE hProcess, PBOOL Wow64Process);
 	LPFN_ISWOW64PROCESS IsWow64Process = (LPFN_ISWOW64PROCESS)GetProcAddress(
-		GetModuleHandle(TEXT("kernel32")), "IsWow64Process");
+		GetModuleHandleW(L"kernel32"), "IsWow64Process");
 	if (IsWow64Process)
 	{
 		if (!IsWow64Process(GetCurrentProcess(), &bIsWow64))

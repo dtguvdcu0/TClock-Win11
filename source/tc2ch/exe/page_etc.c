@@ -127,12 +127,12 @@ static void OnInit(HWND hDlg)
 		if (Language_Offset == LANGUAGE_OFFSET_JAPANESE) {
 			wchar_t tempStr[64];
 			wsprintfW(tempStr, L"現在値: %d ℃", tempInt % 200);
-			SendDlgItemMessageW(hDlg, IDC_LABEL_CURRENT_TEMP, WM_SETTEXT, NULL, tempStr);
+			SetDlgItemTextW(hDlg, IDC_LABEL_CURRENT_TEMP, tempStr);
 		}
 		else {
 			char tempStr[64];
 			wsprintf(tempStr, "Current Value: %d deg.", tempInt % 200);
-			SendDlgItemMessage(hDlg, IDC_LABEL_CURRENT_TEMP, WM_SETTEXT, NULL, tempStr);
+			SetWindowTextUTF8(GetDlgItem(hDlg, IDC_LABEL_CURRENT_TEMP), tempStr);
 		}
 
 	}
@@ -145,12 +145,12 @@ static void OnInit(HWND hDlg)
 		if (Language_Offset == LANGUAGE_OFFSET_JAPANESE) {
 			wchar_t tempStr[64];
 			wsprintfW(tempStr, L"取得不可");
-			SendDlgItemMessageW(hDlg, IDC_LABEL_CURRENT_TEMP, WM_SETTEXT, NULL, tempStr);
+			SetDlgItemTextW(hDlg, IDC_LABEL_CURRENT_TEMP, tempStr);
 		}
 		else {
 			char tempStr[64];
 			wsprintf(tempStr, "Not Available");
-			SendDlgItemMessage(hDlg, IDC_LABEL_CURRENT_TEMP, WM_SETTEXT, NULL, tempStr);
+			SetWindowTextUTF8(GetDlgItem(hDlg, IDC_LABEL_CURRENT_TEMP), tempStr);
 		}
 	}
 
@@ -184,12 +184,12 @@ static void OnUpdate(HWND hDlg)
 	if (Language_Offset == LANGUAGE_OFFSET_JAPANESE) {
 		wchar_t tempStr[64];
 		wsprintfW(tempStr, L"現在値: %d ℃", tempInt % 200);
-		SendDlgItemMessageW(hDlg, IDC_LABEL_CURRENT_TEMP, WM_SETTEXT, NULL, tempStr);
+		SetDlgItemTextW(hDlg, IDC_LABEL_CURRENT_TEMP, tempStr);
 	}
 	else {
 		char tempStr[64];
 		wsprintf(tempStr, "Current Value: %d deg.", tempInt % 200);
-		SendDlgItemMessage(hDlg, IDC_LABEL_CURRENT_TEMP, WM_SETTEXT, NULL, tempStr);
+		SetWindowTextUTF8(GetDlgItem(hDlg, IDC_LABEL_CURRENT_TEMP), tempStr);
 	}
 
 }

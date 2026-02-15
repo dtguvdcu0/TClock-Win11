@@ -412,6 +412,7 @@ void str0cat(char* dst, const char* src)
 char* MyString(UINT id)
 {
 	static char buf[MAX_PATH];
+	WCHAR wbuf[MAX_PATH];
 	HINSTANCE hInst;
 	int n = 0;
 
@@ -419,15 +420,21 @@ char* MyString(UINT id)
 	extern BOOL b_DebugLog;
 
 	buf[0] = 0;
+	wbuf[0] = L'\0';
 	hInst = GetLangModule();
 	if(hInst) {
-		n = LoadString(hInst, id + Language_Offset, buf, MAX_PATH);
+		n = LoadStringW(hInst, id + Language_Offset, wbuf, MAX_PATH);
 		if(n == 0) {
 			if(Language_Offset != 0) {
-				n = LoadString(hInst, id, buf, MAX_PATH);
+				n = LoadStringW(hInst, id, wbuf, MAX_PATH);
 			}
 			else {
-				n = LoadString(hInst, id + 1000, buf, MAX_PATH);
+				n = LoadStringW(hInst, id + 1000, wbuf, MAX_PATH);
+			}
+		}
+		if (n > 0) {
+			if (tc_utf16_to_ansi_compat(CP_ACP, wbuf, buf, MAX_PATH) <= 0) {
+				buf[0] = '\0';
 			}
 		}
 	}
@@ -447,28 +454,87 @@ char* MyString(UINT id)
 /*-------------------------------------------
   アイコンつきメッセージボックス
 ---------------------------------------------*/
+static int DecodeUtf8OrAcp(const char* src, wchar_t* dst, int dstCch)
+{
+	int ret;
+	if (!src || !dst || dstCch <= 0) return 0;
+	ret = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, src, -1, dst, dstCch);
+	if (ret <= 0) ret = MultiByteToWideChar(CP_ACP, 0, src, -1, dst, dstCch);
+	if (ret <= 0) dst[0] = L'\0';
+	return ret;
+}
+
+BOOL SetWindowTextUTF8(HWND hwnd, const char* text)
+{
+	wchar_t wText[1024];
+	if (!hwnd) return FALSE;
+	if (!text) text = "";
+	if (DecodeUtf8OrAcp(text, wText, (int)(sizeof(wText) / sizeof(wText[0]))) <= 0) {
+		lstrcpynW(wText, L"", (int)(sizeof(wText) / sizeof(wText[0])));
+	}
+	return SetWindowTextW(hwnd, wText);
+}
+
+int GetWindowTextUTF8(HWND hwnd, char* text, int textBytes)
+{
+	wchar_t wText[1024];
+	if (!text || textBytes <= 0) return 0;
+	text[0] = '\0';
+	if (!hwnd) return 0;
+	if (GetWindowTextW(hwnd, wText, (int)(sizeof(wText) / sizeof(wText[0]))) <= 0) return 0;
+	if (tc_utf16_to_utf8(wText, text, textBytes) > 0) return lstrlen(text);
+	if (tc_utf16_to_ansi_compat(CP_ACP, wText, text, textBytes) > 0) return lstrlen(text);
+	text[0] = '\0';
+	return 0;
+}
+
+BOOL SetDlgItemTextUTF8(HWND hDlg, int id, const char* text)
+{
+	HWND hItem;
+	if (!hDlg) return FALSE;
+	hItem = GetDlgItem(hDlg, id);
+	if (!hItem) return FALSE;
+	return SetWindowTextUTF8(hItem, text);
+}
+
+int GetDlgItemTextUTF8(HWND hDlg, int id, char* text, int textBytes)
+{
+	HWND hItem;
+	if (!text || textBytes <= 0) return 0;
+	text[0] = '\0';
+	if (!hDlg) return 0;
+	hItem = GetDlgItem(hDlg, id);
+	if (!hItem) return 0;
+	return GetWindowTextUTF8(hItem, text, textBytes);
+}
+
+int GetClassNameUTF8(HWND hwnd, char* text, int textBytes)
+{
+	wchar_t wText[1024];
+	if (!text || textBytes <= 0) return 0;
+	text[0] = '\0';
+	if (!hwnd) return 0;
+	if (GetClassNameW(hwnd, wText, (int)(sizeof(wText) / sizeof(wText[0]))) <= 0) return 0;
+	if (tc_utf16_to_utf8(wText, text, textBytes) > 0) return lstrlen(text);
+	if (tc_utf16_to_ansi_compat(CP_ACP, wText, text, textBytes) > 0) return lstrlen(text);
+	text[0] = '\0';
+	return 0;
+}
+
 int MyMessageBox(HWND hwnd, char* msg, char* title, UINT uType, UINT uBeep)
 {
 	MSGBOXPARAMSW mbp;
 	wchar_t wMsg[2048];
 	wchar_t wTitle[256];
-	int msgRet;
-	int titleRet;
 
 	if (!msg) msg = "";
 	if (!title) title = "TClock-Win11";
 
-	msgRet = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, msg, -1, wMsg, sizeof(wMsg) / sizeof(wMsg[0]));
-	if (msgRet <= 0) msgRet = MultiByteToWideChar(CP_ACP, 0, msg, -1, wMsg, sizeof(wMsg) / sizeof(wMsg[0]));
-	titleRet = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, title, -1, wTitle, sizeof(wTitle) / sizeof(wTitle[0]));
-	if (titleRet <= 0) titleRet = MultiByteToWideChar(CP_ACP, 0, title, -1, wTitle, sizeof(wTitle) / sizeof(wTitle[0]));
-	if (msgRet <= 0 || titleRet <= 0) {
-		if (msgRet <= 0) {
-			lstrcpynW(wMsg, L"[Message decode error]", sizeof(wMsg) / sizeof(wMsg[0]));
-		}
-		if (titleRet <= 0) {
-			lstrcpynW(wTitle, L"TClock-Win11", sizeof(wTitle) / sizeof(wTitle[0]));
-		}
+	if (DecodeUtf8OrAcp(msg, wMsg, (int)(sizeof(wMsg) / sizeof(wMsg[0]))) <= 0) {
+		lstrcpynW(wMsg, L"[Message decode error]", (int)(sizeof(wMsg) / sizeof(wMsg[0])));
+	}
+	if (DecodeUtf8OrAcp(title, wTitle, (int)(sizeof(wTitle) / sizeof(wTitle[0]))) <= 0) {
+		lstrcpynW(wTitle, L"TClock-Win11", (int)(sizeof(wTitle) / sizeof(wTitle[0])));
 	}
 
 	mbp.cbSize = sizeof(MSGBOXPARAMSW);
@@ -484,6 +550,25 @@ int MyMessageBox(HWND hwnd, char* msg, char* title, UINT uType, UINT uBeep)
 	if(uBeep != 0xFFFFFFFF)
 		MessageBeep(uBeep);
 	return MessageBoxIndirectW(&mbp);
+}
+
+HINSTANCE ShellExecuteUtf8Compat(HWND hwnd, const char* op, const char* file, const char* params, const char* dir, int showCmd)
+{
+	wchar_t wOp[64];
+	wchar_t wFile[2048];
+	wchar_t wParams[2048];
+	wchar_t wDir[MAX_PATH];
+	const wchar_t* pOp = NULL;
+	const wchar_t* pFile = NULL;
+	const wchar_t* pParams = NULL;
+	const wchar_t* pDir = NULL;
+
+	if (op && DecodeUtf8OrAcp(op, wOp, (int)(sizeof(wOp) / sizeof(wOp[0]))) > 0) pOp = wOp;
+	if (file && DecodeUtf8OrAcp(file, wFile, (int)(sizeof(wFile) / sizeof(wFile[0]))) > 0) pFile = wFile;
+	if (params && DecodeUtf8OrAcp(params, wParams, (int)(sizeof(wParams) / sizeof(wParams[0]))) > 0) pParams = wParams;
+	if (dir && DecodeUtf8OrAcp(dir, wDir, (int)(sizeof(wDir) / sizeof(wDir[0]))) > 0) pDir = wDir;
+
+	return ShellExecuteW(hwnd, pOp, pFile, pParams, pDir, showCmd);
 }
 
 /*------------------------------------------------
@@ -533,8 +618,6 @@ DWORDLONG M32x32to64(DWORD a, DWORD b)
 ---------------------------------------------*/
 void SetForegroundWindow98(HWND hwnd)
 {
-	DWORD dwVer;
-
 	{
 		DWORD thread1, thread2;
 		DWORD pid;
@@ -706,10 +789,6 @@ int GetMyRegStr(char* section, char* entry, char* val, int cbData,
 	char* defval)
 {
 	char key[80];
-	HKEY hkey;
-	DWORD regtype;
-	DWORD size;
-	BOOL b;
 	int r = 0;
 	BOOL isUtf8 = FALSE;
 	BOOL needsHexBackfill = FALSE;
@@ -789,10 +868,6 @@ getmyregstr_done:
 LONG GetMyRegLong(char* section, char* entry, LONG defval)
 {
 	char key[80];
-	HKEY hkey;
-	DWORD regtype;
-	DWORD size;
-	BOOL b;
 	LONG r = 0;
 
 	if (strlen(g_inifile) == 0) return 0;
@@ -857,7 +932,6 @@ LONG GetMyRegLong(char* section, char* entry, LONG defval)
 ---------------------------------------------*/
 BOOL SetMyRegStr(char* section, char* entry, char* val)
 {
-	HKEY hkey;
 	BOOL r = FALSE;
 	char key[80];
 	BOOL isUtf8 = FALSE;
@@ -942,7 +1016,6 @@ BOOL SetMyRegStr(char* section, char* entry, char* val)
 ---------------------------------------------*/
 BOOL SetMyRegLong(char* section, char* entry, DWORD val)
 {
-	HKEY hkey;
 	BOOL r = FALSE;
 	char key[80];
 	BOOL isUtf8 = FALSE;
@@ -1003,7 +1076,6 @@ BOOL DelMyReg(char* section, char* entry)
 {
 	BOOL r = FALSE;
 	char key[80];
-	HKEY hkey;
 	BOOL isUtf8 = FALSE;
 
 	if (strlen(g_inifile) == 0) return 0;
@@ -1113,12 +1185,12 @@ void AdjustConboBoxDropDown(HWND hComboBox, int nDropDownCount)
 	int nCount, nItemHeight;
 	RECT rect;
 
-	nCount = SendMessage(hComboBox, CB_GETCOUNT, 0, 0);
+	nCount = (int)SendMessage(hComboBox, CB_GETCOUNT, 0, 0);
 	if (nCount > nDropDownCount) nCount = nDropDownCount;
 	if (nCount < 1) nCount = 1;
 
 	GetWindowRect(hComboBox, &rect);
-	nItemHeight = SendMessage(hComboBox, CB_GETITEMHEIGHT, 0, 0);
+	nItemHeight = (int)SendMessage(hComboBox, CB_GETITEMHEIGHT, 0, 0);
 	SetWindowPos(hComboBox, 0, 0, 0, rect.right - rect.left,
 		nItemHeight * nCount + rect.bottom - rect.top + 2,
 		SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOREDRAW | SWP_SHOWWINDOW);
@@ -1179,7 +1251,7 @@ PSTR CreateFullPathName(HINSTANCE hmod, PSTR fname)
 // Vistaのカレンダーが表示されていればそのハンドルを返す
 HWND FindVistaCalenderWindow(void)
 {
-	return FindWindowEx(FindWindow("ClockFlyoutWindow", NULL), NULL, "DirectUIHWND", "");
+	return FindWindowExW(FindWindowW(L"ClockFlyoutWindow", NULL), NULL, L"DirectUIHWND", L"");
 }
 
 
@@ -1253,7 +1325,7 @@ BOOL IsTClockWindow(HWND hwnd)
 	BOOL ret = FALSE;
 	char classname[80];
 
-	GetClassName(hwnd, classname, 80);
+	GetClassNameUTF8(hwnd, classname, 80);
 	if (lstrcmpi(classname, "TClockMain") == 0)
 	{
 		ret = TRUE;
@@ -1276,7 +1348,7 @@ BOOL IsSystemWindow(HWND hwnd)
 	BOOL ret = FALSE;
 	char classname[80], windowname[80];
 
-	GetClassName(hwnd, classname, 80);
+	GetClassNameUTF8(hwnd, classname, 80);
 	if (lstrcmpi(classname, "WorkerW") == 0)
 	{
 		ret = TRUE;
@@ -1288,7 +1360,7 @@ BOOL IsSystemWindow(HWND hwnd)
 		ret = TRUE;
 	}
 	else if (lstrcmpi(classname, "ApplicationFrameWindow") == 0) {
-		GetWindowText(hwnd, windowname, 80);
+		GetWindowTextUTF8(hwnd, windowname, 80);
 		if (strlen(windowname) == 0) {		//電卓とかもこのクラスなので名無しのもののみシステムウィンドウとして判定する。
 			ret = TRUE;
 		}
@@ -1308,6 +1380,7 @@ Mainly move, minimum / no resize version
 
 BOOL CALLBACK PullBackOBWindow(HWND hwnd, LPARAM lParam)
 {
+	UNREFERENCED_PARAMETER(lParam);
 	//char tempString[256];
 	//char tempClassName[80];
 	//GetClassName(hwnd, tempClassName, 80);
@@ -1326,8 +1399,6 @@ BOOL CALLBACK PullBackOBWindow(HWND hwnd, LPARAM lParam)
 		int xcenter, ycenter, widthWnd, heightWnd, widthArea, heightArea, posX, posY;
 		HWND tempHwnd;
 		BOOL bFound = FALSE;
-		int minimumHeight = 300;
-		int minimumWidth = 400;
 
 		tempHwnd = FindWindow("Shell_TrayWnd", "");
 		GetScreenRect(tempHwnd, &rcScr);
@@ -1357,8 +1428,6 @@ BOOL CALLBACK PullBackOBWindow(HWND hwnd, LPARAM lParam)
 				return TRUE;
 			}
 
-
-			char strTemp[128];
 
 			GetWindowRect(hwnd, &rc);
 

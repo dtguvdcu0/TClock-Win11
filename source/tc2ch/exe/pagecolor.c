@@ -44,6 +44,11 @@ __inline void SendPSChanged(HWND hDlg)
 	SendMessage(GetParent(hDlg), PSM_CHANGED, (WPARAM)(hDlg), 0);
 }
 
+static DWORD GetSpinPos(HWND hDlg, int ctrlId)
+{
+	return (DWORD)(UINT_PTR)SendDlgItemMessage(hDlg, ctrlId, UDM_GETPOS, 0, 0);
+}
+
 /*------------------------------------------------
   Dialog procedure
 --------------------------------------------------*/
@@ -153,7 +158,6 @@ void OnInit(HWND hDlg)
 	HDC hdc;
 	LOGFONT logfont;
 	//HFONT hfont;
-	DWORD dwVer;
 	int index;
 
 
@@ -311,7 +315,7 @@ void OnApply(HWND hDlg)
 	dw = (DWORD)CBGetItemData(hDlg, IDC_COLCLKSHADOW, CBGetCurSel(hDlg, IDC_COLCLKSHADOW));
 	SetMyRegLong("Color_Font", "ShadowColor", dw);
 	SetMyRegLong("Color_Font", "ClockShadowRange",
-		SendDlgItemMessage(hDlg, IDC_SPINCLKSHADOW, UDM_GETPOS, 0, 0));
+		GetSpinPos(hDlg, IDC_SPINCLKSHADOW));
 
 
 	//フォント名の保存
@@ -356,11 +360,11 @@ void OnApply(HWND hDlg)
 	//SetMyRegLong("Color_Font", "ClockHeight",
 	//	SendDlgItemMessage(hDlg, IDC_SPINCHEIGHT, UDM_GETPOS, 0, 0));
 	SetMyRegLong("Color_Font", "ClockWidth",
-		SendDlgItemMessage(hDlg, IDC_SPINCWIDTH, UDM_GETPOS, 0, 0));
+		GetSpinPos(hDlg, IDC_SPINCWIDTH));
 	SetMyRegLong("Color_Font", "VertPos",
-		SendDlgItemMessage(hDlg, IDC_SPINVPOS, UDM_GETPOS, 0, 0));
+		GetSpinPos(hDlg, IDC_SPINVPOS));
 	SetMyRegLong("Color_Font", "LineHeight",
-		SendDlgItemMessage(hDlg, IDC_SPINLHEIGHT, UDM_GETPOS, 0, 0));
+		GetSpinPos(hDlg, IDC_SPINLHEIGHT));
 }
 
 /*------------------------------------------------
@@ -602,6 +606,7 @@ Refresh Fontsample by TTTT
 void RefreshFontSample(HWND hDlg, BOOL bInit)
 {
 	if (b_DebugLog) WriteDebug_New2("[pagecolor.c] RefreshFontSample Called.");
+	UNREFERENCED_PARAMETER(bInit);
 
 	int size, temp;
 	char strTemp[64];
@@ -616,8 +621,8 @@ void RefreshFontSample(HWND hDlg, BOOL bInit)
 	logfont_sample_height = logpixelsy * size / 72;	//Added by TTTT
 
 
-	logfont_sample.lfWeight = IsDlgButtonChecked(hDlg, IDC_BOLD) * FW_BOLD;
-	logfont_sample.lfItalic = IsDlgButtonChecked(hDlg, IDC_ITALIC);
+	logfont_sample.lfWeight = IsDlgButtonChecked(hDlg, IDC_BOLD) ? FW_BOLD : FW_NORMAL;
+	logfont_sample.lfItalic = (BYTE)(IsDlgButtonChecked(hDlg, IDC_ITALIC) ? 1 : 0);
 	logfont_sample.lfHeight = logfont_sample_height;
 	logfont_sample.lfWidth = logfont_sample.lfEscapement = logfont_sample.lfOrientation = 0;
 
@@ -625,7 +630,7 @@ void RefreshFontSample(HWND hDlg, BOOL bInit)
 	//DeleteObject(hfont_sample);
 	hfont_sample = CreateFontIndirect(&logfont_sample);
 
-	SendDlgItemMessage(hDlg, IDC_FONTSAMPLE, WM_SETFONT, hfont_sample, TRUE);
+	SendDlgItemMessage(hDlg, IDC_FONTSAMPLE, WM_SETFONT, (WPARAM)hfont_sample, TRUE);
 
 
 }
@@ -670,7 +675,7 @@ BOOL CALLBACK EnumFontFamExProc(ENUMLOGFONTEX* pelf,
 			if (SendMessage((HWND)hCombo, CB_FINDSTRINGEXACT, 0,
 				(LPARAM)strFont) == LB_ERR)
 			{
-				index = SendMessage((HWND)hCombo, CB_ADDSTRING, 0, strFont);
+				index = (int)SendMessage((HWND)hCombo, CB_ADDSTRING, 0, (LPARAM)strFont);
 
 				if (index >= 0)
 				{
@@ -716,7 +721,7 @@ BOOL CALLBACK EnumSizeProcEx(ENUMLOGFONTEX* pelf,
 
 	//それ以外の場合、１つ１つ数字を入れていく
 	num = (lpntm->ntmTm.tmHeight - lpntm->ntmTm.tmInternalLeading) * 72 / logpixelsy;
-	count = SendMessage((HWND)hCombo, CB_GETCOUNT, 0, 0);
+	count = (int)SendMessage((HWND)hCombo, CB_GETCOUNT, 0, 0);
 	for(i = 0; i < count; i++)
 	{
 		SendMessage((HWND)hCombo, CB_GETLBTEXT, i, (LPARAM)s);

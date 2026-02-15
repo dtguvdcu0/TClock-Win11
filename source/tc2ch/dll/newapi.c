@@ -133,7 +133,7 @@ HMODULE hmodUXTHEME = NULL;
 typedef HRESULT (WINAPI *pfnDrawThemeParentBackground)(HWND,HDC,RECT*);
 pfnDrawThemeParentBackground pDrawThemeParentBackground = NULL;
 
-typedef HRESULT(WINAPI *pfnOpenThemeData)(HWND, LPCWSTR);	//Adde by TTTT 20200918
+typedef HTHEME(WINAPI *pfnOpenThemeData)(HWND, LPCWSTR);	//Added by TTTT 20200918
 pfnOpenThemeData pOpenThemeData = NULL;
 
 typedef HRESULT(WINAPI *pfnCloseThemeData)(HTHEME);	//Adde by TTTT 20200918
@@ -503,7 +503,7 @@ void RefreshRebar(HWND hwndBar)
 	hwnd = GetWindow(hwndBar, GW_CHILD);
 	while(hwnd)
 	{
-		GetClassName(hwnd, classname, 80);
+		GetClassNameUTF8_DLL(hwnd, classname, 80);
 		if(lstrcmpi(classname, "ReBarWindow32") == 0)
 		{
 			InvalidateRect(hwnd, NULL, TRUE);

@@ -7,9 +7,15 @@
 //#define _WIN32_IE 0x0500
 //#define WINVER    0x0500
 
+#ifndef _WIN32_IE
 #define _WIN32_IE 0x0500
+#endif
+#ifndef _WIN32_WINNT
 #define _WIN32_WINNT 0x0600
+#endif
+#ifndef WINVER
 #define WINVER    0x0600
+#endif
 
 #define _CRT_SECURE_NO_DEPRECATE
 
@@ -259,6 +265,12 @@ void parsechar(char *dst, char *src, char ch, int n);
 void str0cat(char* dst, const char* src);
 char* MyString(UINT id);
 int MyMessageBox(HWND hwnd, char* msg, char* title, UINT uType, UINT uBeep);
+HINSTANCE ShellExecuteUtf8Compat(HWND hwnd, const char* op, const char* file, const char* params, const char* dir, int showCmd);
+BOOL SetWindowTextUTF8(HWND hwnd, const char* text);
+int GetWindowTextUTF8(HWND hwnd, char* text, int textBytes);
+BOOL SetDlgItemTextUTF8(HWND hDlg, int id, const char* text);
+int GetDlgItemTextUTF8(HWND hDlg, int id, char* text, int textBytes);
+int GetClassNameUTF8(HWND hwnd, char* text, int textBytes);
 int GetLocaleInfoCompat(int ilang, LCTYPE LCType, char* dst, int n);
 DWORDLONG M32x32to64(DWORD a, DWORD b);
 void SetForegroundWindow98(HWND hwnd);
@@ -295,18 +307,19 @@ BOOL WINAPI CheckModernStandbyCapability_Win10(void);
 #define ShowDlgItem(hDlg,id,b) ShowWindow(GetDlgItem((hDlg),(id)),(b)?SW_SHOW:SW_HIDE)
 #define AdjustDlgConboBoxDropDown(hDlg,id,b) AdjustConboBoxDropDown(GetDlgItem((hDlg),(id)),(b))
 
-#define CBAddString(hDlg,id,lParam) SendDlgItemMessage((hDlg),(id),CB_ADDSTRING,0,(lParam))
-#define CBDeleteString(hDlg,id, i) SendDlgItemMessage((hDlg),(id),CB_DELETESTRING,(i),0)
-#define CBFindString(hDlg,id,s) SendDlgItemMessage((hDlg),(id),CB_FINDSTRING,0,(LPARAM)(s))
-#define CBFindStringExact(hDlg,id,s) SendDlgItemMessage((hDlg),(id),CB_FINDSTRINGEXACT,0,(LPARAM)(s))
-#define CBGetCount(hDlg,id) SendDlgItemMessage((hDlg),(id),CB_GETCOUNT,0,0)
-#define CBGetCurSel(hDlg,id) SendDlgItemMessage((hDlg),(id),CB_GETCURSEL,0,0)
-#define CBGetItemData(hDlg,id,i) SendDlgItemMessage((hDlg),(id),CB_GETITEMDATA,(i),0)
-#define CBGetLBText(hDlg,id,i,s) SendDlgItemMessage((hDlg),(id),CB_GETLBTEXT,(i),(LPARAM)(s))
-#define CBInsertString(hDlg,id,i,s) SendDlgItemMessage((hDlg),(id),CB_INSERTSTRING,(i),(LPARAM)(s))
-#define CBResetContent(hDlg,id) SendDlgItemMessage((hDlg),(id),CB_RESETCONTENT,0,0)
-#define CBSetCurSel(hDlg,id,i) SendDlgItemMessage((hDlg),(id),CB_SETCURSEL,(i),0)
-#define CBSetItemData(hDlg,id,i,lParam) SendDlgItemMessage((hDlg),(id),CB_SETITEMDATA,(i),(lParam))
+#define SDlgItemMsg(hDlg,id,msg,w,l) SendDlgItemMessage((hDlg),(id),(msg),(WPARAM)(w),(LPARAM)(l))
+#define CBAddString(hDlg,id,lParam) ((int)SDlgItemMsg((hDlg),(id),CB_ADDSTRING,0,(lParam)))
+#define CBDeleteString(hDlg,id, i) ((int)SDlgItemMsg((hDlg),(id),CB_DELETESTRING,(i),0))
+#define CBFindString(hDlg,id,s) ((int)SDlgItemMsg((hDlg),(id),CB_FINDSTRING,0,(s)))
+#define CBFindStringExact(hDlg,id,s) ((int)SDlgItemMsg((hDlg),(id),CB_FINDSTRINGEXACT,0,(s)))
+#define CBGetCount(hDlg,id) ((int)SDlgItemMsg((hDlg),(id),CB_GETCOUNT,0,0))
+#define CBGetCurSel(hDlg,id) ((int)SDlgItemMsg((hDlg),(id),CB_GETCURSEL,0,0))
+#define CBGetItemData(hDlg,id,i) ((DWORD_PTR)SDlgItemMsg((hDlg),(id),CB_GETITEMDATA,(i),0))
+#define CBGetLBText(hDlg,id,i,s) ((int)SDlgItemMsg((hDlg),(id),CB_GETLBTEXT,(i),(s)))
+#define CBInsertString(hDlg,id,i,s) ((int)SDlgItemMsg((hDlg),(id),CB_INSERTSTRING,(i),(s)))
+#define CBResetContent(hDlg,id) SDlgItemMsg((hDlg),(id),CB_RESETCONTENT,0,0)
+#define CBSetCurSel(hDlg,id,i) ((int)SDlgItemMsg((hDlg),(id),CB_SETCURSEL,(i),0))
+#define CBSetItemData(hDlg,id,i,lParam) ((int)SDlgItemMsg((hDlg),(id),CB_SETITEMDATA,(i),(lParam)))
 
 // page.c
 typedef struct {

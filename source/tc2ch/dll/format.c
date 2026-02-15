@@ -8,6 +8,7 @@
 
 #include "tcdll.h"
 #include "string.h"
+#include <stdio.h>
 #include "../common/text_codec.h"
 #define MAX_PROCESSOR               64
 
@@ -1253,7 +1254,7 @@ void MakeFormat(char* s, char* s_info, SYSTEMTIME* pt, int beat100, char* fmt)
 					else if (*(sp + 1) == 'S')
 					{
 						sp += 2;
-						ms = (double)msMemory.ullTotalPhys / (1024 * 1024 * megabytesInGigaByte);
+						ms = (DWORDLONG)((double)msMemory.ullTotalPhys / (1024 * 1024 * megabytesInGigaByte));
 					}
 					else if (*(sp + 1) == 'T')
 					{
@@ -1343,13 +1344,13 @@ void MakeFormat(char* s, char* s_info, SYSTEMTIME* pt, int beat100, char* fmt)
 						ms = (int)d_ms;
 						if(GetNumFormat(&sp, 'x', ',', &len, &slen, &bComma) == TRUE)
 						{
-							len_ret = SetNumFormat(&dp, ms, len, slen, bComma);
-							for (int i = 0; i < len_ret; i++)*infop++ = 0x01;
+							len_ret = SetNumFormat(&dp, (int)ms, len, slen, bComma);
+							for (int j = 0; j < len_ret; j++)*infop++ = 0x01;
 						}
 						else
 						{
-							len_ret = SetNumFormat(&dp, ms, 1, 0, FALSE);
-							for (int i = 0; i < len_ret; i++)*infop++ = 0x01;
+							len_ret = SetNumFormat(&dp, (int)ms, 1, 0, FALSE);
+							for (int j = 0; j < len_ret; j++)*infop++ = 0x01;
 						}
 						d_ms = (d_ms -(int)d_ms);
 						if(*sp == '.')
@@ -1361,8 +1362,8 @@ void MakeFormat(char* s, char* s_info, SYSTEMTIME* pt, int beat100, char* fmt)
 								if(len > 3) len = 3;
 								for(i=0; i<len; i++) d_ms *= 10;
 								ms = (int)d_ms;
-								len_ret = SetNumFormat(&dp, ms, len, slen, FALSE);
-								for (int i = 0; i < len_ret; i++)*infop++ = 0x01;
+								len_ret = SetNumFormat(&dp, (int)ms, len, slen, FALSE);
+								for (int j = 0; j < len_ret; j++)*infop++ = 0x01;
 							}
 						}
 					}
@@ -1427,7 +1428,7 @@ void MakeFormat(char* s, char* s_info, SYSTEMTIME* pt, int beat100, char* fmt)
 				else if ((*sp == 'L') && (*(sp + 1) == 'T') && (*(sp + 2) == 'E')) // LTE status by TTTT
 				{
 					sp += 3;
-					int len = strlen(strLTE);
+					int len = (int)strlen(strLTE);
 						if (net[12] == 2)
 						{
 							if (len != 0)
@@ -1559,7 +1560,7 @@ void MakeFormat(char* s, char* s_info, SYSTEMTIME* pt, int beat100, char* fmt)
 					sp += 4;
 					char strTemp[64];
 					snprintf(strTemp, 60, "%s", activeSSID);
-					int len = strlen(strTemp);
+					int len = (int)strlen(strTemp);
 					if (len > SSID_AP_Length) len = SSID_AP_Length;
 					if (len != 0)
 					{
@@ -1579,7 +1580,7 @@ void MakeFormat(char* s, char* s_info, SYSTEMTIME* pt, int beat100, char* fmt)
 					sp += 3;
 					char strTemp[64];
 					snprintf(strTemp, 60, "%s", activeAPName);
-					int len = strlen(strTemp);
+					int len = (int)strlen(strTemp);
 					if (len > SSID_AP_Length) len = SSID_AP_Length;
 					if (len != 0)
 					{
@@ -1622,7 +1623,7 @@ void MakeFormat(char* s, char* s_info, SYSTEMTIME* pt, int beat100, char* fmt)
 					{
 						strcpy(strTemp, "");
 					}
-					int len = strlen(strTemp);
+					int len = (int)strlen(strTemp);
 					if (len > NetMIX_Length) len = NetMIX_Length;
 					if (len != 0)
 					{
@@ -1792,7 +1793,7 @@ void MakeFormat(char* s, char* s_info, SYSTEMTIME* pt, int beat100, char* fmt)
 					if (*sp == 'E')
 					{
 						*sp++;
-						int len = strlen(ipEther);
+						int len = (int)strlen(ipEther);
 						if (len > 15) len = 15;
 						for (int i = 0; i < len; i++)
 						{
@@ -1806,7 +1807,7 @@ void MakeFormat(char* s, char* s_info, SYSTEMTIME* pt, int beat100, char* fmt)
 					else if (*sp == 'W')
 					{
 						*sp++;
-						int len = strlen(ipWiFi);
+						int len = (int)strlen(ipWiFi);
 						if (len > 15) len = 15;
 						for (int i = 0; i < len; i++)
 						{
@@ -1820,7 +1821,7 @@ void MakeFormat(char* s, char* s_info, SYSTEMTIME* pt, int beat100, char* fmt)
 					else if (*sp == 'L')
 					{
 						*sp++;
-						int len = strlen(ipLTE);
+						int len = (int)strlen(ipLTE);
 						if (len > 15) len = 15;
 						for (int i = 0; i < len; i++)
 						{
@@ -1834,7 +1835,7 @@ void MakeFormat(char* s, char* s_info, SYSTEMTIME* pt, int beat100, char* fmt)
 					else if (*sp == 'V')
 					{
 						*sp++;
-						int len = strlen(ipVPN);
+						int len = (int)strlen(ipVPN);
 						if (len > 15) len = 15;
 						for (int i = 0; i < len; i++)
 						{
@@ -1850,12 +1851,36 @@ void MakeFormat(char* s, char* s_info, SYSTEMTIME* pt, int beat100, char* fmt)
 						*sp++;
 						char buf_Win10[32];
 						strcpy(buf_Win10, "IP[Active] -NA-");
-						if (flag_VPN) strcpy(buf_Win10, ipVPN);
-						else if (g_InternetConnectStat_Win10 == 0 && (net[18] == 1 || net[18] == 2)) strcpy(buf_Win10, ipEther);
-						else if (g_InternetConnectStat_Win10 == 1 || g_InternetConnectStat_Win10 == 4) strcpy(buf_Win10, ipWiFi);
-						else if (g_InternetConnectStat_Win10 == 2) strcpy(buf_Win10, ipLTE);
+						if (flag_VPN && lstrcmpi(ipVPN, "--- --- --- ---") != 0)
+						{
+							strcpy(buf_Win10, ipVPN);
+						}
+						else if (active_physical_adapter_Win10 == 0)
+						{
+							strcpy(buf_Win10, ipEther);
+						}
+						else if (active_physical_adapter_Win10 == 1)
+						{
+							strcpy(buf_Win10, ipWiFi);
+						}
+						else if (active_physical_adapter_Win10 == 2)
+						{
+							strcpy(buf_Win10, ipLTE);
+						}
+						else if (g_InternetConnectStat_Win10 == 0)
+						{
+							strcpy(buf_Win10, ipEther);
+						}
+						else if (g_InternetConnectStat_Win10 == 1 || g_InternetConnectStat_Win10 == 4)
+						{
+							strcpy(buf_Win10, ipWiFi);
+						}
+						else if (g_InternetConnectStat_Win10 == 2)
+						{
+							strcpy(buf_Win10, ipLTE);
+						}
 
-						int len = strlen(buf_Win10);
+						int len = (int)strlen(buf_Win10);
 						if (len > 15) len = 15;
 						for (int i = 0; i < len; i++)
 						{
@@ -1886,7 +1911,7 @@ void MakeFormat(char* s, char* s_info, SYSTEMTIME* pt, int beat100, char* fmt)
 						snprintf(buf_Win10, 20, "N/A");
 					}
 
-					int len = strlen(buf_Win10);
+					int len = (int)strlen(buf_Win10);
 					if (len != 0)
 					{
 						for (int i = 0; i < len; i++)
@@ -1913,7 +1938,7 @@ void MakeFormat(char* s, char* s_info, SYSTEMTIME* pt, int beat100, char* fmt)
 						snprintf(buf_Win10, 20, "N/A");
 					}
 
-					int len = strlen(buf_Win10);
+					int len = (int)strlen(buf_Win10);
 					if (len != 0)
 					{
 						for (int i = 0; i < len; i++)
@@ -1992,7 +2017,7 @@ void MakeFormat(char* s, char* s_info, SYSTEMTIME* pt, int beat100, char* fmt)
 						snprintf(buf_Win10, 20, "%s", (tempstr_Win10));
 
 					}
-					int len = strlen(buf_Win10);
+					int len = (int)strlen(buf_Win10);
 					if (len != 0)
 					{
 						for (int i = 0; i < len; i++)
@@ -2044,7 +2069,7 @@ void MakeFormat(char* s, char* s_info, SYSTEMTIME* pt, int beat100, char* fmt)
 						snprintf(buf_Win10, 20, "%s", (tempstr_Win10));
 
 					}
-					int len = strlen(buf_Win10);
+					int len = (int)strlen(buf_Win10);
 					if (len != 0)
 					{
 						for (int i = 0; i < len; i++)
@@ -2088,7 +2113,7 @@ void MakeFormat(char* s, char* s_info, SYSTEMTIME* pt, int beat100, char* fmt)
 
 				else if (*sp == 'N') // Network Interface
 				{
-					int len, slen, i, unit, nt;
+					int len, slen, i, nt;
 					double ntd;
 					BOOL bComma = FALSE;
 					BOOL bFlag = TRUE;
@@ -2137,12 +2162,12 @@ void MakeFormat(char* s, char* s_info, SYSTEMTIME* pt, int beat100, char* fmt)
 						if (GetNumFormat(&sp, 'x', ',', &len, &slen, &bComma) == TRUE)
 						{
 							len_ret = SetNumFormat(&dp, nt, len, slen, bComma);
-							for (int i = 0; i < len_ret; i++)*infop++ = 0x01;
+							for (int j = 0; j < len_ret; j++)*infop++ = 0x01;
 						}
 						else
 						{
 							len_ret = SetNumFormat(&dp, nt, 1, 0, FALSE);
-							for (int i = 0; i < len_ret; i++)*infop++ = 0x01;
+							for (int j = 0; j < len_ret; j++)*infop++ = 0x01;
 						}
 						ntd = (ntd - (int)ntd);
 						if (*sp == '.')
@@ -2155,7 +2180,7 @@ void MakeFormat(char* s, char* s_info, SYSTEMTIME* pt, int beat100, char* fmt)
 								for (i = 0; i<len; i++) ntd *= 10;
 								nt = (int)ntd;
 								len_ret = SetNumFormat(&dp, nt, len, 0, FALSE);
-								for (int i = 0; i < len_ret; i++)*infop++ = 0x01;
+								for (int j = 0; j < len_ret; j++)*infop++ = 0x01;
 							}
 						}
 					}
@@ -2168,34 +2193,34 @@ void MakeFormat(char* s, char* s_info, SYSTEMTIME* pt, int beat100, char* fmt)
 
 				else if(*sp == 'L' && _strncmp(sp, "LDATE", 5) == 0)
 				{
-					char s[80], *p;
+					char date_buf[80], *date_ptr;
 					GetDateFormatCompat(MAKELANGID(LANG_NEUTRAL,SUBLANG_DEFAULT),
-						DATE_LONGDATE, pt, NULL, s, 80);
-					p = s;
-					while (*p) {
-						*dp++ = *p++; *infop++ = 0x02;
+						DATE_LONGDATE, pt, NULL, date_buf, 80);
+					date_ptr = date_buf;
+					while (*date_ptr) {
+						*dp++ = *date_ptr++; *infop++ = 0x02;
 					}
 					sp += 5;
 				}
 				else if(*sp == 'D' && _strncmp(sp, "DATE", 4) == 0)
 				{
-					char s[80], *p;
+					char date_buf[80], *date_ptr;
 					GetDateFormatCompat(MAKELANGID(LANG_NEUTRAL,SUBLANG_DEFAULT),
-						DATE_SHORTDATE, pt, NULL, s, 80);
-					p = s;
-					while (*p) {
-						*dp++ = *p++; *infop++ = 0x02;
+						DATE_SHORTDATE, pt, NULL, date_buf, 80);
+					date_ptr = date_buf;
+					while (*date_ptr) {
+						*dp++ = *date_ptr++; *infop++ = 0x02;
 					}
 					sp += 4;
 				}
 				else if(*sp == 'T' && _strncmp(sp, "TIME", 4) == 0)
 				{
-					char s[80], *p;
+					char time_buf[80], *time_ptr;
 					GetTimeFormatCompat(MAKELANGID(LANG_NEUTRAL,SUBLANG_DEFAULT),
-						TIME_FORCE24HOURFORMAT, pt, NULL, s, 80);
-					p = s;
-					while (*p) {
-						*dp++ = *p++; *infop++ = 0x08;
+						TIME_FORCE24HOURFORMAT, pt, NULL, time_buf, 80);
+					time_ptr = time_buf;
+					while (*time_ptr) {
+						*dp++ = *time_ptr++; *infop++ = 0x08;
 					}
 					sp += 4;
 				}
@@ -2302,12 +2327,12 @@ void MakeFormat(char* s, char* s_info, SYSTEMTIME* pt, int beat100, char* fmt)
 					if(GetNumFormat(&sp, 'x', ',', &len, &slen, &bComma) == TRUE)
 					{
 						len_ret = SetNumFormat(&dp, dski, len, slen, bComma);
-						for (int i = 0; i < len_ret; i++)*infop++ = 0x01;
+						for (int j = 0; j < len_ret; j++)*infop++ = 0x01;
 					}
 					else
 					{
 						len_ret = SetNumFormat(&dp, dski, 1, 0, FALSE);
-						for (int i = 0; i < len_ret; i++)*infop++ = 0x01;
+						for (int j = 0; j < len_ret; j++)*infop++ = 0x01;
 					}
 					dsk = (dsk-(int)dsk);
 					if(*sp == '.')
@@ -2320,7 +2345,7 @@ void MakeFormat(char* s, char* s_info, SYSTEMTIME* pt, int beat100, char* fmt)
 							for(i=0; i<len; i++) dsk *= 10;
 							dski = (int)dsk;
 							len_ret = SetNumFormat(&dp, dski, len, 0, FALSE);
-							for (int i = 0; i < len_ret; i++)*infop++ = 0x01;
+							for (int j = 0; j < len_ret; j++)*infop++ = 0x01;
 						}
 					}
 				}
@@ -2341,14 +2366,13 @@ void MakeFormat(char* s, char* s_info, SYSTEMTIME* pt, int beat100, char* fmt)
 				}
 				else if (*sp == 'V' && *(sp + 1) == 'M')	//Mute Status
 				{
-					int len;
+					int mute_len = (int)strlen(strMute);
 					sp += 2;
 					if (muteStatus)
 					{
-						int len = strlen(strMute);
-						if (len != 0)
+						if (mute_len != 0)
 						{
-							for (int i = 0; i < len; i++)
+							for (int i = 0; i < mute_len; i++)
 							{
 								*dp++ = strMute[i]; *infop++ = 0x01;
 							}
@@ -2356,10 +2380,9 @@ void MakeFormat(char* s, char* s_info, SYSTEMTIME* pt, int beat100, char* fmt)
 					}
 					else
 					{
-						int len = strlen(strMute);
-						if (len != 0)
+						if (mute_len != 0)
 						{
-							for (int i = 0; i < len; i++)
+							for (int i = 0; i < mute_len; i++)
 							{
 								*dp++ = ' '; *infop++ = 0x01;
 							}
@@ -2370,7 +2393,7 @@ void MakeFormat(char* s, char* s_info, SYSTEMTIME* pt, int beat100, char* fmt)
 				{
 					int slen;
 					sp += 6;
-					slen = strlen(ExtTXT_String);
+					slen = (int)strlen(ExtTXT_String);
 					if (slen > ExtTXT_Length) slen = ExtTXT_Length;
 					for (int i = 0; i < slen; i++) {
 							*dp++ = ExtTXT_String[i]; *infop++ = 0x01;
@@ -2584,7 +2607,6 @@ SYSTEMTIME CalcTimeDifference_Win10(SYSTEMTIME* pt, int td_h, int td_m, BOOL pol
 {
 	SYSTEMTIME systemtime_temp;
 	FILETIME filetime_temp;
-	ULONGLONG ulonglong_temp;
 	systemtime_temp = *pt;
 	ULARGE_INTEGER ularge_integer_temp;
 
@@ -2645,7 +2667,6 @@ SYSTEMTIME CalcTimeDifference_US_Win10(SYSTEMTIME* pt, int td_h, int td_m, BOOL 
 {
 	SYSTEMTIME systemtime_temp;
 	FILETIME filetime_temp;
-	ULONGLONG ulonglong_temp;
 	systemtime_temp = *pt;
 	ULARGE_INTEGER ularge_integer_temp;
 	int i = 0;
@@ -2719,7 +2740,6 @@ SYSTEMTIME CalcTimeDifference_Europe_Win10(SYSTEMTIME* pt, int td_h, int td_m, B
 {
 	SYSTEMTIME systemtime_temp, systemtime_utc;
 	FILETIME filetime_temp, filetime_utc;
-	ULONGLONG ulonglong_temp;
 	ULARGE_INTEGER ularge_integer_temp;
 	int i = 0;
 

@@ -92,7 +92,7 @@ void OnInit(HWND hDlg)
 --------------------------------------------------*/
 void OnApply(HWND hDlg)
 {
-
+	UNREFERENCED_PARAMETER(hDlg);
 }
 
 /*------------------------------------------------

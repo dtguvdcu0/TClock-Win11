@@ -62,6 +62,7 @@ extern HMENU g_hMenu;
 extern BOOL b_EnglishMenu;
 extern BOOL b_NormalLog;
 extern int Language_Offset;
+
 static int GetSafeLanguageOffset(void)
 {
 	if (Language_Offset == LANGUAGE_OFFSET_JAPANESE || Language_Offset == LANGUAGE_OFFSET_ENGLISH) {
@@ -153,7 +154,7 @@ static VOID SetPageDlgPos(HWND hParent, HWND hDlg)
 	SetWindowPos(hDlg, NULL, pos.x, pos.y, 0, 0, SWP_NOSIZE);
 }
 
-static VOID CreatePageDialog(HWND hParent, HWND hDlg[], BOOL bDlgFlg[], int index, WORD wID, DLGPROC dlgprc)
+static VOID CreatePageDialog(HWND hParent, HWND hDlg[], BOOL bDlgFlg[], int index, int wID, DLGPROC dlgprc)
 {
 	HINSTANCE hInst;
 
@@ -161,7 +162,7 @@ static VOID CreatePageDialog(HWND hParent, HWND hDlg[], BOOL bDlgFlg[], int inde
 		return;
 	}
 	hInst   = GetLangModule();
-	hDlg[index] = CreateDialog(hInst, MAKEINTRESOURCE(wID), hParent, dlgprc);
+	hDlg[index] = CreateDialog(hInst, MAKEINTRESOURCE((WORD)wID), hParent, dlgprc);
 	SetPageDlgPos(hParent, hDlg[index]);
 
 	bDlgFlg[index] = TRUE;
@@ -420,13 +421,13 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 					break;
 				}
 				{
-					int i;
+					int pageIndex;
 					NMHDR lp;
 					lp.code = PSN_APPLY;
 					/* Apply all instantiated pages, not only the active tab. */
-					for (i = 0; i < MAX_PAGE; i++) {
-						if (hDlg[i] && IsWindow(hDlg[i])) {
-							SendMessage(hDlg[i], WM_NOTIFY, 0, (LPARAM)&lp);
+					for (pageIndex = 0; pageIndex < MAX_PAGE; pageIndex++) {
+						if (hDlg[pageIndex] && IsWindow(hDlg[pageIndex])) {
+							SendMessage(hDlg[pageIndex], WM_NOTIFY, 0, (LPARAM)&lp);
 						}
 					}
 				}
@@ -478,7 +479,7 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 				else {
 					add_title(fname, "readme_jp.txt");
 				}
-				ShellExecute(NULL, "open", "notepad.exe", fname, NULL, SW_SHOWNORMAL);
+				ShellExecuteUtf8Compat(NULL, "open", "notepad.exe", fname, NULL, SW_SHOWNORMAL);
 			}
 			InterlockedDecrement(&g_propdlgCommandDepth);
 			}
@@ -520,7 +521,7 @@ void SetMyDialgPos(HWND hwnd)
 	wscreen = GetSystemMetrics(SM_CXSCREEN);
 	hscreen = GetSystemMetrics(SM_CYSCREEN);
 
-	hwndTray = FindWindow("Shell_TrayWnd", NULL);
+	hwndTray = FindWindowW(L"Shell_TrayWnd", NULL);
 	if(hwndTray == NULL) return;
 	GetWindowRect(hwndTray, &rcTray);
 	if(rcTray.right - rcTray.left >

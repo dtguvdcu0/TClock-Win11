@@ -234,18 +234,18 @@ void OnInit(HWND hDlg)
 		GetMyRegLong("Tooltip", "TipIcon", 0));
 
 	GetMyRegStr("Tooltip", "TipTitle", s, 300, "");
-	SetDlgItemText(hDlg, IDC_Win10ITLE, s);
+	SetDlgItemTextUTF8(hDlg, IDC_Win10ITLE, s);
 	//end
 
 	GetMyRegStr("Tooltip", "Tooltip", s, 1024, "");
 	if(s[0] == 0) strcpy(s, "TClock <%LDATE%>");
-	SetDlgItemText(hDlg, IDC_TOOLTIP, s);
+	SetDlgItemTextUTF8(hDlg, IDC_TOOLTIP, s);
 	GetMyRegStr("Tooltip", "Tooltip2", s, 1024, "");
 	if(s[0] == 0) strcpy(s, "TClock <%LDATE%>");
-	SetDlgItemText(hDlg, IDC_TOOLTIP2, s);
+	SetDlgItemTextUTF8(hDlg, IDC_TOOLTIP2, s);
 	GetMyRegStr("Tooltip", "Tooltip3", s, 1024, "");
 	if(s[0] == 0) strcpy(s, "TClock <%LDATE%>");
-	SetDlgItemText(hDlg, IDC_TOOLTIP3, s);
+	SetDlgItemTextUTF8(hDlg, IDC_TOOLTIP3, s);
 
 	bTip2 = GetMyRegLong("Tooltip", "Tip2Use", FALSE);
 	CheckDlgButton(hDlg, IDC_TIP2,bTip2);
@@ -260,7 +260,7 @@ void OnInit(HWND hDlg)
 	//CheckDlgButton(hDlg, IDC_ENABLEDOUBLEBUFFERING, GetMyRegLong("Tooltip", "TipEnableDoubleBuffering", FALSE));
 
 
-	SetDlgItemText(hDlg, IDC_TOOLTIP3, s);
+	SetDlgItemTextUTF8(hDlg, IDC_TOOLTIP3, s);
 	if (!bTip2){
 		CheckDlgButton(hDlg, IDC_TIP3,FALSE);
 		EnableDlgItem(hDlg,IDC_TIP3,FALSE);
@@ -323,15 +323,14 @@ void OnInit(HWND hDlg)
 void OnApply(HWND hDlg)
 {
 	char s[1024];
-	int n;
 	DWORD dw;
 	COLORREF col;
 
-	GetDlgItemText(hDlg, IDC_TOOLTIP, s, 1024);
+	GetDlgItemTextUTF8(hDlg, IDC_TOOLTIP, s, 1024);
 	SetMyRegStr("Tooltip", "Tooltip", s);
-	GetDlgItemText(hDlg, IDC_TOOLTIP2, s, 1024);
+	GetDlgItemTextUTF8(hDlg, IDC_TOOLTIP2, s, 1024);
 	SetMyRegStr("Tooltip", "Tooltip2", s);
-	GetDlgItemText(hDlg, IDC_TOOLTIP3, s, 1024);
+	GetDlgItemTextUTF8(hDlg, IDC_TOOLTIP3, s, 1024);
 	SetMyRegStr("Tooltip", "Tooltip3", s);
 
 	SetMyRegLong("Tooltip", "Tip2Use", IsDlgButtonChecked(hDlg, IDC_TIP2));
@@ -389,7 +388,7 @@ void OnApply(HWND hDlg)
 
 	//n = CBGetCurSel(hDlg, IDC_TICON);
 	//SetMyRegLong("Tooltip", "TipIcon", n);
-	GetDlgItemText(hDlg, IDC_Win10ITLE, s, 300);
+	GetDlgItemTextUTF8(hDlg, IDC_Win10ITLE, s, 300);
 	SetMyRegStr("Tooltip", "TipTitle", s);
 
 
@@ -420,7 +419,7 @@ void OnSansho(HWND hDlg, WORD id)
 	str0cat(filter, MyString(IDS_ALLFILE));
 	str0cat(filter, "*.*");
 
-	GetDlgItemText(hDlg, id - 1, deffile, MAX_PATH);
+	GetDlgItemTextUTF8(hDlg, id - 1, deffile, MAX_PATH);
 
 	if(!SelectMyFile(hDlg, filter, 0, deffile, fname)) // propsheet.c
 		return;
@@ -429,7 +428,7 @@ void OnSansho(HWND hDlg, WORD id)
 	strcat(tipfname,fname);
 	strcpy(fname,tipfname);
 
-	SetDlgItemText(hDlg, id - 1, fname);
+	SetDlgItemTextUTF8(hDlg, id - 1, fname);
 	PostMessage(hDlg, WM_NEXTDLGCTL, 1, FALSE);
 	SendPSChanged(hDlg);
 }
@@ -594,14 +593,14 @@ void RefreshFontSample_ToolTip(HWND hDlg)
 	logfont_sample_height_tip = logpixelsyTip * size / 72;	//Added by TTTT
 
 	logfont_sample.lfWeight = IsDlgButtonChecked(hDlg, IDC_TBOLD) * FW_BOLD;
-	logfont_sample.lfItalic = IsDlgButtonChecked(hDlg, IDC_TITALIC);
+	logfont_sample.lfItalic = (BYTE)IsDlgButtonChecked(hDlg, IDC_TITALIC);
 	logfont_sample.lfHeight = logfont_sample_height_tip;
 	logfont_sample.lfWidth = logfont_sample.lfEscapement = logfont_sample.lfOrientation = 0;
 
 	DeleteObject(hfont_sample_tip);
 	hfont_sample_tip = CreateFontIndirect(&logfont_sample);
 
-	SendDlgItemMessage(hDlg, IDC_FONTSAMPLE_TOOLTIP, WM_SETFONT, hfont_sample_tip, TRUE);
+	SendDlgItemMessage(hDlg, IDC_FONTSAMPLE_TOOLTIP, WM_SETFONT, (WPARAM)hfont_sample_tip, TRUE);
 
 
 

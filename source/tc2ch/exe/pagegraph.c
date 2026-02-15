@@ -228,13 +228,13 @@ void OnInit(HWND hDlg)
 		wchar_t tempStr[64];
 		wsprintfW(tempStr, L"現在の時計の幅 = %d, 高さ = %d"
 			, (int)GetMyRegLong("Status_DoNotEdit", "ClockWidth", 0), (int)GetMyRegLong("Status_DoNotEdit", "ClockHeight", 0));
-		SendDlgItemMessageW(hDlg, IDC_LABEL_HEIGHT, WM_SETTEXT, NULL, tempStr);
+		SetDlgItemTextW(hDlg, IDC_LABEL_HEIGHT, tempStr);
 	}
 	else {
 		char tempStr[64];
 		wsprintf(tempStr, "Current Clock Width = %d, Clock Height = %d"
 			, (int)GetMyRegLong("Status_DoNotEdit", "ClockWidth", 0), (int)GetMyRegLong("Status_DoNotEdit", "ClockHeight", 0));
-		SendDlgItemMessage(hDlg, IDC_LABEL_HEIGHT, WM_SETTEXT, NULL, tempStr);
+		SetWindowTextUTF8(GetDlgItem(hDlg, IDC_LABEL_HEIGHT), tempStr);
 	}
 
 
@@ -260,19 +260,19 @@ void OnApply(HWND hDlg)
 	SetMyRegLong("Graph", "GraphMode", (tempValue+1));
 
 	if (tempValue == 0) {
-		dw = CBGetItemData(hDlg, IDC_COLSEND, CBGetCurSel(hDlg, IDC_COLSEND));
+		dw = (DWORD)(UINT_PTR)CBGetItemData(hDlg, IDC_COLSEND, CBGetCurSel(hDlg, IDC_COLSEND));
 		SetMyRegLong("Graph", "BackNetColSend", dw);
-		dw = CBGetItemData(hDlg, IDC_COLSR, CBGetCurSel(hDlg, IDC_COLSR));
+		dw = (DWORD)(UINT_PTR)CBGetItemData(hDlg, IDC_COLSR, CBGetCurSel(hDlg, IDC_COLSR));
 		SetMyRegLong("Graph", "BackNetColSR", dw);
-		dw = CBGetItemData(hDlg, IDC_COLRECV, CBGetCurSel(hDlg, IDC_COLRECV));
+		dw = (DWORD)(UINT_PTR)CBGetItemData(hDlg, IDC_COLRECV, CBGetCurSel(hDlg, IDC_COLRECV));
 		SetMyRegLong("Graph", "BackNetColRecv", dw);
 	}
 	else {
-		dw = CBGetItemData(hDlg, IDC_COLSEND, CBGetCurSel(hDlg, IDC_COLSEND));
+		dw = (DWORD)(UINT_PTR)CBGetItemData(hDlg, IDC_COLSEND, CBGetCurSel(hDlg, IDC_COLSEND));
 		SetMyRegLong("Graph", "ColorGPUGraph", dw);
-		dw = CBGetItemData(hDlg, IDC_COLSR, CBGetCurSel(hDlg, IDC_COLSR));
+		dw = (DWORD)(UINT_PTR)CBGetItemData(hDlg, IDC_COLSR, CBGetCurSel(hDlg, IDC_COLSR));
 		SetMyRegLong("Graph", "ColorCPUGraph2", dw);
-		dw = CBGetItemData(hDlg, IDC_COLRECV, CBGetCurSel(hDlg, IDC_COLRECV));
+		dw = (DWORD)(UINT_PTR)CBGetItemData(hDlg, IDC_COLRECV, CBGetCurSel(hDlg, IDC_COLRECV));
 		SetMyRegLong("Graph", "ColorCPUGraph", dw);
 	}
 
@@ -289,10 +289,10 @@ void OnApply(HWND hDlg)
 	SetMyRegLong("Graph", "UseBarMeterColForGraph",
 		IsDlgButtonChecked(hDlg, IDC_CPUGRAPH_USEMETERBARCOL));
 
-	GetDlgItemText(hDlg, IDC_TBGGRAPHRATE, s, 20);
+	GetDlgItemTextUTF8(hDlg, IDC_TBGGRAPHRATE, s, 20);
 	SetMyRegLong("Graph", "NetGraphScaleRecv", atoi(s));
 
-	GetDlgItemText(hDlg, IDC_TBGGRAPHRATE2, s, 20);
+	GetDlgItemTextUTF8(hDlg, IDC_TBGGRAPHRATE2, s, 20);
 	SetMyRegLong("Graph", "NetGraphScaleSend", atoi(s));
 
 
@@ -381,7 +381,7 @@ void OnUseMeterBarColChanged(HWND hDlg)
 
 void OnGraphMode(HWND hDlg)
 {
-	int tempGraphMode, i, j;
+	int tempGraphMode, j;
 
 	tempGraphMode = CBGetCurSel(hDlg, IDC_GRAPHMODE);
 	tempGraphMode++;

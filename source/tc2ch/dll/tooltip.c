@@ -6,6 +6,7 @@
 #define COBJMACROS
 #include "tcdll.h"
 #include "../common/text_codec.h"
+#include <stdio.h>
 
 extern HANDLE hmod;
 extern HWND hwndClockMain;
@@ -142,6 +143,7 @@ void TooltipInit(HWND hwnd)
 {
 	TOOLINFO ti;
 	extern int widthMainClockFrame, heightMainClockFrame;
+	UNREFERENCED_PARAMETER(hwnd);
 
 
 	dwTooltipTypeCur = dwTooltipType;
@@ -387,7 +389,7 @@ static void TooltipUpdate2(HDC hdc, LPRECT lprcDraw, LPRECT lprect, UINT uDrawFl
 //	if (b_DebugLog)writeDebugLog_Win10("[tooltip.c] TooltipUpdate2 called, lprcDraw =", lprcDraw);
 
 	//HGDIOBJ hOldFont;
-	HBRUSH hBrushTooltipBack = NULL, hBrushTooltipText = NULL;
+	HBRUSH hBrushTooltipBack = NULL;
 	RECT rc, rcall;
 	LPSTR pszText;
 	int maxwidth, width = 0, height, len;
@@ -578,8 +580,7 @@ static void TooltipUpdateText(void)
 
 	SYSTEMTIME t;
 	int beat100;
-	char fmt[LEN_TOOLTIP], s[LEN_TOOLTIP], s_info[LEN_TOOLTIP], tipt[300], tipt_info[300], ini_key[10];
-	COLORREF s_col[LEN_TOOLTIP],tipt_col[300];
+	char fmt[LEN_TOOLTIP], s[LEN_TOOLTIP], s_info[LEN_TOOLTIP], tipt[300], tipt_info[300];
 	DWORD dw;
 	RECT rcClock;
 	int clLen, mPos;
@@ -674,6 +675,7 @@ static void TooltipUpdateText(void)
 --------------------------------------------------*/
 void TooltipOnTimer(HWND hwnd, BOOL bForce)
 {
+	UNREFERENCED_PARAMETER(hwnd);
 
 	//Ver 4.1以降はOnTimer_Win10から行うこととする。
 	//そのための元の200msごとのカウントは無効化
@@ -1053,8 +1055,6 @@ void TooltipOnMouseEvent(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam, 
 	//if (b_DebugLog)writeDebugLog_Win10("[tooltip.c] TooltipOnMouseEvent called", 999);
 
 	MSG msg;
-	int tempInt;
-	extern posXMainClock;
 
 	msg.hwnd = hwnd;
 	msg.message = message;

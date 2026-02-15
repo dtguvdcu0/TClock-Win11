@@ -1,6 +1,7 @@
 #define WIN32_NO_STATUS
 #include "tcdll.h"
 #include "string.h"
+#include "..\common\text_codec.h"
 #undef WIN32_NO_STATUS
 #include <iostream>
 #include <PowrProf.h>
@@ -691,7 +692,7 @@ extern "C" void identifyInternetConnectProfNum_Win10()
 						SetMyRegLong("Status_DoNotEdit", "PreviousLTEProfNumber", i);
 
 						char strTemp[256];
-						WideCharToMultiByte(CP_THREAD_ACP, 0, connectProfName[i]->Data(), -1, strTemp, 250, NULL, NULL);
+						tc_utf16_to_ansi_compat(CP_UTF8, connectProfName[i]->Data(), strTemp, 250);
 						SetMyRegStr("Status_DoNotEdit", "PreviousLTEProfName", strTemp);
 
 						b_LTEProfNum_Confirmed = TRUE;
@@ -807,7 +808,7 @@ extern "C" BOOL updateConnectProfsInfo_Win10(BOOL b_Detail)	// return value: 1 =
 						currentLTEProfNum = i;
 
 						char strTemp[256];
-						WideCharToMultiByte(CP_THREAD_ACP, 0, connectProfName[i]->Data(), -1, strTemp, 250, NULL, NULL);
+						tc_utf16_to_ansi_compat(CP_UTF8, connectProfName[i]->Data(), strTemp, 250);
 						
 						if (!strcmp(strTemp, previousLTEProfName)) b_LTEProfNameMatched = TRUE;
 					}
@@ -861,7 +862,7 @@ extern "C" BOOL updateConnectProfsInfo_Win10(BOOL b_Detail)	// return value: 1 =
 								SetMyRegLong("Status_DoNotEdit", "PreviousLTEProfNumber", connectedLTEProfNum);
 
 								char strTemp[256];
-								WideCharToMultiByte(CP_THREAD_ACP, 0, connectProfName[connectedLTEProfNum]->Data(), -1, strTemp, 250, NULL, NULL);
+								tc_utf16_to_ansi_compat(CP_UTF8, connectProfName[connectedLTEProfNum]->Data(), strTemp, 250);
 								SetMyRegStr("Status_DoNotEdit", "PreviousLTEProfName", strTemp);
 							}
 						}
@@ -888,12 +889,12 @@ extern "C" BOOL updateConnectProfsInfo_Win10(BOOL b_Detail)	// return value: 1 =
 		}
 
 		if (connectedWiFiProfNum != -1)
-			WideCharToMultiByte(CP_THREAD_ACP, 0, ssidOrApName[connectedWiFiProfNum]->Data(), -1, activeSSID, 64, NULL, NULL);
+			tc_utf16_to_ansi_compat(CP_UTF8, ssidOrApName[connectedWiFiProfNum]->Data(), activeSSID, 64);
 		else
 			strcpy(activeSSID, "SSID:N/A");
 
 		if (connectedLTEProfNum != -1)
-			WideCharToMultiByte(CP_THREAD_ACP, 0, ssidOrApName[connectedLTEProfNum]->Data(), -1, activeAPName, 64, NULL, NULL);
+			tc_utf16_to_ansi_compat(CP_UTF8, ssidOrApName[connectedLTEProfNum]->Data(), activeAPName, 64);
 		else
 			strcpy(activeAPName, "APN: N/A");
 
@@ -981,7 +982,7 @@ extern "C" void chkInternetConnectionProfile_Win10()
 				auto ssid_temp = internetConnectProf->WwanConnectionProfileDetails->AccessPointName;
 				const wchar_t* wide_chars = ssid_temp->Data();
 
-				WideCharToMultiByte(CP_THREAD_ACP, 0, wide_chars, -1, icp_SSID_APName, 32, NULL, NULL);
+				tc_utf16_to_ansi_compat(CP_UTF8, wide_chars, icp_SSID_APName, 32);
 
 				if (b_ExistLTEProfile == FALSE)
 				{
@@ -1028,7 +1029,7 @@ extern "C" void chkInternetConnectionProfile_Win10()
 					auto ssid_temp = internetConnectProf->WlanConnectionProfileDetails->GetConnectedSsid();
 					const wchar_t* wide_chars = ssid_temp->Data();
 
-					WideCharToMultiByte(CP_THREAD_ACP, 0, wide_chars, -1, icp_SSID_APName, 32, NULL, NULL);
+					tc_utf16_to_ansi_compat(CP_UTF8, wide_chars, icp_SSID_APName, 32);
 				}
 
 			}
@@ -1075,11 +1076,10 @@ extern "C" void chkInternetConnectionProfile_Win10()
 
 	if (newIntenetConnectionStatus_Win10 != -1)
 	{
+		b_ToDo_identifyInternetConnectProfNum_Win10 = TRUE;
 		if (g_InternetConnectStat_Win10 != newIntenetConnectionStatus_Win10)
 		{
 			if (b_DebugLog) writeDebugLog_Win10("[chkInternetConnectionProfile_Win10]New g_InternetConnectStat_Win10 =", newIntenetConnectionStatus_Win10);
-			//b_ToDo_updateConnectProfsInfo_Win10 = TRUE;
-			b_ToDo_identifyInternetConnectProfNum_Win10 = TRUE;
 		}
 		else
 		{
@@ -1100,6 +1100,16 @@ extern "C" void chkInternetConnectionProfile_Win10()
 	{
 		int prevValue = internetConnectProfNum;
 		identifyInternetConnectProfNum_Win10();
+
+		if (internetConnectProfNum == -1)
+		{
+			if (b_DebugLog) writeDebugLog_Win10("[chkInternetConnectionProfile_Win10] profile index unresolved; refreshing profile list.", 999);
+			if (!updateConnectProfsInfo_Win10(TRUE))
+			{
+				identifyInternetConnectProfNum_Win10();
+			}
+		}
+
 		if (b_DebugLog) writeDebugLog_Win10("[chkInternetConnectionProfile_Win10] CurrentInternetProfileNumber is identified as: ", internetConnectProfNum);
 		if (internetConnectProfNum != prevValue) SetMyRegLong("Status_DoNotEdit", "CurrentInternetProfileNumber", internetConnectProfNum);
 	}
@@ -1288,7 +1298,7 @@ extern "C" void saveAndOpenProfTable(BOOL b_Open)
 
 
 
-			WideCharToMultiByte(CP_THREAD_ACP, 0, connectProfName[i]->Data(), -1, strTemp2, 250, NULL, NULL);
+			tc_utf16_to_ansi_compat(CP_UTF8, connectProfName[i]->Data(), strTemp2, 250);
 			wsprintf(strTemp, "Profile Name: %s\r\n", strTemp2);
 			WriteFile(hFile, strTemp, lstrlen(strTemp), &dwWriteSize, NULL);
 
@@ -1340,7 +1350,7 @@ extern "C" void saveAndOpenProfTable(BOOL b_Open)
 
 			if (b_WiFiProf[i] || b_LTEProf[i])
 			{
-				WideCharToMultiByte(CP_THREAD_ACP, 0, ssidOrApName[i]->Data(), -1, strTemp2, 250, NULL, NULL);
+				tc_utf16_to_ansi_compat(CP_UTF8, ssidOrApName[i]->Data(), strTemp2, 250);
 				if (!strlen(strTemp2)) strcpy(strTemp2, "N/A");
 
 				if (b_WiFiProf[i])
@@ -1362,6 +1372,9 @@ extern "C" void saveAndOpenProfTable(BOOL b_Open)
 		CloseHandle(hFile);
 	}
 
-	if (b_Open) ShellExecute(NULL, "open", "notepad.exe", fname, NULL, SW_SHOWNORMAL);
+	if (b_Open)
+	{
+		ShellExecuteUtf8Compat_DLL(NULL, "open", "notepad.exe", fname, NULL, SW_SHOWNORMAL);
+	}
 
 }

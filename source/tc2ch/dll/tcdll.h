@@ -6,9 +6,15 @@
 	//#define _WIN32_IE 0x0500
 	//#define WINVER    0x0500
 
+#ifndef _WIN32_IE
 #define _WIN32_IE 0x0500
+#endif
+#ifndef _WIN32_WINNT
 #define _WIN32_WINNT 0x0600
+#endif
+#ifndef WINVER
 #define WINVER    0x0600
+#endif
 
 #define _CRT_SECURE_NO_DEPRECATE
 
@@ -131,7 +137,16 @@ void parse(char *dst, char *src, int n);
 char* MyString(UINT id);
 
 BOOL DelMyReg_DLL(char* section, char* entry);
-BOOL DelMyRegKey_DLL(char* section, char* entry);
+BOOL DelMyRegKey_DLL(char* section);
+int GetWindowTextUTF8_DLL(HWND hwnd, char* text, int textBytes);
+int GetClassNameUTF8_DLL(HWND hwnd, char* text, int textBytes);
+#ifdef __cplusplus
+extern "C" {
+#endif
+HINSTANCE ShellExecuteUtf8Compat_DLL(HWND hwnd, const char* op, const char* file, const char* params, const char* dir, int showCmd);
+#ifdef __cplusplus
+}
+#endif
 void UpdateSettingFile(void);
 void CleanSettingFile(void);
 

@@ -120,9 +120,6 @@ BOOL CALLBACK PageChimeProc(HWND hDlg, UINT message,
 --------------------------------------------------*/
 void OnInit(HWND hDlg)
 {
-	HDC hdc;
-	int index;
-
 	b_suppress_response = TRUE;
 
 
@@ -150,10 +147,10 @@ void OnInit(HWND hDlg)
 		(int)(short)GetMyRegLong("Chime", "BlinksOnChime", 3));
 
 	GetMyRegStr("Chime", "ChimeWav", fname, MAX_PATH, "C:\\Windows\\Media\\notify.wav");
-	SetDlgItemText(hDlg, IDC_CHIME_WAV, fname);
+	SetDlgItemTextUTF8(hDlg, IDC_CHIME_WAV, fname);
 
 	GetMyRegStr("Chime", "SecondaryChimeWav", fname2, MAX_PATH, "C:\\Windows\\Media\\chimes.wav");
-	SetDlgItemText(hDlg, IDC_CHIME_WAV2, fname2);
+	SetDlgItemTextUTF8(hDlg, IDC_CHIME_WAV2, fname2);
 
 	hStart = (int)(short)GetMyRegLong("Chime", "ChimeHourStart", 0);
 	hEnd = (int)(short)GetMyRegLong("Chime", "ChimeHourEnd", 24);
@@ -178,8 +175,8 @@ void OnInit(HWND hDlg)
 
 void OnChangeHours(HWND hDlg)
 {
-	hStart = SendDlgItemMessage(hDlg, IDC_SPIN_CHIME_START, UDM_GETPOS, 0, 0);
-	hEnd = SendDlgItemMessage(hDlg, IDC_SPIN_CHIME_END, UDM_GETPOS, 0, 0);
+	hStart = (int)(short)SendDlgItemMessage(hDlg, IDC_SPIN_CHIME_START, UDM_GETPOS, 0, 0);
+	hEnd = (int)(short)SendDlgItemMessage(hDlg, IDC_SPIN_CHIME_END, UDM_GETPOS, 0, 0);
 
 	SendDlgItemMessage(hDlg, IDC_SPIN_CHIME_START, UDM_SETRANGE, 0,
 		MAKELONG(hEnd - 1, 0));
@@ -220,9 +217,6 @@ void OnChangeEnable(HWND hDlg)
 --------------------------------------------------*/
 void OnApply(HWND hDlg)
 {
-	DWORD dw;
-
-
 	SetMyRegLong("Chime", "EnableChime",
 		IsDlgButtonChecked(hDlg, IDC_CHECK_ENABLE_CHIME));
 
@@ -274,20 +268,20 @@ void OnBrowseChimeWavFile(HWND hDlg, BOOL bSecondary)
 	str0cat(filter, "*.*");
 
 	if (!bSecondary) {
-		GetDlgItemText(hDlg, IDC_CHIME_WAV, deffile, MAX_PATH);
+		GetDlgItemTextUTF8(hDlg, IDC_CHIME_WAV, deffile, MAX_PATH);
 		if (!SelectMyFile(hDlg, filter, 0, deffile, fname)) {
 			return;
 		}
 
-		SetDlgItemText(hDlg, IDC_CHIME_WAV, fname);
+		SetDlgItemTextUTF8(hDlg, IDC_CHIME_WAV, fname);
 	}
 	else {
-		GetDlgItemText(hDlg, IDC_CHIME_WAV2, deffile, MAX_PATH);
+		GetDlgItemTextUTF8(hDlg, IDC_CHIME_WAV2, deffile, MAX_PATH);
 		if (!SelectMyFile(hDlg, filter, 0, deffile, fname2)) {
 			return;
 		}
 
-		SetDlgItemText(hDlg, IDC_CHIME_WAV2, fname2);
+		SetDlgItemTextUTF8(hDlg, IDC_CHIME_WAV2, fname2);
 	}
 
 	SendPSChanged(hDlg);
@@ -297,6 +291,7 @@ void OnBrowseChimeWavFile(HWND hDlg, BOOL bSecondary)
 
 void OnPlayWav(HWND hDlg, BOOL bSecondary) 
 {
+	UNREFERENCED_PARAMETER(hDlg);
 	if (!bSecondary) {
 		if (GetFileAttributes(fname) != 0xFFFFFFFF)
 		{
@@ -314,5 +309,6 @@ void OnPlayWav(HWND hDlg, BOOL bSecondary)
 
 void OnStopWav(HWND hDlg)
 {
+	UNREFERENCED_PARAMETER(hDlg);
 	PlaySound(NULL, 0, 0);
 }

@@ -93,10 +93,6 @@ void OnInit(HWND hDlg)
 {
 
 	HDC hdc;
-	LOGFONT logfont;
-	//HFONT hfont;
-	DWORD dwVer;
-	int index;
 
 	InitComboColor(hDlg, 4, combocolor, 16, TRUE);
 

@@ -125,7 +125,7 @@ void InitLocale(HWND hwnd)
 	if(hwnd)
 	{
 		sel = CBGetCurSel(hwnd, IDC_LOCALE);
-		ilang = CBGetItemData(hwnd, IDC_LOCALE, sel);
+		ilang = (int)(INT_PTR)CBGetItemData(hwnd, IDC_LOCALE, sel);
 	}
 	else
 	{
@@ -194,7 +194,6 @@ void OnInit(HWND hDlg)
 	HFONT hfont;
 	char s[1024];
 	int i, count, nKaigyo;
-	DWORD dw;
 
 	hwndPage = hDlg;
 
@@ -218,7 +217,7 @@ void OnInit(HWND hDlg)
 	for(i = 0; i < count; i++)
 	{
 		int x;
-		x = CBGetItemData(hDlg, IDC_LOCALE, i);
+		x = (int)(INT_PTR)CBGetItemData(hDlg, IDC_LOCALE, i);
 		if(x == ilang)
 		{
 			CBSetCurSel(hDlg, IDC_LOCALE, i); break;
@@ -252,7 +251,7 @@ void OnInit(HWND hDlg)
 		RECT rc;
 		HWND hwnd;
 		nKaigyo = 1;
-		hwnd = FindWindow("Shell_TrayWnd", NULL);
+		hwnd = FindWindowW(L"Shell_TrayWnd", NULL);
 		if(hwnd != NULL)
 		{
 			GetClientRect(hwnd, &rc);
@@ -271,7 +270,7 @@ void OnInit(HWND hDlg)
 
 
 	GetMyRegStr("Format", "Format", s, 1024, "");
-	SetDlgItemText(hDlg, IDC_FORMAT, s);
+	SetDlgItemTextUTF8(hDlg, IDC_FORMAT, s);
 
 	pCustomFormat = malloc(1024);
 	if(pCustomFormat)
@@ -294,17 +293,16 @@ void OnApply(HWND hDlg)
 {
 	char s[1024];
 	int i;
-	DWORD dw;
 
 	SetMyRegLong("Format", "Locale",
-		CBGetItemData(hDlg, IDC_LOCALE, CBGetCurSel(hDlg, IDC_LOCALE)));
+		(LONG)(INT_PTR)CBGetItemData(hDlg, IDC_LOCALE, CBGetCurSel(hDlg, IDC_LOCALE)));
 
 	for(i = IDC_YEAR4; i <= IDC_CUSTOM; i++)
 	{
 		SetMyRegLong("Format", ENTRY(i), IsDlgButtonChecked(hDlg, i));
 	}
 
-	GetDlgItemText(hDlg, IDC_FORMAT, s, 1024);
+	GetDlgItemTextUTF8(hDlg, IDC_FORMAT, s, 1024);
 	SetMyRegStr("Format", "Format", s);
 
 	if(pCustomFormat)
@@ -348,9 +346,9 @@ void OnCustom(HWND hDlg, BOOL bmouse)
 		if(b)
 		{
 			if(pCustomFormat[0])
-				SetDlgItemText(hDlg, IDC_FORMAT, pCustomFormat);
+				SetDlgItemTextUTF8(hDlg, IDC_FORMAT, pCustomFormat);
 		}
-		else GetDlgItemText(hDlg, IDC_FORMAT, pCustomFormat, 1024);
+		else GetDlgItemTextUTF8(hDlg, IDC_FORMAT, pCustomFormat, 1024);
 	}
 
 	if(!b) OnFormatCheck(hDlg, 0);
@@ -426,7 +424,7 @@ void OnFormatCheck(HWND hDlg, WORD id)
 	}
 
 	CreateFormat(s, checks);
-	SetDlgItemText(hDlg, IDC_FORMAT, s);
+	SetDlgItemTextUTF8(hDlg, IDC_FORMAT, s);
 	SendPSChanged(hDlg);
 }
 
@@ -461,7 +459,7 @@ void InitFormat(void)
 		ENTRY(IDC_INTERNETTIME), FALSE);
 
 	b = FALSE;
-	hwnd = FindWindow("Shell_TrayWnd", NULL);
+	hwnd = FindWindowW(L"Shell_TrayWnd", NULL);
 	if(hwnd != NULL)
 	{
 		GetClientRect(hwnd, &rc);

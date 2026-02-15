@@ -28,6 +28,7 @@ pfnGetProcAddress16 GetProcAddress16 = NULL;
 pfnQT_Thunk QT_Thunk = NULL;
 
 typedef BOOL (WINAPI *pfnGetSystemPowerStatus)(LPSYSTEM_POWER_STATUS);
+void writeDebugLog_Win10(LPSTR s, int n);
 typedef ULONG (WINAPI *pfnCallNtPowerInformation)(POWER_INFORMATION_LEVEL, PVOID, ULONG, PVOID, ULONG);
 pfnGetSystemPowerStatus pGetSystemPowerStatus = NULL;
 pfnCallNtPowerInformation pCallNtPowerInformation = NULL;
@@ -90,12 +91,6 @@ void EndSysres(void)
 
 void InitBatteryLife(void)
 {
-	DWORD ver;
-
-	//ver = GetVersion();
-	//if((!(ver & 0x80000000) && LOBYTE(LOWORD(ver)) < 5)) // NT 4
-	//	return;
-
 	if(hmodKERNEL32 == NULL)
 		hmodKERNEL32 = LoadLibrary("KERNEL32.dll");
 	if(hmodKERNEL32 == NULL) return;
@@ -184,7 +179,6 @@ void FreeBatteryLife(void)
 
 void InitCpuClock(void)
 {
-	DWORD ver;
 	SYSTEM_INFO si;
 
 

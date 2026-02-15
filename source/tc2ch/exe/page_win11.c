@@ -101,7 +101,7 @@ static void WriteTaskbarAlignCenterQuiet(void)
 static void NotifyExplorerAdvancedChanged(void)
 {
 	DWORD_PTR dw = 0;
-	HWND hwndTaskbar = FindWindow("Shell_TrayWnd", NULL);
+	HWND hwndTaskbar = FindWindowW(L"Shell_TrayWnd", NULL);
 	const char regPath[] = "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced";
 	SendMessageTimeout(HWND_BROADCAST, WM_SETTINGCHANGE, 0, (LPARAM)regPath, SMTO_ABORTIFHUNG | SMTO_BLOCK, 2000, &dw);
 	SendMessageTimeout(HWND_BROADCAST, WM_SETTINGCHANGE, 0, (LPARAM)"TraySettings", SMTO_ABORTIFHUNG | SMTO_BLOCK, 2000, &dw);

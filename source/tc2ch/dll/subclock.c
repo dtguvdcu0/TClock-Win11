@@ -14,6 +14,8 @@ extern int heightMainClockFrame;
 extern BOOL bWin11Main;
 extern BOOL bWin11Sub;
 extern BOOL g_bVertTaskbar;
+extern void RedrawTClock(void);
+extern BOOL IsVertTaskbar(HWND hwndTaskBarMain);
 
 
 
@@ -66,7 +68,6 @@ LRESULT CALLBACK WndProcSubClk(HWND hwnd, UINT message, WPARAM wParam, LPARAM lP
 
 	{
 		int i, newWidth, newHeight;
-		LRESULT ret;
 		i = GetSubClkIndexFromHWND(hwnd);
 		if ((i != 999) && (bEnableSpecificSubClk[i] == TRUE))
 		{
@@ -75,7 +76,7 @@ LRESULT CALLBACK WndProcSubClk(HWND hwnd, UINT message, WPARAM wParam, LPARAM lP
 
 			if (b_DebugLog) {
 				writeDebugLog_Win10("[subclock.c][WndProcSubClk] SubClock index = ", i);
-				writeDebugLog_Win10("[subclock.c][WndProcSubClk] wParam = ", wParam);
+				writeDebugLog_Win10("[subclock.c][WndProcSubClk] wParam = ", (int)(INT_PTR)wParam);
 			}
 
 			newWidth = (int)(*pncsp).rgrc[0].right - (int)(*pncsp).rgrc[0].left;
@@ -245,11 +246,7 @@ void ActivateSubClocks(void)
 
 void StoreSpecificSubClockDimensions(int i)
 {
-
-	POINT tempPos = { 0, 0 };
 	RECT tempRect;
-	char tempClassName[32];
-	HWND tempHwnd;
 
 	GetWindowRect(hwndClockSubClk[i], &tempRect);
 	origSubClockWidth[i] = tempRect.right - tempRect.left;
@@ -288,7 +285,6 @@ int GetSubClkIndexFromHWND(HWND tempHwndSubClk)
 {
 	//	if (b_DebugLog) writeDebugLog_Win10("[subclock.c] GetSubClkIndexFromHWND called. ", 999);
 
-	HWND tempHwnd;
 	int ret = 999;
 
 	for (int i = 0; i < MAX_SUBSCREEN; i++) {
@@ -369,7 +365,6 @@ void SetSpecificSubClock(int i)
 
 	POINT pos, pos2, nextcorner;
 	HWND tempHwnd;
-	char tempClassName[32];
 	RECT tempRect;
 	BOOL tempIsVert;
 
@@ -603,7 +598,6 @@ void FindAllSubClocks(void)
 }
 
 void DisableSpecificSubClock(int i) {
-	char tempClassName[32];
 	HWND tempHwnd;
 
 	POINT pos, pos2, nextcorner;

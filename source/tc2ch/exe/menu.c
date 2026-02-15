@@ -74,9 +74,6 @@ static char* SafeMyString(UINT id)
 --------------------------------------------------*/
 void OnContextMenu(HWND hwnd, HWND hwndClicked, int xPos, int yPos)
 {
-	char s[80];
-
-
 	int i;
 
 	UNREFERENCED_PARAMETER(hwndClicked);
@@ -192,7 +189,7 @@ void OnContextMenu(HWND hwnd, HWND hwndClicked, int xPos, int yPos)
 
 				wsprintf(driveLetter, "%c:\\", 'A' + nDrive);
 
-				auto tempDriveType = GetDriveType(driveLetter);
+				UINT tempDriveType = GetDriveType(driveLetter);
 				
 				if (b_DebugLog && tempDriveType != DRIVE_UNKNOWN)
 				{
@@ -339,7 +336,7 @@ void OnTClockCommand(HWND hwnd, WORD wID, WORD wCode)
 	{
 		case IDC_SHOWDIR: // Show Directory
 			if (b_DebugLog) WriteDebug_New2("[menu.c][OnTClockCommand] IDC_SHOWDIR received");
-			ShellExecute(g_hwndMain, NULL, g_mydir, NULL, NULL, SW_SHOWNORMAL);
+			ShellExecuteUtf8Compat(g_hwndMain, NULL, g_mydir, NULL, NULL, SW_SHOWNORMAL);
 			break;
 		case IDC_SHOWPROP: // Show property
 			if (b_DebugLog) WriteDebug_New2("[menu.c][OnTClockCommand] IDC_SHOWPROP received");
@@ -359,37 +356,37 @@ void OnTClockCommand(HWND hwnd, WORD wID, WORD wCode)
 			return;
 		case IDC_POWERPNL:	//Added by TTTT
 			if (b_DebugLog) WriteDebug_New2("[menu.c][OnTClockCommand] IDC_POWERPNL received");
-			ShellExecute(NULL, "open", "control", "/name Microsoft.PowerOptions /page pageGlobalSettings", NULL, SW_SHOWNORMAL);
+			ShellExecuteW(NULL, L"open", L"control", L"/name Microsoft.PowerOptions /page pageGlobalSettings", NULL, SW_SHOWNORMAL);
 			return;
 
 		case IDC_NETWORKSTG:	//Added by TTTT
 			if (b_DebugLog) WriteDebug_New2("[menu.c][OnTClockCommand] IDC_NETWORKSTG received");
-			ShellExecute(NULL, "open", "ms-settings:network-status", NULL, NULL, SW_SHOWNORMAL);
+			ShellExecuteW(NULL, L"open", L"ms-settings:network-status", NULL, NULL, SW_SHOWNORMAL);
 			return;
 
 		case IDC_NETWORKPNL:	//Added by TTTT
 			if (b_DebugLog) WriteDebug_New2("[menu.c][OnTClockCommand] IDC_NETWORKPNL received");
-			ShellExecute(NULL, "open", "control", "ncpa.cpl", NULL, SW_SHOWNORMAL);
+			ShellExecuteW(NULL, L"open", L"control", L"ncpa.cpl", NULL, SW_SHOWNORMAL);
 			return;
 
 		case IDC_DATAUSAGE:	//Added by TTTT
 			if (b_DebugLog) WriteDebug_New2("[menu.c][OnTClockCommand] IDC_DATAUSAGE received");
-			ShellExecute(NULL, "open", "ms-settings:datausage", NULL, NULL, SW_SHOWNORMAL);
+			ShellExecuteW(NULL, L"open", L"ms-settings:datausage", NULL, NULL, SW_SHOWNORMAL);
 			return;
 
 		case IDC_CONTROLPNL:	//Added by TTTT
 			if (b_DebugLog) WriteDebug_New2("[menu.c][OnTClockCommand] IDC_CONTROLPNL received");
-			ShellExecute(NULL, "open", "control", NULL, NULL, SW_SHOWNORMAL);
+			ShellExecuteW(NULL, L"open", L"control", NULL, NULL, SW_SHOWNORMAL);
 			return;
 
 		case IDC_SETTING:	//Added by TTTT
 			if (b_DebugLog) WriteDebug_New2("[menu.c][CLOCKM_TOGGLE_DATAPLANFUNCOnTClockCommand] IDC_SETTING received");
-			ShellExecute(NULL, "open", "ms-settings:", NULL, NULL, SW_SHOWNORMAL);
+			ShellExecuteW(NULL, L"open", L"ms-settings:", NULL, NULL, SW_SHOWNORMAL);
 			return;
 
 		case IDC_CMD:	//Added by TTTT
 			if (b_DebugLog) WriteDebug_New2("[menu.c][OnTClockCommand] IDC_CMD received");
-			ShellExecute(NULL, "open", "cmd.exe", "/k cd \\", NULL, SW_SHOWNORMAL);
+			ShellExecuteW(NULL, L"open", L"cmd.exe", L"/k cd \\", NULL, SW_SHOWNORMAL);
 			return;
 
 		case IDC_LANGUAGE_JAPANESE:	//Added by TTTT
@@ -467,20 +464,20 @@ void OnTClockCommand(HWND hwnd, WORD wID, WORD wCode)
 			if (b_DebugLog) WriteDebug_New2("Remove Drive Application will be executed:");
 			if (b_DebugLog) WriteDebug_New2(strAppTemp_Win10);
 			if (b_DebugLog) WriteDebug_New2(driveLetter_Win10[wID - IDC_REMOVE_DRIVE0]);
-			ShellExecute(NULL, "open", strAppTemp_Win10, driveLetter_Win10[wID - IDC_REMOVE_DRIVE0], NULL, SW_SHOWNORMAL);
+			ShellExecuteUtf8Compat(NULL, "open", strAppTemp_Win10, driveLetter_Win10[wID - IDC_REMOVE_DRIVE0], NULL, SW_SHOWNORMAL);
 			return;
 		}
 
 		case IDC_TASKMAN:
 		{
-			ShellExecute(NULL, "open", "taskmgr", NULL, NULL, SW_SHOWNORMAL);
+			ShellExecuteW(NULL, L"open", L"taskmgr", NULL, NULL, SW_SHOWNORMAL);
 			SetWindowPos(GetActiveWindow(), HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
 			return;
 		}
 
 		case IDC_ALARM_CLOCK:
 		{
-			ShellExecute(NULL, "open", "ms-clock:", NULL, NULL, SW_SHOWNORMAL);
+			ShellExecuteW(NULL, L"open", L"ms-clock:", NULL, NULL, SW_SHOWNORMAL);
 			SetWindowPos(GetActiveWindow(), HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
 			return;
 		}
@@ -489,14 +486,14 @@ void OnTClockCommand(HWND hwnd, WORD wID, WORD wCode)
 		{
 			extern int PullBackIndex;
 			PullBackIndex = 0;
-			EnumWindows(PullBackOBWindow, NULL);
+			EnumWindows(PullBackOBWindow, (LPARAM)0);
 			return;
 		}
 
 		case IDC_DATETIME_Win10:
 		{
 			HWND hwndTray;
-			hwndTray = FindWindow("Shell_TrayWnd", NULL);
+			hwndTray = FindWindowW(L"Shell_TrayWnd", NULL);
 			if(hwndTray)
 			{
 				if (wID == IDC_DATETIME_Win10)

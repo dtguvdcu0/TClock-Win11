@@ -9,6 +9,12 @@
 static void OnInit(HWND hDlg);
 static void OnOK(HWND hDlg);
 
+static __inline void SendPSChangedLocal(HWND hDlg)
+{
+	g_bApplyClock = TRUE;
+	SendMessage(GetParent(hDlg), PSM_CHANGED, (WPARAM)hDlg, 0);
+}
+
 extern BOOL b_EnglishMenu;
 extern int Language_Offset;
 
@@ -51,7 +57,7 @@ INT_PTR CALLBACK DlgProcBarmeterColor(HWND hDlg, UINT message,
 				case IDC_BARMETERCOL_2:
 				case IDC_BARMETERCOL_3:
 					if (code == CBN_SELCHANGE)
-						SendPSChanged(hDlg);
+						SendPSChangedLocal(hDlg);
 					break;
 					//「...」色の選択
 				case IDC_CHOOSEBARMETERCOL_0:
@@ -59,7 +65,7 @@ INT_PTR CALLBACK DlgProcBarmeterColor(HWND hDlg, UINT message,
 				case IDC_CHOOSEBARMETERCOL_2:
 				case IDC_CHOOSEBARMETERCOL_3:
 					OnChooseColor(hDlg, id, 16);
-					SendPSChanged(hDlg);
+					SendPSChangedLocal(hDlg);
 					break;
 
 				case IDOK:
@@ -89,12 +95,12 @@ void OnInit(HWND hDlg)
 	//char tempStr[64];
 	BOOL b_ShowThresholds = TRUE;
 
-	SendDlgItemMessage(hDlg, IDC_LABEL_BARMETER_THRESHOLD, WM_SETTEXT, NULL, MyString(IDS_BM_THRESHOLD));
+	SetDlgItemTextUTF8(hDlg, IDC_LABEL_BARMETER_THRESHOLD, MyString(IDS_BM_THRESHOLD));
 
 	switch(BarMeterColorDlgIndex)
 	{
 		case IDC_BARMETERCOL_VOL:
-			SetWindowText(hDlg, MyString(IDS_BMCOLOR_TITLE_VOL));
+			SetWindowTextUTF8(hDlg, MyString(IDS_BMCOLOR_TITLE_VOL));
 
 			b_ShowThresholds = FALSE;
 
@@ -103,8 +109,8 @@ void OnInit(HWND hDlg)
 
 			InitComboColor(hDlg, 2, combocolor, 16, FALSE);
 
-			SendDlgItemMessage(hDlg, IDC_TITLE_BARMETERCOL_0, WM_SETTEXT, NULL, MyString(IDS_BMCOLOR_VOLUME));
-			SendDlgItemMessage(hDlg, IDC_TITLE_BARMETERCOL_1, WM_SETTEXT, NULL, MyString(IDS_BMCOLOR_MUTE));
+			SetDlgItemTextUTF8(hDlg, IDC_TITLE_BARMETERCOL_0, MyString(IDS_BMCOLOR_VOLUME));
+			SetDlgItemTextUTF8(hDlg, IDC_TITLE_BARMETERCOL_1, MyString(IDS_BMCOLOR_MUTE));
 
 			ShowDlgItem(hDlg, IDC_TITLE_BARMETERCOL_2, FALSE);
 			ShowDlgItem(hDlg, IDC_BARMETERCOL_2, FALSE);
@@ -116,7 +122,7 @@ void OnInit(HWND hDlg)
 
 			break;
 		case IDC_BARMETERCOL_CPU:
-			SetWindowText(hDlg, MyString(IDS_BMCOLOR_TITLE_CPU));
+			SetWindowTextUTF8(hDlg, MyString(IDS_BMCOLOR_TITLE_CPU));
 
 			b_ShowThresholds = TRUE;
 
@@ -133,14 +139,14 @@ void OnInit(HWND hDlg)
 
 			InitComboColor(hDlg, 4, combocolor, 16, FALSE);
 
-			SendDlgItemMessage(hDlg, IDC_TITLE_BARMETERCOL_0, WM_SETTEXT, NULL, MyString(IDS_BMCOLOR_CU_HIGH));
-			SendDlgItemMessage(hDlg, IDC_TITLE_BARMETERCOL_1, WM_SETTEXT, NULL, MyString(IDS_BMCOLOR_CU_MID));
-			SendDlgItemMessage(hDlg, IDC_TITLE_BARMETERCOL_2, WM_SETTEXT, NULL, MyString(IDS_BMCOLOR_CU_LOW));
-			SendDlgItemMessage(hDlg, IDC_TITLE_BARMETERCOL_3, WM_SETTEXT, NULL, MyString(IDS_BMCOLOR_GPU));
+			SetDlgItemTextUTF8(hDlg, IDC_TITLE_BARMETERCOL_0, MyString(IDS_BMCOLOR_CU_HIGH));
+			SetDlgItemTextUTF8(hDlg, IDC_TITLE_BARMETERCOL_1, MyString(IDS_BMCOLOR_CU_MID));
+			SetDlgItemTextUTF8(hDlg, IDC_TITLE_BARMETERCOL_2, MyString(IDS_BMCOLOR_CU_LOW));
+			SetDlgItemTextUTF8(hDlg, IDC_TITLE_BARMETERCOL_3, MyString(IDS_BMCOLOR_GPU));
 
 			break;
 		case IDC_BARMETERCOL_BAT:
-			SetWindowText(hDlg, MyString(IDS_BMCOLOR_TITLE_BAT));
+			SetWindowTextUTF8(hDlg, MyString(IDS_BMCOLOR_TITLE_BAT));
 
 			b_ShowThresholds = TRUE;
 
@@ -157,14 +163,14 @@ void OnInit(HWND hDlg)
 
 			InitComboColor(hDlg, 4, combocolor, 16, FALSE);
 
-			SendDlgItemMessage(hDlg, IDC_TITLE_BARMETERCOL_0, WM_SETTEXT, NULL, MyString(IDS_BMCOLOR_BL_HIGH));
-			SendDlgItemMessage(hDlg, IDC_TITLE_BARMETERCOL_1, WM_SETTEXT, NULL, MyString(IDS_BMCOLOR_BL_MID));
-			SendDlgItemMessage(hDlg, IDC_TITLE_BARMETERCOL_2, WM_SETTEXT, NULL, MyString(IDS_BMCOLOR_BL_LOW));
-			SendDlgItemMessage(hDlg, IDC_TITLE_BARMETERCOL_3, WM_SETTEXT, NULL, MyString(IDS_BMCOLOR_BL_CHARGE));
+			SetDlgItemTextUTF8(hDlg, IDC_TITLE_BARMETERCOL_0, MyString(IDS_BMCOLOR_BL_HIGH));
+			SetDlgItemTextUTF8(hDlg, IDC_TITLE_BARMETERCOL_1, MyString(IDS_BMCOLOR_BL_MID));
+			SetDlgItemTextUTF8(hDlg, IDC_TITLE_BARMETERCOL_2, MyString(IDS_BMCOLOR_BL_LOW));
+			SetDlgItemTextUTF8(hDlg, IDC_TITLE_BARMETERCOL_3, MyString(IDS_BMCOLOR_BL_CHARGE));
 
 			break;
 		case IDC_BARMETERCOL_NET:
-			SetWindowText(hDlg, MyString(IDS_BMCOLOR_TITLE_NET));
+			SetWindowTextUTF8(hDlg, MyString(IDS_BMCOLOR_TITLE_NET));
 
 			b_ShowThresholds = FALSE;
 
@@ -173,8 +179,8 @@ void OnInit(HWND hDlg)
 			
 			InitComboColor(hDlg, 2, combocolor, 16, FALSE);
 
-			SendDlgItemMessage(hDlg, IDC_TITLE_BARMETERCOL_0, WM_SETTEXT, NULL, MyString(IDS_BMCOLOR_NET_RECV));
-			SendDlgItemMessage(hDlg, IDC_TITLE_BARMETERCOL_1, WM_SETTEXT, NULL, MyString(IDS_BMCOLOR_NET_SEND));
+			SetDlgItemTextUTF8(hDlg, IDC_TITLE_BARMETERCOL_0, MyString(IDS_BMCOLOR_NET_RECV));
+			SetDlgItemTextUTF8(hDlg, IDC_TITLE_BARMETERCOL_1, MyString(IDS_BMCOLOR_NET_SEND));
 
 			ShowDlgItem(hDlg, IDC_TITLE_BARMETERCOL_2, FALSE);
 			ShowDlgItem(hDlg, IDC_BARMETERCOL_2, FALSE);
@@ -219,10 +225,10 @@ void OnOK(HWND hDlg)
 	DWORD tempCol_0, tempCol_1, tempCol_2, tempCol_3;
 	int tempThreshold_H, tempThreshold_M;
 
-	tempCol_0 = CBGetItemData(hDlg, IDC_BARMETERCOL_0, CBGetCurSel(hDlg, IDC_BARMETERCOL_0));
-	tempCol_1 = CBGetItemData(hDlg, IDC_BARMETERCOL_1, CBGetCurSel(hDlg, IDC_BARMETERCOL_1));
-	tempCol_2 = CBGetItemData(hDlg, IDC_BARMETERCOL_2, CBGetCurSel(hDlg, IDC_BARMETERCOL_2));
-	tempCol_3 = CBGetItemData(hDlg, IDC_BARMETERCOL_3, CBGetCurSel(hDlg, IDC_BARMETERCOL_3));
+	tempCol_0 = (DWORD)(ULONG_PTR)CBGetItemData(hDlg, IDC_BARMETERCOL_0, CBGetCurSel(hDlg, IDC_BARMETERCOL_0));
+	tempCol_1 = (DWORD)(ULONG_PTR)CBGetItemData(hDlg, IDC_BARMETERCOL_1, CBGetCurSel(hDlg, IDC_BARMETERCOL_1));
+	tempCol_2 = (DWORD)(ULONG_PTR)CBGetItemData(hDlg, IDC_BARMETERCOL_2, CBGetCurSel(hDlg, IDC_BARMETERCOL_2));
+	tempCol_3 = (DWORD)(ULONG_PTR)CBGetItemData(hDlg, IDC_BARMETERCOL_3, CBGetCurSel(hDlg, IDC_BARMETERCOL_3));
 
 	tempThreshold_H = GetDlgItemInt(hDlg, IDC_BARMETER_THRESHOLD_H, NULL, FALSE);
 	tempThreshold_M = GetDlgItemInt(hDlg, IDC_BARMETER_THRESHOLD_M, NULL, FALSE);

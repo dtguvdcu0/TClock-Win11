@@ -54,7 +54,7 @@ INT_PTR CALLBACK PageAboutProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
 				strcpy(fname, g_mydir);
 				add_title(fname, "tclock-win11.ini");
 				//ShellExecute(NULL, "edit", fname, NULL, NULL, SW_SHOWNORMAL);
-				ShellExecute(NULL, "open", "notepad.exe", fname, NULL, SW_SHOWNORMAL);
+				ShellExecuteUtf8Compat(NULL, "open", "notepad.exe", fname, NULL, SW_SHOWNORMAL);
 			}
 				break;
 				//  readme.txtを開く
@@ -68,7 +68,7 @@ INT_PTR CALLBACK PageAboutProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
 				else {
 					add_title(fname, "readme_jp.txt");
 				}
-				ShellExecute(NULL, "open", "notepad.exe", fname, NULL, SW_SHOWNORMAL);
+				ShellExecuteUtf8Compat(NULL, "open", "notepad.exe", fname, NULL, SW_SHOWNORMAL);
 			}
 				break;
 
@@ -95,7 +95,7 @@ INT_PTR CALLBACK PageAboutProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
 --------------------------------------------------*/
 static void OnInit(HWND hDlg)
 {
-
+	UNREFERENCED_PARAMETER(hDlg);
 
 }
 
@@ -104,6 +104,6 @@ static void OnInit(HWND hDlg)
 --------------------------------------------------*/
 void OnApply(HWND hDlg)
 {
-
+	UNREFERENCED_PARAMETER(hDlg);
 
 }

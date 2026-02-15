@@ -5,6 +5,7 @@
 
 #include <windows.h>
 #include <iprtrmib.h>
+#include <stdio.h>
 #include <string.h>
 
 #define TRAFFIC_THRESHOLD	256
@@ -70,6 +71,7 @@ extern char ipWiFi[];
 extern char ipVPN[];
 
 extern BOOL b_DebugLog;
+void writeDebugLog_Win10(LPSTR s, int n);
 
 
 #define MALLOC(x) HeapAlloc(GetProcessHeap(), 0, (x))
@@ -96,6 +98,32 @@ char  strNetworkAdapterDescriptor[MAXLEN_IFDESCR];
 extern int megabytesInGigaByte;
 int bytesInGigaByte;
 
+static BOOL IsUnsetIP(const char* s)
+{
+	if (s == NULL) return TRUE;
+	return (s[0] == '-' && s[1] == '-' && s[2] == '-');
+}
+
+static void FormatIPv4Address(DWORD ipv4, char* outBuf, size_t outBufLen)
+{
+	sprintf_s(outBuf, outBufLen, "%3d.%3d.%3d.%3d",
+		(int)((LOWORD(ipv4) & 0x00FF)),
+		(int)((LOWORD(ipv4) & 0xFF00) >> 8),
+		(int)((HIWORD(ipv4) & 0x00FF)),
+		(int)((HIWORD(ipv4) & 0xFF00) >> 8));
+}
+
+static BOOL IsUsableIPv4(DWORD ipv4)
+{
+	BYTE o1 = (BYTE)(ipv4 & 0xFF);
+	BYTE o2 = (BYTE)((ipv4 >> 8) & 0xFF);
+	if (ipv4 == 0) return FALSE;
+	// Skip loopback and APIPA.
+	if (o1 == 127) return FALSE;
+	if (o1 == 169 && o2 == 254) return FALSE;
+	return TRUE;
+}
+
 
 
 void Net_getIP_Win10(void)
@@ -107,6 +135,8 @@ void Net_getIP_Win10(void)
 	{
 
 		//pGetIpAddrTable = (pfnGetIpAddrTable)GetProcAddress(hmodIPHLP, "GetIpAddrTable");
+
+		if (pGetIpAddrTable == NULL) return;
 
 		if (pIPAddrTable) {
 			if (pGetIpAddrTable(pIPAddrTable, &dwSize, 0) ==
@@ -128,51 +158,59 @@ void Net_getIP_Win10(void)
 			DWORD buf_IPAddr = 0;
 
 
-			for (i = 0; i < pIPAddrTable->dwNumEntries; i++)
+			for (i = 0; i < (int)pIPAddrTable->dwNumEntries; i++)
 			{
 				buf_IPAddr = pIPAddrTable->table[i].dwAddr;
-				if (pIPAddrTable->table[i].dwIndex == ifIndex_Ether)
+				if (!IsUsableIPv4(buf_IPAddr)) continue;
+				if (pIPAddrTable->table[i].dwIndex == (DWORD)ifIndex_Ether)
 				{
-					sprintf(buf_Str, "%3d.%3d.%3d.%3d"
-						, (int)((LOWORD(buf_IPAddr) & 0x00FF))
-						, (int)((LOWORD(buf_IPAddr) & 0xFF00) >> 8)
-						, (int)((HIWORD(buf_IPAddr) & 0x00FF))
-						, (int)((HIWORD(buf_IPAddr) & 0xFF00)>> 8)	
-					);
-					strcpy(ipEther, buf_Str);
+					FormatIPv4Address(buf_IPAddr, buf_Str, sizeof(buf_Str));
+					strcpy_s(ipEther, 32, buf_Str);
 				}
-				else if (pIPAddrTable->table[i].dwIndex == ifIndex_WiFi)
+				else if (pIPAddrTable->table[i].dwIndex == (DWORD)ifIndex_WiFi)
 				{
-					sprintf(buf_Str, "%3d.%3d.%3d.%3d"
-						, (int)((LOWORD(buf_IPAddr) & 0x00FF))
-						, (int)((LOWORD(buf_IPAddr) & 0xFF00) >> 8)
-						, (int)((HIWORD(buf_IPAddr) & 0x00FF))
-						, (int)((HIWORD(buf_IPAddr) & 0xFF00) >> 8)
-					);
-					strcpy(ipWiFi, buf_Str);
+					FormatIPv4Address(buf_IPAddr, buf_Str, sizeof(buf_Str));
+					strcpy_s(ipWiFi, 32, buf_Str);
 				}
-				else if (pIPAddrTable->table[i].dwIndex == ifIndex_LTE)
+				else if (pIPAddrTable->table[i].dwIndex == (DWORD)ifIndex_LTE)
 				{
-					sprintf(buf_Str, "%3d.%3d.%3d.%3d"
-						, (int)((LOWORD(buf_IPAddr) & 0x00FF))
-						, (int)((LOWORD(buf_IPAddr) & 0xFF00) >> 8)
-						, (int)((HIWORD(buf_IPAddr) & 0x00FF))
-						, (int)((HIWORD(buf_IPAddr) & 0xFF00) >> 8)
-					);
-					strcpy(ipLTE, buf_Str);
+					FormatIPv4Address(buf_IPAddr, buf_Str, sizeof(buf_Str));
+					strcpy_s(ipLTE, 32, buf_Str);
 				}
-				else if (pIPAddrTable->table[i].dwIndex == ifIndex_VPN)
+				else if (pIPAddrTable->table[i].dwIndex == (DWORD)ifIndex_VPN)
 				{
-					sprintf(buf_Str, "%3d.%3d.%3d.%3d"
-						, (int)((LOWORD(buf_IPAddr) & 0x00FF))
-						, (int)((LOWORD(buf_IPAddr) & 0xFF00) >> 8)
-						, (int)((HIWORD(buf_IPAddr) & 0x00FF))
-						, (int)((HIWORD(buf_IPAddr) & 0xFF00) >> 8)
-					);
-					strcpy(ipVPN, buf_Str);
+					FormatIPv4Address(buf_IPAddr, buf_Str, sizeof(buf_Str));
+					strcpy_s(ipVPN, 32, buf_Str);
 				}
 			}
 
+			// Fallback: if index mapping did not hit, classify by IF type via dwIndex.
+			for (i = 0; i < (int)pIPAddrTable->dwNumEntries; i++)
+			{
+				MIB_IFROW ifRowByIndex;
+				DWORD ifEntryRet;
+				buf_IPAddr = pIPAddrTable->table[i].dwAddr;
+				if (!IsUsableIPv4(buf_IPAddr)) continue;
+				ZeroMemory(&ifRowByIndex, sizeof(ifRowByIndex));
+				ifRowByIndex.dwIndex = pIPAddrTable->table[i].dwIndex;
+				ifEntryRet = pGetIfEntry(&ifRowByIndex);
+				if (ifEntryRet != NO_ERROR) continue;
+				if (ifRowByIndex.dwOperStatus != IF_OPER_STATUS_OPERATIONAL) continue;
+				FormatIPv4Address(buf_IPAddr, buf_Str, sizeof(buf_Str));
+
+				if ((ifRowByIndex.dwType == IF_TYPE_WWANPP || ifRowByIndex.dwType == IF_TYPE_WWANPP2) && IsUnsetIP(ipLTE))
+				{
+					strcpy_s(ipLTE, 32, buf_Str);
+				}
+				else if ((ifRowByIndex.dwType == IF_TYPE_IEEE80211) && IsUnsetIP(ipWiFi))
+				{
+					strcpy_s(ipWiFi, 32, buf_Str);
+				}
+				else if ((ifRowByIndex.dwType == MIB_IF_TYPE_ETHERNET) && IsUnsetIP(ipEther))
+				{
+					strcpy_s(ipEther, 32, buf_Str);
+				}
+			}
 		}
 		else
 		{
@@ -203,10 +241,10 @@ void Net_clear_Win10(void)
 
 	ifIndex_Ether = ifIndex_WiFi = ifIndex_LTE = ifIndex_VPN = -1;
 
-	strcpy(ipLTE, "--- --- --- ---");
-	strcpy(ipWiFi, "--- --- --- ---");
-	strcpy(ipEther, "--- --- --- ---");
-	strcpy(ipVPN, "--- --- --- ---");
+	strcpy_s(ipLTE, 32, "--- --- --- ---");
+	strcpy_s(ipWiFi, 32, "--- --- --- ---");
+	strcpy_s(ipEther, 32, "--- --- --- ---");
+	strcpy_s(ipVPN, 32, "--- --- --- ---");
 }
 
 void Net_start(void)
@@ -293,7 +331,7 @@ BOOL Net_getAdapterDescriptor(GUID targetGUID)
 {
 	if (b_DebugLog) writeDebugLog_Win10("[net.c] Net_getAdapterDescriptor called", 999);
 
-	strcpy(strNetworkAdapterDescriptor, "");
+	strNetworkAdapterDescriptor[0] = '\0';
 	if (ift && hmodIPHLP)
 	{
 		int i, j;
@@ -313,7 +351,7 @@ BOOL Net_getAdapterDescriptor(GUID targetGUID)
 			ifr = (ift->table) + i;
 			pGetIfEntry(ifr);
 
-			wcscpy(tempwszName, ifr->wszName);
+			wcscpy_s(tempwszName, MAX_INTERFACE_NAME_LEN, ifr->wszName);
 
 			for (j = 0; j < 36; j++)
 			{
@@ -333,7 +371,7 @@ BOOL Net_getAdapterDescriptor(GUID targetGUID)
 
 			if (!strncmp(char_tempwszName, strTempGUID, 36))
 			{
-				strcpy(strNetworkAdapterDescriptor, &ifr->bDescr);
+				strncpy_s(strNetworkAdapterDescriptor, MAXLEN_IFDESCR, (const char*)ifr->bDescr, _TRUNCATE);
 				if (b_DebugLog)
 				{
 					char tempStr[MAXLEN_IFDESCR + 64];
@@ -391,7 +429,7 @@ void Net_getRecvSend_Win10(double* recv, double* send, double* recvWAN, double* 
 					*recvWAN += ifr->dwInOctets;
 					*sendWAN += ifr->dwOutOctets;
 
-					ifIndex_LTE = i+1;	//何故か1を足すと合う
+					ifIndex_LTE = (int)ifr->dwIndex;
 
 				}
 			}
@@ -414,7 +452,7 @@ void Net_getRecvSend_Win10(double* recv, double* send, double* recvWAN, double* 
 					*recvWiFi += ifr->dwInOctets;
 					*sendWiFi += ifr->dwOutOctets;
 
-					ifIndex_WiFi = i+1;	//何故か1を足すと合う
+					ifIndex_WiFi = (int)ifr->dwIndex;
 
 
 				}
@@ -424,21 +462,22 @@ void Net_getRecvSend_Win10(double* recv, double* send, double* recvWAN, double* 
 			//Added for Ethenet indicator by TTTT
 			if (!flag_Ether)
 			{
+				const char* ifDescr = (const char*)ifr->bDescr;
 				if ((ifr->dwType == MIB_IF_TYPE_ETHERNET) &&
-					(	(strstr(ifr->bDescr, "Ethernet") != NULL)
-						|| (strstr(ifr->bDescr, "Realtek") != NULL)
-						|| (strstr(ifr->bDescr, "BUFFALO") != NULL)
-						|| (strstr(ifr->bDescr, "Buffalo") != NULL)
-						|| (strstr(ifr->bDescr, "I-O DATA") != NULL)
-						|| (strstr(ifr->bDescr, "Qualcomm") != NULL)
-						|| (strstr(ifr->bDescr, strEthernet_Keyword1) != NULL)
-						|| (strstr(ifr->bDescr, strEthernet_Keyword2) != NULL)
-						|| (strstr(ifr->bDescr, strEthernet_Keyword3) != NULL)
-						|| (strstr(ifr->bDescr, strEthernet_Keyword4) != NULL)
-						|| (strstr(ifr->bDescr, strEthernet_Keyword5) != NULL)
+					(	(strstr(ifDescr, "Ethernet") != NULL)
+						|| (strstr(ifDescr, "Realtek") != NULL)
+						|| (strstr(ifDescr, "BUFFALO") != NULL)
+						|| (strstr(ifDescr, "Buffalo") != NULL)
+						|| (strstr(ifDescr, "I-O DATA") != NULL)
+						|| (strstr(ifDescr, "Qualcomm") != NULL)
+						|| (strstr(ifDescr, strEthernet_Keyword1) != NULL)
+						|| (strstr(ifDescr, strEthernet_Keyword2) != NULL)
+						|| (strstr(ifDescr, strEthernet_Keyword3) != NULL)
+						|| (strstr(ifDescr, strEthernet_Keyword4) != NULL)
+						|| (strstr(ifDescr, strEthernet_Keyword5) != NULL)
 						) &&
-					(strstr(ifr->bDescr, "Virtual") == NULL) &&
-					(strstr(ifr->bDescr, "Scheduler") == NULL) &&
+					(strstr(ifDescr, "Virtual") == NULL) &&
+					(strstr(ifDescr, "Scheduler") == NULL) &&
 					(ifr->dwOperStatus == IF_OPER_STATUS_OPERATIONAL))
 				{
 					flag_Ether = TRUE;
@@ -453,7 +492,7 @@ void Net_getRecvSend_Win10(double* recv, double* send, double* recvWAN, double* 
 					*recvEther += ifr->dwInOctets;
 					*sendEther += ifr->dwOutOctets;
 
-					ifIndex_Ether = i+1;	//何故か1を足すと合う
+					ifIndex_Ether = (int)ifr->dwIndex;
 
 
 				}
@@ -462,22 +501,23 @@ void Net_getRecvSend_Win10(double* recv, double* send, double* recvWAN, double* 
 			//Added for VPN接続 indicator by TTTT
 			if (!flag_VPNCheck)
 			{
+				const char* ifDescr = (const char*)ifr->bDescr;
 //				if ((ifr->dwType == MIB_IF_TYPE_ETHERNET) &&
 				//if (((ifr->dwType == MIB_IF_TYPE_ETHERNET) 
 				//		|| (ifr->dwType == MIB_IF_TYPE_PPP))
 				//	&&
 				if (
-					((strstr(ifr->bDescr, strSoftEtherKeyword) != NULL) 
-						|| (strstr(ifr->bDescr, strVPN_Keyword1) != NULL)
-						|| (strstr(ifr->bDescr, strVPN_Keyword2) != NULL)
-						|| (strstr(ifr->bDescr, strVPN_Keyword3) != NULL)
-						|| (strstr(ifr->bDescr, strVPN_Keyword4) != NULL)
-						|| (strstr(ifr->bDescr, strVPN_Keyword5) != NULL)) &&
-					((strstr(ifr->bDescr, strVPN_Exclude1) == NULL)
-						&& (strstr(ifr->bDescr, strVPN_Exclude2) == NULL)
-						&& (strstr(ifr->bDescr, strVPN_Exclude3) == NULL)
-						&& (strstr(ifr->bDescr, strVPN_Exclude4) == NULL)
-						&& (strstr(ifr->bDescr, strVPN_Exclude5) == NULL)) &&
+					((strstr(ifDescr, strSoftEtherKeyword) != NULL) 
+						|| (strstr(ifDescr, strVPN_Keyword1) != NULL)
+						|| (strstr(ifDescr, strVPN_Keyword2) != NULL)
+						|| (strstr(ifDescr, strVPN_Keyword3) != NULL)
+						|| (strstr(ifDescr, strVPN_Keyword4) != NULL)
+						|| (strstr(ifDescr, strVPN_Keyword5) != NULL)) &&
+					((strstr(ifDescr, strVPN_Exclude1) == NULL)
+						&& (strstr(ifDescr, strVPN_Exclude2) == NULL)
+						&& (strstr(ifDescr, strVPN_Exclude3) == NULL)
+						&& (strstr(ifDescr, strVPN_Exclude4) == NULL)
+						&& (strstr(ifDescr, strVPN_Exclude5) == NULL)) &&
 						(ifr->dwOperStatus == IF_OPER_STATUS_OPERATIONAL))
 				{
 					flag_VPNCheck = TRUE;
@@ -485,9 +525,9 @@ void Net_getRecvSend_Win10(double* recv, double* send, double* recvWAN, double* 
 
 
 					flag_VPN = TRUE;
-					if (strstr(ifr->bDescr, strSoftEtherKeyword) != NULL) flag_SoftEther = TRUE;
+					if (strstr(ifDescr, strSoftEtherKeyword) != NULL) flag_SoftEther = TRUE;
 
-					ifIndex_VPN = i+1;	//何故か1を足すと合う
+					ifIndex_VPN = (int)ifr->dwIndex;
 
 
 				}
@@ -611,7 +651,11 @@ void Net_end(void)
 
 	hmodIPHLP = NULL; buffer = NULL;
 
-	if (pIPAddrTable == NULL) FREE(pIPAddrTable);
+	if (pIPAddrTable != NULL)
+	{
+		FREE(pIPAddrTable);
+		pIPAddrTable = NULL;
+	}
 }
 
 //void Net_restart(void)

@@ -606,7 +606,7 @@ void WriteDebug_New2(const char* s)
 	//tickCount_LastLog = tickCount_LastLog_temp;
 
 	strcpy(fname, g_mydir);
-	add_title(fname, "TCLOCK-WIN10-DEBUG.LOG");
+	add_title(fname, "TCLOCK-WIN11-DEBUG.LOG");
 
 	hFile = CreateFile(
 		fname, FILE_APPEND_DATA, FILE_SHARE_READ, NULL,

@@ -180,7 +180,7 @@ static void OnInit(HWND hDlg)
 	if (autoBackAlpha < 0) autoBackAlpha = 0;
 	if (autoBackAlpha > 255) autoBackAlpha = 255;
 
-	autoBackBlendRatio = (int)GetMyRegLong("Color_Font", "AutoBackBlendRatio", 65);
+	autoBackBlendRatio = (int)GetMyRegLong("Color_Font", "AutoBackBlendRatio", 50);
 	if (autoBackBlendRatio < 0) autoBackBlendRatio = 0;
 	if (autoBackBlendRatio > 100) autoBackBlendRatio = 100;
 
@@ -188,10 +188,10 @@ static void OnInit(HWND hDlg)
 	if (autoBackRefreshSec < 1) autoBackRefreshSec = 1;
 	if (autoBackRefreshSec > 120) autoBackRefreshSec = 120;
 
-	autoBackClockOffset = (int)GetMyRegLong("Color_Font", "AutoBackSampleClockOffset", -1);
+	autoBackClockOffset = (int)GetMyRegLong("Color_Font", "AutoBackSampleClockOffset", 0);
 	if (autoBackClockOffset < -200) autoBackClockOffset = -200;
 	if (autoBackClockOffset > 200) autoBackClockOffset = 200;
-	autoBackShowDesktopOffset = (int)GetMyRegLong("Color_Font", "AutoBackSampleShowDesktopOffset", -2);
+	autoBackShowDesktopOffset = (int)GetMyRegLong("Color_Font", "AutoBackSampleShowDesktopOffset", 0);
 	if (autoBackShowDesktopOffset < -200) autoBackShowDesktopOffset = -200;
 	if (autoBackShowDesktopOffset > 200) autoBackShowDesktopOffset = 200;
 

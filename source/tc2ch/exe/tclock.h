@@ -136,6 +136,7 @@ int r_strcmp(const char* d, const char* s);
 
 #define CLOCKM_SHOWPROFILELIST	(WM_USER+210)	//Added by TTTT
 #define CLOCKM_DLLALIVE  (WM_USER+211)	//Added by TTTT
+#define CLOCKM_SNAPSHOT_AUTOBACK_SAVE (WM_USER+212)
 
 #define CLOCKM_SLEEP_IN  (WM_USER+220)	//Added by TTTT
 #define CLOCKM_SLEEP_AWAKE  (WM_USER+221)	//Added by TTTT

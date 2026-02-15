@@ -927,7 +927,7 @@ static void RefreshAutoBackColors(BOOL force, char* reason)
 	COLORREF sampleMain;
 	COLORREF sampleEdge;
 
-	if (!bAutoBackMatchTaskbar) return;
+	if (!bAutoBackMatchTaskbar || fillbackcolor) return;
 
 	// Explorer restart/admin relaunch timing: refresh taskbar handles before sampling.
 	RefreshWin11TaskbarHandles();
@@ -1052,6 +1052,27 @@ static void RefreshAutoBackColors(BOOL force, char* reason)
 		writeDebugLog_Win10("[tclock.c][AutoBack] finalEdge=", (int)autoBackColorEdge);
 		writeDebugLog_Win10("[tclock.c][AutoBack] transparencyEnabled=", bAutoBackTransparencyEnabled);
 	}
+}
+
+static BOOL SaveCurrentAutoBackSnapshotToIni(void)
+{
+	if (!bAutoBackMatchTaskbar || fillbackcolor) return FALSE;
+
+	RefreshAutoBackColors(TRUE, "ManualSnapshotSave");
+	if (!bAutoBackInitialized) return FALSE;
+
+	SetMyRegLong("Color_Font", "BackColor", (DWORD)autoBackColorMain);
+	SetMyRegLong("Color_Font", "BackColor2", (DWORD)autoBackColorEdge);
+	SetMyRegLong("Color_Font", "AutoBackSnapshotColor", (DWORD)autoBackColorMain);
+	SetMyRegLong("Color_Font", "AutoBackSnapshotColor2", (DWORD)autoBackColorEdge);
+	/* Keep user checkbox state; snapshot should only store sampled colors. */
+	SetMyRegLong("Color_Font", "GradDir", GRADIENT_FILL_RECT_H);
+	SetMyRegLong("Color_Font", "AutoBackAlpha", (DWORD)ClampInt(autoBackAlpha, 0, 255));
+	SetMyRegLong("Color_Font", "AutoBackBlendRatio", (DWORD)ClampInt(autoBackBlendRatio, 0, 100));
+	SetMyRegLong("Color_Font", "AutoBackRefreshSec", (DWORD)ClampInt(autoBackRefreshSec, 1, 120));
+	SetMyRegLong("Color_Font", "AutoBackSampleClockOffset", (DWORD)ClampInt(autoBackSampleClockOffset, -200, 200));
+	SetMyRegLong("Color_Font", "AutoBackSampleShowDesktopOffset", (DWORD)ClampInt(autoBackSampleShowDesktopOffset, -200, 200));
+	return TRUE;
 }
 
 typedef struct _WIN11_CHILD_DUMP_CTX {
@@ -1352,7 +1373,7 @@ void InitClock()
 	b_Sleeping = FALSE;
 	PostMessage(hwndClockMain, CLOCKM_SLEEP_AWAKE, 0, 0);
 
-	if (bWin11Main || bAutoBackMatchTaskbar) {
+	if (bWin11Main || (bAutoBackMatchTaskbar && !fillbackcolor)) {
 		StartupAutoAdjustPass();
 		startupAutoAdjustRetryRemaining = 3;
 		SetTimer(hwndClockMain, IDTIMERDLL_STARTUP_AUTOADJUST, 450, NULL);
@@ -1405,7 +1426,7 @@ static void StartupAutoAdjustPass(void)
 		PostMessage(hwndClockMain, CLOCKM_MOVEWIN11CONTENTBRIDGE, 1, 0);
 	}
 
-	if (bAutoBackMatchTaskbar) {
+	if (bAutoBackMatchTaskbar && !fillbackcolor && !bAutoBackInitialized) {
 		bAutoBackInitialized = FALSE;
 		RefreshAutoBackColors(TRUE, "StartupAutoAdjust");
 	}
@@ -1880,6 +1901,11 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 			{
 				return 255;		//呼び出し元はメインプログラム(exemain.) 255を返すと、このコード(WndProc)が生きている = 改造時計が存在する、と判断される。
 			}
+			
+			else if (LOWORD(wParam) == CLOCKM_SNAPSHOT_AUTOBACK_SAVE)
+			{
+				return SaveCurrentAutoBackSnapshotToIni() ? 1 : 0;
+			}
 			else if (!b_CompactMode)
 			{
 				if (LOWORD(wParam) == CLOCKM_TOGGLE_BARMETER_VOLUME) toggleBarMeterFunc_Win10(0);// Added by TTTT
@@ -2139,6 +2165,9 @@ void ReadData()
 	DWORD dwInfoFormat;
 	TCHAR fname[MAX_PATH];
 	LONG readDepth;
+	DWORD autoBackSnapshotMain;
+	DWORD autoBackSnapshotEdge;
+	BOOL bAutoBackSnapshotExists;
 
 	extern BOOL b_exist_DOWzone;
 	b_exist_DOWzone = FALSE;
@@ -2259,7 +2288,29 @@ void ReadData()
 	autoBackSampleShowDesktopOffset = ClampInt(autoBackSampleShowDesktopOffset, -200, 200);
 	SetMyRegLong("Color_Font", "AutoBackSampleShowDesktopOffset", autoBackSampleShowDesktopOffset);
 	bAutoBackInitialized = FALSE;
-	RefreshAutoBackColors(TRUE, "ReadData");
+	if (!fillbackcolor) {
+		autoBackSnapshotMain = GetMyRegLong("Color_Font", "AutoBackSnapshotColor", 0xFFFFFFFF);
+		autoBackSnapshotEdge = GetMyRegLong("Color_Font", "AutoBackSnapshotColor2", 0xFFFFFFFF);
+		bAutoBackSnapshotExists = (autoBackSnapshotMain != 0xFFFFFFFF) && (autoBackSnapshotEdge != 0xFFFFFFFF);
+		// Startup should honor saved snapshot first; avoid immediate drift from early resampling.
+		autoBackColorMain = (COLORREF)(bAutoBackSnapshotExists ? autoBackSnapshotMain : (DWORD)colback);
+		autoBackColorEdge = (COLORREF)(bAutoBackSnapshotExists ? autoBackSnapshotEdge : (DWORD)colback2);
+		SetMyRegLong("Color_Font", "AutoBackSnapshotColor", autoBackColorMain);
+		SetMyRegLong("Color_Font", "AutoBackSnapshotColor2", autoBackColorEdge);
+		if (bAutoBackMatchTaskbar) {
+			if (bAutoBackSnapshotExists) {
+				bAutoBackInitialized = TRUE;
+				tickAutoBackLastRefresh = GetTickCount();
+			}
+			else {
+				RefreshAutoBackColors(TRUE, "ReadData");
+			}
+		}
+		else {
+			bAutoBackInitialized = TRUE;
+			tickAutoBackLastRefresh = GetTickCount();
+		}
+	}
 
 	grad = GetMyRegLong("Color_Font", "GradDir", GRADIENT_FILL_RECT_H);
 
@@ -4823,6 +4874,11 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
 				back_alpha = 255;
 			}
 		}
+		else {
+			// AutoBack OFF still needs stable alpha over fixed snapshot background.
+			apply_auto_back_alpha = TRUE;
+			back_alpha = (BYTE)ClampInt(autoBackAlpha, 0, 255);
+		}
 
 		textcol_r = GetRValue(textcol);
 		textcol_g = GetGValue(textcol);
@@ -4894,7 +4950,8 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
 					color->rgbReserved = back_alpha;
 				}
 				else {
-					*(unsigned*)color = 0x00000000;
+					/* Keep current background pixel; avoid transparent accumulation artifacts when AutoBack is OFF. */
+					color->rgbReserved = 255;
 				}
 			}
 		}
@@ -5729,6 +5786,10 @@ void FillBack(HDC hdcTarget, int width, int height)
 	{
 		if (bAutoBackMatchTaskbar) {
 			RefreshAutoBackColors(FALSE, "FillBack");
+			GradientFillBack(hdcTarget, width, height, autoBackColorMain, autoBackColorEdge, 0);
+		}
+		else {
+			// AutoBack OFF: render with fixed snapshot colors to avoid screen-capture ghost artifacts.
 			GradientFillBack(hdcTarget, width, height, autoBackColorMain, autoBackColorEdge, 0);
 		}
 	}

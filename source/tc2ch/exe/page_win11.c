@@ -37,6 +37,9 @@ extern int Language_Offset;
 #define IDC_WIN11_AUTOBACK_SHOWDESK_OFFSET 1912
 #define IDC_WIN11_AUTOBACK_SHOWDESK_OFFSET_SPIN 1913
 #endif
+#ifndef IDC_WIN11_SAVE_AUTOBACK_SNAPSHOT
+#define IDC_WIN11_SAVE_AUTOBACK_SNAPSHOT 1904
+#endif
 static DWORD ReadPolicyDword(const char* subkey, const char* valueName, DWORD defval)
 {
 	HKEY hkey;
@@ -123,6 +126,23 @@ INT_PTR CALLBACK PageWin11Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
 			OnInit(hDlg);
 			return TRUE;
 		case WM_COMMAND:
+			if (LOWORD(wParam) == IDC_WIN11_SAVE_AUTOBACK_SNAPSHOT) {
+				LRESULT saved = 0;
+				if (IsWindow(g_hwndClock)) {
+					saved = SendMessage(g_hwndClock, WM_COMMAND, (WPARAM)CLOCKM_SNAPSHOT_AUTOBACK_SAVE, 0);
+				}
+				if (saved) {
+					MyMessageBox(hDlg,
+						"現在の自動取得背景色を保存しました。\n固定値として使うには「背景色をタスクバーに自動一致」をOFFにしてください。\n\nSaved current auto-matched background colors.\nTurn off \"Auto match taskbar background\" to use fixed values.",
+						"TClock-Win10", MB_OK, MB_ICONINFORMATION);
+				}
+				else {
+					MyMessageBox(hDlg,
+						"背景色の保存に失敗しました。\nタスクバー色の取得状態を確認して再実行してください。\n\nFailed to save background colors.\nPlease retry after taskbar color sampling is available.",
+						"TClock-Win10", MB_OK, MB_ICONEXCLAMATION);
+				}
+				return TRUE;
+			}
 			SendPSChanged(hDlg);
 			return TRUE;
 		case WM_NOTIFY:
@@ -210,6 +230,7 @@ static void OnInit(HWND hDlg)
 		EnableDlgItem(hDlg, IDC_WIN11_AUTOBACK_CLOCK_OFFSET_SPIN, FALSE);
 		EnableDlgItem(hDlg, IDC_WIN11_AUTOBACK_SHOWDESK_OFFSET, FALSE);
 		EnableDlgItem(hDlg, IDC_WIN11_AUTOBACK_SHOWDESK_OFFSET_SPIN, FALSE);
+		EnableDlgItem(hDlg, IDC_WIN11_SAVE_AUTOBACK_SNAPSHOT, FALSE);
 	}
 }
 

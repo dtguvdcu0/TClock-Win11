@@ -419,9 +419,17 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 					InterlockedDecrement(&g_propdlgCommandDepth);
 					break;
 				}
-				NMHDR lp;
-				lp.code = PSN_APPLY;
-				SendMessage(hDlg[nowDlg], WM_NOTIFY, 0, (LPARAM)&lp);
+				{
+					int i;
+					NMHDR lp;
+					lp.code = PSN_APPLY;
+					/* Apply all instantiated pages, not only the active tab. */
+					for (i = 0; i < MAX_PAGE; i++) {
+						if (hDlg[i] && IsWindow(hDlg[i])) {
+							SendMessage(hDlg[i], WM_NOTIFY, 0, (LPARAM)&lp);
+						}
+					}
+				}
 				if(g_bApplyClock)
 				{
 					g_bApplyClock = FALSE;

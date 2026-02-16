@@ -1459,88 +1459,93 @@ Create Default Setting File		//Added by TTTT
 void CreateDefaultIniFile_Win10(char *fname)
 {
 	HANDLE hCreate;
-	char fname2[MAX_PATH];
+	DWORD written = 0;
+	const BYTE utf8Bom[3] = { 0xEF, 0xBB, 0xBF };
 
 
 	hCreate = CreateFile(fname, GENERIC_WRITE, 0, NULL,
 		CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
 	if (hCreate != INVALID_HANDLE_VALUE) {
-
+		/* Seed UTF-8 BOM so utf8 INI path is used from first SetMyReg*. */
+		WriteFile(hCreate, utf8Bom, sizeof(utf8Bom), &written, NULL);
 		CloseHandle(hCreate);
 
 		//g_bIniSetting = TRUE;
 		strcpy(g_inifile, fname);
-
-		SetMyRegLong(NULL, "DebugLog", 0);
+		SetMyRegLong(NULL, "DebugLog", 1);
 		SetMyRegLong(NULL, "NormalLog", 1);
 		SetMyRegLong(NULL, "AutoClearLogFile", 1);
 		SetMyRegLong(NULL, "AutoClearLogLines", 1000);
 		SetMyRegLong(NULL, "AutoRestart", 1);
 		SetMyRegLong(NULL, "CompactMode", 0);
-
 		SetMyRegLong(NULL, "EnglishMenu", 0);
 		SetMyRegLong(NULL, "AdjustThreshold", 200);
 		SetMyRegLong(NULL, "EnableOnSubDisplay", 1);
 		SetMyRegLong(NULL, "OffsetClockMS", 0);
-
+		SetMyRegLong(NULL, "ShowTrayIcon", 1);
+		SetMyRegStr("Status_DoNotEdit", "Version", "5.4.1.1");
 		SetMyRegLong("Status_DoNotEdit", "SafeMode", 0);
 		SetMyRegLong("Status_DoNotEdit", "LastLaunchTimeStamp", 0);
-		SetMyRegLong("Status_DoNotEdit", "ExcessNetProfiles", FALSE);
-		SetMyRegLong("Status_DoNotEdit", "ExistLTEProfile", FALSE);
-		SetMyRegLong("Status_DoNotEdit", "ExistMeteredProfile", FALSE);
+		SetMyRegLong("Status_DoNotEdit", "ExcessNetProfiles", 0);
+		SetMyRegLong("Status_DoNotEdit", "ExistLTEProfile", 0);
+		SetMyRegLong("Status_DoNotEdit", "ExistMeteredProfile", 0);
 		SetMyRegLong("Status_DoNotEdit", "PreviousLTEProfNumber", 0);
 		SetMyRegStr("Status_DoNotEdit", "PreviousLTEProfName", "");
 		SetMyRegLong("Status_DoNotEdit", "BatteryLifeAvailable", 1);
-		SetMyRegLong("Status_DoNotEdit", "CurrentInternetProfileNumber", 0);
-		SetMyRegLong("Status_DoNotEdit", "NumberOfProfiles", 0);
-		SetMyRegLong("Status_DoNotEdit", "TimerCountForSec", 1000);
-		SetMyRegLong("Status_DoNotEdit", "ModernStandbySupported", 0);
-
-		SetMyRegLong("Win11", "UseTClockNotify", 1);
+		SetMyRegLong("Status_DoNotEdit", "CurrentInternetProfileNumber", 2);
+		SetMyRegLong("Status_DoNotEdit", "NumberOfProfiles", 5);
+		SetMyRegLong("Status_DoNotEdit", "TimerCountForSec", 985);
+		SetMyRegLong("Status_DoNotEdit", "ModernStandbySupported", 1);
+		SetMyRegLong("Status_DoNotEdit", "CountAutoRestart", 0);
+		SetMyRegLong("Status_DoNotEdit", "Win11TClockMain", 1);
+		SetMyRegLong("Status_DoNotEdit", "ClockWidth", 272);
+		SetMyRegLong("Status_DoNotEdit", "ClockHeight", 48);
+		SetMyRegLong("Status_DoNotEdit", "Win11IconSize", 32);
+		SetMyRegLong("Status_DoNotEdit", "Win11LayoutDegraded", 0);
+		SetMyRegLong("Status_DoNotEdit", "LastExitUser", 1);
 		SetMyRegLong("Win11", "AdjustCutTray", 0);
 		SetMyRegLong("Win11", "AdjustWin11ClockWidth", 0);
 		SetMyRegLong("Win11", "AdjustDetectNotify", 0);
 		SetMyRegLong("Win11", "AdjustWin11IconPosition", 1);
-//		SetMyRegLong("Win11", "ColorNotificationIcon", (long)RGB(255, 255, 255));
-		SetMyRegLong("Win11", "ShowWin11NotifyNumber", 1);
-		
+		SetMyRegLong("Win11", "EnableWin11NotifyIcon", 0);
+		SetMyRegLong("Win11", "AlignTaskbarLeft", 1);
 		SetMyRegLong("Color_Font", "UseBackColor", 0);
 		SetMyRegLong("Color_Font", "BackColor", 2147483633);
 		SetMyRegLong("Color_Font", "UseBackColor2", 0);
-		SetMyRegLong("Color_Font", "AutoBackMatchTaskbar", 1);
-		SetMyRegLong("Color_Font", "AutoBackAlpha", 96);
-		SetMyRegLong("Color_Font", "AutoBackBlendRatio", 50);
-		SetMyRegLong("Color_Font", "AutoBackRefreshSec", 5);
-		SetMyRegLong("Color_Font", "AutoBackSampleClockOffset", 0);
-		SetMyRegLong("Color_Font", "AutoBackSampleShowDesktopOffset", 0);
 		SetMyRegLong("Color_Font", "BackColor2", 2147483633);
 		SetMyRegLong("Color_Font", "GradDir", 0);
-		SetMyRegLong("Color_Font", "ForeColor", 16777215);
+		SetMyRegLong("Color_Font", "ForeColor", 0);
 		SetMyRegLong("Color_Font", "ForeColorShadow", 0);
 		SetMyRegLong("Color_Font", "ForeColorBORDER", 0);
 		SetMyRegLong("Color_Font", "ShadowColor", 0);
 		SetMyRegLong("Color_Font", "ClockShadowRange", 1);
-		SetMyRegStr("Color_Font", "Font", "lucida console");
-		SetMyRegLong("Color_Font", "FontSize", 10);
+		SetMyRegStr("Color_Font", "Font", "MS Gothic");
+		SetMyRegLong("Color_Font", "FontSize", 12);
 		SetMyRegLong("Color_Font", "TextPos", 2);
 		SetMyRegLong("Color_Font", "Bold", 0);
 		SetMyRegLong("Color_Font", "Italic", 0);
-		//SetMyRegLong("Color_Font", "ClockHeight", 0);
 		SetMyRegLong("Color_Font", "ClockWidth", 0);
 		SetMyRegLong("Color_Font", "VertPos", 0);
 		SetMyRegLong("Color_Font", "LineHeight", 0);
-
 		SetMyRegLong("Color_Font", "UseAllColor", 0);
 		SetMyRegLong("Color_Font", "UseDateColor", 0);
 		SetMyRegLong("Color_Font", "UseDowColor", 0);
 		SetMyRegLong("Color_Font", "UseTimeColor", 0);
 		SetMyRegLong("Color_Font", "UseVPNColor", 0);
-		SetMyRegLong("Color_Font", "Saturday_TextColor", 0x00C8FFC8);
-		SetMyRegLong("Color_Font", "Sunday_TextColor", 0x00C8C8FF);
-		SetMyRegLong("Color_Font", "Holiday_TextColor", 0x00C8C8FF);
-		SetMyRegLong("Color_Font", "VPN_TextColor", 0x00FFFF00);
-
-		SetMyRegLong("Format", "Locale", 1033);
+		SetMyRegLong("Color_Font", "Saturday_TextColor", 13172680);
+		SetMyRegLong("Color_Font", "Sunday_TextColor", 13158655);
+		SetMyRegLong("Color_Font", "Holiday_TextColor", 13158655);
+		SetMyRegLong("Color_Font", "VPN_TextColor", 16776960);
+		SetMyRegLong("Color_Font", "AutoBackMatchTaskbar", 1);
+		SetMyRegLong("Color_Font", "AutoBackAlpha", 255);
+		SetMyRegLong("Color_Font", "AutoBackBlendRatio", 30);
+		SetMyRegLong("Color_Font", "AutoBackRefreshSec", 1);
+		SetMyRegLong("Color_Font", "AutoBackSampleClockOffset", 2);
+		SetMyRegLong("Color_Font", "AutoBackSampleShowDesktopOffset", 0);
+		SetMyRegStr("Color_Font", "FontUtf8Hex", "4D5320476F74686963");
+		SetMyRegLong("Color_Font", "AutoBackSnapshotColor", 15000804);
+		SetMyRegLong("Color_Font", "AutoBackSnapshotColor2", 12895428);
+		SetMyRegLong("Format", "Locale", 1041);
 		SetMyRegLong("Format", "Year4", 0);
 		SetMyRegLong("Format", "Year", 1);
 		SetMyRegLong("Format", "Month", 1);
@@ -1558,31 +1563,21 @@ void CreateDefaultIniFile_Win10(char *fname)
 		SetMyRegStr("Format", "AMsymbol", "AM");
 		SetMyRegStr("Format", "PMsymbol", "PM");
 		SetMyRegLong("Format", "Custom", 1);
-
-		SetMyRegStr("Format", "Format", "[ICP] WiFi LTE \"U\"NSSK___x\"KB/s\" Vol \"CPU\"CU__x\"%\" mm/dd ddd\\nVPNS NMX1 \"D\"NRSK___x\"KB/s\" VL__xVM\"GPU\"GU__x\"%\" hh:nn:ss\" \"");
-		SetMyRegStr("Format", "CustomFormat", "[ICP] WiFi LTE \"U\"NSSK___x\"KB/s\" Vol \"CPU\"CU__x\"%\" mm/dd ddd\\nVPNS NMX1 \"D\"NRSK___x\"KB/s\" VL__xVM\"GPU\"GU__x\"%\" hh:nn:ss\" \"");
-
-
+		SetMyRegStr("Format", "Format", "yyyy/mm/dd ddd tt hh:nn:ss");
+		SetMyRegStr("Format", "CustomFormat", "yyyy/mm/dd ddd tt hh:nn:ss");
+		SetMyRegStr("Format", "FormatUtf8Hex", "797979792F6D6D2F6464206464642074742068683A6E6E3A7373");
+		SetMyRegStr("Format", "CustomFormatUtf8Hex", "797979792F6D6D2F6464206464642074742068683A6E6E3A7373");
 		SetMyRegLong("Mouse", "DropFiles", 0);
 		SetMyRegStr("Mouse", "DropFilesApp", "");
 		SetMyRegLong("Mouse", "RightClickMenu", 1);
-
-		SetMyRegLong("Mouse", "01", MOUSEFUNC_VISTACALENDAR);
-		//SetMyRegLong("Mouse", "02", MOUSEFUNC_TASKMGR);
-		//SetMyRegLong("Mouse", "03", 0);
-		//SetMyRegLong("Mouse", "04", 0);
-
-
-		SetMyRegLong("Graph", "BackNetColSend", (long)RGB(255, 0, 0));
-		SetMyRegLong("Graph", "BackNetColSR", (long)RGB(255, 255, 0));
-		SetMyRegLong("Graph", "BackNetColRecv", (long)RGB(0, 255, 0));
-		SetMyRegLong("Graph", "BackNet", 1);
+		SetMyRegLong("Mouse", "01", 208);
+		SetMyRegLong("Graph", "BackNetColSend", 255);
+		SetMyRegLong("Graph", "BackNetColSR", 0);
+		SetMyRegLong("Graph", "BackNetColRecv", 65280);
+		SetMyRegLong("Graph", "BackNet", 0);
 		SetMyRegLong("Graph", "LogGraph", 1);
-
 		SetMyRegLong("Graph", "GraphTate", 0);
 		SetMyRegLong("Graph", "ReverseGraph", 0);
-
-		//SetMyRegLong("Graph", "CpuHigh", 70);
 		SetMyRegLong("Graph", "NetGraphScaleRecv", 1000);
 		SetMyRegLong("Graph", "NetGraphScaleSend", 1000);
 		SetMyRegLong("Graph", "GraphMode", 1);
@@ -1591,11 +1586,13 @@ void CreateDefaultIniFile_Win10(char *fname)
 		SetMyRegLong("Graph", "GraphTop", 0);
 		SetMyRegLong("Graph", "GraphRight", 230);
 		SetMyRegLong("Graph", "GraphBottom", 1);
-
-
+		SetMyRegLong("Graph", "EnableGPUGraph", 1);
+		SetMyRegLong("Graph", "UseBarMeterColForGraph", 0);
+		SetMyRegLong("Graph", "ColorCPUGraph", 65280);
+		SetMyRegLong("Graph", "ColorCPUGraph2", 255);
+		SetMyRegLong("Graph", "ColorGPUGraph", 16711935);
 		SetMyRegLong("AnalogClock", "UseAnalogClock", 0);
-		strcpy(fname2, "tclock.bmp");
-		SetMyRegStr("AnalogClock", "AnalogClockBmp", fname2);
+		SetMyRegStr("AnalogClock", "AnalogClockBmp", "tclock.bmp");
 		SetMyRegLong("AnalogClock", "AClockHourHandColor", 255);
 		SetMyRegLong("AnalogClock", "AClockMinHandColor", 16711680);
 		SetMyRegLong("AnalogClock", "AnalogClockHourHandBold", 0);
@@ -1605,106 +1602,100 @@ void CreateDefaultIniFile_Win10(char *fname)
 		SetMyRegLong("AnalogClock", "AnalogClockHPos", 10);
 		SetMyRegLong("AnalogClock", "AnalogClockVPos", 2);
 		SetMyRegLong("AnalogClock", "AnalogClockSize", 25);
-
-
-		strcpy(fname2, "file:");
-		strcat(fname2, "tclock_tooltip.txt");
 		SetMyRegLong("Tooltip", "EnableTooltip", 1);
-		SetMyRegStr("Tooltip", "Tooltip", fname2);
-		SetMyRegStr("Tooltip", "Tooltip2", "TClock <%LDATE%>");
-		SetMyRegStr("Tooltip", "Tooltip3", "TClock <%LDATE%>");
+		SetMyRegStr("Tooltip", "Tooltip", "file:tclock_tooltip.txt");
+		SetMyRegStr("Tooltip", "Tooltip2", "\"\"TClock <%LDATE%>\"\"");
+		SetMyRegStr("Tooltip", "Tooltip3", "\"\"TClock <%LDATE%>\"\"");
 		SetMyRegLong("Tooltip", "Tip2Use", 0);
 		SetMyRegLong("Tooltip", "Tip3Use", 0);
 		SetMyRegLong("Tooltip", "TipTateFlg", 0);
-		SetMyRegLong("Tooltip", "Tip1Update", 1);
+		SetMyRegLong("Tooltip", "Tip1Update", 0);
 		SetMyRegLong("Tooltip", "Tip2Update", 0);
 		SetMyRegLong("Tooltip", "Tip3Update", 0);
-		SetMyRegLong("Tooltip", "Tip2Use", 0);
-		SetMyRegLong("Tooltip", "Tip2Use", 0);
-		SetMyRegStr("ToolTip", "TipFont", "Lucida Console");
+		SetMyRegStr("Tooltip", "TipFont", "MS Gothic");
 		SetMyRegStr("Tooltip", "TipTitle", "");
-		SetMyRegLong("Tooltip", "TipFontSize", 9);
+		SetMyRegLong("Tooltip", "TipFontSize", 10);
 		SetMyRegLong("Tooltip", "TipBold", 0);
 		SetMyRegLong("Tooltip", "TipItalic", 0);
 		SetMyRegLong("Tooltip", "BalloonFlg", 1);
-		SetMyRegLong("Tooltip", "TipDispTime", 1);
-		SetMyRegLong("Tooltip", "TipFontColor", (long)RGB(0, 0, 0));
-		SetMyRegLong("Tooltip", "TipTitleColor", (long)RGB(0, 0, 255));
-		SetMyRegLong("Tooltip", "TipBakColor", (long)RGB(255, 255, 255));
-
-
-
-		SetMyRegLong("BarMeter", "UseBarMeterVL", 0);
+		SetMyRegLong("Tooltip", "TipFontColor", 0);
+		SetMyRegLong("Tooltip", "TipTitleColor", 16711680);
+		SetMyRegLong("Tooltip", "TipBakColor", 16777215);
+		SetMyRegStr("Tooltip", "TipFontUtf8Hex", "4D5320476F74686963");
+		SetMyRegStr("Tooltip", "TooltipUtf8Hex", "66696C653A74636C6F636B5F746F6F6C7469702E747874");
+		SetMyRegStr("Tooltip", "Tooltip2Utf8Hex", "222254436C6F636B203C254C44415445253E2222");
+		SetMyRegStr("Tooltip", "Tooltip3Utf8Hex", "222254436C6F636B203C254C44415445253E2222");
+		SetMyRegLong("BarMeter", "UseBarMeterVL", 1);
 		SetMyRegLong("BarMeter", "BarMeterVL_Horizontal", 0);
-		SetMyRegLong("BarMeter", "ColorBarMeterVL", (long)RGB(0, 255, 0));
-		SetMyRegLong("BarMeter", "ColorBarMeterVL_Mute", (long)RGB(255, 0, 0));
+		SetMyRegLong("BarMeter", "ColorBarMeterVL", 65280);
+		SetMyRegLong("BarMeter", "ColorBarMeterVL_Mute", 255);
 		SetMyRegLong("BarMeter", "BarMeterVL_Right", 150);
 		SetMyRegLong("BarMeter", "BarMeterVL_Width", 5);
 		SetMyRegLong("BarMeter", "BarMeterVL_Bottom", 0);
 		SetMyRegLong("BarMeter", "BarMeterVL_Top", 0);
-
-		SetMyRegLong("BarMeter", "UseBarMeterBL",0);
+		SetMyRegLong("BarMeter", "UseBarMeterBL", 0);
 		SetMyRegLong("BarMeter", "BarMeterBL_Horizontal", 0);
-		SetMyRegLong("BarMeter", "ColorBarMeterBL_Charge", (long)RGB(255, 165, 0));
-		SetMyRegLong("BarMeter", "ColorBarMeterBL_High", (long)RGB(0, 255, 0));
-		SetMyRegLong("BarMeter", "ColorBarMeterBL_Mid", (long)RGB(255, 255, 0));
-		SetMyRegLong("BarMeter", "ColorBarMeterBL_Low", (long)RGB(255, 0, 0));
+		SetMyRegLong("BarMeter", "ColorBarMeterBL_Charge", 42495);
+		SetMyRegLong("BarMeter", "ColorBarMeterBL_High", 65280);
+		SetMyRegLong("BarMeter", "ColorBarMeterBL_Mid", 65535);
+		SetMyRegLong("BarMeter", "ColorBarMeterBL_Low", 255);
 		SetMyRegLong("BarMeter", "BarMeterBL_Right", 130);
 		SetMyRegLong("BarMeter", "BarMeterBL_Width", 5);
 		SetMyRegLong("BarMeter", "BarMeterBL_Bottom", 0);
 		SetMyRegLong("BarMeter", "BarMeterBL_Top", 0);
-
 		SetMyRegLong("BarMeter", "UseBarMeterCU", 0);
 		SetMyRegLong("BarMeter", "BarMeterCU_Horizontal", 0);
-		SetMyRegLong("BarMeter", "ColorBarMeterCU_High", (long)RGB(255, 0, 0));
-		SetMyRegLong("BarMeter", "ColorBarMeterCU_Mid", (long)RGB(255, 255, 0));
-		SetMyRegLong("BarMeter", "ColorBarMeterCU_Low", (long)RGB(0, 255, 0));
+		SetMyRegLong("BarMeter", "ColorBarMeterCU_High", 255);
+		SetMyRegLong("BarMeter", "ColorBarMeterCU_Mid", 65535);
+		SetMyRegLong("BarMeter", "ColorBarMeterCU_Low", 65280);
 		SetMyRegLong("BarMeter", "BarMeterCU_Right", 110);
 		SetMyRegLong("BarMeter", "BarMeterCU_Width", 5);
 		SetMyRegLong("BarMeter", "BarMeterCU_Bottom", 0);
 		SetMyRegLong("BarMeter", "BarMeterCU_Top", 0);
-
 		SetMyRegLong("BarMeter", "UseBarMeterCore", 0);
 		SetMyRegLong("BarMeter", "NumberBarMeterCore", 8);
-		SetMyRegLong("BarMeter", "ColorBarMeterCore_High", (long)RGB(255, 0, 0));
-		SetMyRegLong("BarMeter", "ColorBarMeterCore_Mid", (long)RGB(255, 255, 0));
-		SetMyRegLong("BarMeter", "ColorBarMeterCore_Low", (long)RGB(0, 255, 0));
+		SetMyRegLong("BarMeter", "ColorBarMeterCore_High", 255);
+		SetMyRegLong("BarMeter", "ColorBarMeterCore_Mid", 65535);
+		SetMyRegLong("BarMeter", "ColorBarMeterCore_Low", 65280);
 		SetMyRegLong("BarMeter", "BarMeterCore_Left", 0);
-		SetMyRegLong("BarMeter", "BarMeterCore_Width", 0);
+		SetMyRegLong("BarMeter", "BarMeterCore_Width", 5);
 		SetMyRegLong("BarMeter", "BarMeterCore_Spacing", 2);
-
 		SetMyRegLong("BarMeter", "UseBarMeterNet", 0);
 		SetMyRegLong("BarMeter", "BarMeterNet_LogGraph", 0);
-		//SetMyRegLong("BarMeter", "BarMeterNet_Float", 0);
-		SetMyRegLong("BarMeter", "ColorBarMeterNet_Recv", (long)RGB(0, 255, 0));
-		SetMyRegLong("BarMeter", "ColorBarMeterNet_Send", (long)RGB(255, 0, 0));
+		SetMyRegLong("BarMeter", "ColorBarMeterNet_Recv", 65280);
+		SetMyRegLong("BarMeter", "ColorBarMeterNet_Send", 255);
 		SetMyRegLong("BarMeter", "BarMeterNet_Width", 5);
-
-
 		SetMyRegLong("BarMeter", "BarMeterNetRecv_Top", 0);
 		SetMyRegLong("BarMeter", "BarMeterNetRecv_Right", 160);
 		SetMyRegLong("BarMeter", "BarMeterNetRecv_Bottom", 0);
 		SetMyRegLong("BarMeter", "BarMeterNetSend_Top", 0);
 		SetMyRegLong("BarMeter", "BarMeterNetSend_Right", 170);
 		SetMyRegLong("BarMeter", "BarMeterNetSend_Bottom", 0);
-
-		
-
-		SetMyRegStr("VPN", "SoftEtherKeyword", "VPN Client Adapter");
+		SetMyRegLong("BarMeter", "BarMeterNet_Horizontal", 0);
+		SetMyRegLong("BarMeter", "BarMeterVL_HorizontalToLeft", 0);
+		SetMyRegLong("BarMeter", "BarMeterBL_HorizontalToLeft", 0);
+		SetMyRegLong("BarMeter", "BarMeterCU_HorizontalToLeft", 0);
+		SetMyRegLong("BarMeter", "BarMeterNet_HorizontalToLeft", 0);
+		SetMyRegLong("BarMeter", "BarMeterBL_Threshold_High", 50);
+		SetMyRegLong("BarMeter", "BarMeterBL_Threshold_Mid", 20);
+		SetMyRegLong("BarMeter", "BarMeterCU_Threshold_High", 70);
+		SetMyRegLong("BarMeter", "BarMeterCU_Threshold_Mid", 50);
+		SetMyRegLong("BarMeter", "UseBarMeterGU", 0);
+		SetMyRegLong("BarMeter", "BarMeterGU_Right", 175);
+		SetMyRegLong("BarMeter", "BarMeterGU_Bottom", 0);
+		SetMyRegLong("BarMeter", "BarMeterGU_Top", 0);
+		SetMyRegLong("BarMeter", "ColorBarMeterGPU", 16711935);
+		SetMyRegStr("VPN", "SoftEtherKeyword", "\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"");
 		SetMyRegStr("VPN", "VPN_Keyword1", "");
 		SetMyRegStr("VPN", "VPN_Keyword2", "");
 		SetMyRegStr("VPN", "VPN_Keyword3", "");
 		SetMyRegStr("VPN", "VPN_Keyword4", "");
 		SetMyRegStr("VPN", "VPN_Keyword5", "");
-
 		SetMyRegStr("VPN", "VPN_Exclude1", "");
 		SetMyRegStr("VPN", "VPN_Exclude2", "");
 		SetMyRegStr("VPN", "VPN_Exclude3", "");
 		SetMyRegStr("VPN", "VPN_Exclude4", "");
 		SetMyRegStr("VPN", "VPN_Exclude5", "");
-
-
-
 		SetMyRegLong("ETC", "ZombieCheckInterval", 10);
 		SetMyRegStr("ETC", "LTEString", "LTE");
 		SetMyRegStr("ETC", "LTEChar", "L");
@@ -1712,15 +1703,11 @@ void CreateDefaultIniFile_Win10(char *fname)
 		SetMyRegStr("ETC", "2chHelpURL", "http://tclock2ch.no.land.to/");
 		SetMyRegLong("ETC", "NetMIX_Length", 10);
 		SetMyRegLong("ETC", "SSID_AP_Length", 10);
-
 		SetMyRegStr("ETC", "Ethernet_Keyword1", "");
 		SetMyRegStr("ETC", "Ethernet_Keyword2", "");
 		SetMyRegStr("ETC", "Ethernet_Keyword3", "");
 		SetMyRegStr("ETC", "Ethernet_Keyword4", "");
 		SetMyRegStr("ETC", "Ethernet_Keyword5", "");
-
-//		SetMyRegStr("ETC", "HolidayList", "2020, 0101, 0113, 0211, 0223, 0224, 0320, 0429, 0503, 0504, 0505, 0506, 0723, 0724, 0810, 0921, 0922, 1103, 1123");
-
 		SetMyRegStr("ETC", "AdditionalMountPath0", "");
 		SetMyRegStr("ETC", "AdditionalMountPath1", "");
 		SetMyRegStr("ETC", "AdditionalMountPath2", "");
@@ -1731,7 +1718,32 @@ void CreateDefaultIniFile_Win10(char *fname)
 		SetMyRegStr("ETC", "AdditionalMountPath7", "");
 		SetMyRegStr("ETC", "AdditionalMountPath8", "");
 		SetMyRegStr("ETC", "AdditionalMountPath9", "");
-
+		SetMyRegLong("ETC", "MegabytesInGigaByte", 1000);
+		SetMyRegStr("ETC", "ExtTXT_String", "");
+		SetMyRegLong("ETC", "SelectedThermalZone", 0);
+		SetMyRegLong("ETC", "UseHideClockPolicyFlow", 1);
+		SetMyRegLong("Chime", "EnableChime", 0);
+		SetMyRegLong("Chime", "OffsetChimeSec", 0);
+		SetMyRegLong("Chime", "ChimeHourStart", 0);
+		SetMyRegLong("Chime", "ChimeHourEnd", 24);
+		SetMyRegStr("Chime", "ChimeWav", "C:\\Windows\\Media\\notify.wav");
+		SetMyRegLong("Chime", "EnableBlinkOnChime", 0);
+		SetMyRegLong("Chime", "BlinksOnChime", 3);
+		SetMyRegLong("Chime", "EnableSecondaryChime", 0);
+		SetMyRegLong("Chime", "CuckooClock", 0);
+		SetMyRegLong("Chime", "OffsetSecondaryChimeSec", 1800);
+		SetMyRegStr("Chime", "SecondaryChimeWav", "C:\\Windows\\Media\\chimes.wav");
+		SetMyRegLong(NULL, "DebugLog", 0);
+		SetMyRegLong(NULL, "AutoClearLogFile", 1);
+		SetMyRegLong(NULL, "AutoClearLogLines", 1000);
+		SetMyRegLong(NULL, "EnableOnSubDisplay", 1);
+		SetMyRegLong(NULL, "OffsetClockMS", 0);
+		SetMyRegLong(NULL, "CompactMode", 1);
+		SetMyRegLong(NULL, "AdjustThreshold", 200);
+		SetMyRegLong(NULL, "NormalLog", 1);
+		SetMyRegLong(NULL, "AutoRestart", 1);
+		SetMyRegLong(NULL, "EnglishMenu", 0);
+		SetMyRegLong(NULL, "ShowTrayIcon", 1);
 
 	}
 	else

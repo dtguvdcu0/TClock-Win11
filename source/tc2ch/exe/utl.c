@@ -115,6 +115,24 @@ static BOOL tc_decode_utf8_hex_to_ansi(const char* hex, char* outAnsi, int outAn
 	return TRUE;
 }
 
+static BOOL tc_decode_utf8_hex_to_utf8(const char* hex, char* outUtf8, int outUtf8Bytes)
+{
+	int n;
+	int i;
+	if (!hex || !outUtf8 || outUtf8Bytes <= 0) return FALSE;
+	n = lstrlen(hex);
+	if ((n & 1) != 0) return FALSE;
+	if (n / 2 + 1 > outUtf8Bytes) return FALSE;
+	for (i = 0; i < n / 2; i++) {
+		int hi = tc_hex_value((unsigned char)hex[i * 2]);
+		int lo = tc_hex_value((unsigned char)hex[i * 2 + 1]);
+		if (hi < 0 || lo < 0) return FALSE;
+		outUtf8[i] = (char)((hi << 4) | lo);
+	}
+	outUtf8[n / 2] = '\0';
+	return TRUE;
+}
+
 static void tc_strip_wrapping_quotes(char* s)
 {
 	int len;
@@ -126,12 +144,27 @@ static void tc_strip_wrapping_quotes(char* s)
 	}
 }
 
-static BOOL tc_encode_utf8_from_ansi_compat(const char* ansi, char* outUtf8, int outUtf8Bytes)
+static BOOL tc_is_valid_utf8_bytes(const char* s)
 {
 	WCHAR wbuf[4096];
-	if (!ansi || !outUtf8 || outUtf8Bytes <= 0) return FALSE;
-	if (tc_ansi_to_utf16_compat(GetACP(), ansi, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) <= 0) return FALSE;
-	return tc_utf16_to_utf8(wbuf, outUtf8, outUtf8Bytes) > 0;
+	if (!s) return FALSE;
+	return MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, s, -1, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) > 0;
+}
+
+static BOOL tc_encode_hex_from_utf8_bytes(const char* utf8, char* outHex, int outHexBytes)
+{
+	int i;
+	int n;
+	if (!utf8 || !outHex || outHexBytes <= 0) return FALSE;
+	n = lstrlen(utf8);
+	if (n * 2 + 1 > outHexBytes) return FALSE;
+	for (i = 0; i < n; i++) {
+		unsigned char b = (unsigned char)utf8[i];
+		outHex[i * 2] = (char)tc_hex_digit((b >> 4) & 0x0F);
+		outHex[i * 2 + 1] = (char)tc_hex_digit(b & 0x0F);
+	}
+	outHex[n * 2] = '\0';
+	return TRUE;
 }
 
 //#else
@@ -501,9 +534,9 @@ int GetWindowTextUTF8(HWND hwnd, char* text, int textBytes)
 	text[0] = '\0';
 	if (!hwnd) return 0;
 	if (GetWindowTextW(hwnd, wText, (int)(sizeof(wText) / sizeof(wText[0]))) <= 0) return 0;
-	/* Keep char-boundary behavior compatible with existing ANSI save/read paths. */
-	if (tc_utf16_to_ansi_compat(CP_ACP, wText, text, textBytes) > 0) return lstrlen(text);
+	/* UTF8 API contract: prefer UTF-8 output from UI text controls. */
 	if (tc_utf16_to_utf8(wText, text, textBytes) > 0) return lstrlen(text);
+	if (tc_utf16_to_ansi_compat(CP_ACP, wText, text, textBytes) > 0) return lstrlen(text);
 	text[0] = '\0';
 	return 0;
 }
@@ -811,6 +844,7 @@ int GetMyRegStr(char* section, char* entry, char* val, int cbData,
 	char key[80];
 	int r = 0;
 	BOOL isUtf8 = FALSE;
+	BOOL isUtf8Target = FALSE;
 	BOOL needsHexBackfill = FALSE;
 	char hexEntry[128];
 	const char missingSentinel[] = "\x1D";
@@ -833,6 +867,7 @@ int GetMyRegStr(char* section, char* entry, char* val, int cbData,
 
 	{
 		if (tc_ini_utf8_detect_file(g_inifile, &isUtf8, NULL) && isUtf8) {
+			isUtf8Target = tc_is_utf8_hex_target_key(section, entry);
 			if (tc_is_utf8_hex_target_key(section, entry)) {
 				char mainbuf[4096];
 				char hexbuf[4096];
@@ -842,7 +877,7 @@ int GetMyRegStr(char* section, char* entry, char* val, int cbData,
 						tc_strip_wrapping_quotes(mainbuf);
 						lstrcpyn(val, mainbuf, cbData);
 						r = lstrlen(val);
-						if (isUtf8 && r > 0) {
+						if (isUtf8 && !isUtf8Target && r > 0) {
 							WCHAR wbuf[4096];
 							char abuf[4096];
 							if (tc_utf8_to_utf16(val, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) > 0 &&
@@ -859,7 +894,8 @@ int GetMyRegStr(char* section, char* entry, char* val, int cbData,
 				}
 				if (tc_build_utf8_hex_entry_name(entry, hexEntry, (int)sizeof(hexEntry))) {
 					if (tc_ini_utf8_read_string(g_inifile, key, hexEntry, "", hexbuf, (int)sizeof(hexbuf)) > 0) {
-						if (tc_decode_utf8_hex_to_ansi(hexbuf, val, cbData)) {
+						if (isUtf8Target ? tc_decode_utf8_hex_to_utf8(hexbuf, val, cbData)
+						                 : tc_decode_utf8_hex_to_ansi(hexbuf, val, cbData)) {
 							r = lstrlen(val);
 							goto getmyregstr_done;
 						}
@@ -878,7 +914,7 @@ int GetMyRegStr(char* section, char* entry, char* val, int cbData,
 			r = GetPrivateProfileString(key, entry, defval ? defval : "", val, cbData, g_inifile);
 		}
 	}
-	if (isUtf8 && r > 0) {
+	if (isUtf8 && !isUtf8Target && r > 0) {
 		WCHAR wbuf[4096];
 		char abuf[4096];
 		if (tc_utf8_to_utf16(val, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) > 0 &&
@@ -889,7 +925,8 @@ int GetMyRegStr(char* section, char* entry, char* val, int cbData,
 	}
 	if (isUtf8 && needsHexBackfill && r > 0) {
 		char hexbuf[4096];
-		if (tc_encode_utf8_hex_from_ansi(val, hexbuf, (int)sizeof(hexbuf))) {
+		if (isUtf8Target ? tc_encode_hex_from_utf8_bytes(val, hexbuf, (int)sizeof(hexbuf))
+		                 : tc_encode_utf8_hex_from_ansi(val, hexbuf, (int)sizeof(hexbuf))) {
 			tc_ini_utf8_write_string(g_inifile, key, hexEntry, hexbuf);
 		}
 	}
@@ -981,8 +1018,6 @@ BOOL SetMyRegStr(char* section, char* entry, char* val)
 	BOOL r = FALSE;
 	char key[80];
 	BOOL isUtf8 = FALSE;
-	char utf8Val[4096];
-	char utf8Save[4096];
 
 	if (strlen(g_inifile) == 0) return 0;
 
@@ -1035,6 +1070,9 @@ BOOL SetMyRegStr(char* section, char* entry, char* val)
 				if (val[0] == '\0') {
 					rHex = tc_ini_utf8_write_string(g_inifile, key, hexEntry, "") ? TRUE : FALSE;
 				}
+				else if (tc_is_valid_utf8_bytes(val) && tc_encode_hex_from_utf8_bytes(val, hexbuf, (int)sizeof(hexbuf))) {
+					rHex = tc_ini_utf8_write_string(g_inifile, key, hexEntry, hexbuf) ? TRUE : FALSE;
+				}
 				else if (tc_encode_utf8_hex_from_ansi(val, hexbuf, (int)sizeof(hexbuf))) {
 					rHex = tc_ini_utf8_write_string(g_inifile, key, hexEntry, hexbuf) ? TRUE : FALSE;
 				}
@@ -1043,21 +1081,11 @@ BOOL SetMyRegStr(char* section, char* entry, char* val)
 					rHex = tc_ini_utf8_write_string(g_inifile, key, hexEntry, "") ? TRUE : FALSE;
 				}
 			}
-			if (tc_encode_utf8_from_ansi_compat(val, utf8Val, (int)sizeof(utf8Val))) {
-				rLegacy = tc_ini_utf8_write_string(g_inifile, key, entry, utf8Val) ? TRUE : FALSE;
-			}
-			else {
-				rLegacy = tc_ini_utf8_write_string(g_inifile, key, entry, val) ? TRUE : FALSE;
-			}
+			rLegacy = tc_ini_utf8_write_string(g_inifile, key, entry, val) ? TRUE : FALSE;
 			r = rHex && rLegacy;
 		}
 		else {
-			if (tc_encode_utf8_from_ansi_compat(saveval, utf8Save, (int)sizeof(utf8Save))) {
-				r = tc_ini_utf8_write_string(g_inifile, key, entry, utf8Save) ? TRUE : FALSE;
-			}
-			else {
-				r = tc_ini_utf8_write_string(g_inifile, key, entry, saveval) ? TRUE : FALSE;
-			}
+			r = tc_ini_utf8_write_string(g_inifile, key, entry, saveval) ? TRUE : FALSE;
 		}
 	}
 	else {

@@ -156,6 +156,13 @@ static BOOL tc_ansi_to_utf8_compat(const char* ansi, char* outUtf8, int outBytes
     return (tc_utf16_to_utf8(w, outUtf8, outBytes) > 0) ? TRUE : FALSE;
 }
 
+static BOOL tc_is_valid_utf8_bytes(const char* s)
+{
+    WCHAR w[2048];
+    if (!s) return FALSE;
+    return MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, s, -1, w, (int)(sizeof(w) / sizeof(w[0]))) > 0;
+}
+
 static DWORD tc_hash_path_ci(const char* s)
 {
     DWORD h = 2166136261u;
@@ -597,7 +604,10 @@ BOOL tc_ini_utf8_write_string(const char* iniPath, const char* section, const ch
         goto cleanup;
     }
 
-    if (!tc_ansi_to_utf8_compat(val, utf8Val, (int)sizeof(utf8Val))) {
+    if (tc_is_valid_utf8_bytes(val)) {
+        tc_copy_str(utf8Val, (int)sizeof(utf8Val), val);
+    }
+    else if (!tc_ansi_to_utf8_compat(val, utf8Val, (int)sizeof(utf8Val))) {
         tc_copy_str(utf8Val, (int)sizeof(utf8Val), val);
     }
 

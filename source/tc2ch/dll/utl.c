@@ -124,12 +124,27 @@ static void tc_strip_wrapping_quotes(char* s)
 	}
 }
 
-static BOOL tc_encode_utf8_from_ansi_compat(const char* ansi, char* outUtf8, int outUtf8Bytes)
+static BOOL tc_is_valid_utf8_bytes(const char* s)
 {
 	WCHAR wbuf[4096];
-	if (!ansi || !outUtf8 || outUtf8Bytes <= 0) return FALSE;
-	if (tc_ansi_to_utf16_compat(GetACP(), ansi, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) <= 0) return FALSE;
-	return tc_utf16_to_utf8(wbuf, outUtf8, outUtf8Bytes) > 0;
+	if (!s) return FALSE;
+	return MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, s, -1, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) > 0;
+}
+
+static BOOL tc_encode_hex_from_utf8_bytes(const char* utf8, char* outHex, int outHexBytes)
+{
+	int i;
+	int n;
+	if (!utf8 || !outHex || outHexBytes <= 0) return FALSE;
+	n = lstrlen(utf8);
+	if (n * 2 + 1 > outHexBytes) return FALSE;
+	for (i = 0; i < n; i++) {
+		unsigned char b = (unsigned char)utf8[i];
+		outHex[i * 2] = (char)tc_hex_digit((b >> 4) & 0x0F);
+		outHex[i * 2 + 1] = (char)tc_hex_digit(b & 0x0F);
+	}
+	outHex[n * 2] = '\0';
+	return TRUE;
 }
 
 BOOL flag_LogClear = FALSE;
@@ -489,8 +504,6 @@ BOOL SetMyRegStr(char* section, char* entry, char* val)
 	BOOL r;
 	char key[80];
 	BOOL isUtf8 = FALSE;
-	char utf8Val[4096];
-	char utf8Save[4096];
 
 	if (strlen(g_inifile) == 0) return 0;
 
@@ -543,6 +556,9 @@ BOOL SetMyRegStr(char* section, char* entry, char* val)
 					if (val[0] == '\0') {
 						rHex = tc_ini_utf8_write_string(g_inifile, key, hexEntry, "") ? TRUE : FALSE;
 					}
+					else if (tc_is_valid_utf8_bytes(val) && tc_encode_hex_from_utf8_bytes(val, hexbuf, (int)sizeof(hexbuf))) {
+						rHex = tc_ini_utf8_write_string(g_inifile, key, hexEntry, hexbuf) ? TRUE : FALSE;
+					}
 					else if (tc_encode_utf8_hex_from_ansi(val, hexbuf, (int)sizeof(hexbuf))) {
 						rHex = tc_ini_utf8_write_string(g_inifile, key, hexEntry, hexbuf) ? TRUE : FALSE;
 					}
@@ -551,21 +567,11 @@ BOOL SetMyRegStr(char* section, char* entry, char* val)
 						rHex = tc_ini_utf8_write_string(g_inifile, key, hexEntry, "") ? TRUE : FALSE;
 					}
 				}
-				if (tc_encode_utf8_from_ansi_compat(val, utf8Val, (int)sizeof(utf8Val))) {
-					rLegacy = tc_ini_utf8_write_string(g_inifile, key, entry, utf8Val) ? TRUE : FALSE;
-				}
-				else {
-					rLegacy = tc_ini_utf8_write_string(g_inifile, key, entry, val) ? TRUE : FALSE;
-				}
+				rLegacy = tc_ini_utf8_write_string(g_inifile, key, entry, val) ? TRUE : FALSE;
 				r = rHex && rLegacy;
 			}
 			else {
-				if (tc_encode_utf8_from_ansi_compat(saveval, utf8Save, (int)sizeof(utf8Save))) {
-					r = tc_ini_utf8_write_string(g_inifile, key, entry, utf8Save) ? TRUE : FALSE;
-				}
-				else {
-					r = tc_ini_utf8_write_string(g_inifile, key, entry, saveval) ? TRUE : FALSE;
-				}
+				r = tc_ini_utf8_write_string(g_inifile, key, entry, saveval) ? TRUE : FALSE;
 			}
 		}
 		else if (WritePrivateProfileString(key, entry, saveval, g_inifile)) {

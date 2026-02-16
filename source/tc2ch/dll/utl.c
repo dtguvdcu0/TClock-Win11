@@ -124,6 +124,14 @@ static void tc_strip_wrapping_quotes(char* s)
 	}
 }
 
+static BOOL tc_encode_utf8_from_ansi_compat(const char* ansi, char* outUtf8, int outUtf8Bytes)
+{
+	WCHAR wbuf[4096];
+	if (!ansi || !outUtf8 || outUtf8Bytes <= 0) return FALSE;
+	if (tc_ansi_to_utf16_compat(GetACP(), ansi, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) <= 0) return FALSE;
+	return tc_utf16_to_utf8(wbuf, outUtf8, outUtf8Bytes) > 0;
+}
+
 BOOL flag_LogClear = FALSE;
 
 
@@ -481,6 +489,8 @@ BOOL SetMyRegStr(char* section, char* entry, char* val)
 	BOOL r;
 	char key[80];
 	BOOL isUtf8 = FALSE;
+	char utf8Val[4096];
+	char utf8Save[4096];
 
 	if (strlen(g_inifile) == 0) return 0;
 
@@ -541,11 +551,21 @@ BOOL SetMyRegStr(char* section, char* entry, char* val)
 						rHex = tc_ini_utf8_write_string(g_inifile, key, hexEntry, "") ? TRUE : FALSE;
 					}
 				}
-				rLegacy = tc_ini_utf8_write_string(g_inifile, key, entry, val) ? TRUE : FALSE;
+				if (tc_encode_utf8_from_ansi_compat(val, utf8Val, (int)sizeof(utf8Val))) {
+					rLegacy = tc_ini_utf8_write_string(g_inifile, key, entry, utf8Val) ? TRUE : FALSE;
+				}
+				else {
+					rLegacy = tc_ini_utf8_write_string(g_inifile, key, entry, val) ? TRUE : FALSE;
+				}
 				r = rHex && rLegacy;
 			}
 			else {
-				r = tc_ini_utf8_write_string(g_inifile, key, entry, saveval) ? TRUE : FALSE;
+				if (tc_encode_utf8_from_ansi_compat(saveval, utf8Save, (int)sizeof(utf8Save))) {
+					r = tc_ini_utf8_write_string(g_inifile, key, entry, utf8Save) ? TRUE : FALSE;
+				}
+				else {
+					r = tc_ini_utf8_write_string(g_inifile, key, entry, saveval) ? TRUE : FALSE;
+				}
 			}
 		}
 		else if (WritePrivateProfileString(key, entry, saveval, g_inifile)) {

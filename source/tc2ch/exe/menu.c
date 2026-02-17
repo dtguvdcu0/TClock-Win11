@@ -4,6 +4,8 @@
 ---------------------------------------------------------------*/
 
 #include "tclock.h"
+#include "..\common\ini_io_utf8.h"
+#include "..\common\text_codec.h"
 
 #define	REMOVE_DRIVE_MENUPOSITION 15
 
@@ -54,6 +56,7 @@ static char* SafeMyString(UINT id);
 #define TC_MENU_ALARM_MAX TC_MENU_CUSTOM_MAX_ITEMS
 #define TC_MENU_LABEL_CACHE_MAX (TC_MENU_CUSTOM_MAX_ITEMS + 1)
 #define TC_MENU_LIVE_MAX TC_MENU_CUSTOM_MAX_ITEMS
+#define TC_MENU_SECTION_CACHE_BYTES 65536
 
 typedef struct {
 	UINT id;
@@ -220,8 +223,12 @@ static const char* tc_menu_alarm_state_name(int state)
 static void tc_menu_alarm_format_label(TC_MENU_ALARM_ENTRY* e, char* out, int outLen)
 {
 	const char* src;
+	int hh;
 	int mm;
 	int ss;
+	int mm2;
+	int ss2;
+	char hhmmss[24];
 	char mmss[16];
 	char secText[16];
 	char stateText[16];
@@ -233,15 +240,23 @@ static void tc_menu_alarm_format_label(TC_MENU_ALARM_ENTRY* e, char* out, int ou
 	else if (e->state == 3 && e->labelDone[0]) src = e->labelDone;
 	else if ((e->state == 0) && e->labelIdle[0]) src = e->labelIdle;
 	if (!src || !src[0]) src = "Timer %REMAIN_SEC%s";
-	mm = e->remainSec / 60;
+	hh = e->remainSec / 3600;
+	mm = (e->remainSec % 3600) / 60;
 	ss = e->remainSec % 60;
-	wsprintf(mmss, "%02d:%02d", mm, ss);
+	mm2 = e->remainSec / 60;
+	ss2 = e->remainSec % 60;
+	wsprintf(hhmmss, "%02d:%02d:%02d", hh, mm, ss);
+	wsprintf(mmss, "%02d:%02d", mm2, ss2);
 	wsprintf(secText, "%d", e->remainSec);
 	lstrcpyn(stateText, tc_menu_alarm_state_name(e->state), (int)sizeof(stateText));
 	{
 		const char* p = src;
 		int pos = 0;
 		while (*p && pos < outLen - 1) {
+			if (tc_menu_match_token(p, "%REMAIN_HHMMSS%")) {
+				pos = tc_menu_append_text(out, outLen, pos, hhmmss);
+				p += 15;
+			} else
 			if (tc_menu_match_token(p, "%REMAIN_MMSS%")) {
 				pos = tc_menu_append_text(out, outLen, pos, mmss);
 				p += 13;
@@ -835,6 +850,90 @@ static void tc_menu_normalize_separators(HMENU hMenu)
 	}
 }
 
+typedef struct {
+	char data[TC_MENU_SECTION_CACHE_BYTES];
+	BOOL isUtf8;
+	int count;
+} TC_MENU_SECTION_CACHE;
+
+static void tc_menu_section_cache_init(TC_MENU_SECTION_CACHE* cache)
+{
+	if (!cache) return;
+	cache->data[0] = '\0';
+	cache->data[1] = '\0';
+	cache->isUtf8 = FALSE;
+	cache->count = 0;
+}
+
+static void tc_menu_section_cache_load(TC_MENU_SECTION_CACHE* cache)
+{
+	if (!cache) return;
+	tc_menu_section_cache_init(cache);
+	if (!g_inifile[0]) return;
+	tc_ini_utf8_detect_file(g_inifile, &cache->isUtf8, NULL);
+	cache->count = tc_ini_utf8_read_section_multisz(g_inifile, TC_MENU_SECTION, cache->data, (int)sizeof(cache->data));
+}
+
+static const char* tc_menu_section_cache_find(const TC_MENU_SECTION_CACHE* cache, const char* key)
+{
+	const char* p;
+	if (!cache || !key || !key[0] || cache->count <= 0) return NULL;
+	p = cache->data;
+	while (*p) {
+		int i = 0;
+		int eq = -1;
+		while (p[i]) {
+			if (p[i] == '=') {
+				eq = i;
+				break;
+			}
+			++i;
+		}
+		if (eq > 0 && (int)lstrlen(key) == eq && _strnicmp(p, key, eq) == 0) {
+			return p + eq + 1;
+		}
+		p += lstrlen(p) + 1;
+	}
+	return NULL;
+}
+
+static int tc_menu_section_cache_get_long(const TC_MENU_SECTION_CACHE* cache, const char* key, int defval)
+{
+	const char* s = tc_menu_section_cache_find(cache, key);
+	int sign = 1;
+	int v = 0;
+	if (!s || !*s) return defval;
+	if (*s == '-') {
+		sign = -1;
+		++s;
+	}
+	while (*s >= '0' && *s <= '9') {
+		v = v * 10 + (int)(*s - '0');
+		++s;
+	}
+	return v * sign;
+}
+
+static void tc_menu_section_cache_get_str(const TC_MENU_SECTION_CACHE* cache, const char* key, char* out, int outBytes, const char* defval)
+{
+	const char* s;
+	if (!out || outBytes <= 0) return;
+	s = tc_menu_section_cache_find(cache, key);
+	if (s) {
+		lstrcpyn(out, s, outBytes);
+		if (cache && cache->isUtf8 && out[0]) {
+			WCHAR wbuf[4096];
+			char abuf[4096];
+			if (tc_utf8_to_utf16(out, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) > 0 &&
+				tc_utf16_to_ansi(GetACP(), wbuf, abuf, (int)sizeof(abuf)) > 0) {
+				lstrcpyn(out, abuf, outBytes);
+			}
+		}
+	} else {
+		lstrcpyn(out, defval ? defval : "", outBytes);
+	}
+}
+
 static void tc_menu_ensure_ini_defaults(void)
 {
 	int i;
@@ -879,8 +978,12 @@ static void tc_menu_apply_custom_from_ini(HMENU hMenu)
 {
 	int i;
 	int insertPos;
-	int globalLabelUpdateSec = GetMyRegLong(TC_MENU_SECTION, "LabelFormatUpdateSec", 1);
-	int count = GetMyRegLong(TC_MENU_SECTION, "ItemCount", 16);
+	TC_MENU_SECTION_CACHE cache;
+	int globalLabelUpdateSec;
+	int count;
+	tc_menu_section_cache_load(&cache);
+	globalLabelUpdateSec = tc_menu_section_cache_get_long(&cache, "LabelFormatUpdateSec", 1);
+	count = tc_menu_section_cache_get_long(&cache, "ItemCount", 16);
 	if (globalLabelUpdateSec < 0) globalLabelUpdateSec = 0;
 	if (count < 0) count = 0;
 	if (count > TC_MENU_CUSTOM_MAX_ITEMS) count = TC_MENU_CUSTOM_MAX_ITEMS;
@@ -893,6 +996,7 @@ static void tc_menu_apply_custom_from_ini(HMENU hMenu)
 	}
 
 	for (i = 1; i <= count; ++i) {
+		BOOL hasDefault = FALSE;
 		char key[64];
 		char type[32];
 		char action[64];
@@ -925,7 +1029,7 @@ static void tc_menu_apply_custom_from_ini(HMENU hMenu)
 		label[0] = '\0';
 		labelFormat[0] = '\0';
 		resolvedLabel[0] = '\0';
-		enabled = 1;
+		enabled = 0;
 		show = SW_SHOWNORMAL;
 		labelUpdateSec = globalLabelUpdateSec;
 		alarmInitialSec = 60;
@@ -935,13 +1039,22 @@ static void tc_menu_apply_custom_from_ini(HMENU hMenu)
 		alarmSoundVolume = 70;
 		alarmSoundLoop = 0;
 		alarmEntry = NULL;
-		tc_menu_get_default_item(i, type, (int)sizeof(type), action, (int)sizeof(action), &enabled);
+		hasDefault = tc_menu_get_default_item(i, type, (int)sizeof(type), action, (int)sizeof(action), &enabled);
+		if (!hasDefault) {
+			/* Undefined sparse rows should stay disabled unless explicitly enabled in INI. */
+			enabled = 0;
+			type[0] = '\0';
+			action[0] = '\0';
+		}
 
 		wsprintf(key, "Item%dType", i);
-		GetMyRegStr(TC_MENU_SECTION, key, type, sizeof(type), type);
+		tc_menu_section_cache_get_str(&cache, key, type, sizeof(type), type);
 		wsprintf(key, "Item%dEnabled", i);
-		enabled = GetMyRegLong(TC_MENU_SECTION, key, enabled);
+		enabled = tc_menu_section_cache_get_long(&cache, key, enabled);
 		if (!enabled) {
+			continue;
+		}
+		if (!type[0]) {
 			continue;
 		}
 
@@ -960,31 +1073,31 @@ static void tc_menu_apply_custom_from_ini(HMENU hMenu)
 			char alarmSoundFile[MAX_PATH];
 			char alarmText[256];
 			wsprintf(key, "Item%dLabel", i);
-			GetMyRegStr(TC_MENU_SECTION, key, label, sizeof(label), "Timer");
+			tc_menu_section_cache_get_str(&cache, key, label, sizeof(label), "Timer");
 			wsprintf(key, "Item%dAlarmInitialSec", i);
-			alarmInitialSec = GetMyRegLong(TC_MENU_SECTION, key, 60);
+			alarmInitialSec = tc_menu_section_cache_get_long(&cache, key, 60);
 			wsprintf(key, "Item%dAlarmUpdateSec", i);
-			alarmUpdateSec = GetMyRegLong(TC_MENU_SECTION, key, 1);
+			alarmUpdateSec = tc_menu_section_cache_get_long(&cache, key, 1);
 			wsprintf(key, "Item%dAlarmKeepMenuOpen", i);
-			alarmKeepOpen = GetMyRegLong(TC_MENU_SECTION, key, 1);
+			alarmKeepOpen = tc_menu_section_cache_get_long(&cache, key, 1);
 			wsprintf(key, "Item%dAlarmNotifyFlags", i);
-			alarmNotifyFlags = GetMyRegLong(TC_MENU_SECTION, key, 0);
+			alarmNotifyFlags = tc_menu_section_cache_get_long(&cache, key, 0);
 			wsprintf(key, "Item%dAlarmSoundVolume", i);
-			alarmSoundVolume = GetMyRegLong(TC_MENU_SECTION, key, 70);
+			alarmSoundVolume = tc_menu_section_cache_get_long(&cache, key, 70);
 			wsprintf(key, "Item%dAlarmSoundLoop", i);
-			alarmSoundLoop = GetMyRegLong(TC_MENU_SECTION, key, 0);
+			alarmSoundLoop = tc_menu_section_cache_get_long(&cache, key, 0);
 			wsprintf(key, "Item%dAlarmLabelIdle", i);
-			GetMyRegStr(TC_MENU_SECTION, key, alarmLabelIdle, sizeof(alarmLabelIdle), "Timer %REMAIN_SEC%s");
+			tc_menu_section_cache_get_str(&cache, key, alarmLabelIdle, sizeof(alarmLabelIdle), "Timer %REMAIN_SEC%s");
 			wsprintf(key, "Item%dAlarmLabelRun", i);
-			GetMyRegStr(TC_MENU_SECTION, key, alarmLabelRun, sizeof(alarmLabelRun), "Running %REMAIN_MMSS%");
+			tc_menu_section_cache_get_str(&cache, key, alarmLabelRun, sizeof(alarmLabelRun), "Running %REMAIN_MMSS%");
 			wsprintf(key, "Item%dAlarmLabelPause", i);
-			GetMyRegStr(TC_MENU_SECTION, key, alarmLabelPause, sizeof(alarmLabelPause), "Paused %REMAIN_MMSS%");
+			tc_menu_section_cache_get_str(&cache, key, alarmLabelPause, sizeof(alarmLabelPause), "Paused %REMAIN_MMSS%");
 			wsprintf(key, "Item%dAlarmLabelDone", i);
-			GetMyRegStr(TC_MENU_SECTION, key, alarmLabelDone, sizeof(alarmLabelDone), "Done");
+			tc_menu_section_cache_get_str(&cache, key, alarmLabelDone, sizeof(alarmLabelDone), "Done");
 			wsprintf(key, "Item%dAlarmMessage", i);
-			GetMyRegStr(TC_MENU_SECTION, key, alarmMessage, sizeof(alarmMessage), "Timer finished");
+			tc_menu_section_cache_get_str(&cache, key, alarmMessage, sizeof(alarmMessage), "Timer finished");
 			wsprintf(key, "Item%dAlarmSoundFile", i);
-			GetMyRegStr(TC_MENU_SECTION, key, alarmSoundFile, sizeof(alarmSoundFile), "");
+			tc_menu_section_cache_get_str(&cache, key, alarmSoundFile, sizeof(alarmSoundFile), "");
 
 			cmdId = tc_menu_alarm_register(i);
 			if (!cmdId) continue;
@@ -1018,27 +1131,27 @@ static void tc_menu_apply_custom_from_ini(HMENU hMenu)
 		}
 
 		wsprintf(key, "Item%dAction", i);
-		GetMyRegStr(TC_MENU_SECTION, key, action, sizeof(action), action);
+		tc_menu_section_cache_get_str(&cache, key, action, sizeof(action), action);
 		defaultLabel = tc_menu_default_label_for_action(action);
 		wsprintf(key, "Item%dLabel", i);
-		GetMyRegStr(TC_MENU_SECTION, key, label, sizeof(label), (char*)defaultLabel);
+		tc_menu_section_cache_get_str(&cache, key, label, sizeof(label), (char*)defaultLabel);
 		wsprintf(key, "Item%dLabelFormat", i);
-		GetMyRegStr(TC_MENU_SECTION, key, labelFormat, sizeof(labelFormat), "");
+		tc_menu_section_cache_get_str(&cache, key, labelFormat, sizeof(labelFormat), "");
 		wsprintf(key, "Item%dLabelUpdateSec", i);
-		labelUpdateSec = GetMyRegLong(TC_MENU_SECTION, key, labelUpdateSec);
+		labelUpdateSec = tc_menu_section_cache_get_long(&cache, key, labelUpdateSec);
 		tc_menu_resolve_label_text(i, label, labelFormat, labelUpdateSec, resolvedLabel, (int)sizeof(resolvedLabel));
 
 		wsprintf(key, "Item%dExecType", i);
-		GetMyRegStr(TC_MENU_SECTION, key, execType, sizeof(execType), (char*)tc_menu_default_exec_type_for_action(action));
+		tc_menu_section_cache_get_str(&cache, key, execType, sizeof(execType), (char*)tc_menu_default_exec_type_for_action(action));
 		wsprintf(key, "Item%dParam", i);
 		tc_menu_default_param_for_action(action, param, (int)sizeof(param));
-		GetMyRegStr(TC_MENU_SECTION, key, param, sizeof(param), param);
+		tc_menu_section_cache_get_str(&cache, key, param, sizeof(param), param);
 		wsprintf(key, "Item%dArgs", i);
-		GetMyRegStr(TC_MENU_SECTION, key, args, sizeof(args), "");
+		tc_menu_section_cache_get_str(&cache, key, args, sizeof(args), "");
 		wsprintf(key, "Item%dWorkDir", i);
-		GetMyRegStr(TC_MENU_SECTION, key, workdir, sizeof(workdir), "");
+		tc_menu_section_cache_get_str(&cache, key, workdir, sizeof(workdir), "");
 		wsprintf(key, "Item%dShow", i);
-		show = GetMyRegLong(TC_MENU_SECTION, key, SW_SHOWNORMAL);
+		show = tc_menu_section_cache_get_long(&cache, key, SW_SHOWNORMAL);
 
 		if (_stricmp(execType, "builtin") == 0 || execType[0] == '\0') {
 			if (!tc_menu_action_to_command(action, &cmdId)) {

@@ -3,6 +3,7 @@
 #include "text_file_utf8.h"
 #include "text_codec.h"
 
+
 typedef struct tc_dynbuf_s {
     char* p;
     DWORD len;
@@ -20,6 +21,17 @@ typedef struct tc_ini_utf8_cache_s {
 } tc_ini_utf8_cache_t;
 
 static tc_ini_utf8_cache_t g_iniUtf8Cache;
+
+
+static BOOL tc_bytes_equal(const char* a, const char* b, DWORD n)
+{
+    DWORD i;
+    if (!a || !b) return FALSE;
+    for (i = 0; i < n; ++i) {
+        if ((unsigned char)a[i] != (unsigned char)b[i]) return FALSE;
+    }
+    return TRUE;
+}
 
 static const char* tc_section_or_main(const char* section)
 {
@@ -828,6 +840,11 @@ BOOL tc_ini_utf8_write_string(const char* iniPath, const char* section, const ch
     }
 
     if (!tc_ini_utf8_rewrite_key(iniPath, text, size, section, key, utf8Val, &outText, &outSize)) {
+        goto cleanup;
+    }
+
+    if (outSize == size && text && outText && tc_bytes_equal(text, outText, size)) {
+        ok = TRUE;
         goto cleanup;
     }
 

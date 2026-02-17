@@ -9,6 +9,18 @@ typedef struct tc_dynbuf_s {
     DWORD cap;
 } tc_dynbuf_t;
 
+typedef struct tc_ini_utf8_cache_s {
+    BOOL valid;
+    char path[MAX_PATH];
+    FILETIME ftWrite;
+    DWORD fileSizeLow;
+    BOOL hadBom;
+    char* text;
+    DWORD size;
+} tc_ini_utf8_cache_t;
+
+static tc_ini_utf8_cache_t g_iniUtf8Cache;
+
 static const char* tc_section_or_main(const char* section)
 {
     return (section && section[0]) ? section : "Main";
@@ -173,6 +185,81 @@ static DWORD tc_hash_path_ci(const char* s)
         h *= 16777619u;
     }
     return h;
+}
+
+static void tc_ini_utf8_cache_clear(void)
+{
+    if (g_iniUtf8Cache.text) {
+        tc_free_text_buffer(g_iniUtf8Cache.text);
+        g_iniUtf8Cache.text = NULL;
+    }
+    ZeroMemory(&g_iniUtf8Cache, sizeof(g_iniUtf8Cache));
+}
+
+static BOOL tc_ini_utf8_get_file_stamp(const char* path, FILETIME* ftWrite, DWORD* fileSizeLow)
+{
+    HANDLE h;
+    DWORD szLow;
+    if (!path || !ftWrite || !fileSizeLow) return FALSE;
+    h = CreateFile(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                   NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (h == INVALID_HANDLE_VALUE) return FALSE;
+    if (!GetFileTime(h, NULL, NULL, ftWrite)) {
+        CloseHandle(h);
+        return FALSE;
+    }
+    szLow = GetFileSize(h, NULL);
+    CloseHandle(h);
+    if (szLow == INVALID_FILE_SIZE) return FALSE;
+    *fileSizeLow = szLow;
+    return TRUE;
+}
+
+static BOOL tc_ini_utf8_cache_get_locked(const char* iniPath, char** text, DWORD* size, BOOL* hadBom)
+{
+    FILETIME ftWrite;
+    DWORD fileSizeLow = 0;
+    char* readText = NULL;
+    DWORD readSize = 0;
+    BOOL readBom = FALSE;
+
+    if (!iniPath || !text || !size || !hadBom) return FALSE;
+    *text = NULL;
+    *size = 0;
+    *hadBom = FALSE;
+
+    if (!tc_ini_utf8_get_file_stamp(iniPath, &ftWrite, &fileSizeLow)) {
+        return FALSE;
+    }
+
+    if (g_iniUtf8Cache.valid &&
+        g_iniUtf8Cache.text &&
+        lstrcmpi(g_iniUtf8Cache.path, iniPath) == 0 &&
+        CompareFileTime(&g_iniUtf8Cache.ftWrite, &ftWrite) == 0 &&
+        g_iniUtf8Cache.fileSizeLow == fileSizeLow) {
+        *text = g_iniUtf8Cache.text;
+        *size = g_iniUtf8Cache.size;
+        *hadBom = g_iniUtf8Cache.hadBom;
+        return TRUE;
+    }
+
+    if (!tc_read_text_file_utf8(iniPath, &readText, &readSize, &readBom)) {
+        return FALSE;
+    }
+
+    tc_ini_utf8_cache_clear();
+    lstrcpyn(g_iniUtf8Cache.path, iniPath, (int)sizeof(g_iniUtf8Cache.path));
+    g_iniUtf8Cache.ftWrite = ftWrite;
+    g_iniUtf8Cache.fileSizeLow = fileSizeLow;
+    g_iniUtf8Cache.hadBom = readBom;
+    g_iniUtf8Cache.text = readText;
+    g_iniUtf8Cache.size = readSize;
+    g_iniUtf8Cache.valid = TRUE;
+
+    *text = g_iniUtf8Cache.text;
+    *size = g_iniUtf8Cache.size;
+    *hadBom = g_iniUtf8Cache.hadBom;
+    return TRUE;
 }
 
 static HANDLE tc_ini_lock_enter(const char* iniPath)
@@ -449,6 +536,7 @@ BOOL tc_ini_utf8_detect_file(const char* iniPath, BOOL* isUtf8, BOOL* hasBom)
     char* text = NULL;
     DWORD size = 0;
     BOOL bom = FALSE;
+    HANDLE hLock = NULL;
 
     if (!iniPath) return FALSE;
     if (isUtf8) *isUtf8 = FALSE;
@@ -461,11 +549,14 @@ BOOL tc_ini_utf8_detect_file(const char* iniPath, BOOL* isUtf8, BOOL* hasBom)
         return TRUE;
     }
 
-    if (!tc_read_text_file_utf8(iniPath, &text, &size, &bom)) {
+    hLock = tc_ini_lock_enter(iniPath);
+    if (!hLock) return FALSE;
+
+    if (!tc_ini_utf8_cache_get_locked(iniPath, &text, &size, &bom)) {
+        tc_ini_lock_leave(hLock);
         return FALSE;
     }
-
-    tc_free_text_buffer(text);
+    tc_ini_lock_leave(hLock);
     if (isUtf8) *isUtf8 = TRUE;
     if (hasBom) *hasBom = bom;
     return TRUE;
@@ -554,7 +645,7 @@ int tc_ini_utf8_read_string(const char* iniPath, const char* section, const char
         goto fallback;
     }
 
-    if (!tc_read_text_file_utf8(iniPath, &text, &size, &hadBom)) {
+    if (!tc_ini_utf8_cache_get_locked(iniPath, &text, &size, &hadBom)) {
         goto fallback_locked;
     }
 
@@ -577,9 +668,134 @@ fallback:
     }
 
 cleanup:
-    if (text) tc_free_text_buffer(text);
     if (hLock) tc_ini_lock_leave(hLock);
     return r;
+}
+
+int tc_ini_utf8_read_section_multisz(const char* iniPath, const char* section,
+                                     char* outBuf, int outBytes)
+{
+    HANDLE hLock = NULL;
+    char* text = NULL;
+    DWORD size = 0;
+    BOOL hadBom = FALSE;
+    const char* sec = tc_section_or_main(section);
+    DWORD i = 0;
+    int pos = 0;
+    int count = 0;
+
+    if (!outBuf || outBytes <= 1) return 0;
+    outBuf[0] = '\0';
+    outBuf[1] = '\0';
+    if (!iniPath || !iniPath[0]) return 0;
+
+    hLock = tc_ini_lock_enter(iniPath);
+    if (hLock && tc_ini_utf8_cache_get_locked(iniPath, &text, &size, &hadBom)) {
+        UNREFERENCED_PARAMETER(hadBom);
+    }
+    else {
+        DWORD r = GetPrivateProfileSection(sec, outBuf, (DWORD)outBytes, iniPath);
+        const char* p;
+        if (hLock) tc_ini_lock_leave(hLock);
+        if (r == 0) {
+            outBuf[0] = '\0';
+            outBuf[1] = '\0';
+            return 0;
+        }
+        outBuf[outBytes - 1] = '\0';
+        outBuf[outBytes - 2] = '\0';
+        p = outBuf;
+        while (*p) {
+            ++count;
+            p += lstrlen(p) + 1;
+        }
+        return count;
+    }
+
+    {
+        BOOL inTarget = FALSE;
+        while (i < size) {
+            DWORD ls = i;
+            DWORD le = i;
+            DWORD txtEnd;
+            int ll = 0;
+            int rr = 0;
+
+            while (le < size && text[le] != '\r' && text[le] != '\n') le++;
+            txtEnd = le;
+            if (le < size && text[le] == '\r') {
+                le++;
+                if (le < size && text[le] == '\n') le++;
+            }
+            else if (le < size && text[le] == '\n') {
+                le++;
+            }
+
+            if (tc_line_is_section(text + ls, (int)(txtEnd - ls), sec)) {
+                inTarget = TRUE;
+                i = le;
+                continue;
+            }
+            if (tc_line_is_any_section(text + ls, (int)(txtEnd - ls))) {
+                inTarget = FALSE;
+                i = le;
+                continue;
+            }
+            if (!inTarget) {
+                i = le;
+                continue;
+            }
+
+            tc_trim_lr(text + ls, (int)(txtEnd - ls), &ll, &rr);
+            if (rr > ll) {
+                const char* line = text + ls + ll;
+                int lineLen = rr - ll;
+                int eq = -1;
+                int j;
+                for (j = 0; j < lineLen; ++j) {
+                    if (line[j] == '=') {
+                        eq = j;
+                        break;
+                    }
+                }
+                if (line[0] != ';' && line[0] != '#' && eq >= 0) {
+                    int kl = 0;
+                    int kr = eq;
+                    int vl = eq + 1;
+                    int vr = lineLen;
+                    int keyLen;
+                    int valLen;
+                    int need;
+                    tc_trim_lr(line, eq, &kl, &kr);
+                    tc_trim_lr(line + eq + 1, lineLen - (eq + 1), &vl, &vr);
+                    keyLen = kr - kl;
+                    valLen = vr - vl;
+                    if (keyLen > 0) {
+                        need = keyLen + 1 + (valLen > 0 ? valLen : 0) + 1;
+                        if (pos + need + 1 >= outBytes) {
+                            break;
+                        }
+                        CopyMemory(outBuf + pos, line + kl, (SIZE_T)keyLen);
+                        pos += keyLen;
+                        outBuf[pos++] = '=';
+                        if (valLen > 0) {
+                            CopyMemory(outBuf + pos, line + eq + 1 + vl, (SIZE_T)valLen);
+                            pos += valLen;
+                        }
+                        outBuf[pos++] = '\0';
+                        ++count;
+                    }
+                }
+            }
+            i = le;
+        }
+    }
+
+    if (pos >= outBytes - 1) pos = outBytes - 2;
+    outBuf[pos++] = '\0';
+    outBuf[pos] = '\0';
+    tc_ini_lock_leave(hLock);
+    return count;
 }
 
 BOOL tc_ini_utf8_write_string(const char* iniPath, const char* section, const char* key,
@@ -619,6 +835,7 @@ BOOL tc_ini_utf8_write_string(const char* iniPath, const char* section, const ch
         goto cleanup;
     }
     ok = TRUE;
+    tc_ini_utf8_cache_clear();
 
 cleanup:
     if (text) tc_free_text_buffer(text);
@@ -646,6 +863,7 @@ BOOL tc_ini_utf8_delete_key(const char* iniPath, const char* section, const char
     if (!tc_ini_utf8_rewrite_delete(text, size, section, key, FALSE, &outText, &outSize)) goto cleanup;
     if (!tc_write_text_file_utf8(iniPath, outText, outSize, hadBom ? TRUE : FALSE)) goto cleanup;
     ok = TRUE;
+    tc_ini_utf8_cache_clear();
 
 cleanup:
     if (text) tc_free_text_buffer(text);
@@ -673,6 +891,7 @@ BOOL tc_ini_utf8_delete_section(const char* iniPath, const char* section)
     if (!tc_ini_utf8_rewrite_delete(text, size, section, NULL, TRUE, &outText, &outSize)) goto cleanup;
     if (!tc_write_text_file_utf8(iniPath, outText, outSize, hadBom ? TRUE : FALSE)) goto cleanup;
     ok = TRUE;
+    tc_ini_utf8_cache_clear();
 
 cleanup:
     if (text) tc_free_text_buffer(text);

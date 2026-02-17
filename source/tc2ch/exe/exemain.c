@@ -1045,6 +1045,7 @@ LRESULT CALLBACK WndProc(HWND hwnd,	UINT message, WPARAM wParam, LPARAM lParam)	
 			OnInitMenuPopup(hwnd, wParam, lParam); // filelist.c
 			break;
 		case WM_MENURBUTTONUP:	//ファイルリスト関係
+			MenuOnMenuRButtonUp(hwnd, wParam, lParam); // menu.c
 			OnMenuRButtonUp(hwnd, wParam, lParam); //filelist.c
 			break;
 		case WM_DISPLAYCHANGE:	//added by TTTT

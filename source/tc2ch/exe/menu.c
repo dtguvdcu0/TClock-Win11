@@ -50,6 +50,8 @@ static char* SafeMyString(UINT id);
 #define TC_MENU_SECTION "MenuCustom"
 #define TC_MENU_DYNAMIC_BASE 46000
 #define TC_MENU_DYNAMIC_MAX 128
+#define TC_MENU_ALARM_BASE 47000
+#define TC_MENU_ALARM_MAX TC_MENU_CUSTOM_MAX_ITEMS
 #define TC_MENU_LABEL_CACHE_MAX (TC_MENU_CUSTOM_MAX_ITEMS + 1)
 #define TC_MENU_LIVE_MAX TC_MENU_CUSTOM_MAX_ITEMS
 
@@ -78,18 +80,289 @@ typedef struct {
 	char text[256];
 	BOOL valid;
 } TC_MENU_LABEL_CACHE;
+typedef struct {
+	UINT id;
+	int itemIndex;
+	int initialSec;
+	int remainSec;
+	int updateSec;
+	int keepOpen;
+	int notifyFlags;
+	int soundVolume;
+	int soundLoop;
+	DWORD lastTick;
+	int state; /* 0: idle, 1: running, 2: paused, 3: finished */
+	BOOL finishedNotified;
+	char baseLabel[256];
+	char labelIdle[256];
+	char labelRun[256];
+	char labelPause[256];
+	char labelDone[256];
+	char message[256];
+	char soundFile[MAX_PATH];
+} TC_MENU_ALARM_ENTRY;
+typedef struct {
+	BOOL valid;
+	int initialSec;
+	int remainSec;
+	DWORD lastTick;
+	int state;
+	BOOL finishedNotified;
+} TC_MENU_ALARM_RUNTIME;
 static TC_MENU_LABEL_CACHE g_menuLabelCache[TC_MENU_LABEL_CACHE_MAX];
 static TC_MENU_LIVE_ENTRY g_menuLiveEntries[TC_MENU_LIVE_MAX];
+static TC_MENU_ALARM_ENTRY g_menuAlarmEntries[TC_MENU_ALARM_MAX];
+static TC_MENU_ALARM_RUNTIME g_menuAlarmRuntime[TC_MENU_LABEL_CACHE_MAX];
 static int g_menuLiveCount = 0;
+static int g_menuAlarmCount = 0;
 static BOOL g_menuPopupActive = FALSE;
+static UINT g_menuLastRightClickCmdId = 0;
+static POINT g_menuLastPopupPos = { 0, 0 };
+static BOOL g_menuLastPopupPosValid = FALSE;
 typedef BOOL(WINAPI* PFN_FormatMenuLabel_Win11)(const char* fmt, char* out, int outBytes);
 static PFN_FormatMenuLabel_Win11 g_pfnFormatMenuLabel_Win11 = NULL;
 static BOOL g_menuFormatApiChecked = FALSE;
+static int tc_menu_append_text(char* dst, int dstLen, int pos, const char* src);
+static BOOL tc_menu_match_token(const char* p, const char* token);
 
 static void tc_menu_dynamic_reset(void)
 {
 	g_menuDynamicCount = 0;
 	g_menuLiveCount = 0;
+	g_menuAlarmCount = 0;
+	g_menuLastRightClickCmdId = 0;
+}
+
+static UINT tc_menu_alarm_register(int itemIndex)
+{
+	TC_MENU_ALARM_ENTRY* e;
+	if (g_menuAlarmCount >= TC_MENU_ALARM_MAX) {
+		return 0;
+	}
+	e = &g_menuAlarmEntries[g_menuAlarmCount];
+	ZeroMemory(e, sizeof(*e));
+	e->id = (UINT)(TC_MENU_ALARM_BASE + g_menuAlarmCount);
+	e->itemIndex = itemIndex;
+	e->initialSec = 60;
+	e->remainSec = 60;
+	e->updateSec = 1;
+	e->keepOpen = 1;
+	e->notifyFlags = 0;
+	e->soundVolume = 70;
+	e->soundLoop = 0;
+	e->state = 0;
+	++g_menuAlarmCount;
+	return e->id;
+}
+
+static TC_MENU_ALARM_ENTRY* tc_menu_alarm_find(UINT cmdId)
+{
+	int i;
+	for (i = 0; i < g_menuAlarmCount; ++i) {
+		if (g_menuAlarmEntries[i].id == cmdId) {
+			return &g_menuAlarmEntries[i];
+		}
+	}
+	return NULL;
+}
+
+static TC_MENU_ALARM_RUNTIME* tc_menu_alarm_runtime_for_item(int itemIndex)
+{
+	if (itemIndex < 1 || itemIndex >= TC_MENU_LABEL_CACHE_MAX) {
+		return NULL;
+	}
+	return &g_menuAlarmRuntime[itemIndex];
+}
+
+static void tc_menu_alarm_store_runtime(const TC_MENU_ALARM_ENTRY* e)
+{
+	TC_MENU_ALARM_RUNTIME* rt;
+	if (!e) return;
+	rt = tc_menu_alarm_runtime_for_item(e->itemIndex);
+	if (!rt) return;
+	rt->valid = TRUE;
+	rt->initialSec = e->initialSec;
+	rt->remainSec = e->remainSec;
+	rt->lastTick = e->lastTick;
+	rt->state = e->state;
+	rt->finishedNotified = e->finishedNotified;
+}
+
+static void tc_menu_alarm_restore_runtime(TC_MENU_ALARM_ENTRY* e)
+{
+	TC_MENU_ALARM_RUNTIME* rt;
+	if (!e) return;
+	rt = tc_menu_alarm_runtime_for_item(e->itemIndex);
+	if (!rt || !rt->valid || rt->initialSec != e->initialSec) {
+		e->state = 0;
+		e->remainSec = (e->initialSec > 0) ? e->initialSec : 1;
+		e->lastTick = GetTickCount();
+		e->finishedNotified = FALSE;
+		tc_menu_alarm_store_runtime(e);
+		return;
+	}
+	e->remainSec = rt->remainSec;
+	if (e->remainSec < 0) e->remainSec = 0;
+	if (e->remainSec > e->initialSec) e->remainSec = e->initialSec;
+	e->lastTick = rt->lastTick;
+	e->state = rt->state;
+	e->finishedNotified = rt->finishedNotified;
+}
+
+static const char* tc_menu_alarm_state_name(int state)
+{
+	if (state == 1) return "running";
+	if (state == 2) return "paused";
+	if (state == 3) return "finished";
+	return "idle";
+}
+
+static void tc_menu_alarm_format_label(TC_MENU_ALARM_ENTRY* e, char* out, int outLen)
+{
+	const char* src;
+	int mm;
+	int ss;
+	char mmss[16];
+	char secText[16];
+	char stateText[16];
+	if (!e || !out || outLen <= 0) return;
+	out[0] = '\0';
+	src = e->baseLabel;
+	if (e->state == 1 && e->labelRun[0]) src = e->labelRun;
+	else if (e->state == 2 && e->labelPause[0]) src = e->labelPause;
+	else if (e->state == 3 && e->labelDone[0]) src = e->labelDone;
+	else if ((e->state == 0) && e->labelIdle[0]) src = e->labelIdle;
+	if (!src || !src[0]) src = "Timer %REMAIN_SEC%s";
+	mm = e->remainSec / 60;
+	ss = e->remainSec % 60;
+	wsprintf(mmss, "%02d:%02d", mm, ss);
+	wsprintf(secText, "%d", e->remainSec);
+	lstrcpyn(stateText, tc_menu_alarm_state_name(e->state), (int)sizeof(stateText));
+	{
+		const char* p = src;
+		int pos = 0;
+		while (*p && pos < outLen - 1) {
+			if (tc_menu_match_token(p, "%REMAIN_MMSS%")) {
+				pos = tc_menu_append_text(out, outLen, pos, mmss);
+				p += 13;
+			} else if (tc_menu_match_token(p, "%REMAIN_SEC%")) {
+				pos = tc_menu_append_text(out, outLen, pos, secText);
+				p += 12;
+			} else if (tc_menu_match_token(p, "%STATE%")) {
+				pos = tc_menu_append_text(out, outLen, pos, stateText);
+				p += 7;
+			} else {
+				out[pos++] = *p++;
+				out[pos] = '\0';
+			}
+		}
+	}
+}
+
+static void tc_menu_alarm_notify_finish(TC_MENU_ALARM_ENTRY* e)
+{
+	WCHAR wPath[MAX_PATH];
+	int n;
+	if (!e || e->finishedNotified) return;
+	e->finishedNotified = TRUE;
+	if (e->notifyFlags & 1) {
+		MyMessageBox(NULL, e->message[0] ? e->message : "Timer finished",
+			"TClock-Win11", MB_OK | MB_SETFOREGROUND | MB_ICONINFORMATION, 0xFFFFFFFF);
+	}
+	if (e->notifyFlags & 2) {
+		if (e->soundFile[0]) {
+			n = MultiByteToWideChar(CP_UTF8, 0, e->soundFile, -1, wPath, MAX_PATH);
+			if (n <= 0) {
+				n = MultiByteToWideChar(CP_ACP, 0, e->soundFile, -1, wPath, MAX_PATH);
+			}
+			if (n > 0) {
+				PlaySoundW(wPath, NULL, SND_FILENAME | SND_ASYNC);
+			} else {
+				MessageBeep(MB_ICONASTERISK);
+			}
+		} else {
+			MessageBeep(MB_ICONASTERISK);
+		}
+	}
+}
+
+static void tc_menu_alarm_reset(TC_MENU_ALARM_ENTRY* e)
+{
+	if (!e) return;
+	if (e->initialSec < 1) e->initialSec = 1;
+	e->remainSec = e->initialSec;
+	e->state = 0;
+	e->finishedNotified = FALSE;
+	e->lastTick = GetTickCount();
+	tc_menu_alarm_store_runtime(e);
+}
+
+static void tc_menu_alarm_tick_one(TC_MENU_ALARM_ENTRY* e, DWORD now)
+{
+	DWORD elapsedSec;
+	if (!e) return;
+	if (e->state != 1) return;
+	if (e->lastTick == 0) {
+		e->lastTick = now;
+		return;
+	}
+	if (now <= e->lastTick) return;
+	elapsedSec = (now - e->lastTick) / 1000;
+	if (elapsedSec == 0) return;
+	if ((int)elapsedSec >= e->remainSec) {
+		e->remainSec = 0;
+		e->state = 3;
+		e->lastTick = now;
+		tc_menu_alarm_notify_finish(e);
+		tc_menu_alarm_store_runtime(e);
+		return;
+	}
+	e->remainSec -= (int)elapsedSec;
+	e->lastTick += elapsedSec * 1000;
+	tc_menu_alarm_store_runtime(e);
+}
+
+static void tc_menu_alarm_tick_all(void)
+{
+	int i;
+	DWORD now = GetTickCount();
+	for (i = 0; i < g_menuAlarmCount; ++i) {
+		tc_menu_alarm_tick_one(&g_menuAlarmEntries[i], now);
+	}
+}
+
+static BOOL tc_menu_alarm_handle_click(UINT cmdId, BOOL rightClick)
+{
+	TC_MENU_ALARM_ENTRY* e = tc_menu_alarm_find(cmdId);
+	if (!e) return FALSE;
+	if (rightClick) {
+		tc_menu_alarm_reset(e);
+		return TRUE;
+	}
+	if (e->state == 0) {
+		e->state = 1;
+		e->lastTick = GetTickCount();
+		tc_menu_alarm_store_runtime(e);
+		return TRUE;
+	}
+	if (e->state == 1) {
+		tc_menu_alarm_tick_one(e, GetTickCount());
+		e->state = 2;
+		tc_menu_alarm_store_runtime(e);
+		return TRUE;
+	}
+	if (e->state == 2) {
+		e->state = 1;
+		e->lastTick = GetTickCount();
+		tc_menu_alarm_store_runtime(e);
+		return TRUE;
+	}
+	/* finished */
+	tc_menu_alarm_reset(e);
+	e->state = 1;
+	e->lastTick = GetTickCount();
+	tc_menu_alarm_store_runtime(e);
+	return TRUE;
 }
 
 static void tc_menu_live_register(UINT cmdId, int itemIndex, int intervalSec, const char* plainLabel, const char* format)
@@ -379,8 +652,9 @@ static void tc_menu_resolve_label_text(int itemIndex, const char* plainLabel, co
 void MenuOnTimerTick(HWND hwnd)
 {
 	int i;
+	tc_menu_alarm_tick_all();
 	UNREFERENCED_PARAMETER(hwnd);
-	if (!g_menuPopupActive || !hPopupMenu || g_menuLiveCount <= 0) return;
+	if (!g_menuPopupActive || !hPopupMenu) return;
 	for (i = 0; i < g_menuLiveCount; ++i) {
 		char text[256];
 		TC_MENU_LIVE_ENTRY* e = &g_menuLiveEntries[i];
@@ -388,6 +662,15 @@ void MenuOnTimerTick(HWND hwnd)
 		tc_menu_resolve_label_text(e->itemIndex, e->plainLabel, e->format, e->intervalSec, text, (int)sizeof(text));
 		if (text[0]) {
 			ModifyMenu(hPopupMenu, e->cmdId, MF_BYCOMMAND, e->cmdId, text);
+		}
+	}
+	for (i = 0; i < g_menuAlarmCount; ++i) {
+		char alarmText[256];
+		TC_MENU_ALARM_ENTRY* e2 = &g_menuAlarmEntries[i];
+		alarmText[0] = '\0';
+		tc_menu_alarm_format_label(e2, alarmText, (int)sizeof(alarmText));
+		if (alarmText[0]) {
+			ModifyMenu(hPopupMenu, e2->id, MF_BYCOMMAND, e2->id, alarmText);
 		}
 	}
 }
@@ -623,8 +906,15 @@ static void tc_menu_apply_custom_from_ini(HMENU hMenu)
 		int enabled;
 		int show;
 		int labelUpdateSec;
+		int alarmInitialSec;
+		int alarmUpdateSec;
+		int alarmKeepOpen;
+		int alarmNotifyFlags;
+		int alarmSoundVolume;
+		int alarmSoundLoop;
 		const char* defaultLabel;
 		UINT cmdId;
+		TC_MENU_ALARM_ENTRY* alarmEntry;
 
 		type[0] = '\0';
 		action[0] = '\0';
@@ -638,6 +928,13 @@ static void tc_menu_apply_custom_from_ini(HMENU hMenu)
 		enabled = 1;
 		show = SW_SHOWNORMAL;
 		labelUpdateSec = globalLabelUpdateSec;
+		alarmInitialSec = 60;
+		alarmUpdateSec = 1;
+		alarmKeepOpen = 1;
+		alarmNotifyFlags = 0;
+		alarmSoundVolume = 70;
+		alarmSoundLoop = 0;
+		alarmEntry = NULL;
 		tc_menu_get_default_item(i, type, (int)sizeof(type), action, (int)sizeof(action), &enabled);
 
 		wsprintf(key, "Item%dType", i);
@@ -650,6 +947,72 @@ static void tc_menu_apply_custom_from_ini(HMENU hMenu)
 
 		if (_stricmp(type, "separator") == 0) {
 			InsertMenu(hMenu, insertPos, MF_BYPOSITION | MF_SEPARATOR, 0, NULL);
+			++insertPos;
+			continue;
+		}
+
+		if (_stricmp(type, "alarm") == 0) {
+			char alarmLabelIdle[256];
+			char alarmLabelRun[256];
+			char alarmLabelPause[256];
+			char alarmLabelDone[256];
+			char alarmMessage[256];
+			char alarmSoundFile[MAX_PATH];
+			char alarmText[256];
+			wsprintf(key, "Item%dLabel", i);
+			GetMyRegStr(TC_MENU_SECTION, key, label, sizeof(label), "Timer");
+			wsprintf(key, "Item%dAlarmInitialSec", i);
+			alarmInitialSec = GetMyRegLong(TC_MENU_SECTION, key, 60);
+			wsprintf(key, "Item%dAlarmUpdateSec", i);
+			alarmUpdateSec = GetMyRegLong(TC_MENU_SECTION, key, 1);
+			wsprintf(key, "Item%dAlarmKeepMenuOpen", i);
+			alarmKeepOpen = GetMyRegLong(TC_MENU_SECTION, key, 1);
+			wsprintf(key, "Item%dAlarmNotifyFlags", i);
+			alarmNotifyFlags = GetMyRegLong(TC_MENU_SECTION, key, 0);
+			wsprintf(key, "Item%dAlarmSoundVolume", i);
+			alarmSoundVolume = GetMyRegLong(TC_MENU_SECTION, key, 70);
+			wsprintf(key, "Item%dAlarmSoundLoop", i);
+			alarmSoundLoop = GetMyRegLong(TC_MENU_SECTION, key, 0);
+			wsprintf(key, "Item%dAlarmLabelIdle", i);
+			GetMyRegStr(TC_MENU_SECTION, key, alarmLabelIdle, sizeof(alarmLabelIdle), "Timer %REMAIN_SEC%s");
+			wsprintf(key, "Item%dAlarmLabelRun", i);
+			GetMyRegStr(TC_MENU_SECTION, key, alarmLabelRun, sizeof(alarmLabelRun), "Running %REMAIN_MMSS%");
+			wsprintf(key, "Item%dAlarmLabelPause", i);
+			GetMyRegStr(TC_MENU_SECTION, key, alarmLabelPause, sizeof(alarmLabelPause), "Paused %REMAIN_MMSS%");
+			wsprintf(key, "Item%dAlarmLabelDone", i);
+			GetMyRegStr(TC_MENU_SECTION, key, alarmLabelDone, sizeof(alarmLabelDone), "Done");
+			wsprintf(key, "Item%dAlarmMessage", i);
+			GetMyRegStr(TC_MENU_SECTION, key, alarmMessage, sizeof(alarmMessage), "Timer finished");
+			wsprintf(key, "Item%dAlarmSoundFile", i);
+			GetMyRegStr(TC_MENU_SECTION, key, alarmSoundFile, sizeof(alarmSoundFile), "");
+
+			cmdId = tc_menu_alarm_register(i);
+			if (!cmdId) continue;
+			alarmEntry = tc_menu_alarm_find(cmdId);
+			if (!alarmEntry) continue;
+			if (alarmInitialSec < 1) alarmInitialSec = 1;
+			if (alarmUpdateSec < 1) alarmUpdateSec = 1;
+			if (alarmNotifyFlags < 0) alarmNotifyFlags = 0;
+			if (alarmNotifyFlags > 3) alarmNotifyFlags = 3;
+			if (alarmSoundVolume < 0) alarmSoundVolume = 0;
+			if (alarmSoundVolume > 100) alarmSoundVolume = 100;
+			alarmEntry->initialSec = alarmInitialSec;
+			alarmEntry->remainSec = alarmInitialSec;
+			alarmEntry->updateSec = alarmUpdateSec;
+			alarmEntry->keepOpen = alarmKeepOpen ? 1 : 0;
+			alarmEntry->notifyFlags = alarmNotifyFlags;
+			alarmEntry->soundVolume = alarmSoundVolume;
+			alarmEntry->soundLoop = alarmSoundLoop ? 1 : 0;
+			lstrcpyn(alarmEntry->baseLabel, label, (int)sizeof(alarmEntry->baseLabel));
+			lstrcpyn(alarmEntry->labelIdle, alarmLabelIdle, (int)sizeof(alarmEntry->labelIdle));
+			lstrcpyn(alarmEntry->labelRun, alarmLabelRun, (int)sizeof(alarmEntry->labelRun));
+			lstrcpyn(alarmEntry->labelPause, alarmLabelPause, (int)sizeof(alarmEntry->labelPause));
+			lstrcpyn(alarmEntry->labelDone, alarmLabelDone, (int)sizeof(alarmEntry->labelDone));
+			lstrcpyn(alarmEntry->message, alarmMessage, (int)sizeof(alarmEntry->message));
+			lstrcpyn(alarmEntry->soundFile, alarmSoundFile, (int)sizeof(alarmEntry->soundFile));
+			tc_menu_alarm_restore_runtime(alarmEntry);
+			tc_menu_alarm_format_label(alarmEntry, alarmText, (int)sizeof(alarmText));
+			InsertMenu(hMenu, insertPos, MF_BYPOSITION | MF_STRING, cmdId, alarmText[0] ? alarmText : label);
 			++insertPos;
 			continue;
 		}
@@ -773,6 +1136,24 @@ static char* SafeMyString(UINT id)
 	return "String_Error";
 }
 
+void MenuOnMenuRButtonUp(HWND hwnd, WPARAM wParam, LPARAM lParam)
+{
+	MENUITEMINFO mii;
+	UINT pos = (UINT)wParam;
+	UNREFERENCED_PARAMETER(hwnd);
+	if (!hPopupMenu || (HMENU)lParam != hPopupMenu) {
+		return;
+	}
+	ZeroMemory(&mii, sizeof(mii));
+	mii.cbSize = sizeof(mii);
+	mii.fMask = MIIM_ID;
+	if (GetMenuItemInfo(hPopupMenu, pos, TRUE, &mii)) {
+		if (tc_menu_alarm_find(mii.wID) != NULL) {
+			g_menuLastRightClickCmdId = mii.wID;
+		}
+	}
+}
+
 /*------------------------------------------------
    when the clock is right-clicked
    show pop-up menu
@@ -782,6 +1163,9 @@ void OnContextMenu(HWND hwnd, HWND hwndClicked, int xPos, int yPos)
 	int i;
 
 	UNREFERENCED_PARAMETER(hwndClicked);
+	g_menuLastPopupPos.x = xPos;
+	g_menuLastPopupPos.y = yPos;
+	g_menuLastPopupPosValid = TRUE;
 	if (g_hMenu) {
 		DestroyMenu(g_hMenu);
 		g_hMenu = NULL;
@@ -1035,7 +1419,7 @@ void OnContextMenu(HWND hwnd, HWND hwndClicked, int xPos, int yPos)
 
 	SetForegroundWindow98(hwnd);
 	g_menuPopupActive = TRUE;
-	TrackPopupMenu(hPopupMenu, TPM_LEFTALIGN|TPM_RIGHTBUTTON,
+	TrackPopupMenu(hPopupMenu, TPM_LEFTALIGN | TPM_RIGHTBUTTON,
 		xPos, yPos, 0, hwnd, NULL);
 	g_menuPopupActive = FALSE;
 
@@ -1048,6 +1432,29 @@ void OnTClockCommand(HWND hwnd, WORD wID, WORD wCode)
 {
 	extern BOOL b_EnglishMenu;
 	extern int Language_Offset;
+	{
+		TC_MENU_ALARM_ENTRY* alarm = tc_menu_alarm_find((UINT)wID);
+		if (alarm != NULL) {
+			BOOL rightClick = FALSE;
+			SHORT rbState = GetAsyncKeyState(VK_RBUTTON);
+			if (g_menuLastRightClickCmdId == (UINT)wID) {
+				rightClick = TRUE;
+			}
+			if (!rightClick && ((rbState & 0x8000) || (rbState & 0x0001))) {
+				rightClick = TRUE;
+			}
+			g_menuLastRightClickCmdId = 0;
+			tc_menu_alarm_handle_click((UINT)wID, rightClick);
+			if (alarm->keepOpen) {
+				POINT pt = g_menuLastPopupPos;
+				if (!g_menuLastPopupPosValid) {
+					GetCursorPos(&pt);
+				}
+				PostMessage(hwnd, WM_CONTEXTMENU, (WPARAM)hwnd, MAKELPARAM(pt.x, pt.y));
+			}
+			return;
+		}
+	}
 
 	switch(wID)
 	{

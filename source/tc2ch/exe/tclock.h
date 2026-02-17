@@ -243,6 +243,7 @@ void InitializeMenuItems(void);
 void OnContextMenu(HWND hwnd, HWND hwndClicked, int xPos, int yPos);
 void OnTClockCommand(HWND hwnd, WORD wID, WORD wCode);
 void MenuOnTimerTick(HWND hwnd);
+void MenuOnMenuRButtonUp(HWND hwnd, WPARAM wParam, LPARAM lParam);
 
 // mouse.c
 void InitMouseFunction(HWND hwnd);

@@ -242,6 +242,7 @@ void CreateFormat(char* s, int* checks);
 void InitializeMenuItems(void);
 void OnContextMenu(HWND hwnd, HWND hwndClicked, int xPos, int yPos);
 void OnTClockCommand(HWND hwnd, WORD wID, WORD wCode);
+void MenuOnTimerTick(HWND hwnd);
 
 // mouse.c
 void InitMouseFunction(HWND hwnd);

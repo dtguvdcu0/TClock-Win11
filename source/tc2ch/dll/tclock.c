@@ -3195,6 +3195,41 @@ void GetDisplayTime(SYSTEMTIME* pt, int* beat100)
 	memcpy(pt, &lt, sizeof(lt));
 }
 
+BOOL WINAPI FormatMenuLabel_Win11(const char* fmt, char* out, int outBytes)
+{
+	SYSTEMTIME t;
+	int beat100 = 0;
+	char info[1024];
+	char tmp[1024];
+	DWORD dwInfo = 0;
+
+	if (!fmt || !fmt[0] || !out || outBytes <= 0) {
+		return FALSE;
+	}
+	out[0] = '\0';
+	tmp[0] = '\0';
+	info[0] = '\0';
+	dwInfo = FindFormat((char*)fmt);
+	if (dwInfo & (FORMAT_BATTERY | FORMAT_MEMORY | FORMAT_NET | FORMAT_HDD | FORMAT_CPU | FORMAT_VOL | FORMAT_GPU | FORMAT_TEMP)) {
+		UpdateSysRes(
+			(dwInfo & FORMAT_BATTERY) ? TRUE : FALSE,
+			(dwInfo & FORMAT_MEMORY) ? TRUE : FALSE,
+			(dwInfo & FORMAT_NET) ? TRUE : FALSE,
+			(dwInfo & FORMAT_HDD) ? TRUE : FALSE,
+			(dwInfo & FORMAT_CPU) ? TRUE : FALSE,
+			(dwInfo & FORMAT_VOL) ? TRUE : FALSE,
+			(dwInfo & FORMAT_GPU) ? TRUE : FALSE,
+			(dwInfo & FORMAT_TEMP) ? TRUE : FALSE
+		);
+	}
+
+	GetDisplayTime(&t, &beat100);
+	InitFormat(&t);
+	MakeFormat(tmp, info, &t, beat100, (char*)fmt);
+	lstrcpyn(out, tmp, outBytes);
+	return out[0] ? TRUE : FALSE;
+}
+
 void PlayChime(BOOL b_sedondary)
 {
 	if (!b_sedondary) 

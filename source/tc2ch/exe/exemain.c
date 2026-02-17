@@ -837,6 +837,7 @@ LRESULT CALLBACK WndProc(HWND hwnd,	UINT message, WPARAM wParam, LPARAM lParam)	
 			{
 				//if (b_DebugLog) WriteDebug_New2("[exemain.c][WndProc] WM_TIMER(IDTIMER_MAIN) received");
 				OnTimerMain(hwnd);
+				MenuOnTimerTick(hwnd);
 			}
 			else if (wParam == IDTIMER_MOUSE)
 			{

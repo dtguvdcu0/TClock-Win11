@@ -60,7 +60,7 @@ static char* SafeMyString(UINT id);
 
 typedef struct {
 	UINT id;
-	int mode; /* 1: shell, 2: commandline */
+	int mode; /* 1: shell, 2: commandline, 3: passive */
 	char target[MAX_PATH];
 	char args[512];
 	char workdir[MAX_PATH];
@@ -410,7 +410,7 @@ static UINT tc_menu_dynamic_register(int mode, const char* target, const char* a
 	return e->id;
 }
 
-static BOOL tc_menu_dynamic_execute(UINT id)
+static int tc_menu_dynamic_execute(UINT id)
 {
 	int i;
 	for (i = 0; i < g_menuDynamicCount; ++i) {
@@ -423,17 +423,20 @@ static BOOL tc_menu_dynamic_execute(UINT id)
 				e->args[0] ? e->args : NULL,
 				e->workdir[0] ? e->workdir : NULL,
 				e->show ? e->show : SW_SHOWNORMAL);
-			return TRUE;
+			return 1;
 		}
 		if (e->mode == 2) {
 			ShellExecuteUtf8Compat(g_hwndMain, "open", "cmd.exe", e->target[0] ? e->target : NULL,
 				e->workdir[0] ? e->workdir : NULL,
 				e->show ? e->show : SW_SHOWNORMAL);
-			return TRUE;
+			return 1;
 		}
-		return FALSE;
+		if (e->mode == 3) {
+			return 2;
+		}
+		return 0;
 	}
-	return FALSE;
+	return 0;
 }
 
 static BOOL tc_menu_is_fixed_id(UINT id)
@@ -934,44 +937,19 @@ static void tc_menu_section_cache_get_str(const TC_MENU_SECTION_CACHE* cache, co
 	}
 }
 
+static BOOL tc_menu_is_custom_enabled(void)
+{
+	return GetMyRegLong(TC_MENU_SECTION, "MenuCustomEnabled", 1) ? TRUE : FALSE;
+}
+
 static void tc_menu_ensure_ini_defaults(void)
 {
-	int i;
 	if (GetMyRegLong(TC_MENU_SECTION, "Version", 0) > 0) {
 		return;
 	}
 	SetMyRegLong(TC_MENU_SECTION, "Version", 1);
-	SetMyRegLong(TC_MENU_SECTION, "ItemCount", 16);
-	for (i = 1; i <= 16; ++i) {
-		char key[64];
-		char type[32];
-		char action[64];
-		int enabled = 1;
-		const char* defaultLabel;
-		type[0] = '\0';
-		action[0] = '\0';
-		tc_menu_get_default_item(i, type, (int)sizeof(type), action, (int)sizeof(action), &enabled);
-		wsprintf(key, "Item%dType", i);
-		SetMyRegStr(TC_MENU_SECTION, key, type);
-		wsprintf(key, "Item%dEnabled", i);
-		SetMyRegLong(TC_MENU_SECTION, key, enabled);
-		if (_stricmp(type, "command") == 0) {
-			char param[512];
-			const char* execType;
-			wsprintf(key, "Item%dAction", i);
-			SetMyRegStr(TC_MENU_SECTION, key, action);
-			defaultLabel = tc_menu_default_label_for_action(action);
-			wsprintf(key, "Item%dLabel", i);
-			SetMyRegStr(TC_MENU_SECTION, key, (char*)defaultLabel);
-			execType = tc_menu_default_exec_type_for_action(action);
-			wsprintf(key, "Item%dExecType", i);
-			SetMyRegStr(TC_MENU_SECTION, key, (char*)execType);
-			param[0] = '\0';
-			tc_menu_default_param_for_action(action, param, (int)sizeof(param));
-			wsprintf(key, "Item%dParam", i);
-			SetMyRegStr(TC_MENU_SECTION, key, param);
-		}
-	}
+	SetMyRegLong(TC_MENU_SECTION, "ItemCount", 0);
+	SetMyRegLong(TC_MENU_SECTION, "MenuCustomEnabled", 1);
 }
 
 static void tc_menu_apply_custom_from_ini(HMENU hMenu)
@@ -983,7 +961,7 @@ static void tc_menu_apply_custom_from_ini(HMENU hMenu)
 	int count;
 	tc_menu_section_cache_load(&cache);
 	globalLabelUpdateSec = tc_menu_section_cache_get_long(&cache, "LabelFormatUpdateSec", 1);
-	count = tc_menu_section_cache_get_long(&cache, "ItemCount", 16);
+	count = tc_menu_section_cache_get_long(&cache, "ItemCount", 0);
 	if (globalLabelUpdateSec < 0) globalLabelUpdateSec = 0;
 	if (count < 0) count = 0;
 	if (count > TC_MENU_CUSTOM_MAX_ITEMS) count = TC_MENU_CUSTOM_MAX_ITEMS;
@@ -996,7 +974,6 @@ static void tc_menu_apply_custom_from_ini(HMENU hMenu)
 	}
 
 	for (i = 1; i <= count; ++i) {
-		BOOL hasDefault = FALSE;
 		char key[64];
 		char type[32];
 		char action[64];
@@ -1039,16 +1016,8 @@ static void tc_menu_apply_custom_from_ini(HMENU hMenu)
 		alarmSoundVolume = 70;
 		alarmSoundLoop = 0;
 		alarmEntry = NULL;
-		hasDefault = tc_menu_get_default_item(i, type, (int)sizeof(type), action, (int)sizeof(action), &enabled);
-		if (!hasDefault) {
-			/* Undefined sparse rows should stay disabled unless explicitly enabled in INI. */
-			enabled = 0;
-			type[0] = '\0';
-			action[0] = '\0';
-		}
-
 		wsprintf(key, "Item%dType", i);
-		tc_menu_section_cache_get_str(&cache, key, type, sizeof(type), type);
+		tc_menu_section_cache_get_str(&cache, key, type, sizeof(type), "");
 		wsprintf(key, "Item%dEnabled", i);
 		enabled = tc_menu_section_cache_get_long(&cache, key, enabled);
 		if (!enabled) {
@@ -1126,6 +1095,23 @@ static void tc_menu_apply_custom_from_ini(HMENU hMenu)
 			tc_menu_alarm_restore_runtime(alarmEntry);
 			tc_menu_alarm_format_label(alarmEntry, alarmText, (int)sizeof(alarmText));
 			InsertMenu(hMenu, insertPos, MF_BYPOSITION | MF_STRING, cmdId, alarmText[0] ? alarmText : label);
+			++insertPos;
+			continue;
+		}
+		if (_stricmp(type, "passive") == 0) {
+			wsprintf(key, "Item%dLabel", i);
+			tc_menu_section_cache_get_str(&cache, key, label, sizeof(label), "Info");
+			wsprintf(key, "Item%dLabelFormat", i);
+			tc_menu_section_cache_get_str(&cache, key, labelFormat, sizeof(labelFormat), "");
+			wsprintf(key, "Item%dLabelUpdateSec", i);
+			labelUpdateSec = tc_menu_section_cache_get_long(&cache, key, labelUpdateSec);
+			tc_menu_resolve_label_text(i, label, labelFormat, labelUpdateSec, resolvedLabel, (int)sizeof(resolvedLabel));
+			cmdId = tc_menu_dynamic_register(3, "", "", "", SW_SHOWNORMAL);
+			if (!cmdId) continue;
+			InsertMenu(hMenu, insertPos, MF_BYPOSITION | MF_STRING, cmdId, resolvedLabel[0] ? resolvedLabel : label);
+			if (labelFormat[0]) {
+				tc_menu_live_register(cmdId, i, labelUpdateSec, label, labelFormat);
+			}
 			++insertPos;
 			continue;
 		}
@@ -1310,8 +1296,10 @@ void OnContextMenu(HWND hwnd, HWND hwndClicked, int xPos, int yPos)
 		b_MenuItems_Initialized = TRUE;
 	}
 	tc_menu_dynamic_reset();
-	tc_menu_ensure_ini_defaults();
-	tc_menu_apply_custom_from_ini(hPopupMenu);
+	if (tc_menu_is_custom_enabled()) {
+		tc_menu_ensure_ini_defaults();
+		tc_menu_apply_custom_from_ini(hPopupMenu);
+	}
 
 	b_CompactMode_menu = GetMyRegLong(NULL, "CompactMode", FALSE);
 	b_SafeMode_menu = GetMyRegLong("Status_DoNotEdit", "SafeMode", FALSE);
@@ -1755,9 +1743,20 @@ void OnTClockCommand(HWND hwnd, WORD wID, WORD wCode)
             return;
     }
 
-    if (tc_menu_dynamic_execute(wID)) {
-        return;
-    }
+	{
+		int dynamicResult = tc_menu_dynamic_execute(wID);
+		if (dynamicResult == 2) {
+			POINT pt = g_menuLastPopupPos;
+			if (!g_menuLastPopupPosValid) {
+				GetCursorPos(&pt);
+			}
+			PostMessage(hwnd, WM_CONTEXTMENU, (WPARAM)hwnd, MAKELPARAM(pt.x, pt.y));
+			return;
+		}
+		if (dynamicResult == 1) {
+			return;
+		}
+	}
     if (b_DebugLog) {
         char tmp[96];
         wsprintf(tmp, "[menu.c][OnTClockCommand] Unknown wID=%u", wID);

@@ -155,6 +155,8 @@ void CleanSettingFile(void);
 // FORMAT.C
 void InitFormat(SYSTEMTIME* lt);
 void MakeFormat(char* s, char* s_info, SYSTEMTIME* pt, int beat100, char* fmt);
+void CustomFormatVarsReadSettings(void);
+void CustomFormatVarsPreloadIfEnabled(void);
 //void MakeFormat_Colored(char* s, COLORREF* s_col,  SYSTEMTIME* pt, int beat100, char* fmt);
 #define FORMAT_SECOND    0x0001
 //#define FORMAT_SYSINFO   0x0002

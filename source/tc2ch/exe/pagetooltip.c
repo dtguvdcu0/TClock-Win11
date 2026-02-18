@@ -496,6 +496,7 @@ void InitComboFontTip(HWND hDlg)
 		(FONTENUMPROC)EnumFontFamExProc, (LPARAM)hcombo, 0);
 	ReleaseDC(NULL, hdc);
 
+	s[0] = '\0';
 	GetMyRegStr("Tooltip", "TipFont", s, 80, "");
 	tc_normalize_font_name_for_combo(s, (int)sizeof(s));
 	if(s[0] == 0)

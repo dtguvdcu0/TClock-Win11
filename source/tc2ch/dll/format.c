@@ -34,7 +34,392 @@ static BOOL g_bCharNextExCompatInit = FALSE;
 
 extern BOOL bHour12, bHourZero;
 
+#define TC_CUSTOM_VAR_MAX 32
+#define TC_CUSTOM_PATH_MAX 1024
+#define TC_CUSTOM_VALUE_MAX 4096
+#define TC_CUSTOM_FAIL_MAX 256
+#define TC_CUSTOM_FILE_MAX_BYTES (64 * 1024)
+#define TC_CUSTOM_MAX_CHARS_DEFAULT 20
+#define TC_CUSTOM_REFRESH_DEFAULT 60
+#define TC_CUSTOM_PRELOAD_DEFAULT 1
 
+typedef enum {
+	TC_CUSTOM_WS_TRIM_EDGES = 0,
+	TC_CUSTOM_WS_KEEP = 1
+} TC_CUSTOM_WS_MODE;
+
+typedef struct {
+	char path[TC_CUSTOM_PATH_MAX];
+	int refreshSec;
+	int maxChars;
+	int whitespaceMode;
+	char failValue[TC_CUSTOM_FAIL_MAX];
+	char value[TC_CUSTOM_VALUE_MAX];
+	DWORD nextRefreshTick;
+	DWORD configHash;
+	BOOL hasPath;
+} TC_CUSTOM_VAR_ENTRY;
+
+static TC_CUSTOM_VAR_ENTRY g_customVars[TC_CUSTOM_VAR_MAX];
+static int g_customDefaultRefreshSec = TC_CUSTOM_REFRESH_DEFAULT;
+static int g_customDefaultMaxChars = TC_CUSTOM_MAX_CHARS_DEFAULT;
+static int g_customDefaultWhitespaceMode = TC_CUSTOM_WS_TRIM_EDGES;
+static char g_customDefaultFailValue[TC_CUSTOM_FAIL_MAX] = "N/A";
+static int g_customPreloadOnStartup = TC_CUSTOM_PRELOAD_DEFAULT;
+static BOOL g_customSettingsLoaded = FALSE;
+extern HANDLE hmod;
+extern PSTR CreateFullPathName(HINSTANCE hinst, PSTR fname);
+
+static DWORD tc_custom_hash_text(const char* s)
+{
+	DWORD h = 5381;
+	if (!s) return h;
+	while (*s) {
+		h = ((h << 5) + h) + (BYTE)(*s++);
+	}
+	return h;
+}
+
+static BOOL tc_custom_tick_expired(DWORD nowTick, DWORD targetTick)
+{
+	return ((LONG)(nowTick - targetTick) >= 0) ? TRUE : FALSE;
+}
+
+static int tc_custom_clamp_int(int v, int minv, int maxv)
+{
+	if (v < minv) return minv;
+	if (v > maxv) return maxv;
+	return v;
+}
+
+static int tc_custom_parse_whitespace_mode(const char* s, int defMode)
+{
+	if (!s || !s[0]) return defMode;
+	if (_stricmp(s, "trim_edges") == 0) return TC_CUSTOM_WS_TRIM_EDGES;
+	if (_stricmp(s, "keep") == 0) return TC_CUSTOM_WS_KEEP;
+	return defMode;
+}
+
+static void tc_custom_try_init_inifile(void)
+{
+	char* full;
+	WIN32_FIND_DATA fd;
+	HANDLE hfind;
+	if (g_inifile[0]) return;
+	if (!hmod) return;
+	full = CreateFullPathName((HINSTANCE)hmod, "tclock-win11.ini");
+	if (!full) return;
+	hfind = FindFirstFile(full, &fd);
+	if (hfind != INVALID_HANDLE_VALUE) {
+		lstrcpyn(g_inifile, full, MAX_PATH);
+		FindClose(hfind);
+	}
+	free(full);
+}
+
+static void tc_custom_build_key(int index1, const char* suffix, char* out, int outBytes)
+{
+	if (!out || outBytes <= 0) return;
+	wsprintf(out, "Custom%d%s", index1, suffix ? suffix : "");
+}
+
+static void tc_custom_trim_edges_wide(wchar_t* w, int mode)
+{
+	int len;
+	int start = 0;
+	int end;
+	if (!w || mode != TC_CUSTOM_WS_TRIM_EDGES) return;
+	len = lstrlenW(w);
+	end = len;
+	while (start < end) {
+		wchar_t ch = w[start];
+		if (ch == L' ' || ch == L'\t' || ch == 0x3000) start++;
+		else break;
+	}
+	while (end > start) {
+		wchar_t ch = w[end - 1];
+		if (ch == L' ' || ch == L'\t' || ch == 0x3000) end--;
+		else break;
+	}
+	if (start > 0) {
+		int i;
+		for (i = 0; (start + i) < end; ++i) w[i] = w[start + i];
+		w[i] = L'\0';
+	}
+	else {
+		w[end] = L'\0';
+	}
+}
+
+static BOOL tc_custom_is_abs_path(const char* path)
+{
+	if (!path || !path[0]) return FALSE;
+	if (((path[0] >= 'A' && path[0] <= 'Z') || (path[0] >= 'a' && path[0] <= 'z')) && path[1] == ':') return TRUE;
+	if ((path[0] == '\\' && path[1] == '\\') || (path[0] == '/' && path[1] == '/')) return TRUE;
+	return FALSE;
+}
+
+static void tc_custom_resolve_path(const char* inPath, char* outPath, int outBytes)
+{
+	char base[MAX_PATH];
+	char* p1;
+	char* p2;
+	if (!outPath || outBytes <= 0) return;
+	outPath[0] = '\0';
+	if (!inPath || !inPath[0]) return;
+	if (tc_custom_is_abs_path(inPath) || !g_inifile[0]) {
+		lstrcpyn(outPath, inPath, outBytes);
+		return;
+	}
+	lstrcpyn(base, g_inifile, (int)sizeof(base));
+	p1 = strrchr(base, '\\');
+	p2 = strrchr(base, '/');
+	if (p2 && (!p1 || p2 > p1)) p1 = p2;
+	if (p1) *(p1 + 1) = '\0';
+	else base[0] = '\0';
+	if (!base[0]) lstrcpyn(outPath, inPath, outBytes);
+	else wsprintf(outPath, "%s%s", base, inPath);
+}
+
+static BOOL tc_custom_decode_to_wide(const BYTE* raw, DWORD bytes, wchar_t* outWide, int outCch)
+{
+	int n;
+	if (!outWide || outCch <= 0) return FALSE;
+	outWide[0] = L'\0';
+	if (!raw || bytes == 0) return FALSE;
+	if (bytes >= 3 && raw[0] == 0xEF && raw[1] == 0xBB && raw[2] == 0xBF) {
+		n = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, (LPCSTR)(raw + 3), (int)(bytes - 3), outWide, outCch - 1);
+		if (n <= 0) return FALSE;
+		outWide[n] = L'\0';
+		return TRUE;
+	}
+	if (bytes >= 2 && raw[0] == 0xFF && raw[1] == 0xFE) {
+		DWORD usable = (bytes - 2) & ~1U;
+		int wc = (int)(usable / 2);
+		if (wc > outCch - 1) wc = outCch - 1;
+		memcpy(outWide, raw + 2, (size_t)wc * sizeof(wchar_t));
+		outWide[wc] = L'\0';
+		return TRUE;
+	}
+	if (bytes >= 2 && raw[0] == 0xFE && raw[1] == 0xFF) {
+		DWORD usable = (bytes - 2) & ~1U;
+		DWORD i;
+		int wc = (int)(usable / 2);
+		if (wc > outCch - 1) wc = outCch - 1;
+		for (i = 0; i < (DWORD)wc; ++i) {
+			WORD hi = raw[2 + i * 2];
+			WORD lo = raw[2 + i * 2 + 1];
+			outWide[i] = (wchar_t)((hi << 8) | lo);
+		}
+		outWide[wc] = L'\0';
+		return TRUE;
+	}
+	n = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, (LPCSTR)raw, (int)bytes, outWide, outCch - 1);
+	if (n > 0) { outWide[n] = L'\0'; return TRUE; }
+	n = MultiByteToWideChar(932, 0, (LPCSTR)raw, (int)bytes, outWide, outCch - 1);
+	if (n > 0) { outWide[n] = L'\0'; return TRUE; }
+	return FALSE;
+}
+
+static BOOL tc_custom_read_first_line_wide(const char* path, wchar_t* outWide, int outCch)
+{
+	HANDLE h;
+	DWORD sizeLow;
+	DWORD readBytes = 0;
+	BYTE* raw = NULL;
+	BOOL ok = FALSE;
+	DWORD i;
+	if (!path || !path[0] || !outWide || outCch <= 0) return FALSE;
+	outWide[0] = L'\0';
+	h = CreateFile(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (h == INVALID_HANDLE_VALUE) return FALSE;
+	sizeLow = GetFileSize(h, NULL);
+	if (sizeLow == INVALID_FILE_SIZE && GetLastError() != NO_ERROR) { CloseHandle(h); return FALSE; }
+	if (sizeLow == 0 || sizeLow > TC_CUSTOM_FILE_MAX_BYTES) { CloseHandle(h); return FALSE; }
+	raw = (BYTE*)HeapAlloc(GetProcessHeap(), 0, (SIZE_T)sizeLow + 2);
+	if (!raw) { CloseHandle(h); return FALSE; }
+	if (!ReadFile(h, raw, sizeLow, &readBytes, NULL)) goto cleanup;
+	if (readBytes == 0 || readBytes > TC_CUSTOM_FILE_MAX_BYTES) goto cleanup;
+	if (!tc_custom_decode_to_wide(raw, readBytes, outWide, outCch)) goto cleanup;
+	for (i = 0; outWide[i]; ++i) {
+		if (outWide[i] == L'\r' || outWide[i] == L'\n') { outWide[i] = L'\0'; break; }
+	}
+	ok = TRUE;
+cleanup:
+	if (raw) HeapFree(GetProcessHeap(), 0, raw);
+	CloseHandle(h);
+	return ok;
+}
+
+static void tc_custom_set_fallback(TC_CUSTOM_VAR_ENTRY* e)
+{
+	if (!e) return;
+	lstrcpyn(e->value, e->failValue, (int)sizeof(e->value));
+}
+
+static const char* tc_custom_get_value(int index1);
+
+static void tc_custom_refresh_one(int idx, DWORD nowTick, BOOL forceRefresh)
+{
+	TC_CUSTOM_VAR_ENTRY* e;
+	wchar_t wbuf[TC_CUSTOM_VALUE_MAX];
+	char resolved[TC_CUSTOM_PATH_MAX + MAX_PATH];
+	char ansi[TC_CUSTOM_VALUE_MAX];
+	if (idx < 0 || idx >= TC_CUSTOM_VAR_MAX) return;
+	e = &g_customVars[idx];
+	if (!forceRefresh && !tc_custom_tick_expired(nowTick, e->nextRefreshTick)) return;
+	if (!e->hasPath) {
+		tc_custom_set_fallback(e);
+		e->nextRefreshTick = nowTick + (DWORD)(e->refreshSec * 1000);
+		return;
+	}
+	tc_custom_resolve_path(e->path, resolved, (int)sizeof(resolved));
+	if (!resolved[0] || !tc_custom_read_first_line_wide(resolved, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0])))) {
+		tc_custom_set_fallback(e);
+		e->nextRefreshTick = nowTick + (DWORD)(e->refreshSec * 1000);
+		return;
+	}
+	tc_custom_trim_edges_wide(wbuf, e->whitespaceMode);
+	if (e->maxChars > 0 && lstrlenW(wbuf) > e->maxChars) wbuf[e->maxChars] = L'\0';
+	if (wbuf[0] == L'\0') {
+		tc_custom_set_fallback(e);
+		e->nextRefreshTick = nowTick + (DWORD)(e->refreshSec * 1000);
+		return;
+	}
+	if (tc_utf16_to_ansi_compat(CP_ACP, wbuf, ansi, (int)sizeof(ansi)) <= 0) {
+		tc_custom_set_fallback(e);
+		e->nextRefreshTick = nowTick + (DWORD)(e->refreshSec * 1000);
+		return;
+	}
+	lstrcpyn(e->value, ansi, (int)sizeof(e->value));
+	e->nextRefreshTick = nowTick + (DWORD)(e->refreshSec * 1000);
+}
+
+static int tc_custom_try_parse_token(const char* sp, int* outIndex)
+{
+	const char* p;
+	int num = 0;
+	if (!sp || !outIndex) return 0;
+	if (_strnicmp(sp, "CUSTOM", 6) != 0) return 0;
+	p = sp + 6;
+	if (!isdigit((unsigned char)*p)) return 0;
+	while (isdigit((unsigned char)*p)) {
+		num = (num * 10) + (*p - '0');
+		if (num > TC_CUSTOM_VAR_MAX) return 0;
+		p++;
+	}
+	if (num < 1 || num > TC_CUSTOM_VAR_MAX) return 0;
+	if (*p && (isalnum((unsigned char)*p) || *p == '_')) return 0;
+	*outIndex = num;
+	return (int)(p - sp);
+}
+
+static void tc_custom_append_text(char** dp, char** infop, const char* text)
+{
+	while (text && *text) {
+		*(*dp)++ = *text++;
+		*(*infop)++ = 0x01;
+	}
+}
+
+static BOOL tc_custom_emit_if_token(char** dp, char** infop, char** sp)
+{
+	int idx = 0;
+	int len;
+	if (!dp || !infop || !sp || !*sp) return FALSE;
+	len = tc_custom_try_parse_token(*sp, &idx);
+	if (len <= 0) return FALSE;
+	tc_custom_append_text(dp, infop, tc_custom_get_value(idx));
+	*sp += len;
+	return TRUE;
+}
+
+void CustomFormatVarsReadSettings(void)
+{
+	int i;
+	tc_custom_try_init_inifile();
+	char key[64];
+	char tmp[TC_CUSTOM_FAIL_MAX];
+
+	g_customDefaultRefreshSec = tc_custom_clamp_int((int)GetMyRegLong("Format", "CustomRefreshSec", TC_CUSTOM_REFRESH_DEFAULT), 1, 86400);
+	g_customDefaultMaxChars = tc_custom_clamp_int((int)GetMyRegLong("Format", "CustomMaxChars", TC_CUSTOM_MAX_CHARS_DEFAULT), 1, 4096);
+	lstrcpyn(g_customDefaultFailValue, "N/A", (int)sizeof(g_customDefaultFailValue));
+	if (GetMyRegStr("Format", "CustomFailValue", g_customDefaultFailValue, (int)sizeof(g_customDefaultFailValue), "N/A") <= 0) {
+		lstrcpyn(g_customDefaultFailValue, "N/A", (int)sizeof(g_customDefaultFailValue));
+	}
+	lstrcpyn(tmp, "trim_edges", (int)sizeof(tmp));
+	if (GetMyRegStr("Format", "CustomWhitespace", tmp, (int)sizeof(tmp), "trim_edges") <= 0) {
+		lstrcpyn(tmp, "trim_edges", (int)sizeof(tmp));
+	}
+	g_customDefaultWhitespaceMode = tc_custom_parse_whitespace_mode(tmp, TC_CUSTOM_WS_TRIM_EDGES);
+	g_customPreloadOnStartup = GetMyRegLong("Format", "CustomPreloadOnStartup", TC_CUSTOM_PRELOAD_DEFAULT) ? 1 : 0;
+
+	for (i = 0; i < TC_CUSTOM_VAR_MAX; ++i) {
+		TC_CUSTOM_VAR_ENTRY* e = &g_customVars[i];
+		DWORD h = 0;
+
+		e->path[0] = '\0';
+		e->refreshSec = g_customDefaultRefreshSec;
+		e->maxChars = g_customDefaultMaxChars;
+		lstrcpyn(e->failValue, g_customDefaultFailValue, (int)sizeof(e->failValue));
+		e->whitespaceMode = g_customDefaultWhitespaceMode;
+
+		if (g_inifile[0]) {
+			tc_custom_build_key(i + 1, "Path", key, (int)sizeof(key));
+			GetMyRegStr("Format", key, e->path, (int)sizeof(e->path), "");
+			tc_custom_build_key(i + 1, "RefreshSec", key, (int)sizeof(key));
+			e->refreshSec = tc_custom_clamp_int((int)GetMyRegLong("Format", key, g_customDefaultRefreshSec), 1, 86400);
+			tc_custom_build_key(i + 1, "MaxChars", key, (int)sizeof(key));
+			e->maxChars = tc_custom_clamp_int((int)GetMyRegLong("Format", key, g_customDefaultMaxChars), 1, 4096);
+			tc_custom_build_key(i + 1, "FailValue", key, (int)sizeof(key));
+			if (GetMyRegStr("Format", key, e->failValue, (int)sizeof(e->failValue), g_customDefaultFailValue) <= 0) {
+				lstrcpyn(e->failValue, g_customDefaultFailValue, (int)sizeof(e->failValue));
+			}
+			tc_custom_build_key(i + 1, "Whitespace", key, (int)sizeof(key));
+			tmp[0] = '\0';
+			if (GetMyRegStr("Format", key, tmp, (int)sizeof(tmp), "") <= 0) {
+				tmp[0] = '\0';
+			}
+			e->whitespaceMode = tc_custom_parse_whitespace_mode(tmp, g_customDefaultWhitespaceMode);
+		}
+
+		e->hasPath = e->path[0] ? TRUE : FALSE;
+		h ^= tc_custom_hash_text(e->path);
+		h ^= tc_custom_hash_text(e->failValue);
+		h ^= (DWORD)e->refreshSec;
+		h ^= ((DWORD)e->maxChars << 8);
+		h ^= ((DWORD)e->whitespaceMode << 16);
+		if (h != e->configHash) {
+			e->configHash = h;
+			e->nextRefreshTick = 0;
+			e->value[0] = '\0';
+		}
+		if (!e->hasPath) tc_custom_set_fallback(e);
+	}
+	g_customSettingsLoaded = TRUE;
+}
+
+void CustomFormatVarsPreloadIfEnabled(void)
+{
+	int i;
+	DWORD nowTick;
+	if (!g_customSettingsLoaded) CustomFormatVarsReadSettings();
+	if (!g_customPreloadOnStartup) return;
+	nowTick = GetTickCount();
+	for (i = 0; i < TC_CUSTOM_VAR_MAX; ++i) tc_custom_refresh_one(i, nowTick, TRUE);
+}
+
+static const char* tc_custom_get_value(int index1)
+{
+	TC_CUSTOM_VAR_ENTRY* e;
+	DWORD nowTick;
+	if (index1 < 1 || index1 > TC_CUSTOM_VAR_MAX) return "";
+	if (!g_customSettingsLoaded) CustomFormatVarsReadSettings();
+	e = &g_customVars[index1 - 1];
+	nowTick = GetTickCount();
+	tc_custom_refresh_one(index1 - 1, nowTick, FALSE);
+	return e->value;
+}
 
 extern int iFreeRes[3], totalCPUUsage, iBatteryLife, iVolume, totalGPUUsage;
 extern int iCPUClock[];
@@ -482,6 +867,9 @@ void MakeFormat(char* s, char* s_info, SYSTEMTIME* pt, int beat100, char* fmt)
 						}
 					}
 					if(*sp == '\"') sp++;
+				}
+				else if (tc_custom_emit_if_token(&dp, &infop, &sp)) {
+					;
 				}
 				else if(*sp == '/')
 				{
@@ -2411,9 +2799,14 @@ void MakeFormat(char* s, char* s_info, SYSTEMTIME* pt, int beat100, char* fmt)
 
 		else
 		{
-			p = CharNext(sp);
-			while (sp != p) {
-				*dp++ = *sp++; *infop++ = 0x01;
+			if (tc_custom_emit_if_token(&dp, &infop, &sp)) {
+				;
+			}
+			else {
+				p = CharNext(sp);
+				while (sp != p) {
+					*dp++ = *sp++; *infop++ = 0x01;
+				}
 			}
 		}
 	}

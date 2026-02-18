@@ -502,6 +502,7 @@ void InitComboFont(HWND hDlg)
 
 	ReleaseDC(NULL, hdc);
 
+	s[0] = '\0';
 	GetMyRegStr("Color_Font", "Font", s, 80, "");
 	tc_normalize_font_name_for_combo(s, (int)sizeof(s));
 	if(s[0] == 0)

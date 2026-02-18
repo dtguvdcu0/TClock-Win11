@@ -2950,6 +2950,9 @@ void ReadData()
 	if(bGraph)
 		bGraphTimerStart = SetTimer(hwndClockMain, IDTIMERDLL_GRAPH, graphInterval*1000, NULL) != 0;
 
+	CustomFormatVarsReadSettings();
+	CustomFormatVarsPreloadIfEnabled();
+
 	GetMyRegStr("Format", "Format", format, 1024, "mm/dd ddd\\n hh:nn:ss ");
 
 	// 時計の書式は読み込み時に<%～%>を追加する

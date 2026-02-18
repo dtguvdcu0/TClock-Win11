@@ -942,14 +942,106 @@ static BOOL tc_menu_is_custom_enabled(void)
 	return GetMyRegLong(TC_MENU_SECTION, "MenuCustomEnabled", 1) ? TRUE : FALSE;
 }
 
+static BOOL tc_menu_has_section_header(const char* section)
+{
+	HANDLE hFile;
+	DWORD fileSize;
+	DWORD readBytes = 0;
+	char* buf = NULL;
+	BOOL found = FALSE;
+	int sectionLen;
+	DWORD i = 0;
+	if (!section || !section[0] || !g_inifile[0]) return FALSE;
+	sectionLen = lstrlen(section);
+	hFile = CreateFile(g_inifile, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
+		OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (hFile == INVALID_HANDLE_VALUE) return FALSE;
+	fileSize = GetFileSize(hFile, NULL);
+	if (fileSize == INVALID_FILE_SIZE || fileSize == 0) {
+		CloseHandle(hFile);
+		return FALSE;
+	}
+	buf = (char*)malloc((size_t)fileSize + 1);
+	if (!buf) {
+		CloseHandle(hFile);
+		return FALSE;
+	}
+	if (!ReadFile(hFile, buf, fileSize, &readBytes, NULL) || readBytes == 0) {
+		free(buf);
+		CloseHandle(hFile);
+		return FALSE;
+	}
+	buf[readBytes] = '\0';
+	while (i < readBytes) {
+		DWORD ls = i;
+		DWORD le = i;
+		while (le < readBytes && buf[le] != '\r' && buf[le] != '\n') ++le;
+		{
+			DWORD s = ls;
+			DWORD e = le;
+			while (s < e && (buf[s] == ' ' || buf[s] == '\t')) ++s;
+			while (e > s && (buf[e - 1] == ' ' || buf[e - 1] == '\t')) --e;
+			if (e > s + 2 && buf[s] == '[' && buf[e - 1] == ']') {
+				int n = (int)(e - s - 2);
+				if (n == sectionLen) {
+					char secName[128];
+					if (n >= (int)sizeof(secName)) n = (int)sizeof(secName) - 1;
+					memcpy(secName, buf + s + 1, n);
+					secName[n] = '\0';
+					if (_stricmp(secName, section) == 0) {
+						found = TRUE;
+						break;
+					}
+				}
+			}
+		}
+		i = le;
+		if (i < readBytes && buf[i] == '\r') ++i;
+		if (i < readBytes && buf[i] == '\n') ++i;
+	}
+	free(buf);
+	CloseHandle(hFile);
+	return found;
+}
+
 static void tc_menu_ensure_ini_defaults(void)
 {
-	if (GetMyRegLong(TC_MENU_SECTION, "Version", 0) > 0) {
+	int i;
+	if (tc_menu_has_section_header(TC_MENU_SECTION)) {
 		return;
 	}
-	SetMyRegLong(TC_MENU_SECTION, "Version", 1);
-	SetMyRegLong(TC_MENU_SECTION, "ItemCount", 0);
+	SetMyRegLong(TC_MENU_SECTION, "ItemCount", 16);
 	SetMyRegLong(TC_MENU_SECTION, "MenuCustomEnabled", 1);
+	for (i = 1; i <= 16; ++i) {
+		char key[64];
+		char type[32];
+		char action[64];
+		int enabled = 1;
+		const char* defaultLabel;
+		type[0] = '\0';
+		action[0] = '\0';
+		tc_menu_get_default_item(i, type, (int)sizeof(type), action, (int)sizeof(action), &enabled);
+		wsprintf(key, "Item%dType", i);
+		SetMyRegStr(TC_MENU_SECTION, key, type);
+		wsprintf(key, "Item%dEnabled", i);
+		SetMyRegLong(TC_MENU_SECTION, key, enabled);
+		if (_stricmp(type, "command") == 0) {
+			char param[512];
+			const char* execType;
+			wsprintf(key, "Item%dAction", i);
+			SetMyRegStr(TC_MENU_SECTION, key, action);
+			defaultLabel = tc_menu_default_label_for_action(action);
+			wsprintf(key, "Item%dLabel", i);
+			SetMyRegStr(TC_MENU_SECTION, key, (char*)defaultLabel);
+			execType = tc_menu_default_exec_type_for_action(action);
+			wsprintf(key, "Item%dExecType", i);
+			SetMyRegStr(TC_MENU_SECTION, key, (char*)execType);
+			param[0] = '\0';
+			tc_menu_default_param_for_action(action, param, (int)sizeof(param));
+			wsprintf(key, "Item%dParam", i);
+			SetMyRegStr(TC_MENU_SECTION, key, param);
+		}
+	}
 }
 
 static void tc_menu_apply_custom_from_ini(HMENU hMenu)

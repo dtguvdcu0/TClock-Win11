@@ -149,6 +149,26 @@ Item4ExecType=commandline
 Item4Param=/c powershell -NoProfile -Command "Start-Process cmd.exe -Verb RunAs -ArgumentList '/k cd /d C:\'"
 ```
 
+- Example: Open folder (path)
+
+```ini
+Item11Type=command
+Item11Enabled=1
+Item11Label=Open TClock Folder
+Item11ExecType=shell
+Item11Param=C:\TClock-Win11
+```
+
+- Example: Open URL
+
+```ini
+Item13Type=command
+Item13Enabled=1
+Item13Label=Open GitHub
+Item13ExecType=shell
+Item13Param=https://github.com/
+```
+
 ### Builtin Actions for `ExecType=builtin` (`ItemNAction`)
 
 - `taskmgr`: open Task Manager

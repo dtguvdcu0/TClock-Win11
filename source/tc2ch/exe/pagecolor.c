@@ -31,6 +31,21 @@ extern BOOL b_DebugLog;
 
 static HFONT hfont_sample;
 
+static void tc_normalize_font_name_for_combo(char* s, int sBytes)
+{
+	WCHAR wbuf[256];
+	char abuf[256];
+	const unsigned char* p;
+	if (!s || sBytes <= 1 || !s[0]) return;
+	/* Limit conversion attempts to non-ASCII payload to avoid unnecessary rewrites. */
+	p = (const unsigned char*)s;
+	while (*p && *p < 0x80) ++p;
+	if (*p == 0) return;
+	if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, s, -1, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) <= 0) return;
+	if (WideCharToMultiByte(GetACP(), 0, wbuf, -1, abuf, (int)sizeof(abuf), NULL, NULL) <= 0) return;
+	lstrcpyn(s, abuf, sBytes);
+}
+
 static COMBOCOLOR combocolor[4] = {
 	{ IDC_COLBACK,      "BackColor",   0x80000000|COLOR_3DFACE },
 	{ IDC_COLBACK2,     "BackColor2",  0xFFFFFFFF },
@@ -488,6 +503,7 @@ void InitComboFont(HWND hDlg)
 	ReleaseDC(NULL, hdc);
 
 	GetMyRegStr("Color_Font", "Font", s, 80, "");
+	tc_normalize_font_name_for_combo(s, (int)sizeof(s));
 	if(s[0] == 0)
 	{
 		HFONT hfont;

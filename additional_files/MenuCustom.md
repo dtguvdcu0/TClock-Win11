@@ -1,209 +1,281 @@
 # MenuCustom Specification
 
-Last updated: 2026-02-17  
-Target: TClock-Win11 right-click menu (`[MenuCustom]`)
+Last updated: 2026-02-18  
+Guide for customizing the right-click menu in TClock-Win11 using `[MenuCustom]`.
 
-## Overview
-`[MenuCustom]` controls non-fixed entries in the right-click menu.
+## What You Can Do
 
-Always-fixed entries (not removed by `[MenuCustom]`):
-- Language (submenu)
+You can configure the right-click menu by editing settings under `[MenuCustom]` in `tclock-win11.ini`.
+
+Typical usage is a customizable launcher-style menu.
+
+Note: the following items are fixed and always present:
+
+- Language switch submenu
 - TClock properties
 - Open TClock folder
 - Restart TClock
 - Exit TClock
 
-## Quick Start
-```ini
-[MenuCustom]
-Version=1
-ItemCount=1
-LabelFormatUpdateSec=1
+## Global Keys
 
-Item1Type=command
-Item1Enabled=1
-Item1Action=clock_label
-Item1Label=Clock
-Item1LabelFormat=yyyy/mm/dd ddd tt hh:nn:ss
-Item1LabelUpdateSec=1
-Item1ExecType=shell
-Item1Param=ms-settings:dateandtime
-```
+These keys are placed directly under `[MenuCustom]`:
 
-## Key Reference
-Global keys:
-- `Version=<int>`
+- `MenuCustomEnabled=<int>`
 - `ItemCount=<int>`
-- `LabelFormatUpdateSec=<int>`: default refresh interval (seconds) for formatted labels
+- `LabelFormatUpdateSec=<int>`
 
-Per-item keys (`N` starts from `1`):
-- `ItemNType=command|separator`
+`MenuCustomEnabled=1` enables custom menu behavior on right-click.
+
+`ItemCount` is the upper bound of item index numbers. Items above that index are not loaded (see below).
+
+`LabelFormatUpdateSec` is used for items with TClock-style dynamic labels. If `ItemNLabelUpdateSec` is not set for an item, this global value is used.
+
+## Item Numbering Rules
+
+In this document, `N` in keys like `ItemN****` means the item index number (`Item1Type`, `Item2Label`, etc.).
+Settings are grouped by matching item index.
+
+- Numbers do not need to be contiguous. Missing numbers are skipped.
+
+Examples:
+
+- Defining only `Item1` and `Item3` is valid.
+- If `ItemCount=3`, then `Item4+` is ignored.
+
+## Per-Item Settings
+
+### ItemType
+
+- `ItemNType=command` run an action
+- `ItemNType=separator` add a separator line
+- `ItemNType=alarm` alarm/timer item
+
+### command Item
+
+Keys used when `ItemNType=command`.
+
+Required/basic keys:
+
+- `ItemNType=command`
 - `ItemNEnabled=0|1`
-- `ItemNAction=<action_name>`
 - `ItemNLabel=<menu_text>`
-- `ItemNLabelFormat=<format_text>`
-- `ItemNLabelUpdateSec=<int>`
 - `ItemNExecType=builtin|shell|commandline`
 - `ItemNParam=<execution parameter>`
+
+Optional keys:
+
+- `ItemNAction=<action_name>`
+- `ItemNLabelFormat=<format_text>`
+- `ItemNLabelUpdateSec=<int>`
 - `ItemNArgs=<optional args for shell target>`
 - `ItemNWorkDir=<optional working directory>`
 - `ItemNShow=<SW_*>` (default `1` = `SW_SHOWNORMAL`)
 
-## Per-item Keys Explained (Top to Bottom)
-- `ItemNType=command|separator`
-  - `command`: clickable menu row.
-  - `separator`: divider line. Other `ItemN*` execution keys are ignored.
+### command Key Details
 
-- `ItemNEnabled=0|1`
-  - `1`: row is active and shown.
-  - `0`: row is skipped (hidden).
+- `ItemNEnabled`
+  - `1`: visible
+  - `0`: hidden
+- `ItemNExecType`
+  - `builtin`: internal TClock command (requires valid builtin action name)
+  - `shell`: executed by ShellExecute (`ItemNParam`)
+  - `commandline`: executed via `cmd.exe` (`ItemNParam`, usually starts with `/c`)
+- `ItemNAction`
+  - effectively required for `builtin`
+  - optional metadata for `shell` / `commandline`
+- `ItemNLabel`
+  - plain menu text label
+  - use this when no dynamic TClock format is needed
+- `ItemNLabelFormat`
+  - dynamic label text with TClock format
+  - if set, it takes priority over `ItemNLabel`
+- `ItemNLabelUpdateSec`
+  - update interval for dynamic label (only while right-click menu is open)
+  - `0`: fixed display (startup-time resolved)
+  - `1+`: update every N seconds
+- `ItemNShow`
+  - startup window state
+  - common values:
+    - `0` = `SW_HIDE`
+    - `1` = `SW_SHOWNORMAL`
+    - `3` = `SW_SHOWMAXIMIZED`
+    - `7` = `SW_SHOWMINNOACTIVE`
 
-- `ItemNAction=<action_name>`
-  - Logical identifier for the item.
-  - For `builtin`, this must match a known built-in action name.
-  - For `shell`/`commandline`, it is still useful as readable metadata.
+- Example: launch Notepad
 
-- `ItemNLabel=<menu_text>`
-  - Static display text.
-  - Used directly when `ItemNLabelFormat` is empty.
-
-- `ItemNLabelFormat=<format_text>`
-  - Dynamic display text generated from format.
-  - Uses TClock `MakeFormat` behavior.
-  - If set, it overrides `ItemNLabel` for display.
-  - Aliases supported:
-    - `@CLOCK`
-    - `@MAIN_FORMAT`
-    - `@TCLOCK_FORMAT`
-  - These aliases use the current main clock format from `Format/CustomFormat` (or `Format`).
-
-- `ItemNLabelUpdateSec=<int>`
-  - Per-item refresh interval in seconds.
-  - `0`: refresh every timer tick while menu is open.
-  - `1+`: refresh at that interval.
-  - If omitted, `LabelFormatUpdateSec` is used.
-
-- `ItemNExecType=builtin|shell|commandline`
-  - `builtin`: executes internal TClock command handler.
-  - `shell`: executes external target via ShellExecute-style route.
-  - `commandline`: executes `cmd.exe` with `ItemNParam`.
-
-- `ItemNParam=<execution parameter>`
-  - Main execution payload.
-  - `builtin`: optional (action usually decides behavior).
-  - `shell`: target/URI or command string.
-  - `commandline`: arguments passed to `cmd.exe` (for example `/c ...`).
-
-- `ItemNArgs=<optional args for shell target>`
-  - Extra arguments for `shell` execution.
-  - Usually empty unless you want to split executable and arguments explicitly.
-
-- `ItemNWorkDir=<optional working directory>`
-  - Working directory for process launch.
-  - Mainly useful for `shell` and `commandline`.
-
-- `ItemNShow=<SW_*>`
-  - Initial window show state for launched process.
-  - Typical values:
-    - `0`: hidden (`SW_HIDE`)
-    - `1`: normal (`SW_SHOWNORMAL`)
-    - `3`: maximized (`SW_SHOWMAXIMIZED`)
-    - `7`: minimized (`SW_SHOWMINNOACTIVE`)
-
-## Label Format Behavior
-- `ItemNLabelFormat` uses TClock's `MakeFormat` engine.
-- Token support follows TClock format support.
-- `ItemNLabelFormat` overrides displayed `ItemNLabel` text.
-- Refresh interval priority:
-  - `ItemNLabelUpdateSec`
-  - fallback to `LabelFormatUpdateSec`
-- `0` means refresh on each menu open.
-
-## Samples
-Different refresh intervals per item:
 ```ini
-[MenuCustom]
-Version=1
-ItemCount=3
-LabelFormatUpdateSec=5
-
 Item1Type=command
 Item1Enabled=1
-Item1Action=clock_fast
-Item1Label=Clock Fast
-Item1LabelFormat=hh:nn:ss
-Item1LabelUpdateSec=1
+Item1Action=launch_notepad
+Item1Label=Notepad
 Item1ExecType=shell
-Item1Param=ms-settings:dateandtime
-
-
-Item3Type=command
-Item3Enabled=1
-Item3Action=date_default
-Item3Label=Date Default
-Item3LabelFormat=yyyy/mm/dd
-Item3ExecType=shell
-Item3Param=ms-settings:dateandtime
+Item1Param=notepad.exe
 ```
 
-Use full TClock format directly:
+- Example: dynamic label using TClock format
+
 ```ini
-Item10Type=command
-Item10Enabled=1
-Item10Action=clock_full_format
-Item10Label=Clock
-Item10LabelFormat=<your TClock format string>
-Item10LabelUpdateSec=1
-Item10ExecType=shell
-Item10Param=ms-settings:dateandtime
+Item2Type=command
+Item2Enabled=1
+Item2Action=clock_label
+Item2Label=Clock
+Item2LabelFormat=Date/Time yyyy/mm/dd ddd tt hh:nn:ss
+Item2LabelUpdateSec=1
+Item2ExecType=shell
+Item2Param=ms-settings:dateandtime
 ```
 
-Launch Chrome:
-```ini
-Item23Type=command
-Item23Enabled=1
-Item23Action=launch_chrome
-Item23Label=Google Chrome
-Item23ExecType=shell
-Item23Param="C:\Program Files\Google\Chrome\Application\chrome.exe"
-```
+- Example: restart Explorer
 
-
-Restart Explorer:
 ```ini
 Item24Type=command
 Item24Enabled=1
-Item24Action=restart_explorer
+Item24Action=Restart Explorer
 Item24Label=Restart Explorer
 Item24ExecType=commandline
 Item24Param=/c taskkill /f /im explorer.exe & start explorer.exe
+Item24Show=0
 ```
 
-Turn off monitor:
+- Example: Command Prompt (Run as Administrator)
+
 ```ini
-Item25Type=command
-Item25Enabled=1
-Item25Action=monitor_off
-Item25Label=Turn Off Monitor
-Item25ExecType=commandline
-Item25Param=/c powershell -NoProfile -Command "(Add-Type '[DllImport("user32.dll")]public static extern int SendMessage(int hWnd,int hMsg,int wParam,int lParam);' -Name Native -Namespace Win32 -PassThru)::SendMessage(-1,0x0112,0xF170,2)"
+Item4Type=command
+Item4Enabled=1
+Item4Action=cmd_admin
+Item4Label=Commandline (Admin)
+Item4ExecType=commandline
+Item4Param=/c powershell -NoProfile -Command "Start-Process cmd.exe -Verb RunAs -ArgumentList '/k cd /d C:\'"
 ```
 
-## Built-in Action Names
-- `taskmgr`
-- `cmd`
-- `alarm_clock`
-- `pullback`
-- `control_panel`
-- `power_options`
-- `network_connections`
-- `settings_home`
-- `settings_network`
-- `settings_datetime`
-- `remove_drive_dynamic`
+### Builtin Actions for `ExecType=builtin` (`ItemNAction`)
 
-## Notes
-- `ItemNType=separator` ignores action/exec keys.
-- malformed rows are skipped safely.
-- duplicate/leading/trailing separators are normalized.
-- keep `pullback` and `remove_drive_dynamic` as `builtin`.
+- `taskmgr`: open Task Manager
+- `cmd`: open Command Prompt
+- `alarm_clock`: open Windows Alarms & Clock
+- `pullback`: collapse/restore custom area
+- `control_panel`: open Control Panel
+- `power_options`: open Power Options
+- `network_connections`: open Network Connections
+- `settings_home`: open Settings home
+- `settings_network`: open Network settings
+- `settings_datetime`: open Date/Time settings
+- `remove_drive_dynamic`: removable-drive menu item (dynamic)
+
+### separator Item
+
+Use `ItemNType=separator` to add a separator line.
+
+Notes:
+
+- Leading/trailing/consecutive separators are normalized automatically.
+- Example:
+
+```ini
+Item5Type=separator
+Item5Enabled=1
+```
+
+### passive Item
+
+Use `ItemNType=passive` for display-only text/TClock-formatted labels.
+Clicking this row keeps the right-click menu open and runs no action.
+
+```ini
+Item7Type=passive
+Item7Enabled=1
+Item7Label=Now
+Item7LabelFormat=yyyy/mm/dd ddd tt hh:nn:ss
+Item7LabelUpdateSec=1
+```
+
+## `ItemNType=alarm`
+
+Use `ItemNType=alarm` to configure a timer/alarm item.
+
+It counts down from the configured initial seconds. After timeout, it can play a sound and/or show a message dialog.
+Behavior: first left-click starts, next left-click pauses/resumes, right-click resets.
+
+### alarm States
+
+- `idle`: waiting at initial time
+- `running`: counting down
+- `paused`: paused
+- `finished`: reached zero
+
+### alarm Click Behavior
+
+- Left-click transitions:
+  - `idle -> running`
+  - `running -> paused`
+  - `paused -> running`
+  - `finished -> running` (restart)
+- Right-click: always reset to `idle` (initial time)
+
+### alarm Keys
+
+Required:
+
+- `ItemNType=alarm`
+- `ItemNEnabled=0|1`
+- `ItemNAlarmInitialSec=<int>`
+
+Recommended:
+
+- `ItemNLabel=<text>`
+- `ItemNAlarmLabelIdle=<text>`
+- `ItemNAlarmLabelRun=<text>`
+- `ItemNAlarmLabelPause=<text>`
+- `ItemNAlarmLabelDone=<text>`
+
+Optional:
+
+- `ItemNAlarmUpdateSec=<int>`
+- `ItemNAlarmKeepMenuOpen=0|1`
+- `ItemNAlarmNotifyFlags=<0..3>`
+- `ItemNAlarmMessage=<text>`
+- `ItemNAlarmSoundFile=<path>`
+- `ItemNAlarmSoundVolume=<0..100>`
+- `ItemNAlarmSoundLoop=0|1`
+
+### alarm Key Notes
+
+`ItemNAlarmNotifyFlags`:
+
+- `0`: no notification
+- `1`: message only
+- `2`: sound only
+- `3`: message + sound
+
+`ItemNAlarmKeepMenuOpen`:
+
+- `0`: close menu after click
+- `1`: keep menu visible after click
+
+### alarm Label Placeholders
+
+- `%REMAIN_SEC%`: remaining seconds
+- `%REMAIN_MMSS%`: remaining min:sec
+- `%REMAIN_HHMMSS%`: remaining hour:min:sec
+- `%STATE%` (`idle`, `running`, `paused`, `finished`): current state
+
+- Example
+
+```ini
+Item3Type=alarm
+Item3Enabled=1
+Item3Label=Timer
+Item3AlarmInitialSec=300
+Item3AlarmLabelIdle=%REMAIN_MMSS% Timer
+Item3AlarmLabelRun=%REMAIN_MMSS% Running
+Item3AlarmLabelPause=%REMAIN_MMSS% Paused
+Item3AlarmLabelDone=%REMAIN_MMSS% Done
+Item3AlarmUpdateSec=1
+Item3AlarmKeepMenuOpen=1
+Item3AlarmNotifyFlags=3
+Item3AlarmMessage=Timer finished
+Item3AlarmSoundFile=C:\Windows\Media\notify.wav
+Item3AlarmSoundVolume=70
+Item3AlarmSoundLoop=0
+```

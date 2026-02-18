@@ -47,6 +47,7 @@ tclock-win11.iniの`[MenuCustom]`以下の設定で右クリックメニュー�
 
 - `ItemNType=command` 各種機能の実行
 - `ItemNType=separator` 区切り線の追加
+- `ItemNType=passive` テキストのみの表示
 - `ItemNType=alarm` アラーム機能
 
 ### command の項目について
@@ -78,6 +79,7 @@ tclock-win11.iniの`[MenuCustom]`以下の設定で右クリックメニュー�
 - `ItemNExecType`
     - `builtin`: TClock内部コマンド（設定には有効な builtin 名が必要、後述）
     - `shell`: ShellExecute 形式で起動（`ItemNParam`で設定）
+      - PATHが通ったコマンド名だけでなく、フルパス実行ファイル、URI（`ms-settings:`）、URLも指定可能
     - `commandline`: `cmd.exe`経由で実行（`ItemNParam`で設定、通常 `/c` から開始）
 - `ItemNAction`
     - `builtin`で必須
@@ -145,6 +147,26 @@ Item4Action=cmd_admin
 Item4Label=Commandline (Admin)
 Item4ExecType=commandline
 Item4Param=/c powershell -NoProfile -Command "Start-Process cmd.exe -Verb RunAs -ArgumentList '/k cd /d C:\'"
+```
+
+- フォルダを開く
+
+```ini
+Item11Type=command
+Item11Enabled=1
+Item11Label=Open TClock Folder
+Item11ExecType=shell
+Item11Param=C:\TClock-Win11
+```
+
+- URL を開く
+
+```ini
+Item13Type=command
+Item13Enabled=1
+Item13Label=Open GitHub
+Item13ExecType=shell
+Item13Param=https://github.com/
 ```
 
 ### ExecType builtinで利用できるにActionについて(ItemNAction)

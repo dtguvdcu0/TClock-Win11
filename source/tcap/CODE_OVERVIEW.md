@@ -9,6 +9,7 @@ Launch modes:
 - default (or `--capture`): run capture once.
 - `--agent`: run background agent loop (hotkey/timer/tray policy).
 - `--settings`: show settings window (or signal existing agent instance).
+- `--lang ja|en`: optional hint for agent/settings mode default language (used by TClock launcher).
 
 ## Settings flow
 - `loadSettingsProfiles()` reads `TCapture.ini`.
@@ -27,3 +28,7 @@ Launch modes:
 
 ## Build
 - `CMakeLists.txt` builds one target: `TCapture`.
+
+## TClock launch contract
+- TClock startup gate uses `[ETC] TCaptureEnable`.
+- Executable path comes from `[ETC] TCapturePath` (default `TCapture.exe`, relative to TClock dir).

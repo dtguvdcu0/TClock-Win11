@@ -25,9 +25,12 @@ Capture:
 ```bat
 TCapture.exe --list
 TCapture.exe -a -o C:\tmp
+TCapture.exe -d 1,3 -f jpg -q 90
+TCapture.exe --fps 10 --duration 3
 TCapture.exe --profile default
 ```
 
+Capture options: `--list`, `--all`, `--display`, `--output`, `--format`, `--quality`, `--fps`, `--duration`, `--profile`.
 Background agent:
 ```bat
 TCapture.exe --agent
@@ -51,3 +54,10 @@ TCapture.exe --settings
 
 Profiles use INI sections like `[default]`, `[work]`, `[display1]`.
 See `SETTINGS.md` for keys.
+
+## TClock integration
+`TClock-Win11` reads these INI keys under `[ETC]`:
+- `TCaptureEnable=0|1`
+- `TCapturePath=TCapture.exe`
+
+`TCapturePath` accepts relative or absolute paths. Relative paths are resolved from TClock executable directory.

@@ -39,3 +39,4 @@ Note: language is not stored in `TCapture.ini`; when launched from TClock agent,
 
 ## Override rule
 CLI options override INI values for that run.
+Supported overrides: `--display`, `--output`, `--format`, `--quality`, `--fps`, `--duration`, `--profile`.

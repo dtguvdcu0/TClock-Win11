@@ -1401,7 +1401,7 @@ void OnContextMenu(HWND hwnd, HWND hwndClicked, int xPos, int yPos)
 	}
 	tc_menu_dynamic_reset();
 	if (tc_menu_is_custom_enabled()) {
-		tc_menu_ensure_ini_defaults();
+		/* Do not auto-seed [MenuCustom]; apply only existing user-defined entries. */
 		tc_menu_apply_custom_from_ini(hPopupMenu);
 	}
 

@@ -72,9 +72,10 @@ typedef struct {
 	int mode;
 	char jsonPath[TC_CUSTOM_JSON_PATH_MAX];
 	char jsonDefault[TC_CUSTOM_FAIL_MAX];
-	int jsonType;
+	int jsonValueType;
 	int jsonStringify;
 	int jsonNullAsEmpty;
+	char jsonValueExpr[TC_CUSTOM_VALUE_MAX];
 	DWORD nextRefreshTick;
 	DWORD configHash;
 	BOOL hasPath;
@@ -739,16 +740,184 @@ static BOOL tc_custom_utf8_to_utf16(const char* src, wchar_t* dst, int dstCch)
 	return (r > 0) ? TRUE : FALSE;
 }
 
+static BOOL tc_custom_text_to_utf16_compat(const char* src, wchar_t* dst, int dstCch)
+{
+	if (!src || !dst || dstCch <= 0) return FALSE;
+	dst[0] = L'\0';
+	if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, src, -1, dst, dstCch) > 0) return TRUE;
+	return tc_ansi_to_utf16_compat(CP_ACP, src, dst, dstCch) > 0;
+}
+
+static void tc_custom_wide_append(wchar_t* dst, int dstCch, int* pos, const wchar_t* src)
+{
+	int i = 0;
+	if (!dst || !pos || !src || dstCch <= 1) return;
+	while (src[i] && *pos < (dstCch - 1)) {
+		dst[(*pos)++] = src[i++];
+	}
+	dst[*pos] = L'\0';
+}
+
+static void tc_custom_wide_append_char(wchar_t* dst, int dstCch, int* pos, wchar_t ch)
+{
+	if (!dst || !pos || *pos >= (dstCch - 1)) return;
+	dst[(*pos)++] = ch;
+	dst[*pos] = L'\0';
+}
+
+static void tc_custom_copy_trim_path(const char* src, int bytes, char* out, int outBytes)
+{
+	int s = 0;
+	int e = bytes;
+	int n;
+	if (!src || !out || outBytes <= 0) return;
+	while (s < e && (src[s] == ' ' || src[s] == '\t')) s++;
+	while (e > s && (src[e - 1] == ' ' || src[e - 1] == '\t')) e--;
+	n = e - s;
+	if (n < 0) n = 0;
+	if (n > outBytes - 1) n = outBytes - 1;
+	if (n > 0) CopyMemory(out, src + s, n);
+	out[n] = '\0';
+}
+
+static BOOL tc_custom_json_node_to_wide(
+	TC_CUSTOM_VAR_ENTRY* e,
+	TC_CUSTOM_JSON_NODE* target,
+	int typeConstraint,
+	const char* fallback,
+	BOOL useFallback,
+	wchar_t* outWide,
+	int outCch)
+{
+	char outUtf8[TC_CUSTOM_VALUE_MAX];
+	int pos = 0;
+	if (!e || !target || !outWide || outCch <= 0) return FALSE;
+	outWide[0] = L'\0';
+	outUtf8[0] = '\0';
+
+	if (target->type == TC_JSON_NODE_NULL) {
+		if (e->jsonNullAsEmpty) {
+			outUtf8[0] = '\0';
+		} else if (useFallback) {
+			return tc_custom_text_to_utf16_compat(fallback ? fallback : "", outWide, outCch);
+		} else {
+			return FALSE;
+		}
+	} else if (target->type == TC_JSON_NODE_OBJECT || target->type == TC_JSON_NODE_ARRAY) {
+		if (!e->jsonStringify) {
+			if (useFallback) return tc_custom_text_to_utf16_compat(fallback ? fallback : "", outWide, outCch);
+			return FALSE;
+		}
+		tc_custom_json_stringify_node(target, outUtf8, (int)sizeof(outUtf8), &pos);
+	} else if (target->type == TC_JSON_NODE_STRING) {
+		if (typeConstraint != TC_CUSTOM_JSON_TYPE_AUTO && typeConstraint != TC_CUSTOM_JSON_TYPE_STRING) {
+			if (useFallback) return tc_custom_text_to_utf16_compat(fallback ? fallback : "", outWide, outCch);
+			return FALSE;
+		}
+		lstrcpyn(outUtf8, target->text ? target->text : "", (int)sizeof(outUtf8));
+	} else if (target->type == TC_JSON_NODE_NUMBER) {
+		if (typeConstraint != TC_CUSTOM_JSON_TYPE_AUTO && typeConstraint != TC_CUSTOM_JSON_TYPE_NUMBER) {
+			if (useFallback) return tc_custom_text_to_utf16_compat(fallback ? fallback : "", outWide, outCch);
+			return FALSE;
+		}
+		lstrcpyn(outUtf8, target->text ? target->text : "0", (int)sizeof(outUtf8));
+	} else if (target->type == TC_JSON_NODE_BOOL) {
+		if (typeConstraint != TC_CUSTOM_JSON_TYPE_AUTO && typeConstraint != TC_CUSTOM_JSON_TYPE_BOOL) {
+			if (useFallback) return tc_custom_text_to_utf16_compat(fallback ? fallback : "", outWide, outCch);
+			return FALSE;
+		}
+		lstrcpyn(outUtf8, target->boolValue ? "true" : "false", (int)sizeof(outUtf8));
+	}
+
+	if (!tc_custom_utf8_to_utf16(outUtf8, outWide, outCch)) {
+		return tc_custom_text_to_utf16_compat(outUtf8, outWide, outCch);
+	}
+	return TRUE;
+}
+
+static BOOL tc_custom_json_expand_template(TC_CUSTOM_VAR_ENTRY* e, TC_CUSTOM_JSON_NODE* root, wchar_t* outWide, int outCch)
+{
+	const char* p;
+	int pos = 0;
+	wchar_t segWide[TC_CUSTOM_VALUE_MAX];
+	if (!e || !root || !outWide || outCch <= 0) return FALSE;
+	if (!e->jsonValueExpr[0]) return FALSE;
+	outWide[0] = L'\0';
+	p = e->jsonValueExpr;
+
+	while (*p && pos < (outCch - 1)) {
+		if (p[0] == '{' && p[1] == '{') {
+			tc_custom_wide_append_char(outWide, outCch, &pos, L'{');
+			p += 2;
+			continue;
+		}
+		if (p[0] == '}' && p[1] == '}') {
+			tc_custom_wide_append_char(outWide, outCch, &pos, L'}');
+			p += 2;
+			continue;
+		}
+		if (p[0] == '{') {
+			const char* q = p + 1;
+			char path[TC_CUSTOM_JSON_PATH_MAX];
+			TC_CUSTOM_JSON_NODE* target;
+			wchar_t valueWide[TC_CUSTOM_VALUE_MAX];
+			while (*q && *q != '}') q++;
+			if (*q != '}') return FALSE;
+			tc_custom_copy_trim_path(p + 1, (int)(q - (p + 1)), path, (int)sizeof(path));
+			if (!path[0]) return FALSE;
+			target = tc_custom_json_path_find(root, path);
+			if (!target) return FALSE;
+			if (!tc_custom_json_node_to_wide(e, target, e->jsonValueType, NULL, FALSE, valueWide, (int)(sizeof(valueWide) / sizeof(valueWide[0])))) return FALSE;
+			tc_custom_wide_append(outWide, outCch, &pos, valueWide);
+			p = q + 1;
+			continue;
+		}
+		if (p[0] == '}') {
+			return FALSE;
+		}
+		{
+			const char* q = p;
+			while (*q) {
+				if ((q[0] == '{' && q[1] == '{') || (q[0] == '}' && q[1] == '}') || q[0] == '{' || q[0] == '}') break;
+				q++;
+			}
+			if (q > p) {
+				char lit[TC_CUSTOM_VALUE_MAX];
+				int n = (int)(q - p);
+				if (n > (int)sizeof(lit) - 1) n = (int)sizeof(lit) - 1;
+				CopyMemory(lit, p, n);
+				lit[n] = '\0';
+				if (!tc_custom_text_to_utf16_compat(lit, segWide, (int)(sizeof(segWide) / sizeof(segWide[0])))) return FALSE;
+				tc_custom_wide_append(outWide, outCch, &pos, segWide);
+				p = q;
+			}
+		}
+	}
+	outWide[pos] = L'\0';
+	return TRUE;
+}
+
+
+static BOOL tc_custom_json_extract_single_from_root(TC_CUSTOM_VAR_ENTRY* e, TC_CUSTOM_JSON_NODE* root, wchar_t* outWide, int outCch)
+{
+	TC_CUSTOM_JSON_NODE* target;
+	if (!e || !root || !outWide || outCch <= 0) return FALSE;
+	if (!e->jsonPath[0]) return FALSE;
+	target = tc_custom_json_path_find(root, e->jsonPath);
+	if (!target) {
+		if (e->jsonDefault[0]) return tc_custom_text_to_utf16_compat(e->jsonDefault, outWide, outCch);
+		return FALSE;
+	}
+	return tc_custom_json_node_to_wide(e, target, e->jsonValueType, e->jsonDefault, FALSE, outWide, outCch);
+}
+
 static BOOL tc_custom_json_extract_text(TC_CUSTOM_VAR_ENTRY* e, const wchar_t* wjson, wchar_t* outWide, int outCch)
 {
 	char* utf8;
 	TC_CUSTOM_JSON_NODE* root;
-	TC_CUSTOM_JSON_NODE* target;
-	char outUtf8[TC_CUSTOM_VALUE_MAX];
-	int pos = 0;
 	int need;
+	BOOL ok;
 	if (!e || !wjson || !outWide || outCch <= 0) return FALSE;
-	if (!e->jsonPath[0]) return FALSE;
 	need = WideCharToMultiByte(CP_UTF8, 0, wjson, -1, NULL, 0, NULL, NULL);
 	if (need <= 0 || need > (TC_CUSTOM_FILE_MAX_BYTES * 4)) return FALSE;
 	utf8 = (char*)HeapAlloc(GetProcessHeap(), 0, (SIZE_T)need + 8);
@@ -757,33 +926,12 @@ static BOOL tc_custom_json_extract_text(TC_CUSTOM_VAR_ENTRY* e, const wchar_t* w
 	root = tc_custom_json_parse_document(utf8);
 	HeapFree(GetProcessHeap(), 0, utf8);
 	if (!root) return FALSE;
-	target = tc_custom_json_path_find(root, e->jsonPath);
-	if (!target) {
-		tc_custom_json_free_node(root);
-		if (e->jsonDefault[0]) return tc_custom_utf8_to_utf16(e->jsonDefault, outWide, outCch);
-		return FALSE;
-	}
-	outUtf8[0] = '\0';
-	if (target->type == TC_JSON_NODE_NULL) {
-		if (e->jsonNullAsEmpty) outUtf8[0] = '\0';
-		else { tc_custom_json_free_node(root); return FALSE; }
-	} else if (target->type == TC_JSON_NODE_OBJECT || target->type == TC_JSON_NODE_ARRAY) {
-		if (!e->jsonStringify) { tc_custom_json_free_node(root); return FALSE; }
-		tc_custom_json_stringify_node(target, outUtf8, (int)sizeof(outUtf8), &pos);
-	} else if (target->type == TC_JSON_NODE_STRING) {
-		if (e->jsonType != TC_CUSTOM_JSON_TYPE_AUTO && e->jsonType != TC_CUSTOM_JSON_TYPE_STRING) { tc_custom_json_free_node(root); return FALSE; }
-		lstrcpyn(outUtf8, target->text ? target->text : "", (int)sizeof(outUtf8));
-	} else if (target->type == TC_JSON_NODE_NUMBER) {
-		if (e->jsonType != TC_CUSTOM_JSON_TYPE_AUTO && e->jsonType != TC_CUSTOM_JSON_TYPE_NUMBER) { tc_custom_json_free_node(root); return FALSE; }
-		lstrcpyn(outUtf8, target->text ? target->text : "0", (int)sizeof(outUtf8));
-	} else if (target->type == TC_JSON_NODE_BOOL) {
-		if (e->jsonType != TC_CUSTOM_JSON_TYPE_AUTO && e->jsonType != TC_CUSTOM_JSON_TYPE_BOOL) { tc_custom_json_free_node(root); return FALSE; }
-		lstrcpyn(outUtf8, target->boolValue ? "true" : "false", (int)sizeof(outUtf8));
-	}
+	if (e->jsonValueExpr[0]) ok = tc_custom_json_expand_template(e, root, outWide, outCch);
+	else ok = tc_custom_json_extract_single_from_root(e, root, outWide, outCch);
 	tc_custom_json_free_node(root);
-	if (!tc_custom_utf8_to_utf16(outUtf8, outWide, outCch)) return FALSE;
-	return TRUE;
+	return ok;
 }
+
 
 static void tc_custom_set_fallback(TC_CUSTOM_VAR_ENTRY* e)
 {
@@ -919,9 +1067,11 @@ void CustomFormatVarsReadSettings(void)
 		e->mode = TC_CUSTOM_MODE_LINE;
 		e->jsonPath[0] = '\0';
 		e->jsonDefault[0] = '\0';
-		e->jsonType = TC_CUSTOM_JSON_TYPE_AUTO;
+		e->jsonValueType = TC_CUSTOM_JSON_TYPE_AUTO;
 		e->jsonStringify = 0;
 		e->jsonNullAsEmpty = 0;
+		e->jsonValueExpr[0] = '\0';
+		e->jsonValueType = TC_CUSTOM_JSON_TYPE_AUTO;
 
 		if (g_inifile[0]) {
 			tc_custom_build_key(i + 1, "Path", key, (int)sizeof(key));
@@ -951,11 +1101,13 @@ void CustomFormatVarsReadSettings(void)
 			tc_custom_build_key(i + 1, "JsonType", key, (int)sizeof(key));
 			tmp[0] = '\0';
 			if (GetMyRegStr("CustomVars", key, tmp, (int)sizeof(tmp), "") <= 0) tmp[0] = '\0';
-			e->jsonType = tc_custom_parse_json_type(tmp);
+			e->jsonValueType = tc_custom_parse_json_type(tmp);
 			tc_custom_build_key(i + 1, "JsonStringify", key, (int)sizeof(key));
 			e->jsonStringify = GetMyRegLong("CustomVars", key, 0) ? 1 : 0;
 			tc_custom_build_key(i + 1, "JsonNullAsEmpty", key, (int)sizeof(key));
 			e->jsonNullAsEmpty = GetMyRegLong("CustomVars", key, 0) ? 1 : 0;
+			tc_custom_build_key(i + 1, "JsonValue", key, (int)sizeof(key));
+			if (GetMyRegStr("CustomVars", key, e->jsonValueExpr, (int)sizeof(e->jsonValueExpr), "") <= 0) e->jsonValueExpr[0] = '\0';
 			if (e->mode == TC_CUSTOM_MODE_JSON && e->refreshSec < 5) e->refreshSec = 5;
 		}
 
@@ -966,11 +1118,12 @@ void CustomFormatVarsReadSettings(void)
 		h ^= ((DWORD)e->maxChars << 8);
 		h ^= ((DWORD)e->whitespaceMode << 16);
 		h ^= ((DWORD)e->mode << 20);
-		h ^= ((DWORD)e->jsonType << 22);
+		h ^= ((DWORD)e->jsonValueType << 22);
 		h ^= ((DWORD)e->jsonStringify << 24);
 		h ^= ((DWORD)e->jsonNullAsEmpty << 25);
 		h ^= tc_custom_hash_text(e->jsonPath);
 		h ^= tc_custom_hash_text(e->jsonDefault);
+		h ^= tc_custom_hash_text(e->jsonValueExpr);
 		if (h != e->configHash) {
 			e->configHash = h;
 			e->nextRefreshTick = 0;

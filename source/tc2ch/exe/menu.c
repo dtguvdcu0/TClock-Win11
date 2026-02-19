@@ -57,6 +57,7 @@ static char* SafeMyString(UINT id);
 #define TC_MENU_LABEL_CACHE_MAX (TC_MENU_CUSTOM_MAX_ITEMS + 1)
 #define TC_MENU_LIVE_MAX TC_MENU_CUSTOM_MAX_ITEMS
 #define TC_MENU_SECTION_CACHE_BYTES 65536
+#define IDC_TCAP_SETTINGS 45990
 
 typedef struct {
 	UINT id;
@@ -441,7 +442,7 @@ static int tc_menu_dynamic_execute(UINT id)
 
 static BOOL tc_menu_is_fixed_id(UINT id)
 {
-	return id == IDC_SHOWPROP || id == IDC_SHOWDIR || id == IDC_RESTART || id == IDC_EXIT;
+	return id == IDC_SHOWPROP || id == IDC_SHOWDIR || id == IDC_RESTART || id == IDC_EXIT || id == IDC_TCAP_SETTINGS;
 }
 
 static int tc_menu_find_position_by_id(HMENU hMenu, UINT id)
@@ -1405,6 +1406,22 @@ void OnContextMenu(HWND hwnd, HWND hwndClicked, int xPos, int yPos)
 		tc_menu_ensure_ini_defaults();
 		tc_menu_apply_custom_from_ini(hPopupMenu);
 	}
+	if (GetMyRegLong("ETC", "TCaptureEnable", 0)) {
+		int propPos = tc_menu_find_position_by_id(hPopupMenu, IDC_SHOWPROP);
+		if (propPos >= 0) {
+			int insertPos = propPos;
+			MENUITEMINFO prevMii;
+			if (propPos > 0) {
+				ZeroMemory(&prevMii, sizeof(prevMii));
+				prevMii.cbSize = sizeof(prevMii);
+				prevMii.fMask = MIIM_FTYPE;
+				if (GetMenuItemInfo(hPopupMenu, propPos - 1, TRUE, &prevMii) && (prevMii.fType & MFT_SEPARATOR)) {
+					insertPos = propPos - 1;
+				}
+			}
+			InsertMenu(hPopupMenu, insertPos, MF_BYPOSITION | MF_STRING, IDC_TCAP_SETTINGS, "TCapture Settings");
+		}
+	}
 
 	b_CompactMode_menu = GetMyRegLong(NULL, "CompactMode", FALSE);
 	b_SafeMode_menu = GetMyRegLong("Status_DoNotEdit", "SafeMode", FALSE);
@@ -1668,6 +1685,25 @@ void OnTClockCommand(HWND hwnd, WORD wID, WORD wCode)
 			if (b_DebugLog) WriteDebug_New2("[menu.c][OnTClockCommand] IDC_SHOWDIR received");
 			ShellExecuteUtf8Compat(g_hwndMain, NULL, g_mydir, NULL, NULL, SW_SHOWNORMAL);
 			break;
+		case IDC_TCAP_SETTINGS: // TCapture settings
+		{
+			char tcapPathCfg[MAX_PATH];
+			char tcapPath[MAX_PATH];
+			if (b_DebugLog) WriteDebug_New2("[menu.c][OnTClockCommand] IDC_TCAP_SETTINGS received");
+			GetMyRegStr("ETC", "TCapturePath", tcapPathCfg, MAX_PATH, "TCapture.exe");
+			if (tcapPathCfg[0] == 0) strcpy(tcapPathCfg, "TCapture.exe");
+			if ((tcapPathCfg[1] == ':') || (tcapPathCfg[0] == '\\') || (tcapPathCfg[0] == '/')) {
+				strcpy(tcapPath, tcapPathCfg);
+			}
+			else {
+				strcpy(tcapPath, g_mydir);
+				add_title(tcapPath, tcapPathCfg);
+			}
+			if (PathFileExists(tcapPath)) {
+				ShellExecuteUtf8Compat(g_hwndMain, "open", tcapPath, "--settings", g_mydir, SW_SHOWNORMAL);
+			}
+			return;
+		}
 		case IDC_SHOWPROP: // Show property
 			if (b_DebugLog) WriteDebug_New2("[menu.c][OnTClockCommand] IDC_SHOWPROP received");
 			MyPropertyDialog();
@@ -1928,6 +1964,11 @@ void InitializeMenuItems(void)
 	ModifyMenu(hPopupMenu, IDC_DATETIME_Win10, MF_BYCOMMAND, IDC_DATETIME_Win10, SafeMyString(IDS_PROPDATE));
 	ModifyMenu(hPopupMenu, IDC_REMOVE_DRIVE0, MF_BYCOMMAND, IDC_REMOVE_DRIVE0, SafeMyString(IDS_ABOUTRMVDRV));
 	ModifyMenu(hPopupMenu, IDC_SHOWDIR, MF_BYCOMMAND, IDC_SHOWDIR, SafeMyString(IDS_OPENTCFOLDER));
+	{
+		char tcapSettingsLabel[128];
+		wsprintf(tcapSettingsLabel, "TCapture %s", SafeMyString(IDS_SETTING));
+		ModifyMenu(hPopupMenu, IDC_TCAP_SETTINGS, MF_BYCOMMAND, IDC_TCAP_SETTINGS, tcapSettingsLabel);
+	}
 	ModifyMenu(hPopupMenu, IDC_SHOWPROP, MF_BYCOMMAND, IDC_SHOWPROP, SafeMyString(IDS_PROPERTY));
 	ModifyMenu(hPopupMenu, IDC_EXIT, MF_BYCOMMAND, IDC_EXIT, SafeMyString(IDS_EXITTCLOCK));
 	ModifyMenu(hPopupMenu, IDC_RESTART, MF_BYCOMMAND, IDC_RESTART, SafeMyString(IDS_RESTART));

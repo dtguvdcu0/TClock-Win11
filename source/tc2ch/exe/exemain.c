@@ -98,6 +98,7 @@ static BOOL WaitExplorerReady(DWORD timeoutMs);
 static void RestartExplorerForHideClock(void);
 static void ApplyHideClockPolicyFlow(void);
 static void RestoreHideClockPolicyFlow(void);
+static void LaunchTCaptureAgentIfEnabled(void);
 
 static UINT s_uTaskbarRestart = 0;
 static BOOL bcontractTimer = FALSE;
@@ -321,6 +322,37 @@ static void RestoreHideClockPolicyFlow(void)
     if (!SetHideClockPolicyValue(0)) return;
     RestartExplorerForHideClock();
     b_HideClockPolicyApplied = FALSE;
+}
+
+static void LaunchTCaptureAgentIfEnabled(void)
+{
+    char tcapPathCfg[MAX_PATH];
+    char exePath[MAX_PATH];
+    const char* launchParams;
+    HINSTANCE launchResult;
+
+    if (!GetMyRegLong("ETC", "TCaptureEnable", 0)) return;
+
+    GetMyRegStr("ETC", "TCapturePath", tcapPathCfg, MAX_PATH, "TCapture.exe");
+    if (tcapPathCfg[0] == 0) strcpy(tcapPathCfg, "TCapture.exe");
+    if ((tcapPathCfg[1] == ':') || (tcapPathCfg[0] == '\\') || (tcapPathCfg[0] == '/')) {
+        strcpy(exePath, tcapPathCfg);
+    }
+    else {
+        strcpy(exePath, g_mydir);
+        add_title(exePath, tcapPathCfg);
+    }
+
+    if (!PathFileExists(exePath)) {
+        if (b_DebugLog) WriteDebug_New2("[exemain.c] TCaptureEnable=1 but TCapture target was not found");
+        return;
+    }
+
+    launchParams = b_EnglishMenu ? "--agent --lang en" : "--agent --lang ja";
+    launchResult = ShellExecuteUtf8Compat(NULL, "open", exePath, launchParams, g_mydir, SW_HIDE);
+    if ((INT_PTR)launchResult <= 32 && b_DebugLog) {
+        WriteDebug_New2("[exemain.c] Failed to launch TCapture agent");
+    }
 }
 
 
@@ -827,6 +859,7 @@ LRESULT CALLBACK WndProc(HWND hwnd,	UINT message, WPARAM wParam, LPARAM lParam)	
 				if(bcontractTimer) KillTimer(hwnd, wParam);		//タイマー停止
 				bcontractTimer = FALSE;							//起動タイマー動作中フラグFALSE
 				HookStart(hwnd);				// install a hook	dllmain.cの中にある。重要。タスクトレイのメッセージをフック。コア機能の起動
+				LaunchTCaptureAgentIfEnabled();	// launch TCapture agent when enabled
 
 				SetTimer(hwnd, IDTIMER_ZOMBIECHECK, zombieCheckInterval * 1000, NULL);	//
 
@@ -1724,6 +1757,8 @@ void CreateDefaultIniFile_Win10(char *fname)
 		SetMyRegStr("ETC", "ExtTXT_String", "");
 		SetMyRegLong("ETC", "SelectedThermalZone", 0);
 		SetMyRegLong("ETC", "UseHideClockPolicyFlow", 1);
+		SetMyRegLong("ETC", "TCaptureEnable", 0);
+		SetMyRegStr("ETC", "TCapturePath", "TCapture.exe");
 		SetMyRegLong("Chime", "EnableChime", 0);
 		SetMyRegLong("Chime", "OffsetChimeSec", 0);
 		SetMyRegLong("Chime", "ChimeHourStart", 0);

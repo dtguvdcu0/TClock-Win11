@@ -894,18 +894,18 @@ void CustomFormatVarsReadSettings(void)
 	char key[64];
 	char tmp[TC_CUSTOM_FAIL_MAX];
 
-	g_customDefaultRefreshSec = tc_custom_clamp_int((int)GetMyRegLong("Format", "CustomRefreshSec", TC_CUSTOM_REFRESH_DEFAULT), 1, 86400);
-	g_customDefaultMaxChars = tc_custom_clamp_int((int)GetMyRegLong("Format", "CustomMaxChars", TC_CUSTOM_MAX_CHARS_DEFAULT), 1, 4096);
+	g_customDefaultRefreshSec = tc_custom_clamp_int((int)GetMyRegLong("CustomVars", "RefreshSec", TC_CUSTOM_REFRESH_DEFAULT), 1, 86400);
+	g_customDefaultMaxChars = tc_custom_clamp_int((int)GetMyRegLong("CustomVars", "MaxChars", TC_CUSTOM_MAX_CHARS_DEFAULT), 1, 4096);
 	lstrcpyn(g_customDefaultFailValue, "N/A", (int)sizeof(g_customDefaultFailValue));
-	if (GetMyRegStr("Format", "CustomFailValue", g_customDefaultFailValue, (int)sizeof(g_customDefaultFailValue), "N/A") <= 0) {
+	if (GetMyRegStr("CustomVars", "FailValue", g_customDefaultFailValue, (int)sizeof(g_customDefaultFailValue), "N/A") <= 0) {
 		lstrcpyn(g_customDefaultFailValue, "N/A", (int)sizeof(g_customDefaultFailValue));
 	}
 	lstrcpyn(tmp, "trim_edges", (int)sizeof(tmp));
-	if (GetMyRegStr("Format", "CustomWhitespace", tmp, (int)sizeof(tmp), "trim_edges") <= 0) {
+	if (GetMyRegStr("CustomVars", "Whitespace", tmp, (int)sizeof(tmp), "trim_edges") <= 0) {
 		lstrcpyn(tmp, "trim_edges", (int)sizeof(tmp));
 	}
 	g_customDefaultWhitespaceMode = tc_custom_parse_whitespace_mode(tmp, TC_CUSTOM_WS_TRIM_EDGES);
-	g_customPreloadOnStartup = GetMyRegLong("Format", "CustomPreloadOnStartup", TC_CUSTOM_PRELOAD_DEFAULT) ? 1 : 0;
+	g_customPreloadOnStartup = GetMyRegLong("CustomVars", "PreloadOnStartup", TC_CUSTOM_PRELOAD_DEFAULT) ? 1 : 0;
 
 	for (i = 0; i < TC_CUSTOM_VAR_MAX; ++i) {
 		TC_CUSTOM_VAR_ENTRY* e = &g_customVars[i];
@@ -925,37 +925,37 @@ void CustomFormatVarsReadSettings(void)
 
 		if (g_inifile[0]) {
 			tc_custom_build_key(i + 1, "Path", key, (int)sizeof(key));
-			GetMyRegStr("Format", key, e->path, (int)sizeof(e->path), "");
+			GetMyRegStr("CustomVars", key, e->path, (int)sizeof(e->path), "");
 			tc_custom_build_key(i + 1, "RefreshSec", key, (int)sizeof(key));
-			e->refreshSec = tc_custom_clamp_int((int)GetMyRegLong("Format", key, g_customDefaultRefreshSec), 1, 86400);
+			e->refreshSec = tc_custom_clamp_int((int)GetMyRegLong("CustomVars", key, g_customDefaultRefreshSec), 1, 86400);
 			tc_custom_build_key(i + 1, "MaxChars", key, (int)sizeof(key));
-			e->maxChars = tc_custom_clamp_int((int)GetMyRegLong("Format", key, g_customDefaultMaxChars), 1, 4096);
+			e->maxChars = tc_custom_clamp_int((int)GetMyRegLong("CustomVars", key, g_customDefaultMaxChars), 1, 4096);
 			tc_custom_build_key(i + 1, "FailValue", key, (int)sizeof(key));
-			if (GetMyRegStr("Format", key, e->failValue, (int)sizeof(e->failValue), g_customDefaultFailValue) <= 0) {
+			if (GetMyRegStr("CustomVars", key, e->failValue, (int)sizeof(e->failValue), g_customDefaultFailValue) <= 0) {
 				lstrcpyn(e->failValue, g_customDefaultFailValue, (int)sizeof(e->failValue));
 			}
 			tc_custom_build_key(i + 1, "Whitespace", key, (int)sizeof(key));
 			tmp[0] = '\0';
-			if (GetMyRegStr("Format", key, tmp, (int)sizeof(tmp), "") <= 0) {
+			if (GetMyRegStr("CustomVars", key, tmp, (int)sizeof(tmp), "") <= 0) {
 				tmp[0] = '\0';
 			}
 			e->whitespaceMode = tc_custom_parse_whitespace_mode(tmp, g_customDefaultWhitespaceMode);
 			tc_custom_build_key(i + 1, "Mode", key, (int)sizeof(key));
 			tmp[0] = '\0';
-			if (GetMyRegStr("Format", key, tmp, (int)sizeof(tmp), "") <= 0) tmp[0] = '\0';
+			if (GetMyRegStr("CustomVars", key, tmp, (int)sizeof(tmp), "") <= 0) tmp[0] = '\0';
 			e->mode = tc_custom_parse_mode(tmp);
 			tc_custom_build_key(i + 1, "JsonPath", key, (int)sizeof(key));
-			if (GetMyRegStr("Format", key, e->jsonPath, (int)sizeof(e->jsonPath), "") <= 0) e->jsonPath[0] = '\0';
+			if (GetMyRegStr("CustomVars", key, e->jsonPath, (int)sizeof(e->jsonPath), "") <= 0) e->jsonPath[0] = '\0';
 			tc_custom_build_key(i + 1, "JsonDefault", key, (int)sizeof(key));
-			if (GetMyRegStr("Format", key, e->jsonDefault, (int)sizeof(e->jsonDefault), "") <= 0) e->jsonDefault[0] = '\0';
+			if (GetMyRegStr("CustomVars", key, e->jsonDefault, (int)sizeof(e->jsonDefault), "") <= 0) e->jsonDefault[0] = '\0';
 			tc_custom_build_key(i + 1, "JsonType", key, (int)sizeof(key));
 			tmp[0] = '\0';
-			if (GetMyRegStr("Format", key, tmp, (int)sizeof(tmp), "") <= 0) tmp[0] = '\0';
+			if (GetMyRegStr("CustomVars", key, tmp, (int)sizeof(tmp), "") <= 0) tmp[0] = '\0';
 			e->jsonType = tc_custom_parse_json_type(tmp);
 			tc_custom_build_key(i + 1, "JsonStringify", key, (int)sizeof(key));
-			e->jsonStringify = GetMyRegLong("Format", key, 0) ? 1 : 0;
+			e->jsonStringify = GetMyRegLong("CustomVars", key, 0) ? 1 : 0;
 			tc_custom_build_key(i + 1, "JsonNullAsEmpty", key, (int)sizeof(key));
-			e->jsonNullAsEmpty = GetMyRegLong("Format", key, 0) ? 1 : 0;
+			e->jsonNullAsEmpty = GetMyRegLong("CustomVars", key, 0) ? 1 : 0;
 			if (e->mode == TC_CUSTOM_MODE_JSON && e->refreshSec < 5) e->refreshSec = 5;
 		}
 

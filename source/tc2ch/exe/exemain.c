@@ -1569,7 +1569,6 @@ void CreateDefaultIniFile_Win10(char *fname)
 		SetMyRegLong(NULL, "EnableOnSubDisplay", 1);
 		SetMyRegLong(NULL, "OffsetClockMS", 0);
 		SetMyRegLong(NULL, "ShowTrayIcon", 1);
-		SetMyRegStr("Status_DoNotEdit", "Version", "5.4.1.1");
 		SetMyRegLong("Status_DoNotEdit", "SafeMode", 0);
 		SetMyRegLong("Status_DoNotEdit", "LastLaunchTimeStamp", 0);
 		SetMyRegLong("Status_DoNotEdit", "ExcessNetProfiles", 0);

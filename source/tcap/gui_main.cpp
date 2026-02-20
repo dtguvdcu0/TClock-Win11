@@ -140,6 +140,17 @@ void writeDefaultSettingsIni(const fs::path& path) {
         "auto_capture=false\r\n"
         "auto_seconds=60\r\n"
         "displays=active_display\r\n"
+        "\r\n"
+        "[Integration]\r\n"
+        "output_dir=.\r\n"
+        "format=png\r\n"
+        "compression_png=6\r\n"
+        "compression_jpg=94\r\n"
+        "burst_fps=0\r\n"
+        "burst_seconds=1\r\n"
+        "auto_capture=false\r\n"
+        "auto_seconds=60\r\n"
+        "displays=1,3\r\n"
 ;
     fs::path parent = path.parent_path();
     if (!parent.empty() && !fs::exists(parent)) {
@@ -157,6 +168,7 @@ struct SettingsDialog {
     HWND tab = nullptr;
     HWND addBtn = nullptr;
     HWND deleteBtn = nullptr;
+    HWND captureBtn = nullptr;
     HWND outputEdit = nullptr;
     HWND formatCombo = nullptr;
     HWND compressionLabelPng = nullptr;
@@ -1690,6 +1702,7 @@ void buildSettingsLayout(SettingsDialog* dlg) {
     int groupHeader = 16;
 
     int clientWidth = static_cast<int>(rc.right - rc.left);
+    int clientHeight = static_cast<int>(rc.bottom - rc.top);
     int desiredFieldWidth = 230;
     int desiredClientWidth = margin * 2 + sidebarWidth + sidebarGap + groupPadding * 2 + labelWidth + desiredFieldWidth;
     int layoutWidth = desiredClientWidth;
@@ -1711,6 +1724,7 @@ void buildSettingsLayout(SettingsDialog* dlg) {
     dlg->deleteBtn = CreateWindowExW(0, L"BUTTON", L"Del", WS_CHILD | WS_VISIBLE,
                                      btnX + sidebarButtonWidth + 6, btnY, sidebarButtonWidth, rowHeight, dlg->hwnd,
                                      reinterpret_cast<HMENU>(132), dlg->app->hInstance, nullptr);
+    int captureBtnWidth = sidebarWidth;
     SendMessageW(dlg->addBtn, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
     SendMessageW(dlg->deleteBtn, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
     applyControlTheme(dlg, dlg->addBtn, false);
@@ -1945,7 +1959,14 @@ void buildSettingsLayout(SettingsDialog* dlg) {
                                            dlg->hwnd, reinterpret_cast<HMENU>(111), dlg->app->hInstance, nullptr);
     SendMessageW(dlg->autoStatusLabel, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
     applyControlTheme(dlg, dlg->autoStatusLabel, false);
-    dlg->layoutClientHeight = y + rowHeight + 6 + margin;
+    int plannedClientHeight = y + rowHeight + 6 + margin;
+    int captureBtnY = plannedClientHeight - margin - rowHeight - 14;
+    dlg->captureBtn = CreateWindowExW(0, L"BUTTON", translateId(*dlg->app, L"capture", L"Capture").c_str(), WS_CHILD | WS_VISIBLE,
+                                      margin, captureBtnY, captureBtnWidth, rowHeight, dlg->hwnd,
+                                      reinterpret_cast<HMENU>(142), dlg->app->hInstance, nullptr);
+    SendMessageW(dlg->captureBtn, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
+    applyControlTheme(dlg, dlg->captureBtn, false);
+    dlg->layoutClientHeight = plannedClientHeight;
 }
 
 bool persistActiveProfile(SettingsDialog* dlg, bool showErrors) {
@@ -2248,6 +2269,15 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
                 }
                 bool isEnabled = (SendMessageW(dlg->autoCaptureCheck, BM_GETCHECK, 0, 0) == BST_CHECKED);
                 if (persistActiveProfileNoUI(dlg, false) && !wasEnabled && isEnabled) {
+                    triggerCapture(*dlg->app, dlg->activeProfile);
+                }
+            }
+            return 0;
+        case 142: // capture active profile now
+            if (HIWORD(wParam) == BN_CLICKED) {
+                if (dlg->suppressSave) return 0;
+                if (!persistActiveProfileNoUI(dlg, true)) return 0;
+                if (dlg->activeProfile >= 0 && dlg->activeProfile < static_cast<int>(dlg->app->profiles.size())) {
                     triggerCapture(*dlg->app, dlg->activeProfile);
                 }
             }

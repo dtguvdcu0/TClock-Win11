@@ -1794,7 +1794,8 @@ void OnTClockCommand(HWND hwnd, WORD wID, WORD wCode)
 				add_title(tcapPath, tcapPathCfg);
 			}
 			if (PathFileExists(tcapPath)) {
-				ShellExecuteUtf8Compat(g_hwndMain, "open", tcapPath, "--settings", g_mydir, SW_SHOWNORMAL);
+				const char* tcapSettingsParams = b_EnglishMenu ? "--settings --lang en" : "--settings --lang ja";
+				ShellExecuteUtf8Compat(g_hwndMain, "open", tcapPath, tcapSettingsParams, g_mydir, SW_SHOWNORMAL);
 			}
 			return;
 		}

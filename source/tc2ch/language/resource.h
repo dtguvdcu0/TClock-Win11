@@ -178,6 +178,8 @@
 #define IDS_PROP_KEYWORDS               254
 #define IDS_PULLBACK                    255
 #define IDS_TCLOCKMENU                  256
+#define IDS_TCAP_CAPTURE                257
+#define IDS_TCAP_SETTING                258
 #define IDC_DATETIME_Win10              406
 #define IDC_DATETIME                    408
 #define IDC_TASKBARPROP                 413
@@ -550,6 +552,8 @@
 #define IDS_PULLBACK_ENG                1255
 #define IDS_STRING257                   1256
 #define IDS_TCLOCKMENU_ENG              1256
+#define IDS_TCAP_CAPTURE_ENG            1257
+#define IDS_TCAP_SETTING_ENG            1258
 #define IDC_DROPFILES                   1401
 #define IDC_LABDROPFILESAPP             1402
 #define IDC_DROPFILESAPP                1403

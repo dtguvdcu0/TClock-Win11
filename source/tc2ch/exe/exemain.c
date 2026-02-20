@@ -7,6 +7,7 @@
 #include <winver.h>
 #include <shellapi.h>
 #include "../common/text_codec.h"
+#include "../common/ini_io_utf8.h"
 
 #define AUTORESTART_WAIT_WIN11	5000	//Win11でのb_AutoRestart時のウェイト(ms)
 
@@ -98,6 +99,9 @@ static BOOL WaitExplorerReady(DWORD timeoutMs);
 static void RestartExplorerForHideClock(void);
 static void ApplyHideClockPolicyFlow(void);
 static void RestoreHideClockPolicyFlow(void);
+static LONG GetTCaptureEnableConfig(void);
+static void GetTCapturePathConfig(char* outPath, int outPathLen);
+static void SyncTCaptureIntegrationIniPath(const char* tcapExePath);
 static void LaunchTCaptureAgentIfEnabled(void);
 
 static UINT s_uTaskbarRestart = 0;
@@ -324,6 +328,53 @@ static void RestoreHideClockPolicyFlow(void)
     b_HideClockPolicyApplied = FALSE;
 }
 
+static LONG GetTCaptureEnableConfig(void)
+{
+    LONG v = GetMyRegLong("TCapture", "Enable", -1);
+    if (v != -1) return (v != 0) ? 1 : 0;
+
+    v = GetMyRegLong("ETC", "TCaptureEnable", 0);
+    SetMyRegLong("TCapture", "Enable", (v != 0) ? 1 : 0);
+    DelMyReg("ETC", "TCaptureEnable");
+    return (v != 0) ? 1 : 0;
+}
+
+static void GetTCapturePathConfig(char* outPath, int outPathLen)
+{
+    char legacyPath[MAX_PATH];
+    if (!outPath || outPathLen <= 0) return;
+    outPath[0] = '\0';
+
+    GetMyRegStr("TCapture", "Path", outPath, outPathLen, "");
+    if (outPath[0] != '\0') return;
+
+    GetMyRegStr("ETC", "TCapturePath", legacyPath, MAX_PATH, "TCapture.exe");
+    if (legacyPath[0] == '\0') strcpy(legacyPath, "TCapture.exe");
+    lstrcpyn(outPath, legacyPath, outPathLen);
+    SetMyRegStr("TCapture", "Path", outPath);
+    DelMyReg("ETC", "TCapturePath");
+}
+
+static void SyncTCaptureIntegrationIniPath(const char* tcapExePath)
+{
+    char tcapIniPath[MAX_PATH];
+    char current[MAX_PATH];
+
+    if (!tcapExePath || !tcapExePath[0]) return;
+    if (!g_inifile[0]) return;
+
+    lstrcpyn(tcapIniPath, tcapExePath, MAX_PATH);
+    del_title(tcapIniPath);
+    add_title(tcapIniPath, "TCapture.ini");
+
+    tc_ini_utf8_read_string(tcapIniPath, "Integration", "TClockIniPath", "", current, MAX_PATH);
+    if (strcmp(current, g_inifile) == 0) return;
+
+    if (!tc_ini_utf8_write_string(tcapIniPath, "Integration", "TClockIniPath", g_inifile)) {
+        if (b_DebugLog) WriteDebug_New2("[exemain.c] Failed to sync Integration.TClockIniPath in TCapture.ini");
+    }
+}
+
 static void LaunchTCaptureAgentIfEnabled(void)
 {
     char tcapPathCfg[MAX_PATH];
@@ -331,9 +382,9 @@ static void LaunchTCaptureAgentIfEnabled(void)
     const char* launchParams;
     HINSTANCE launchResult;
 
-    if (!GetMyRegLong("ETC", "TCaptureEnable", 0)) return;
+    if (!GetTCaptureEnableConfig()) return;
 
-    GetMyRegStr("ETC", "TCapturePath", tcapPathCfg, MAX_PATH, "TCapture.exe");
+    GetTCapturePathConfig(tcapPathCfg, MAX_PATH);
     if (tcapPathCfg[0] == 0) strcpy(tcapPathCfg, "TCapture.exe");
     if ((tcapPathCfg[1] == ':') || (tcapPathCfg[0] == '\\') || (tcapPathCfg[0] == '/')) {
         strcpy(exePath, tcapPathCfg);
@@ -348,14 +399,14 @@ static void LaunchTCaptureAgentIfEnabled(void)
         return;
     }
 
+    SyncTCaptureIntegrationIniPath(exePath);
+
     launchParams = b_EnglishMenu ? "--agent --lang en" : "--agent --lang ja";
     launchResult = ShellExecuteUtf8Compat(NULL, "open", exePath, launchParams, g_mydir, SW_HIDE);
     if ((INT_PTR)launchResult <= 32 && b_DebugLog) {
         WriteDebug_New2("[exemain.c] Failed to launch TCapture agent");
     }
 }
-
-
 
 
 /*-------------------------------------------------------
@@ -1757,8 +1808,8 @@ void CreateDefaultIniFile_Win10(char *fname)
 		SetMyRegStr("ETC", "ExtTXT_String", "");
 		SetMyRegLong("ETC", "SelectedThermalZone", 0);
 		SetMyRegLong("ETC", "UseHideClockPolicyFlow", 1);
-		SetMyRegLong("ETC", "TCaptureEnable", 0);
-		SetMyRegStr("ETC", "TCapturePath", "TCapture.exe");
+		SetMyRegLong("TCapture", "Enable", 0);
+		SetMyRegStr("TCapture", "Path", "TCapture.exe");
 		SetMyRegLong("Chime", "EnableChime", 0);
 		SetMyRegLong("Chime", "OffsetChimeSec", 0);
 		SetMyRegLong("Chime", "ChimeHourStart", 0);

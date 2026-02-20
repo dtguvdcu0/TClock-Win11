@@ -23,6 +23,7 @@
 #endif
 
 #include <algorithm>
+#include <atomic>
 #include <cstring>
 #include <fstream>
 #include <filesystem>
@@ -31,6 +32,7 @@
 #include <sstream>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 #include <thread>
 #include <cwctype>
@@ -43,6 +45,7 @@ namespace fs = std::filesystem;
 constexpr UINT WM_TRAYICON = WM_APP + 1;
 constexpr UINT WM_APP_CAPTURE_REQUEST = WM_APP + 2;
 constexpr UINT WM_APP_SHOW_SETTINGS = WM_APP + 3;
+constexpr UINT WM_APP_CAPTURE_FINISHED = WM_APP + 4;
 constexpr UINT ID_TRAY_SETTINGS = 2001;
 constexpr UINT ID_TRAY_OPEN_OUTPUT = 2003;
 constexpr UINT ID_TRAY_EXIT = 2004;
@@ -64,6 +67,7 @@ struct AppState {
     HWND settingsWindow = nullptr;
     NOTIFYICONDATA nid{};
     fs::path iniPath;
+    fs::path tclockIniPath;
     fs::path exeDir;
     std::string language = "en";
     std::unordered_map<std::wstring, std::wstring> translations;
@@ -78,6 +82,7 @@ struct AppState {
     };
     std::vector<PrintScreenHotkey> printScreenHotkeys;
     size_t printScreenHotkeyCount = 0;
+    std::atomic<int> activeCaptureJobs{0};
     std::vector<UINT_PTR> autoTimerIds; // 0 if not registered
     bool enableTray = false;
     bool startWithSettings = false;
@@ -112,7 +117,6 @@ void writeDefaultSettingsIni(const fs::path& path) {
         "auto_capture=false\r\n"
         "auto_seconds=60\r\n"
         "displays=0\r\n"
-        "hotkey_capture=Ctrl+Alt+PrintScreen\r\n"
         "\r\n"
         "[Active Window]\r\n"
         "output_dir=\r\n"
@@ -125,7 +129,6 @@ void writeDefaultSettingsIni(const fs::path& path) {
         "auto_capture=false\r\n"
         "auto_seconds=60\r\n"
         "displays=active_window\r\n"
-        "hotkey_capture=Alt+PrintScreen\r\n"
         "\r\n"
         "[Active Display]\r\n"
         "output_dir=\r\n"
@@ -137,7 +140,7 @@ void writeDefaultSettingsIni(const fs::path& path) {
         "auto_capture=false\r\n"
         "auto_seconds=60\r\n"
         "displays=active_display\r\n"
-        "hotkey_capture=PrintScreen\r\n";
+;
     fs::path parent = path.parent_path();
     if (!parent.empty() && !fs::exists(parent)) {
         fs::create_directories(parent);
@@ -362,6 +365,25 @@ bool parseHotkey(const std::string& text, HotkeySpec& spec) {
     return true;
 }
 
+static bool buildHotkeySignature(const std::string& text, std::string& outSig) {
+    std::string hotkey = trimCopy(text);
+    if (hotkey.empty()) {
+        outSig.clear();
+        return false;
+    }
+    HotkeySpec spec;
+    if (parseHotkey(hotkey, spec)) {
+        UINT mods = spec.modifiers;
+#ifdef MOD_NOREPEAT
+        mods &= ~MOD_NOREPEAT;
+#endif
+        outSig = std::to_string(mods) + ":" + std::to_string(spec.key);
+        return true;
+    }
+    outSig = toLower(hotkey);
+    return true;
+}
+
 void showNotification(AppState& app, const std::wstring& title, const std::wstring& message, DWORD infoFlag = NIIF_INFO) {
     NOTIFYICONDATA data = app.nid;
     data.uFlags = NIF_INFO;
@@ -399,8 +421,9 @@ std::wstring buildCommandLine(const fs::path& exePath, const std::string& profil
 bool triggerCapture(AppState& app, int profileIndex) {
     if (profileIndex < 0 || profileIndex >= static_cast<int>(app.profiles.size())) return false;
     const auto profileName = app.profiles[profileIndex].name;
+    app.activeCaptureJobs.fetch_add(1, std::memory_order_relaxed);
 
-    std::thread([profileName]() {
+    std::thread([&app, profileName]() {
         std::vector<std::string> args;
         args.push_back("TCapture.exe");
         args.push_back("--capture");
@@ -413,11 +436,310 @@ bool triggerCapture(AppState& app, int profileIndex) {
             argv.push_back(const_cast<char*>(s.c_str()));
         }
         (void)RunCaptureMain(static_cast<int>(argv.size()), argv.data());
+        app.activeCaptureJobs.fetch_sub(1, std::memory_order_relaxed);
+        if (app.mainWindow) {
+            PostMessageW(app.mainWindow, WM_APP_CAPTURE_FINISHED, 0, 0);
+        }
     }).detach();
 
     return true;
 }
 
+
+fs::path resolveTClockIniPath(AppState& app) {
+    if (!app.tclockIniPath.empty()) {
+        return app.tclockIniPath;
+    }
+
+    fs::path tcapIniPath = app.iniPath.empty() ? (app.exeDir / "TCapture.ini") : app.iniPath;
+    fs::path baseDir = tcapIniPath.parent_path().empty() ? app.exeDir : tcapIniPath.parent_path();
+    std::wstring tcapIniW = tcapIniPath.wstring();
+    wchar_t configured[MAX_PATH] = {};
+
+    GetPrivateProfileStringW(L"Integration", L"TClockIniPath", L"", configured, MAX_PATH, tcapIniW.c_str());
+
+    fs::path resolved;
+    if (configured[0] != L'\0') {
+        resolved = fs::path(configured);
+        if (resolved.is_relative()) {
+            resolved = baseDir / resolved;
+        }
+    }
+
+    if (resolved.empty()) {
+        resolved = app.exeDir / "tclock-win11.ini";
+    }
+
+    app.tclockIniPath = resolved;
+    return app.tclockIniPath;
+}
+
+static bool readTextLinesPreserve(const fs::path& path, std::vector<std::string>& lines, bool& hasBom, bool& useCrLf)
+{
+    lines.clear();
+    hasBom = false;
+    useCrLf = true;
+
+    std::ifstream in(path, std::ios::binary);
+    if (!in.is_open()) return false;
+    std::string bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    if (bytes.size() >= 3 && (unsigned char)bytes[0] == 0xEF && (unsigned char)bytes[1] == 0xBB && (unsigned char)bytes[2] == 0xBF) {
+        hasBom = true;
+        bytes.erase(0, 3);
+    }
+    useCrLf = (bytes.find("\r\n") != std::string::npos);
+
+    std::string cur;
+    for (char c : bytes) {
+        if (c == '\n') {
+            if (!cur.empty() && cur.back() == '\r') cur.pop_back();
+            lines.push_back(cur);
+            cur.clear();
+        }
+        else {
+            cur.push_back(c);
+        }
+    }
+    if (!cur.empty()) {
+        if (!cur.empty() && cur.back() == '\r') cur.pop_back();
+        lines.push_back(cur);
+    }
+    return true;
+}
+
+static bool writeTextLinesPreserve(const fs::path& path, const std::vector<std::string>& lines, bool hasBom, bool useCrLf)
+{
+    fs::path parent = path.parent_path();
+    if (!parent.empty() && !fs::exists(parent)) {
+        fs::create_directories(parent);
+    }
+
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    if (!out.is_open()) return false;
+    if (hasBom) {
+        const unsigned char bom[3] = { 0xEF, 0xBB, 0xBF };
+        out.write(reinterpret_cast<const char*>(bom), 3);
+    }
+
+    const char* nl = useCrLf ? "\r\n" : "\n";
+    for (size_t i = 0; i < lines.size(); ++i) {
+        out << lines[i];
+        if (i + 1 < lines.size()) out << nl;
+    }
+    out << nl;
+    return true;
+}
+
+static bool parseIniKeyValue(const std::string& line, std::string& keyLower, std::string& value)
+{
+    size_t eq = line.find('=');
+    if (eq == std::string::npos) return false;
+    keyLower = toLower(trimCopy(line.substr(0, eq)));
+    value = trimCopy(line.substr(eq + 1));
+    return !keyLower.empty();
+}
+
+static bool isSectionHeader(const std::string& line, std::string& sectionLower)
+{
+    std::string t = trimCopy(line);
+    if (t.size() < 3) return false;
+    if (t.front() != '[' || t.back() != ']') return false;
+    sectionLower = toLower(trimCopy(t.substr(1, t.size() - 2)));
+    return !sectionLower.empty();
+}
+
+static bool isManagedHotkeyKey(const std::string& keyLower)
+{
+    if (keyLower == "hotkeycount") return true;
+    if (keyLower.rfind("hotkey", 0) != 0) return false;
+    size_t i = 6;
+    while (i < keyLower.size() && std::isdigit(static_cast<unsigned char>(keyLower[i]))) ++i;
+    if (i == 6) return false;
+    std::string tail = keyLower.substr(i);
+    return (tail == "profile" || tail == "value");
+}
+
+void loadHotkeysFromTClockIni(AppState& app) {
+    fs::path iniPath = resolveTClockIniPath(app);
+    if (iniPath.empty() || !fs::exists(iniPath)) return;
+
+    std::vector<std::string> lines;
+    bool hasBom = false;
+    bool useCrLf = true;
+    if (!readTextLinesPreserve(iniPath, lines, hasBom, useCrLf)) return;
+
+    bool inSection = false;
+    int count = 0;
+    std::unordered_map<int, std::string> profiles;
+    std::unordered_map<int, std::string> hotkeys;
+
+    for (const auto& raw : lines) {
+        std::string sec;
+        if (isSectionHeader(raw, sec)) {
+            inSection = (sec == "tcapture");
+            continue;
+        }
+        if (!inSection) continue;
+
+        std::string keyLower, value;
+        if (!parseIniKeyValue(raw, keyLower, value)) continue;
+        if (keyLower == "hotkeycount") {
+            try { count = std::stoi(value); } catch (...) { count = 0; }
+            continue;
+        }
+        if (keyLower.rfind("hotkey", 0) != 0) continue;
+        size_t i = 6;
+        while (i < keyLower.size() && std::isdigit(static_cast<unsigned char>(keyLower[i]))) ++i;
+        if (i == 6) continue;
+
+        int idx = 0;
+        try { idx = std::stoi(keyLower.substr(6, i - 6)); } catch (...) { idx = 0; }
+        if (idx <= 0) continue;
+        std::string tail = keyLower.substr(i);
+        if (tail == "profile") profiles[idx] = value;
+        else if (tail == "value") hotkeys[idx] = value;
+    }
+
+    if (count <= 0) {
+        for (const auto& kv : profiles) count = std::max(count, kv.first);
+        for (const auto& kv : hotkeys) count = std::max(count, kv.first);
+    }
+    if (count <= 0) return;
+
+    std::unordered_map<std::string, std::string> map;
+    for (int i = 1; i <= count; ++i) {
+        auto itName = profiles.find(i);
+        auto itHot = hotkeys.find(i);
+        if (itName == profiles.end() || itHot == hotkeys.end()) continue;
+        std::string profileName = trimCopy(itName->second);
+        std::string hotkey = trimCopy(itHot->second);
+        if (!profileName.empty() && !hotkey.empty()) {
+            map[toLower(profileName)] = hotkey;
+        }
+    }
+
+    for (auto& p : app.profiles) {
+        auto it = map.find(toLower(p.name));
+        if (it != map.end()) {
+            p.settings.captureHotkey = it->second;
+        }
+    }
+}
+
+bool saveHotkeysToTClockIni(const AppState& app) {
+    fs::path iniPath = app.tclockIniPath.empty() ? (app.exeDir / "tclock-win11.ini") : app.tclockIniPath;
+    if (iniPath.empty()) return false;
+
+    std::vector<std::string> lines;
+    bool hasBom = false;
+    bool useCrLf = true;
+    if (!readTextLinesPreserve(iniPath, lines, hasBom, useCrLf)) {
+        lines.clear();
+        hasBom = true;
+        useCrLf = true;
+    }
+
+    int secStart = -1;
+    int secEnd = static_cast<int>(lines.size());
+    for (int i = 0; i < static_cast<int>(lines.size()); ++i) {
+        std::string sec;
+        if (isSectionHeader(lines[i], sec)) {
+            if (sec == "tcapture") {
+                secStart = i;
+                secEnd = static_cast<int>(lines.size());
+                for (int j = i + 1; j < static_cast<int>(lines.size()); ++j) {
+                    std::string sec2;
+                    if (isSectionHeader(lines[j], sec2)) {
+                        secEnd = j;
+                        break;
+                    }
+                }
+                break;
+            }
+        }
+    }
+
+    if (secStart < 0) {
+        if (!lines.empty() && !trimCopy(lines.back()).empty()) lines.push_back("");
+        secStart = static_cast<int>(lines.size());
+        lines.push_back("[TCapture]");
+        secEnd = static_cast<int>(lines.size());
+    }
+
+    std::vector<std::string> preserved;
+    for (int i = secStart + 1; i < secEnd; ++i) {
+        std::string keyLower, value;
+        if (parseIniKeyValue(lines[i], keyLower, value) && isManagedHotkeyKey(keyLower)) {
+            continue;
+        }
+        preserved.push_back(lines[i]);
+    }
+
+    std::vector<std::string> generated;
+    int index = 0;
+    std::unordered_set<std::string> seenSignatures;
+    for (const auto& p : app.profiles) {
+        std::string hotkey = trimCopy(p.settings.captureHotkey);
+        if (hotkey.empty()) continue;
+        std::string sig;
+        if (buildHotkeySignature(hotkey, sig)) {
+            if (!sig.empty() && seenSignatures.find(sig) != seenSignatures.end()) {
+                continue;
+            }
+            if (!sig.empty()) seenSignatures.insert(sig);
+        }
+        ++index;
+        generated.push_back("Hotkey" + std::to_string(index) + "Profile=" + p.name);
+        generated.push_back("Hotkey" + std::to_string(index) + "Value=" + hotkey);
+    }
+    generated.insert(generated.begin(), "HotkeyCount=" + std::to_string(index));
+
+    std::vector<std::string> out;
+    out.reserve(lines.size() + generated.size() + 8);
+    for (int i = 0; i <= secStart; ++i) out.push_back(lines[i]);
+    for (const auto& l : preserved) out.push_back(l);
+    for (const auto& l : generated) out.push_back(l);
+    for (int i = secEnd; i < static_cast<int>(lines.size()); ++i) out.push_back(lines[i]);
+
+    return writeTextLinesPreserve(iniPath, out, hasBom, useCrLf);
+}
+
+bool hasAnyAutoCaptureEnabled(const AppState& app) {
+    for (const auto& p : app.profiles) {
+        if (p.settings.autoCapture && p.settings.autoSeconds > 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool hasAnyAutoCaptureEnabledInIni(const AppState& app)
+{
+    if (app.iniPath.empty()) return false;
+    auto profiles = loadSettingsProfiles(app.iniPath.string());
+    for (const auto& p : profiles) {
+        if (p.settings.autoCapture && p.settings.autoSeconds > 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void maybeStopAgentIfIdle(AppState& app)
+{
+    if (app.settingsWindow) return;
+    if (app.activeCaptureJobs.load(std::memory_order_relaxed) > 0) return;
+    if (hasAnyAutoCaptureEnabledInIni(app)) return;
+    if (app.startWithSettings) {
+        if (app.mainWindow) {
+            PostMessageW(app.mainWindow, WM_CLOSE, 0, 0);
+        }
+        return;
+    }
+    if (app.mainWindow) {
+        PostMessageW(app.mainWindow, WM_CLOSE, 0, 0);
+    }
+}
 bool loadProfilesWithFallback(AppState& app, const std::string& preferredLanguage = "") {
     fs::path primary = app.exeDir / "TCapture.ini";
     fs::path cwdIni = fs::current_path() / "TCapture.ini";
@@ -438,7 +760,6 @@ bool loadProfilesWithFallback(AppState& app, const std::string& preferredLanguag
         ProfileSettings p;
         p.name = "default";
         normalizeSettings(p.settings);
-        if (p.settings.captureHotkey.empty()) p.settings.captureHotkey = "Ctrl+Alt+S";
         profiles.push_back(p);
     }
     for (auto& p : profiles) {
@@ -463,13 +784,16 @@ bool loadProfilesWithFallback(AppState& app, const std::string& preferredLanguag
     app.printScreenHotkeys.clear();
     app.printScreenHotkeyCount = 0;
     app.autoTimerIds.assign(app.profiles.size(), 0);
+    loadHotkeysFromTClockIni(app);
     return true;
 }
 
 bool saveProfiles(AppState& app) {
     if (app.profiles.empty()) return false;
     applyLanguageToProfiles(app);
-    return saveSettingsProfiles(app.profiles, app.iniPath, app.language);
+    if (!saveSettingsProfiles(app.profiles, app.iniPath, app.language)) return false;
+    if (!saveHotkeysToTClockIni(app)) return false;
+    return true;
 }
 
 void unregisterAllHotkeys(AppState& app) {
@@ -686,7 +1010,7 @@ void registerAllHotkeys(AppState& app) {
     }
     if (!any) {
                 showNotification(app, translateId(app, L"app_name", L"TCapture"),
-                         translateId(app, L"no_hotkeys", L"No hotkeys registered. Set hotkey_capture in settings."), NIIF_WARNING);
+                         translateId(app, L"no_hotkeys", L"No hotkeys registered. Configure hotkeys in TCapture settings."), NIIF_WARNING);
     }
 }
 
@@ -1123,6 +1447,23 @@ bool saveControlsToProfile(SettingsDialog* dlg, int index, bool showErrors) {
                 MessageBoxW(dlg->hwnd, L"Hotkey is invalid. Use Ctrl+Alt+S or Shift+F12, etc.", L"TCapture", MB_ICONWARNING);
             }
             return false;
+        }
+        std::string currentSig;
+        if (buildHotkeySignature(profile.settings.captureHotkey, currentSig) && !currentSig.empty()) {
+            for (int i = 0; i < static_cast<int>(dlg->app->profiles.size()); ++i) {
+                if (i == index) continue;
+                const std::string other = trimCopy(dlg->app->profiles[i].settings.captureHotkey);
+                if (other.empty()) continue;
+                std::string otherSig;
+                if (!buildHotkeySignature(other, otherSig) || otherSig.empty()) continue;
+                if (currentSig == otherSig) {
+                    if (showErrors) {
+                        std::wstring msg = L"Hotkey duplicates profile: " + utf8ToWide(dlg->app->profiles[i].name);
+                        MessageBoxW(dlg->hwnd, msg.c_str(), L"TCapture", MB_ICONWARNING);
+                    }
+                    return false;
+                }
+            }
         }
     }
     return true;
@@ -1650,8 +1991,8 @@ bool persistActiveProfileNoUI(SettingsDialog* dlg, bool showErrors) {
         return false;
     }
     loadLanguage(*dlg->app, dlg->app->language);
-    registerAllHotkeys(*dlg->app);
     updateAutoCaptureTimers(*dlg->app);
+    maybeStopAgentIfIdle(*dlg->app);
     updateAutoStatusLabel(dlg);
     return true;
 }
@@ -1925,7 +2266,10 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
             if (dlg->statusBrushInactive) DeleteObject(dlg->statusBrushInactive);
             if (dlg->backgroundBrush) DeleteObject(dlg->backgroundBrush);
             if (dlg->editBackgroundBrush) DeleteObject(dlg->editBackgroundBrush);
-            dlg->app->settingsWindow = nullptr;
+            if (dlg->app) {
+                dlg->app->settingsWindow = nullptr;
+                maybeStopAgentIfIdle(*dlg->app);
+            }
             delete dlg;
             SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
         }
@@ -2014,8 +2358,11 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
         if (app->enableTray) {
             buildTrayIcon(*app);
         }
-        registerAllHotkeys(*app);
         updateAutoCaptureTimers(*app);
+        if (!app->startWithSettings && !hasAnyAutoCaptureEnabled(*app)) {
+            PostMessageW(hwnd, WM_CLOSE, 0, 0);
+            return 0;
+        }
         if (app->startWithSettings) {
             PostMessageW(hwnd, WM_APP_SHOW_SETTINGS, 0, 0);
         }
@@ -2064,6 +2411,9 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
     }
     case WM_APP_SHOW_SETTINGS:
         showSettingsWindow(*app);
+        return 0;
+    case WM_APP_CAPTURE_FINISHED:
+        maybeStopAgentIfIdle(*app);
         return 0;
     case WM_HOTKEY: {
         UINT id = static_cast<UINT>(wParam);
@@ -2188,6 +2538,11 @@ int APIENTRY wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int) {
     app.enableTray = false;
     app.startWithSettings = (mode == LaunchMode::Settings);
     loadProfilesWithFallback(app, preferredLanguage);
+    if (mode == LaunchMode::Agent && !hasAnyAutoCaptureEnabled(app)) {
+        CloseHandle(singleMutex);
+        if (argvW) LocalFree(argvW);
+        return 0;
+    }
 
     WNDCLASSW wc{};
     wc.lpfnWndProc = MainWndProc;

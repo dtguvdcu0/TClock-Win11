@@ -352,9 +352,6 @@ bool saveSettingsProfiles(const std::vector<ProfileSettings>& profiles, const fs
         } else if (!p.settings.displaysRaw.empty()) {
             out << "displays=" << p.settings.displaysRaw << "\n";
         }
-        if (!p.settings.captureHotkey.empty()) {
-            out << "hotkey_capture=" << p.settings.captureHotkey << "\n";
-        }
         out << "\n";
     };
 

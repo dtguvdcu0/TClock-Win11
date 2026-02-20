@@ -30,5 +30,5 @@ Launch modes:
 - `CMakeLists.txt` builds one target: `TCapture`.
 
 ## TClock launch contract
-- TClock startup gate uses `[ETC] TCaptureEnable`.
-- Executable path comes from `[ETC] TCapturePath` (default `TCapture.exe`, relative to TClock dir).
+- TClock startup gate uses `[TCapture] Enable`.
+- Executable path comes from `[TCapture] Path` (default `TCapture.exe`, relative to TClock dir).

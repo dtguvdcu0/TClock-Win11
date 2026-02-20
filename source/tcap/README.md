@@ -56,8 +56,8 @@ Profiles use INI sections like `[default]`, `[work]`, `[display1]`.
 See `SETTINGS.md` for keys.
 
 ## TClock integration
-`TClock-Win11` reads these INI keys under `[ETC]`:
-- `TCaptureEnable=0|1`
-- `TCapturePath=TCapture.exe`
+`TClock-Win11` reads these INI keys under `[TCapture]`:
+- `Enable=0|1`
+- `Path=TCapture.exe`
 
-`TCapturePath` accepts relative or absolute paths. Relative paths are resolved from TClock executable directory.
+`Path` accepts relative or absolute paths. Relative paths are resolved from TClock executable directory.

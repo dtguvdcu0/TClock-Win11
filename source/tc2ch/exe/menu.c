@@ -58,6 +58,7 @@ static char* SafeMyString(UINT id);
 #define TC_MENU_LIVE_MAX TC_MENU_CUSTOM_MAX_ITEMS
 #define TC_MENU_SECTION_CACHE_BYTES 65536
 #define IDC_TCAP_SETTINGS 45990
+#define IDC_TCAP_CAPTURE 45989
 
 typedef struct {
 	UINT id;
@@ -440,9 +441,77 @@ static int tc_menu_dynamic_execute(UINT id)
 	return 0;
 }
 
+static LONG tc_menu_get_tcapture_enable(void)
+{
+	LONG v = GetMyRegLong("TCapture", "Enable", -1);
+	if (v != -1) return (v != 0) ? 1 : 0;
+	v = GetMyRegLong("ETC", "TCaptureEnable", 0);
+	SetMyRegLong("TCapture", "Enable", (v != 0) ? 1 : 0);
+	DelMyReg("ETC", "TCaptureEnable");
+	return (v != 0) ? 1 : 0;
+}
+
+static void tc_menu_get_tcapture_path(char* outPath, int outPathLen)
+{
+	char legacy[MAX_PATH];
+	if (!outPath || outPathLen <= 0) return;
+	outPath[0] = '\0';
+	GetMyRegStr("TCapture", "Path", outPath, outPathLen, "");
+	if (outPath[0] != '\0') return;
+	GetMyRegStr("ETC", "TCapturePath", legacy, MAX_PATH, "TCapture.exe");
+	if (legacy[0] == '\0') strcpy(legacy, "TCapture.exe");
+	lstrcpyn(outPath, legacy, outPathLen);
+	SetMyRegStr("TCapture", "Path", outPath);
+	DelMyReg("ETC", "TCapturePath");
+}
+
+typedef struct {
+	char file[MAX_PATH];
+	char args[256];
+	char workdir[MAX_PATH];
+	int showCmd;
+} TC_MENU_DELAYED_LAUNCH;
+
+static DWORD WINAPI tc_menu_delayed_launch_thread(LPVOID lp)
+{
+	TC_MENU_DELAYED_LAUNCH* launch = (TC_MENU_DELAYED_LAUNCH*)lp;
+	if (!launch) return 0;
+	Sleep(250);
+	ShellExecuteUtf8Compat(g_hwndMain, "open", launch->file[0] ? launch->file : NULL,
+		launch->args[0] ? launch->args : NULL,
+		launch->workdir[0] ? launch->workdir : NULL,
+		launch->showCmd ? launch->showCmd : SW_SHOWNORMAL);
+	free(launch);
+	return 0;
+}
+
+static void tc_menu_launch_with_delay(const char* file, const char* args, const char* workdir, int showCmd)
+{
+	TC_MENU_DELAYED_LAUNCH* launch = (TC_MENU_DELAYED_LAUNCH*)malloc(sizeof(TC_MENU_DELAYED_LAUNCH));
+	HANDLE hThread;
+	if (!launch) {
+		ShellExecuteUtf8Compat(g_hwndMain, "open", file, args, workdir, showCmd ? showCmd : SW_SHOWNORMAL);
+		return;
+	}
+	ZeroMemory(launch, sizeof(TC_MENU_DELAYED_LAUNCH));
+	if (file) lstrcpyn(launch->file, file, MAX_PATH);
+	if (args) lstrcpyn(launch->args, args, 256);
+	if (workdir) lstrcpyn(launch->workdir, workdir, MAX_PATH);
+	launch->showCmd = showCmd;
+	hThread = CreateThread(NULL, 0, tc_menu_delayed_launch_thread, launch, 0, NULL);
+	if (hThread) {
+		CloseHandle(hThread);
+	}
+	else {
+		ShellExecuteUtf8Compat(g_hwndMain, "open", launch->file, launch->args[0] ? launch->args : NULL,
+			launch->workdir[0] ? launch->workdir : NULL, launch->showCmd ? launch->showCmd : SW_SHOWNORMAL);
+		free(launch);
+	}
+}
+
 static BOOL tc_menu_is_fixed_id(UINT id)
 {
-	return id == IDC_SHOWPROP || id == IDC_SHOWDIR || id == IDC_RESTART || id == IDC_EXIT || id == IDC_TCAP_SETTINGS;
+	return id == IDC_SHOWPROP || id == IDC_SHOWDIR || id == IDC_RESTART || id == IDC_EXIT || id == IDC_TCAP_SETTINGS || id == IDC_TCAP_CAPTURE;
 }
 
 static int tc_menu_find_position_by_id(HMENU hMenu, UINT id)
@@ -1406,7 +1475,7 @@ void OnContextMenu(HWND hwnd, HWND hwndClicked, int xPos, int yPos)
 		tc_menu_ensure_ini_defaults();
 		tc_menu_apply_custom_from_ini(hPopupMenu);
 	}
-	if (GetMyRegLong("ETC", "TCaptureEnable", 0)) {
+	if (tc_menu_get_tcapture_enable()) {
 		int propPos = tc_menu_find_position_by_id(hPopupMenu, IDC_SHOWPROP);
 		if (propPos >= 0) {
 			int insertPos = propPos;
@@ -1419,7 +1488,13 @@ void OnContextMenu(HWND hwnd, HWND hwndClicked, int xPos, int yPos)
 					insertPos = propPos - 1;
 				}
 			}
-			InsertMenu(hPopupMenu, insertPos, MF_BYPOSITION | MF_STRING, IDC_TCAP_SETTINGS, "TCapture Settings");
+			char tcapCaptureLabel[128];
+			char tcapSettingsLabel[128];
+			wsprintf(tcapCaptureLabel, "%s", SafeMyString(IDS_TCAP_CAPTURE));
+			wsprintf(tcapSettingsLabel, "%s", SafeMyString(IDS_TCAP_SETTING));
+			InsertMenu(hPopupMenu, insertPos, MF_BYPOSITION | MF_SEPARATOR, 0, NULL);
+			InsertMenu(hPopupMenu, insertPos + 1, MF_BYPOSITION | MF_STRING, IDC_TCAP_CAPTURE, tcapCaptureLabel);
+			InsertMenu(hPopupMenu, insertPos + 2, MF_BYPOSITION | MF_STRING, IDC_TCAP_SETTINGS, tcapSettingsLabel);
 		}
 	}
 
@@ -1685,12 +1760,31 @@ void OnTClockCommand(HWND hwnd, WORD wID, WORD wCode)
 			if (b_DebugLog) WriteDebug_New2("[menu.c][OnTClockCommand] IDC_SHOWDIR received");
 			ShellExecuteUtf8Compat(g_hwndMain, NULL, g_mydir, NULL, NULL, SW_SHOWNORMAL);
 			break;
+		case IDC_TCAP_CAPTURE: // TCapture capture default profile
+		{
+			char tcapPathCfg[MAX_PATH];
+			char tcapPath[MAX_PATH];
+			if (b_DebugLog) WriteDebug_New2("[menu.c][OnTClockCommand] IDC_TCAP_CAPTURE received");
+			tc_menu_get_tcapture_path(tcapPathCfg, MAX_PATH);
+			if (tcapPathCfg[0] == 0) strcpy(tcapPathCfg, "TCapture.exe");
+			if ((tcapPathCfg[1] == ':') || (tcapPathCfg[0] == '\\') || (tcapPathCfg[0] == '/')) {
+				strcpy(tcapPath, tcapPathCfg);
+			}
+			else {
+				strcpy(tcapPath, g_mydir);
+				add_title(tcapPath, tcapPathCfg);
+			}
+			if (PathFileExists(tcapPath)) {
+				tc_menu_launch_with_delay(tcapPath, "--capture --profile Default", g_mydir, SW_SHOWNORMAL);
+			}
+			return;
+		}
 		case IDC_TCAP_SETTINGS: // TCapture settings
 		{
 			char tcapPathCfg[MAX_PATH];
 			char tcapPath[MAX_PATH];
 			if (b_DebugLog) WriteDebug_New2("[menu.c][OnTClockCommand] IDC_TCAP_SETTINGS received");
-			GetMyRegStr("ETC", "TCapturePath", tcapPathCfg, MAX_PATH, "TCapture.exe");
+			tc_menu_get_tcapture_path(tcapPathCfg, MAX_PATH);
 			if (tcapPathCfg[0] == 0) strcpy(tcapPathCfg, "TCapture.exe");
 			if ((tcapPathCfg[1] == ':') || (tcapPathCfg[0] == '\\') || (tcapPathCfg[0] == '/')) {
 				strcpy(tcapPath, tcapPathCfg);
@@ -1965,8 +2059,11 @@ void InitializeMenuItems(void)
 	ModifyMenu(hPopupMenu, IDC_REMOVE_DRIVE0, MF_BYCOMMAND, IDC_REMOVE_DRIVE0, SafeMyString(IDS_ABOUTRMVDRV));
 	ModifyMenu(hPopupMenu, IDC_SHOWDIR, MF_BYCOMMAND, IDC_SHOWDIR, SafeMyString(IDS_OPENTCFOLDER));
 	{
+		char tcapCaptureLabel[128];
 		char tcapSettingsLabel[128];
-		wsprintf(tcapSettingsLabel, "TCapture %s", SafeMyString(IDS_SETTING));
+		wsprintf(tcapCaptureLabel, "%s", SafeMyString(IDS_TCAP_CAPTURE));
+		wsprintf(tcapSettingsLabel, "%s", SafeMyString(IDS_TCAP_SETTING));
+		ModifyMenu(hPopupMenu, IDC_TCAP_CAPTURE, MF_BYCOMMAND, IDC_TCAP_CAPTURE, tcapCaptureLabel);
 		ModifyMenu(hPopupMenu, IDC_TCAP_SETTINGS, MF_BYCOMMAND, IDC_TCAP_SETTINGS, tcapSettingsLabel);
 	}
 	ModifyMenu(hPopupMenu, IDC_SHOWPROP, MF_BYCOMMAND, IDC_SHOWPROP, SafeMyString(IDS_PROPERTY));

@@ -17,7 +17,7 @@ struct AppSettings {
     int autoSeconds = 60;       // seconds between auto captures
     std::vector<int> displayIndices; // empty -> all
     std::string displaysRaw;
-    std::string captureHotkey = "Ctrl+Alt+S";
+    std::string captureHotkey;
     bool captureActiveDisplay = false;
     bool captureActiveWindow = false;
 };

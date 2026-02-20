@@ -29,7 +29,8 @@ static BOOL timer = FALSE;
 static int GetMouseFuncNum(int button, int nclick);
 
 static ATOM atomHotkey[4] = { 0,0,0,0 };
-
+static UINT idTCaptureHotkey[32] = { 0 };
+static char tcapProfileByHotkey[32][128] = { { 0 } };
 
 static const char *atomName[4] = {
 	"hotkey1_atom_tcklock2ch",
@@ -38,6 +39,120 @@ static const char *atomName[4] = {
 	"hotkey4_atom_tcklock2ch"
 };
 
+static void GetTCapturePathConfigMouse(char* outPath, int outPathLen)
+{
+	char legacyPath[MAX_PATH];
+	if (!outPath || outPathLen <= 0) return;
+	outPath[0] = '\0';
+	GetMyRegStr("TCapture", "Path", outPath, outPathLen, "");
+	if (outPath[0]) return;
+	GetMyRegStr("ETC", "TCapturePath", legacyPath, MAX_PATH, "TCapture.exe");
+	if (legacyPath[0] == '\0') strcpy(legacyPath, "TCapture.exe");
+	lstrcpyn(outPath, legacyPath, outPathLen);
+	SetMyRegStr("TCapture", "Path", outPath);
+	DelMyReg("ETC", "TCapturePath");
+}
+
+static BOOL ResolveTCaptureExePathMouse(char* outPath, int outPathLen)
+{
+	char cfgPath[MAX_PATH];
+	if (!outPath || outPathLen <= 0) return FALSE;
+	outPath[0] = '\0';
+	GetTCapturePathConfigMouse(cfgPath, MAX_PATH);
+	if (cfgPath[0] == 0) strcpy(cfgPath, "TCapture.exe");
+	if (PathFileExists(cfgPath)) {
+		lstrcpyn(outPath, cfgPath, outPathLen);
+		return TRUE;
+	}
+	lstrcpyn(outPath, g_mydir, outPathLen);
+	add_title(outPath, cfgPath);
+	if (PathFileExists(outPath)) return TRUE;
+	lstrcpyn(outPath, cfgPath, outPathLen);
+	return PathFileExists(outPath);
+}
+
+static BOOL ParseTCaptureHotkey(const char* text, UINT* modifiers, UINT* vk)
+{
+	char token[64];
+	int tok = 0;
+	const unsigned char* p;
+	UINT mods = 0;
+	UINT key = 0;
+	if (!text || !modifiers || !vk) return FALSE;
+	for (p = (const unsigned char*)text;; ++p)
+	{
+		unsigned char c = *p;
+		if (c == '+' || c == 0)
+		{
+			int s = 0;
+			int e = tok;
+			token[tok] = 0;
+			while (token[s] == ' ' || token[s] == '\t') s++;
+			while (e > s && (token[e - 1] == ' ' || token[e - 1] == '\t')) e--;
+			token[e] = 0;
+			if (token[s])
+			{
+				char* t = &token[s];
+				int i;
+				for (i = 0; t[i]; ++i) { if (t[i] >= 'a' && t[i] <= 'z') t[i] = (char)(t[i] - ('a' - 'A')); }
+				if (strcmp(t, "CTRL") == 0 || strcmp(t, "CONTROL") == 0) mods |= MOD_CONTROL;
+				else if (strcmp(t, "SHIFT") == 0) mods |= MOD_SHIFT;
+				else if (strcmp(t, "ALT") == 0) mods |= MOD_ALT;
+				else if (strcmp(t, "WIN") == 0 || strcmp(t, "WINDOWS") == 0) mods |= MOD_WIN;
+				else if (!key)
+				{
+					if (t[0] && !t[1])
+					{
+						if ((t[0] >= 'A' && t[0] <= 'Z') || (t[0] >= '0' && t[0] <= '9')) key = (UINT)t[0];
+					}
+					else if (t[0] == 'F' && t[1])
+					{
+						int fn = atoi(t + 1);
+						if (fn >= 1 && fn <= 24) key = VK_F1 + (UINT)(fn - 1);
+					}
+					else if (strcmp(t, "PRINTSCREEN") == 0 || strcmp(t, "PRTSC") == 0 || strcmp(t, "PRTSCR") == 0) key = VK_SNAPSHOT;
+					else if (strcmp(t, "INSERT") == 0) key = VK_INSERT;
+					else if (strcmp(t, "DELETE") == 0) key = VK_DELETE;
+					else if (strcmp(t, "HOME") == 0) key = VK_HOME;
+					else if (strcmp(t, "END") == 0) key = VK_END;
+					else if (strcmp(t, "PGUP") == 0 || strcmp(t, "PAGEUP") == 0) key = VK_PRIOR;
+					else if (strcmp(t, "PGDN") == 0 || strcmp(t, "PAGEDOWN") == 0) key = VK_NEXT;
+					else if (strcmp(t, "SPACE") == 0 || strcmp(t, "SPACEBAR") == 0) key = VK_SPACE;
+					else if (strcmp(t, "ENTER") == 0 || strcmp(t, "RETURN") == 0) key = VK_RETURN;
+				}
+			}
+			tok = 0;
+			if (c == 0) break;
+		}
+		else if (tok < (int)sizeof(token) - 1)
+		{
+			token[tok++] = (char)c;
+		}
+	}
+	if (!key) return FALSE;
+#ifdef MOD_NOREPEAT
+	mods |= MOD_NOREPEAT;
+#endif
+	*modifiers = mods;
+	*vk = key;
+	return TRUE;
+}
+
+static void TriggerTCaptureProfile(HWND hwnd, const char* profileName)
+{
+	char exePath[MAX_PATH];
+	char safeProfile[128];
+	char params[384];
+	int i;
+	if (!profileName || !profileName[0]) return;
+	if (!ResolveTCaptureExePathMouse(exePath, MAX_PATH)) return;
+	lstrcpyn(safeProfile, profileName, (int)sizeof(safeProfile));
+	for (i = 0; safeProfile[i]; ++i) {
+		if (safeProfile[i] == '"') safeProfile[i] = '\'';
+	}
+	wsprintf(params, "--capture --profile \"%s\"", safeProfile);
+	ShellExecuteUtf8Compat(hwnd, "open", exePath, params, g_mydir, SW_SHOWNORMAL);
+}
 
 /*------------------------------------------------
     convert hotkey flag
@@ -58,7 +173,7 @@ BYTE hkf2modf(BYTE hkf)
 static void InitHotkey(HWND hwnd)
 {
 	int i;
-	char entry[20];
+	char entry[32];
 	WORD hotkey;
 	for (i = 0; i < 4; i++)
 	{
@@ -72,6 +187,38 @@ static void InitHotkey(HWND hwnd)
 		{
 			GlobalDeleteAtom(atomHotkey[i]);
 			atomHotkey[i] = 0;
+		}
+	}
+
+	for (i = 0; i < 32; ++i) {
+		idTCaptureHotkey[i] = 0;
+		tcapProfileByHotkey[i][0] = 0;
+	}
+
+	{
+		int count = (int)GetMyRegLong("TCapture", "HotkeyCount", 0);
+		if (count > 32) count = 32;
+		for (i = 1; i <= count; ++i)
+		{
+			char keyProfile[32];
+			char keyValue[32];
+			char profile[128];
+			char value[128];
+			UINT mods = 0;
+			UINT vk = 0;
+			UINT hotkeyId;
+			wsprintf(keyProfile, "Hotkey%dProfile", i);
+			wsprintf(keyValue, "Hotkey%dValue", i);
+			GetMyRegStr("TCapture", keyProfile, profile, (int)sizeof(profile), "");
+			GetMyRegStr("TCapture", keyValue, value, (int)sizeof(value), "");
+			if (!profile[0] || !value[0]) continue;
+			if (!ParseTCaptureHotkey(value, &mods, &vk)) continue;
+			hotkeyId = 0x7A00u + (UINT)(i - 1);
+			if (!RegisterHotKey(hwnd, hotkeyId, mods, vk)) {
+				continue;
+			}
+			idTCaptureHotkey[i - 1] = hotkeyId;
+			lstrcpyn(tcapProfileByHotkey[i - 1], profile, (int)sizeof(tcapProfileByHotkey[i - 1]));
 		}
 	}
 }
@@ -88,6 +235,13 @@ static void EndHotkey(HWND hwnd)
 		UnregisterHotKey(hwnd, atomHotkey[i]);
 		GlobalDeleteAtom(atomHotkey[i]);
 		atomHotkey[i] = 0;
+	}
+	for (i = 0; i < 32; ++i)
+	{
+		if (!idTCaptureHotkey[i]) continue;
+		UnregisterHotKey(hwnd, idTCaptureHotkey[i]);
+		idTCaptureHotkey[i] = 0;
+		tcapProfileByHotkey[i][0] = 0;
 	}
 }
 
@@ -109,7 +263,18 @@ void OnHotkey(HWND hwnd, int id)
 	for (i = 0; i < 4; i++)
 	{
 		if (atomHotkey[i] == id)
+		{
 			PostMessage(hwnd, WM_COMMAND, IDC_HOTKEY1 + i, 0);
+			return;
+		}
+	}
+	for (i = 0; i < 32; ++i)
+	{
+		if ((int)idTCaptureHotkey[i] == id)
+		{
+			TriggerTCaptureProfile(hwnd, tcapProfileByHotkey[i]);
+			return;
+		}
 	}
 }
 

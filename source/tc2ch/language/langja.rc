@@ -1751,11 +1751,15 @@ BEGIN
     IDS_PROP_KEYWORDS_ENG   "Keywords"
     IDS_PULLBACK_ENG        "Pull back unaccessible windows"
     IDS_TCLOCKMENU_ENG      "TClock Menu"
+    IDS_TCAP_CAPTURE_ENG    "TCapture Capture (Default)"
+    IDS_TCAP_SETTING_ENG    "TCapture Settings"
 END
 
 STRINGTABLE
 BEGIN
     IDS_TCLOCKMENU          "TClockメニュー"
+    IDS_TCAP_CAPTURE        "TCapture キャプチャー（既定）"
+    IDS_TCAP_SETTING        "TCapture 設定"
 END
 
 #endif    // 日本語 (日本) resources

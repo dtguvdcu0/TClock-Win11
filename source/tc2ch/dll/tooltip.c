@@ -123,6 +123,9 @@ static void TooltipUpdate2(HDC hdc, LPRECT lprcDraw, LPRECT lprect, UINT uDrawFl
 static int TooltipDrawTextLogged(HDC hdc, LPCTSTR pszText, int cchText, LPRECT prc, UINT format, int tag);
 static int TooltipDrawTextLoggedW(HDC hdc, LPCWSTR pszText, int cchText, LPRECT prc, UINT format, int tag);
 static void TooltipSyncWideText(void);
+static void TooltipSyncAnsiMirrorFromWide(void);
+static BOOL TooltipWideTextEqual(const WCHAR* a, const WCHAR* b);
+static void TooltipEnsureWideReady(void);
 
 static void TooltipNormalizePhysicalNewlines(const char* src, char* dst, int dstLen)
 {
@@ -197,6 +200,60 @@ static void TooltipSyncWideText(void)
 	}
 	if (tc_ansi_to_utf16_compat((UINT)codepage, titleTooltip, titleTooltipW, sizeof(titleTooltipW) / sizeof(WCHAR)) <= 0) {
 		titleTooltipW[0] = L'\0';
+	}
+}
+
+static BOOL TooltipWideTextEqual(const WCHAR* a, const WCHAR* b)
+{
+	if (!a || !b) return FALSE;
+	while (*a && *b) {
+		if (*a != *b) return FALSE;
+		a++;
+		b++;
+	}
+	return (*a == L'\0' && *b == L'\0') ? TRUE : FALSE;
+}
+
+static void TooltipSyncAnsiMirrorFromWide(void)
+{
+	WCHAR roundtrip[LEN_TOOLTIP];
+	WCHAR roundtripTitle[300];
+	if (tc_utf16_to_ansi_compat((UINT)codepage, formatTooltipW, formatTooltip, LEN_TOOLTIP) <= 0) {
+		formatTooltip[0] = '\0';
+	}
+	if (tc_utf16_to_ansi_compat((UINT)codepage, titleTooltipW, titleTooltip, (int)sizeof(titleTooltip)) <= 0) {
+		titleTooltip[0] = '\0';
+	}
+
+	if (tc_ansi_to_utf16_compat((UINT)codepage, formatTooltip, roundtrip, (int)(sizeof(roundtrip) / sizeof(roundtrip[0]))) > 0) {
+		if (!TooltipWideTextEqual(formatTooltipW, roundtrip) && b_DebugLog) {
+			static DWORD s_lastLossLogTick = 0;
+			DWORD now = GetTickCount();
+			if ((now - s_lastLossLogTick) >= 2000) {
+				writeDebugLog_Win10("[tooltip.c][WPath] conversion loss detected in wide->ansi tooltip mirror.", 999);
+				s_lastLossLogTick = now;
+			}
+		}
+	}
+	if (tc_ansi_to_utf16_compat((UINT)codepage, titleTooltip, roundtripTitle, (int)(sizeof(roundtripTitle) / sizeof(roundtripTitle[0]))) > 0) {
+		if (!TooltipWideTextEqual(titleTooltipW, roundtripTitle) && b_DebugLog) {
+			static DWORD s_lastLossLogTickTitle = 0;
+			DWORD now = GetTickCount();
+			if ((now - s_lastLossLogTickTitle) >= 2000) {
+				writeDebugLog_Win10("[tooltip.c][WPath] conversion loss detected in wide->ansi title mirror.", 999);
+				s_lastLossLogTickTitle = now;
+			}
+		}
+	}
+}
+
+static void TooltipEnsureWideReady(void)
+{
+	if (formatTooltipW[0] == L'\0' && formatTooltip[0] != '\0') {
+		TooltipSyncWideText();
+	}
+	if (titleTooltipW[0] == L'\0' && titleTooltip[0] != '\0') {
+		TooltipSyncWideText();
 	}
 }
 
@@ -485,6 +542,8 @@ static void TooltipUpdate2(HDC hdc, LPRECT lprcDraw, LPRECT lprect, UINT uDrawFl
 	hdcTemp = CreateCompatibleDC(hdc);
 	if (hdcTemp)
 	{
+		TooltipEnsureWideReady();
+
 		SetBkColor(hdcTemp, colTooltipBack);
 		SetBkMode(hdcTemp, TRANSPARENT);
 
@@ -711,6 +770,7 @@ static void TooltipUpdateText(void)
 		strcpy(formatTooltip, s);
 	}
 	TooltipSyncWideText();
+	TooltipSyncAnsiMirrorFromWide();
 }
 
 /*------------------------------------------------
@@ -879,6 +939,7 @@ BOOL TooltipOnNotify(LRESULT *plRes, LPARAM lParam)
 			{
 				TooltipUpdateText();
 			}
+			TooltipEnsureWideReady();
 			((LPTOOLTIPTEXTW)lParam)->lpszText = formatTooltipW;
 			*plRes = 0;
 			return TRUE;
@@ -888,6 +949,7 @@ BOOL TooltipOnNotify(LRESULT *plRes, LPARAM lParam)
 			{
 				TooltipUpdateText();
 			}
+			TooltipSyncAnsiMirrorFromWide();
 			((LPTOOLTIPTEXT)lParam)->lpszText = formatTooltip;
 			*plRes = 0;
 			return TRUE;

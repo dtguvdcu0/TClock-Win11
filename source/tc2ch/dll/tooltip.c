@@ -79,6 +79,7 @@ static COLORREF colTooltipText, colTooltipBack, colTooltipTitle;
 static char formatTooltip[LEN_TOOLTIP];
 static WCHAR formatTooltipW[LEN_TOOLTIP];
 static char titleTooltip[300] = { 0 };
+static WCHAR titleTooltipW[300] = { 0 };
 static HRESULT hrOleInitialize = E_NOTIMPL;
 
 static DWORD dwMousePosPrev = 0;
@@ -120,6 +121,8 @@ static void TooltipApplySetting(void)
 static void TooltipUpdateText(void);
 static void TooltipUpdate2(HDC hdc, LPRECT lprcDraw, LPRECT lprect, UINT uDrawFlags);
 static int TooltipDrawTextLogged(HDC hdc, LPCTSTR pszText, int cchText, LPRECT prc, UINT format, int tag);
+static int TooltipDrawTextLoggedW(HDC hdc, LPCWSTR pszText, int cchText, LPRECT prc, UINT format, int tag);
+static void TooltipSyncWideText(void);
 
 static void TooltipNormalizePhysicalNewlines(const char* src, char* dst, int dstLen)
 {
@@ -170,6 +173,31 @@ static int TooltipDrawTextLogged(HDC hdc, LPCTSTR pszText, int cchText, LPRECT p
 		}
 	}
 	return ret;
+}
+
+static int TooltipDrawTextLoggedW(HDC hdc, LPCWSTR pszText, int cchText, LPRECT prc, UINT format, int tag)
+{
+	int ret = DrawTextW(hdc, pszText, cchText, prc, format);
+	if (ret == 0 && b_DebugLog) {
+		static DWORD s_lastLogTickW = 0;
+		DWORD now = GetTickCount();
+		if ((now - s_lastLogTickW) >= 2000) {
+			writeDebugLog_Win10("[tooltip.c][DrawTextW] failed, tag=", tag);
+			writeDebugLog_Win10("[tooltip.c][DrawTextW] GetLastError=", (int)GetLastError());
+			s_lastLogTickW = now;
+		}
+	}
+	return ret;
+}
+
+static void TooltipSyncWideText(void)
+{
+	if (tc_ansi_to_utf16_compat((UINT)codepage, formatTooltip, formatTooltipW, sizeof(formatTooltipW) / sizeof(WCHAR)) <= 0) {
+		formatTooltipW[0] = L'\0';
+	}
+	if (tc_ansi_to_utf16_compat((UINT)codepage, titleTooltip, titleTooltipW, sizeof(titleTooltipW) / sizeof(WCHAR)) <= 0) {
+		titleTooltipW[0] = L'\0';
+	}
 }
 
 
@@ -433,30 +461,14 @@ Ver4.1以降。
 --------------------------------------------------*/
 static void TooltipUpdate2(HDC hdc, LPRECT lprcDraw, LPRECT lprect, UINT uDrawFlags)
 {
-//	if (b_DebugLog)writeDebugLog_Win10("[tooltip.c] TooltipUpdate2 called, lprcDraw =", lprcDraw);
-
-	//HGDIOBJ hOldFont;
 	HBRUSH hBrushTooltipBack = NULL;
 	RECT rc, rcall;
-	LPSTR pszText;
-	int maxwidth, width = 0, height, len;
+	LPWSTR pszText;
+	int width = 0, height, len;
 	LONG top;
 
-
-	//hBrushTooltipText = CreateSolidBrush(colTooltipText);
 	hBrushTooltipBack = CreateSolidBrush(colTooltipBack);
-
 	rcall = *lprcDraw;
-
-
-
-
-	//if (b_DebugLog) {
-	//	writeDebugLog_Win10("[tooltip.c][TooltipUpdate2] *lprcDraw.left =", rcall.left);
-	//	writeDebugLog_Win10("[tooltip.c][TooltipUpdate2] *lprcDraw.right =", rcall.right);
-	//	writeDebugLog_Win10("[tooltip.c][TooltipUpdate2] *lprcDraw.top =", rcall.top);
-	//	writeDebugLog_Win10("[tooltip.c][TooltipUpdate2] *lprcDraw.bottom =", rcall.bottom);
-	//}
 
 	if (lprect)	//この関数ではサイズ変更を行わないのでそのままサイズを返す
 	{
@@ -466,111 +478,39 @@ static void TooltipUpdate2(HDC hdc, LPRECT lprcDraw, LPRECT lprect, UINT uDrawFl
 		lprect->right = rcall.right;
 	}
 
-
-
-
-
-//	SelectObject(hdc, hFonTooltip);		//これは効いていないのでコメントアウト(Ver 4.11)
-
 	rc = rcall;
 	top = rcall.top;		//topが次の出力のY位置(上)
-	maxwidth = 0;
 
 	HDC hdcTemp;
 	hdcTemp = CreateCompatibleDC(hdc);
 	if (hdcTemp)
 	{
-		//SelectObject(hdcTemp, hBrushTooltipText);
 		SetBkColor(hdcTemp, colTooltipBack);
 		SetBkMode(hdcTemp, TRANSPARENT);
 
 		HBITMAP hbmpTemp;
 
-
 		//タイトル表示
-		if (titleTooltip[0] != 0) {
+		if (titleTooltipW[0] != 0) {
 			SelectObject(hdcTemp, hFonTooltipTitle);
 			SetTextColor(hdcTemp, colTooltipTitle);
 
-			pszText = titleTooltip;
-				len = 0;
-
-				while (pszText[len] && pszText[len] != '\r' && pszText[len] != '\n') len++;
-				rc = rcall;
-				rc.top = top;
-				rc.right = 1980;	//改行しないように仮想RECTを長くする。
-				if (len)
-				{
-					height = TooltipDrawTextLogged(hdcTemp, pszText, len, &rc, uDrawFlags | DT_CALCRECT, 1);
-					width = rc.right - rc.left;
-				}
-				else
-				{
-					height = TooltipDrawTextLogged(hdcTemp, " ", 1, &rc, uDrawFlags | DT_CALCRECT, 2);
-				}
-
-				hbmpTemp = NULL;
-				hbmpTemp = CreateCompatibleBitmap(hdc, rcall.right - rcall.left, height);
-				if (hbmpTemp)
-				{
-					SelectObject(hdcTemp, hbmpTemp);
-
-					rc.top = 0;
-					rc.bottom = height;
-					rc.left = 0;
-					rc.right = rcall.right - rcall.left;
-
-					FillRect(hdcTemp, &rc, hBrushTooltipBack);
-					if (len)
-					{
-						rc.left = ((rcall.right - rcall.left) - width) / 2;
-						//rc.right = ((rcall.right - rcall.left) + width) / 2;
-						TooltipDrawTextLogged(hdcTemp, pszText, len, &rc, uDrawFlags | DT_SINGLELINE, 3);
-					}
-					BitBlt(hdc, rcall.left, top, rcall.right - rcall.left, height, hdcTemp, 0, 0, SRCCOPY);
-					DeleteObject(hbmpTemp);
-
-				}
-				top += height;
-		}
-
-
-
-
-
-
-
-		
-		SelectObject(hdcTemp, hFonTooltip);
-		SetTextColor(hdcTemp, colTooltipText);
-
-		pszText = formatTooltip;
-
-		if (titleTooltip[0] != 0) {		//タイトル領域確保用の改行を2つ削除する。
-			if (*pszText == 0x0d/*'\r'*/) pszText++;
-			if (*pszText == 0x0a/*'\n'*/) pszText++;
-			if (*pszText == 0x0d/*'\r'*/) pszText++;
-			if (*pszText == 0x0a/*'\n'*/) pszText++;
-		}
-
-		while (*pszText)
-		{
+			pszText = titleTooltipW;
 			len = 0;
 
-			while (pszText[len] && pszText[len] != '\r' && pszText[len] != '\n') len++;
+			while (pszText[len] && pszText[len] != L'\r' && pszText[len] != L'\n') len++;
 			rc = rcall;
 			rc.top = top;
-
+			rc.right = 1980;	//改行しないように仮想RECTを長くする。
 			if (len)
 			{
-				height = TooltipDrawTextLogged(hdcTemp, pszText, len, &rc, uDrawFlags | DT_CALCRECT, 1);
+				height = TooltipDrawTextLoggedW(hdcTemp, pszText, len, &rc, uDrawFlags | DT_CALCRECT, 1);
+				width = rc.right - rc.left;
 			}
 			else
 			{
-				height = TooltipDrawTextLogged(hdcTemp, " ", 1, &rc, uDrawFlags | DT_CALCRECT, 2);
+				height = TooltipDrawTextLoggedW(hdcTemp, L" ", 1, &rc, uDrawFlags | DT_CALCRECT, 2);
 			}
-
-			//HBITMAP hbmpTemp;
 
 			hbmpTemp = NULL;
 			hbmpTemp = CreateCompatibleBitmap(hdc, rcall.right - rcall.left, height);
@@ -586,7 +526,60 @@ static void TooltipUpdate2(HDC hdc, LPRECT lprcDraw, LPRECT lprect, UINT uDrawFl
 				FillRect(hdcTemp, &rc, hBrushTooltipBack);
 				if (len)
 				{
-					TooltipDrawTextLogged(hdcTemp, pszText, len, &rc, uDrawFlags, 4);
+					rc.left = ((rcall.right - rcall.left) - width) / 2;
+					TooltipDrawTextLoggedW(hdcTemp, pszText, len, &rc, uDrawFlags | DT_SINGLELINE, 3);
+				}
+				BitBlt(hdc, rcall.left, top, rcall.right - rcall.left, height, hdcTemp, 0, 0, SRCCOPY);
+				DeleteObject(hbmpTemp);
+
+			}
+			top += height;
+		}
+
+		SelectObject(hdcTemp, hFonTooltip);
+		SetTextColor(hdcTemp, colTooltipText);
+
+		pszText = formatTooltipW;
+
+		if (titleTooltipW[0] != 0) {		//タイトル領域確保用の改行を2つ削除する。
+			if (*pszText == 0x0d/*'\r'*/) pszText++;
+			if (*pszText == 0x0a/*'\n'*/) pszText++;
+			if (*pszText == 0x0d/*'\r'*/) pszText++;
+			if (*pszText == 0x0a/*'\n'*/) pszText++;
+		}
+
+		while (*pszText)
+		{
+			len = 0;
+
+			while (pszText[len] && pszText[len] != L'\r' && pszText[len] != L'\n') len++;
+			rc = rcall;
+			rc.top = top;
+
+			if (len)
+			{
+				height = TooltipDrawTextLoggedW(hdcTemp, pszText, len, &rc, uDrawFlags | DT_CALCRECT, 1);
+			}
+			else
+			{
+				height = TooltipDrawTextLoggedW(hdcTemp, L" ", 1, &rc, uDrawFlags | DT_CALCRECT, 2);
+			}
+
+			hbmpTemp = NULL;
+			hbmpTemp = CreateCompatibleBitmap(hdc, rcall.right - rcall.left, height);
+			if (hbmpTemp)
+			{
+				SelectObject(hdcTemp, hbmpTemp);
+
+				rc.top = 0;
+				rc.bottom = height;
+				rc.left = 0;
+				rc.right = rcall.right - rcall.left;
+
+				FillRect(hdcTemp, &rc, hBrushTooltipBack);
+				if (len)
+				{
+					TooltipDrawTextLoggedW(hdcTemp, pszText, len, &rc, uDrawFlags, 4);
 				}
 				BitBlt(hdc, rcall.left, top, rcall.right - rcall.left, height, hdcTemp, 0, 0, SRCCOPY);
 				DeleteObject(hbmpTemp);
@@ -601,7 +594,6 @@ static void TooltipUpdate2(HDC hdc, LPRECT lprcDraw, LPRECT lprect, UINT uDrawFl
 	}
 	DeleteDC(hdcTemp);
 
-
 	if (top < rcall.bottom)
 	{
 		rc.top = top;
@@ -612,9 +604,6 @@ static void TooltipUpdate2(HDC hdc, LPRECT lprcDraw, LPRECT lprect, UINT uDrawFl
 	}
 
 	DeleteObject(hBrushTooltipBack);
-	//DeleteObject(hBrushTooltipText);
-
-
 }
 
 
@@ -721,6 +710,7 @@ static void TooltipUpdateText(void)
 		strcpy(titleTooltip, "");
 		strcpy(formatTooltip, s);
 	}
+	TooltipSyncWideText();
 }
 
 /*------------------------------------------------
@@ -889,7 +879,6 @@ BOOL TooltipOnNotify(LRESULT *plRes, LPARAM lParam)
 			{
 				TooltipUpdateText();
 			}
-			tc_ansi_to_utf16_compat((UINT)codepage, formatTooltip, formatTooltipW, sizeof(formatTooltipW)/sizeof(WCHAR));
 			((LPTOOLTIPTEXTW)lParam)->lpszText = formatTooltipW;
 			*plRes = 0;
 			return TRUE;

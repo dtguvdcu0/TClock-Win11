@@ -6,6 +6,7 @@
 #define COBJMACROS
 #include "tcdll.h"
 #include "../common/text_codec.h"
+#include "../common/text_file_utf8.h"
 #include <stdio.h>
 
 extern HANDLE hmod;
@@ -329,36 +330,30 @@ void TooltipOnRefresh(HWND hwnd)
 static BOOL GetTooltipText(PSTR pszText)
 {
 	HANDLE	hFile;
-	char	szFilePath[MAX_PATH];	//	テキストファイルのパス
-	DWORD	dwReadSize;
+	char	szFilePath[MAX_PATH];
+	DWORD	dwReadSize = 0;
 	DWORD	dwFileSize;
 	size_t	len;
 	BOOL	bAbsPath;
-
-//	{
-//		GetCurrentDirectory(MAX_PATH, pszText);
-//		return TRUE;
-//	}
+	char*	utf8Text = NULL;
+	DWORD	utf8Size = 0;
+	BOOL	hadBom = FALSE;
 
 	if(!pszText)
 	{
-		//	値を格納するアドレスが存在しないので、FALSEを返して終了
 		return FALSE;
 	}
-
 
 	bAbsPath = FALSE;
 	len = strlen(pszText);
 	if (len >= 2) {
 		if ((*pszText == '\\') && (*(pszText + 1) == '\\')) {
-			//UNC name
 			bAbsPath = TRUE;
 		} else if (*(pszText + 1) == ':') {
 			bAbsPath = TRUE;
 		}
 	}
 	if (bAbsPath == FALSE) {
-		// TClockの位置を基準パスとして指定文字列を相対パスとして追加
 		GetModuleFileName(hmod, szFilePath, sizeof(szFilePath));
 		del_title(szFilePath);
 		if (len + strlen(szFilePath) >= MAX_PATH) {
@@ -367,12 +362,31 @@ static BOOL GetTooltipText(PSTR pszText)
 		add_title(szFilePath, pszText);
 		*pszText = '\0';
 	} else {
-		//635@p5 ファイル名を取得してツールチップをクリア。
 		strcpy(szFilePath, pszText);
 		*pszText = '\0';
 	}
 
-	//	ファイルを読み込む
+	if (tc_read_text_file_utf8(szFilePath, &utf8Text, &utf8Size, &hadBom)) {
+		char utf8buf[LEN_TOOLTIP];
+		WCHAR wbuf[LEN_TOOLTIP];
+		int copyBytes = (int)utf8Size;
+
+		if (copyBytes > LEN_TOOLTIP - 1) copyBytes = LEN_TOOLTIP - 1;
+		if (copyBytes > 0) {
+			memcpy(utf8buf, utf8Text, (size_t)copyBytes);
+		}
+		utf8buf[copyBytes] = '\0';
+		tc_free_text_buffer(utf8Text);
+
+		if (copyBytes == 0) return FALSE;
+
+		if (tc_ansi_to_utf16_compat(CP_UTF8, utf8buf, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) > 0 &&
+			tc_utf16_to_ansi_compat((UINT)codepage, wbuf, pszText, LEN_TOOLTIP) > 0) {
+			if (pszText[0] == '\0') return FALSE;
+			return TRUE;
+		}
+	}
+
 	hFile = CreateFile(szFilePath,
 					   GENERIC_READ,
 					   FILE_SHARE_READ,
@@ -382,33 +396,30 @@ static BOOL GetTooltipText(PSTR pszText)
 					   NULL);
 	if(hFile == INVALID_HANDLE_VALUE)
 	{
-		//	ファイルが存在しないので、FALSEを返して終了
 		return FALSE;
 	}
 
 	dwFileSize = GetFileSize(hFile, NULL);
+	if (dwFileSize > (DWORD)LEN_TOOLTIP - 1)
+		dwFileSize = (DWORD)(LEN_TOOLTIP - 1);
 
-	if ( dwFileSize > (DWORD)LEN_TOOLTIP)
-		dwFileSize = (DWORD)(LEN_TOOLTIP-1);
-
-	//	ファイル読み込み
-	ReadFile(hFile, pszText, dwFileSize, &dwReadSize, NULL);
-	//	ファイルをクローズ
+	if (!ReadFile(hFile, pszText, dwFileSize, &dwReadSize, NULL)) {
+		CloseHandle(hFile);
+		return FALSE;
+	}
 	CloseHandle(hFile);
 
-	if(strcmp(pszText, "") == 0)
+	if (dwReadSize > (DWORD)LEN_TOOLTIP - 1)
+		dwReadSize = (DWORD)(LEN_TOOLTIP - 1);
+	pszText[dwReadSize] = '\0';
+
+	if (pszText[0] == '\0')
 	{
-		//	文字列取得に失敗。レジストリ取得へ走らせるためにFALSEを返して終了
 		return FALSE;
 	}
 
-	//	文字列の末尾に、強制的にNULL Stringを付加（^^;
-	pszText[dwFileSize] = '\0';
-
-	//	成功したのでTRUEを返す
 	return TRUE;
 }
-
 
 
 

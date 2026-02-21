@@ -2154,6 +2154,84 @@ void RestartOnRefresh(void)
 /*------------------------------------------------
 　設定の読み込みとデータの初期化
 --------------------------------------------------*/
+#define FORMAT_TAG_NORMALIZE_NO_TAG     0
+#define FORMAT_TAG_NORMALIZE_HAS_TAG    1
+#define FORMAT_TAG_NORMALIZE_MALFORMED  2
+
+static int NormalizeMainFormatTagMarkers(const char* raw, char* out, int outLen)
+{
+	int i = 0;
+	int j = 0;
+	BOOL inTag = FALSE;
+	BOOL sawTag = FALSE;
+
+	if (!out || outLen <= 0) return FORMAT_TAG_NORMALIZE_MALFORMED;
+	out[0] = '\0';
+	if (!raw) return FORMAT_TAG_NORMALIZE_MALFORMED;
+
+	while (raw[i]) {
+		if (j >= outLen - 1) {
+			return FORMAT_TAG_NORMALIZE_MALFORMED;
+		}
+		if (!inTag) {
+			if (raw[i] == '<' && raw[i + 1] == '%') {
+				inTag = TRUE;
+				sawTag = TRUE;
+				i += 2;
+				continue;
+			}
+			if (raw[i] == '%' && raw[i + 1] == '>') {
+				return FORMAT_TAG_NORMALIZE_MALFORMED;
+			}
+			out[j++] = raw[i++];
+		}
+		else {
+			if (raw[i] == '%' && raw[i + 1] == '>') {
+				inTag = FALSE;
+				i += 2;
+				continue;
+			}
+			if (raw[i] == '<' && raw[i + 1] == '%') {
+				return FORMAT_TAG_NORMALIZE_MALFORMED;
+			}
+			out[j++] = raw[i++];
+		}
+	}
+
+	if (inTag) {
+		return FORMAT_TAG_NORMALIZE_MALFORMED;
+	}
+	out[j] = '\0';
+	return sawTag ? FORMAT_TAG_NORMALIZE_HAS_TAG : FORMAT_TAG_NORMALIZE_NO_TAG;
+}
+
+static void BuildMainFormatWrapped(const char* raw, char* out, int outLen, BOOL logMalformed, const char* logContext)
+{
+	char normalized[1024];
+	int normalize_result;
+	char wrapped[1024];
+
+	if (!raw || !out || outLen <= 0) return;
+	out[0] = '\0';
+	normalize_result = NormalizeMainFormatTagMarkers(raw, normalized, (int)sizeof(normalized));
+	if (normalize_result == FORMAT_TAG_NORMALIZE_HAS_TAG) {
+		_snprintf(wrapped, (int)sizeof(wrapped), "<%%%s%%>", normalized);
+	}
+	else {
+		_snprintf(wrapped, (int)sizeof(wrapped), "<%%%s%%>", raw);
+		if (normalize_result == FORMAT_TAG_NORMALIZE_MALFORMED && logMalformed && b_DebugLog) {
+			char msg[1024];
+			if (!logContext || !logContext[0]) logContext = "[tclock.c]";
+			_snprintf(msg, (int)sizeof(msg), "%s malformed Format tag sequence; fallback to legacy wrap.", logContext);
+			msg[sizeof(msg) - 1] = '\0';
+			writeDebugLog_Win10(msg, 999);
+		}
+	}
+
+	wrapped[sizeof(wrapped) - 1] = '\0';
+	lstrcpyn(out, wrapped, outLen);
+}
+
 void ReadData()
 {
 	int i;
@@ -2953,15 +3031,11 @@ void ReadData()
 	CustomFormatVarsReadSettings();
 	CustomFormatVarsPreloadIfEnabled();
 
-	GetMyRegStr("Format", "Format", format, 1024, "mm/dd ddd\\n hh:nn:ss ");
-
-	// 時計の書式は読み込み時に<%～%>を追加する
 	{
-		char fmt_tmp[1024];
-		strcpy(fmt_tmp,"<%");
-		strcat(fmt_tmp,format);
-		strcat(fmt_tmp,"%>");
-		strcpy(format,fmt_tmp);
+		char fmt_raw[1024];
+
+		GetMyRegStr("Format", "Format", fmt_raw, 1024, "mm/dd ddd\\n hh:nn:ss " );
+		BuildMainFormatWrapped(fmt_raw, format, (int)sizeof(format), TRUE, "[tclock.c][ReadData]");
 	}
 
 
@@ -3212,7 +3286,8 @@ BOOL WINAPI FormatMenuLabel_Win11(const char* fmt, char* out, int outBytes)
 	out[0] = '\0';
 	tmp[0] = '\0';
 	info[0] = '\0';
-	dwInfo = FindFormat((char*)fmt);
+	BuildMainFormatWrapped(fmt, tmp, (int)sizeof(tmp), FALSE, "[tclock.c][FormatMenuLabel]");
+	dwInfo = FindFormat(tmp);
 	if (dwInfo & (FORMAT_BATTERY | FORMAT_MEMORY | FORMAT_NET | FORMAT_HDD | FORMAT_CPU | FORMAT_VOL | FORMAT_GPU | FORMAT_TEMP)) {
 		UpdateSysRes(
 			(dwInfo & FORMAT_BATTERY) ? TRUE : FALSE,
@@ -3228,8 +3303,7 @@ BOOL WINAPI FormatMenuLabel_Win11(const char* fmt, char* out, int outBytes)
 
 	GetDisplayTime(&t, &beat100);
 	InitFormat(&t);
-	MakeFormat(tmp, info, &t, beat100, (char*)fmt);
-	lstrcpyn(out, tmp, outBytes);
+	MakeFormat(out, info, &t, beat100, tmp);
 	return out[0] ? TRUE : FALSE;
 }
 

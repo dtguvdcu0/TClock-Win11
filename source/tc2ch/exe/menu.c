@@ -632,16 +632,17 @@ static void tc_menu_format_label_datetime(const char* format, char* out, int out
 	{
 		PFN_FormatMenuLabel_Win11 pfn = tc_menu_get_format_api();
 		if (pfn) {
-			char apiFmt[1200];
-			const char* useFmt = format;
-			BOOL wrapped = FALSE;
-			if (!tc_menu_match_token(format, "<%")) {
-				wsprintf(apiFmt, "<%%%s%%>", format);
-				useFmt = apiFmt;
-				wrapped = TRUE;
+			BOOL hasTagMarker = FALSE;
+			const char* q = format;
+			while (*q) {
+				if (tc_menu_match_token(q, "<%") || tc_menu_match_token(q, "%>")) {
+					hasTagMarker = TRUE;
+					break;
+				}
+				q++;
 			}
-			if (pfn(useFmt, out, outLen) && out[0]) {
-				if (wrapped || strcmp(out, format) != 0) {
+			if (pfn(format, out, outLen) && out[0]) {
+				if (hasTagMarker || strcmp(out, format) != 0) {
 					return;
 				}
 			}

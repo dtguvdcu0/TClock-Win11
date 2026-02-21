@@ -16,6 +16,8 @@ extern BOOL b_DebugLog;
 extern int codepage;
 
 extern void GetDisplayTime(SYSTEMTIME* pt, int* beat100);
+extern void MakeFormatW(WCHAR* s, int sCch, char* s_info, SYSTEMTIME* pt, int beat100, const WCHAR* fmt);
+extern DWORD FindFormatW(const WCHAR* fmt);
 
 #define GRADIENT_FILL_RECT_H    0x00000000
 #define GRADIENT_FILL_RECT_V    0x00000001
@@ -126,6 +128,7 @@ static void TooltipSyncWideText(void);
 static void TooltipSyncAnsiMirrorFromWide(void);
 static BOOL TooltipWideTextEqual(const WCHAR* a, const WCHAR* b);
 static void TooltipEnsureWideReady(void);
+static DWORD TooltipFindFormatWrapped(const char* raw, const char* logContext);
 
 static void TooltipNormalizePhysicalNewlines(const char* src, char* dst, int dstLen)
 {
@@ -161,6 +164,17 @@ static void TooltipBuildWrappedFormat(const char* src, char* out, int outLen, BO
 	char normalized[LEN_TOOLTIP];
 	TooltipNormalizePhysicalNewlines(src, normalized, (int)sizeof(normalized));
 	BuildMainFormatWrapped(normalized, out, outLen, logMalformed, logContext);
+}
+
+static DWORD TooltipFindFormatWrapped(const char* raw, const char* logContext)
+{
+	char tip_wrapped[LEN_TOOLTIP];
+	WCHAR tip_wrapped_w[LEN_TOOLTIP];
+	TooltipBuildWrappedFormat(raw, tip_wrapped, (int)sizeof(tip_wrapped), TRUE, logContext);
+	if (tc_ansi_to_utf16_compat((UINT)codepage, tip_wrapped, tip_wrapped_w, (int)(sizeof(tip_wrapped_w) / sizeof(tip_wrapped_w[0]))) > 0) {
+		return FindFormatW(tip_wrapped_w);
+	}
+	return FindFormat(tip_wrapped);
 }
 
 static int TooltipDrawTextLogged(HDC hdc, LPCTSTR pszText, int cchText, LPRECT prc, UINT format, int tag)
@@ -754,7 +768,6 @@ static void TooltipUpdateText(void)
 		TooltipBuildWrappedFormat(fmt, fmt_wrapped, (int)sizeof(fmt_wrapped), TRUE, "[tooltip.c][TooltipUpdateText]");
 		MakeFormat(s, s_info, &t, beat100, fmt_wrapped);
 	}
-	//strcpy(formatTooltip, s);
 
 	if(tiptitle[0] != 0)
 	{
@@ -762,7 +775,7 @@ static void TooltipUpdateText(void)
 		TooltipBuildWrappedFormat(tiptitle, tiptitle_wrapped, (int)sizeof(tiptitle_wrapped), TRUE, "[tooltip.c][TooltipTitle]");
 		MakeFormat(tipt, tipt_info, &t, beat100, tiptitle_wrapped);
 		strcpy(titleTooltip, tipt);
-		sprintf(formatTooltip, "\n\n\n%s", s);	//タイトルがある場合は高さ確保のための空行x3を入れる。
+		sprintf(formatTooltip, "\n\n\n%s", s);	//????????????????????x3?????
 	}
 	else
 	{
@@ -1041,11 +1054,7 @@ DWORD TooltipFindFormat(void)
 			}
 		}
 	}
-	{
-		char tip_wrapped[LEN_TOOLTIP];
-		TooltipBuildWrappedFormat(tip, tip_wrapped, (int)sizeof(tip_wrapped), TRUE, "[tooltip.c][TooltipFindFormat]");
-		dwInfoTooltip |= FindFormat(tip_wrapped);
-	}
+	dwInfoTooltip |= TooltipFindFormatWrapped(tip, "[tooltip.c][TooltipFindFormat]");
 	//	Tooltipのテキストをレジストリから読み込む
 	//GetMyRegStr("Tooltip", "Tooltip2", tip, sizeof(tip), "");
 	strcpy(tip, fmtToolTip2);
@@ -1098,11 +1107,7 @@ DWORD TooltipFindFormat(void)
 			}
 		}
 	}
-	{
-		char tip_wrapped[LEN_TOOLTIP];
-		TooltipBuildWrappedFormat(tip, tip_wrapped, (int)sizeof(tip_wrapped), TRUE, "[tooltip.c][TooltipFindFormat]");
-		dwInfoTooltip |= FindFormat(tip_wrapped);
-	}
+	dwInfoTooltip |= TooltipFindFormatWrapped(tip, "[tooltip.c][TooltipFindFormat]");
 	//	Tooltipのテキストをレジストリから読み込む
 	//GetMyRegStr("Tooltip", "Tooltip3", tip, sizeof(tip), "");
 	strcpy(tip, fmtToolTip3);
@@ -1154,18 +1159,10 @@ DWORD TooltipFindFormat(void)
 			}
 		}
 	}
-	{
-		char tip_wrapped[LEN_TOOLTIP];
-		TooltipBuildWrappedFormat(tip, tip_wrapped, (int)sizeof(tip_wrapped), TRUE, "[tooltip.c][TooltipFindFormat]");
-		dwInfoTooltip |= FindFormat(tip_wrapped);
-	}
+	dwInfoTooltip |= TooltipFindFormatWrapped(tip, "[tooltip.c][TooltipFindFormat]");
 
 	strcpy(tip, tiptitle);
-	{
-		char tip_wrapped[LEN_TOOLTIP];
-		TooltipBuildWrappedFormat(tip, tip_wrapped, (int)sizeof(tip_wrapped), TRUE, "[tooltip.c][TooltipFindFormatTitle]");
-		dwInfoTooltip |= FindFormat(tip_wrapped);
-	}
+	dwInfoTooltip |= TooltipFindFormatWrapped(tip, "[tooltip.c][TooltipFindFormatTitle]");
 	return dwInfoTooltip;
 }
 

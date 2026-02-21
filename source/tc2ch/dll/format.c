@@ -3318,7 +3318,7 @@ void MakeFormat(char* s, char* s_info, SYSTEMTIME* pt, int beat100, char* fmt)
 				{
 					char date_buf[80], *date_ptr;
 					GetDateFormatCompat(MAKELANGID(LANG_NEUTRAL,SUBLANG_DEFAULT),
-						DATE_LONGDATE, pt, NULL, date_buf, 80);
+						DATE_LONGDATE, &disptime, NULL, date_buf, 80);
 					date_ptr = date_buf;
 					while (*date_ptr) {
 						*dp++ = *date_ptr++; *infop++ = 0x02;
@@ -3329,7 +3329,7 @@ void MakeFormat(char* s, char* s_info, SYSTEMTIME* pt, int beat100, char* fmt)
 				{
 					char date_buf[80], *date_ptr;
 					GetDateFormatCompat(MAKELANGID(LANG_NEUTRAL,SUBLANG_DEFAULT),
-						DATE_SHORTDATE, pt, NULL, date_buf, 80);
+						DATE_SHORTDATE, &disptime, NULL, date_buf, 80);
 					date_ptr = date_buf;
 					while (*date_ptr) {
 						*dp++ = *date_ptr++; *infop++ = 0x02;
@@ -3340,7 +3340,7 @@ void MakeFormat(char* s, char* s_info, SYSTEMTIME* pt, int beat100, char* fmt)
 				{
 					char time_buf[80], *time_ptr;
 					GetTimeFormatCompat(MAKELANGID(LANG_NEUTRAL,SUBLANG_DEFAULT),
-						TIME_FORCE24HOURFORMAT, pt, NULL, time_buf, 80);
+						TIME_FORCE24HOURFORMAT, &disptime, NULL, time_buf, 80);
 					time_ptr = time_buf;
 					while (*time_ptr) {
 						*dp++ = *time_ptr++; *infop++ = 0x08;
@@ -3556,7 +3556,1440 @@ void MakeFormat(char* s, char* s_info, SYSTEMTIME* pt, int beat100, char* fmt)
 }
 
 
+static BOOL tc_is_alpha_ascii_w(WCHAR ch)
+{
+	return (ch >= L'A' && ch <= L'Z') || (ch >= L'a' && ch <= L'z');
+}
 
+static void tc_wappend_char(WCHAR** dp, int* remain, WCHAR ch)
+{
+	if (!dp || !*dp || !remain || *remain <= 1) return;
+	**dp = ch;
+	(*dp)++;
+	(*remain)--;
+	**dp = L'\0';
+}
+
+static void tc_wappend_text(WCHAR** dp, int* remain, const WCHAR* src)
+{
+	if (!src) return;
+	while (*src) {
+		tc_wappend_char(dp, remain, *src++);
+	}
+}
+
+static void tc_wappend_ascii(WCHAR** dp, int* remain, const char* src)
+{
+	if (!src) return;
+	while (*src) {
+		tc_wappend_char(dp, remain, (WCHAR)(unsigned char)(*src));
+		src++;
+	}
+}
+
+static void tc_wappend_uint_fixed(WCHAR** dp, int* remain, int value, int width)
+{
+	WCHAR tmp[16];
+	int i;
+	for (i = width - 1; i >= 0; --i) {
+		tmp[i] = (WCHAR)(L'0' + (value % 10));
+		value /= 10;
+	}
+	for (i = 0; i < width; ++i) tc_wappend_char(dp, remain, tmp[i]);
+}
+
+static void tc_wappend_uint_var(WCHAR** dp, int* remain, int value)
+{
+	WCHAR tmp[16];
+	int n = 0;
+	if (value == 0) {
+		tc_wappend_char(dp, remain, L'0');
+		return;
+	}
+	while (value > 0 && n < (int)(sizeof(tmp) / sizeof(tmp[0]))) {
+		tmp[n++] = (WCHAR)(L'0' + (value % 10));
+		value /= 10;
+	}
+	while (n > 0) tc_wappend_char(dp, remain, tmp[--n]);
+}
+
+static void tc_get_locale_sdate_w(WCHAR* buf, int cch)
+{
+	if (!buf || cch <= 0) return;
+	if (GetLocaleInfoW(MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), LOCALE_SDATE, buf, cch) <= 0) {
+		lstrcpynW(buf, L"/", cch);
+	}
+}
+
+static void tc_get_locale_stime_w(WCHAR* buf, int cch)
+{
+	if (!buf || cch <= 0) return;
+	if (GetLocaleInfoW(MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), LOCALE_STIME, buf, cch) <= 0) {
+		lstrcpynW(buf, L":", cch);
+	}
+}
+
+static void tc_get_locale_ampm_w(BOOL isAm, WCHAR* buf, int cch)
+{
+	int lctype = isAm ? LOCALE_S1159 : LOCALE_S2359;
+	if (!buf || cch <= 0) return;
+	if (GetLocaleInfoW(MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), lctype, buf, cch) <= 0) {
+		lstrcpynW(buf, isAm ? L"AM" : L"PM", cch);
+	}
+}
+
+static int tc_hour_adjust_w(int hour)
+{
+	if (bHour12) {
+		if (hour > 12) hour -= 12;
+		else if (hour == 0) hour = 12;
+		if (hour == 12 && bHourZero) hour = 0;
+	}
+	return hour;
+}
+
+static BOOL tc_is_digit_ascii_w(WCHAR ch)
+{
+	return (ch >= L'0' && ch <= L'9') ? TRUE : FALSE;
+}
+
+static BOOL tc_parse_num_format_w(const WCHAR** psp, int* len, int* slen, BOOL* bComma)
+{
+	const WCHAR* p;
+	int n = 0;
+	int ns = 0;
+	BOOL comma = FALSE;
+
+	if (!psp || !*psp) return FALSE;
+	p = *psp;
+	while (*p == L'_') {
+		ns++;
+		p++;
+	}
+	if (*p != L'x' && *p != L',') return FALSE;
+	while (*p == L'x') {
+		n++;
+		p++;
+	}
+	while (*p == L',') {
+		n++;
+		p++;
+		comma = TRUE;
+	}
+
+	if (len) *len = n + ns;
+	if (slen) *slen = ns;
+	if (bComma) *bComma = comma;
+	*psp = p;
+	return TRUE;
+}
+
+static void tc_wappend_num_format(WCHAR** dp, int* remain, int n, int len, int slen, BOOL bComma)
+{
+	WCHAR tmp[64];
+	int minlen = 1;
+	int i;
+	int ii;
+	int pos = 0;
+	int emitLen;
+
+	if (!dp || !*dp || !remain || *remain <= 1) return;
+	if (n < 0) n = 0;
+
+	for (i = 10; i < 1000000001; i *= 10, minlen++) {
+		if (n < i) break;
+	}
+	if (bComma) {
+		if (minlen % 3 == 0) minlen += minlen / 3 - 1;
+		else minlen += minlen / 3;
+	}
+	emitLen = (minlen < len) ? len : minlen;
+
+	while (minlen < len && pos < (int)(sizeof(tmp) / sizeof(tmp[0])) - 1) {
+		if (slen > 0) {
+			tmp[pos++] = L' ';
+			slen--;
+		}
+		else {
+			tmp[pos++] = L'0';
+		}
+		len--;
+	}
+	for (i = minlen - 1, ii = 1; i >= 0 && (pos + i) < (int)(sizeof(tmp) / sizeof(tmp[0])); i--, ii++) {
+		tmp[pos + i] = (WCHAR)((n % 10) + L'0');
+		if (ii % 3 == 0 && i != 0 && bComma) {
+			tmp[pos + --i] = L',';
+		}
+		n /= 10;
+	}
+	for (i = 0; i < emitLen && i < (int)(sizeof(tmp) / sizeof(tmp[0])); ++i) {
+		tc_wappend_char(dp, remain, tmp[i]);
+	}
+}
+
+static BOOL tc_scan_uptime_token_w(const WCHAR** psp)
+{
+	const WCHAR* p;
+	const WCHAR* q;
+	if (!psp || !*psp) return FALSE;
+	p = *psp;
+	if (*p != L'S') return FALSE;
+	p++;
+	if (*p == L'T') {
+		*psp = p + 1;
+		return TRUE;
+	}
+	if (*p == L'd' || *p == L'a' || *p == L'h' || *p == L'n' || *p == L's') {
+		p++;
+		q = p;
+		if (!tc_parse_num_format_w(&q, NULL, NULL, NULL)) return FALSE;
+		*psp = q;
+		return TRUE;
+	}
+	return FALSE;
+}
+
+static BOOL tc_scan_cpu_token_w(const WCHAR** psp)
+{
+	const WCHAR* p;
+	const WCHAR* q;
+
+	if (!psp || !*psp) return FALSE;
+	p = *psp;
+	if (*p != L'C') return FALSE;
+	if (*(p + 1) != L'U' && *(p + 1) != L'C') return FALSE;
+	p += 2;
+	if (tc_is_digit_ascii_w(*p)) {
+		p += 1;
+	}
+	else if (*p == L'e' && tc_is_digit_ascii_w(*(p + 1)) && tc_is_digit_ascii_w(*(p + 2))) {
+		p += 3;
+	}
+	q = p;
+	if (tc_parse_num_format_w(&q, NULL, NULL, NULL)) {
+		p = q;
+	}
+	*psp = p;
+	return TRUE;
+}
+
+static BOOL tc_scan_memory_token_w(const WCHAR** psp)
+{
+	const WCHAR* p;
+	const WCHAR* q;
+
+	if (!psp || !*psp) return FALSE;
+	p = *psp;
+	if (*p != L'M') return FALSE;
+
+	if (*(p + 1) == L'K' || *(p + 1) == L'M' || *(p + 1) == L'G' || *(p + 1) == L'S') {
+		p += 2;
+	}
+	else if ((*(p + 1) == L'T' || *(p + 1) == L'A' || *(p + 1) == L'U') &&
+		(*(p + 2) == L'P' || *(p + 2) == L'F' || *(p + 2) == L'V') &&
+		(*(p + 3) == L'K' || *(p + 3) == L'M' || *(p + 3) == L'P' || *(p + 3) == L'G')) {
+		p += 4;
+	}
+	else {
+		return FALSE;
+	}
+
+	q = p;
+	if (tc_parse_num_format_w(&q, NULL, NULL, NULL)) {
+		p = q;
+	}
+	if (*p == L'.') {
+		p++;
+		q = p;
+		if (tc_parse_num_format_w(&q, NULL, NULL, NULL)) {
+			p = q;
+		}
+	}
+	*psp = p;
+	return TRUE;
+}
+
+static BOOL tc_emit_memory_token_w(WCHAR** dp, int* remain, const WCHAR** psp)
+{
+	const WCHAR* p;
+	ULONGLONG ms = (ULONGLONG)-1;
+	ULONGLONG mst = (ULONGLONG)-1;
+	double d_ms = 0.0;
+	BOOL bFlagGB = FALSE;
+	const ULONGLONG intMax = 2147483647ULL;
+
+	if (!dp || !*dp || !remain || !psp || !*psp) return FALSE;
+	p = *psp;
+	if (*p != L'M') return FALSE;
+
+	if (*(p + 1) == L'K') {
+		p += 2;
+		ms = msMemory.ullAvailPhys / 1024ULL;
+	}
+	else if (*(p + 1) == L'M') {
+		p += 2;
+		ms = msMemory.ullAvailPhys / (1024ULL * 1024ULL);
+	}
+	else if (*(p + 1) == L'G') {
+		p += 2;
+		d_ms = (double)msMemory.ullAvailPhys / (1024.0 * 1024.0 * 1024.0);
+		bFlagGB = TRUE;
+	}
+	else if (*(p + 1) == L'S') {
+		p += 2;
+		ms = (ULONGLONG)((double)msMemory.ullTotalPhys / (1024.0 * 1024.0 * (double)megabytesInGigaByte));
+	}
+	else if (*(p + 1) == L'T') {
+		if (*(p + 2) == L'P') ms = msMemory.ullTotalPhys;
+		else if (*(p + 2) == L'F') ms = msMemory.ullTotalPageFile;
+		else if (*(p + 2) == L'V') ms = msMemory.ullTotalVirtual;
+		if (ms != (ULONGLONG)-1) {
+			if (*(p + 3) == L'K') { ms /= 1024ULL; p += 4; }
+			else if (*(p + 3) == L'M') { ms /= (1024ULL * 1024ULL); p += 4; }
+			else if (*(p + 3) == L'G') {
+				d_ms = (double)ms / (1024.0 * 1024.0 * 1024.0);
+				bFlagGB = TRUE;
+				p += 4;
+			}
+			else ms = (ULONGLONG)-1;
+		}
+		else {
+			return FALSE;
+		}
+	}
+	else if (*(p + 1) == L'A') {
+		if (*(p + 2) == L'P') { ms = msMemory.ullAvailPhys; mst = msMemory.ullTotalPhys; }
+		else if (*(p + 2) == L'F') { ms = msMemory.ullAvailPageFile; mst = msMemory.ullTotalPageFile; }
+		else if (*(p + 2) == L'V') { ms = msMemory.ullAvailVirtual; mst = msMemory.ullTotalVirtual; }
+		if (ms != (ULONGLONG)-1) {
+			if (*(p + 3) == L'K') { ms /= 1024ULL; p += 4; }
+			else if (*(p + 3) == L'M') { ms /= (1024ULL * 1024ULL); p += 4; }
+			else if (*(p + 3) == L'P') { mst /= 100ULL; ms = mst ? (ms / mst) : 0ULL; p += 4; }
+			else if (*(p + 3) == L'G') {
+				d_ms = (double)ms / (1024.0 * 1024.0 * 1024.0);
+				bFlagGB = TRUE;
+				p += 4;
+			}
+			else ms = (ULONGLONG)-1;
+		}
+		else {
+			return FALSE;
+		}
+	}
+	else if (*(p + 1) == L'U') {
+		if (*(p + 2) == L'P') { ms = msMemory.ullTotalPhys - msMemory.ullAvailPhys; mst = msMemory.ullTotalPhys; }
+		else if (*(p + 2) == L'F') { ms = msMemory.ullTotalPageFile - msMemory.ullAvailPageFile; mst = msMemory.ullTotalPageFile; }
+		else if (*(p + 2) == L'V') { ms = msMemory.ullTotalVirtual - msMemory.ullAvailVirtual; mst = msMemory.ullTotalVirtual; }
+		if (ms != (ULONGLONG)-1) {
+			if (*(p + 3) == L'K') { ms /= 1024ULL; p += 4; }
+			else if (*(p + 3) == L'M') { ms /= (1024ULL * 1024ULL); p += 4; }
+			else if (*(p + 3) == L'P') { mst /= 100ULL; ms = mst ? (ms / mst) : 0ULL; p += 4; }
+			else if (*(p + 3) == L'G') {
+				d_ms = (double)ms / (1024.0 * 1024.0 * 1024.0);
+				bFlagGB = TRUE;
+				p += 4;
+			}
+			else ms = (ULONGLONG)-1;
+		}
+		else {
+			return FALSE;
+		}
+	}
+	else {
+		return FALSE;
+	}
+
+	if (bFlagGB) {
+		int len = 1;
+		int slen = 0;
+		BOOL bComma = FALSE;
+		int msi;
+		const WCHAR* p2 = p;
+		if (tc_parse_num_format_w(&p2, &len, &slen, &bComma)) p = p2;
+		msi = (int)d_ms;
+		if (msi < 0) msi = 0;
+		tc_wappend_num_format(dp, remain, msi, len, slen, bComma);
+		d_ms = d_ms - (double)msi;
+		if (*p == L'.') {
+			int dlen;
+			int dslen;
+			BOOL dComma = FALSE;
+			int frac;
+			p++;
+			p2 = p;
+			if (tc_parse_num_format_w(&p2, &dlen, &dslen, &dComma)) {
+				int fmtLen;
+				tc_wappend_char(dp, remain, L'.');
+				fmtLen = dlen;
+				if (fmtLen > 3) fmtLen = 3;
+				while (fmtLen-- > 0) d_ms *= 10.0;
+				frac = (int)d_ms;
+				if (frac < 0) frac = 0;
+				tc_wappend_num_format(dp, remain, frac, dlen > 3 ? 3 : dlen, dslen, FALSE);
+				p = p2;
+			}
+		}
+		*psp = p;
+		return TRUE;
+	}
+	if (ms == (ULONGLONG)-1) return FALSE;
+	{
+		int len = 1;
+		int slen = 0;
+		BOOL bComma = FALSE;
+		const WCHAR* p2 = p;
+		int v;
+		if (tc_parse_num_format_w(&p2, &len, &slen, &bComma)) p = p2;
+		if (ms > intMax) ms = intMax;
+		v = (int)ms;
+		tc_wappend_num_format(dp, remain, v, len, slen, bComma);
+		*psp = p;
+		return TRUE;
+	}
+}
+
+static void tc_net_auto_label_w(WCHAR* out, int outcch, double netk, double netm)
+{
+	if (!out || outcch <= 0) return;
+	if ((netk < 1024.0) && (netk >= 0.0)) {
+		swprintf(out, outcch, L"%4.0fKB", netk);
+	}
+	else if (netm < 10.0) {
+		swprintf(out, outcch, L"%1.2fMB", netm);
+	}
+	else if (netm < 100.0) {
+		swprintf(out, outcch, L"%2.1fMB", netm);
+	}
+	else if (netm < (double)megabytesInGigaByte) {
+		swprintf(out, outcch, L"%4.0fMB", netm);
+	}
+	else if (netm < (10.0 * (double)megabytesInGigaByte)) {
+		swprintf(out, outcch, L"%1.2fGB", (netm / (double)megabytesInGigaByte));
+	}
+	else if (netm < (100.0 * (double)megabytesInGigaByte)) {
+		swprintf(out, outcch, L"%2.1fGB", (netm / (double)megabytesInGigaByte));
+	}
+	else if (netm < (10000.0 * (double)megabytesInGigaByte)) {
+		swprintf(out, outcch, L"%4.0fGB", (netm / (double)megabytesInGigaByte));
+	}
+	else {
+		swprintf(out, outcch, L"%dGB", (int)(netm / (double)megabytesInGigaByte));
+	}
+}
+
+static BOOL tc_scan_network_token_w(const WCHAR** psp)
+{
+	const WCHAR* p;
+	const WCHAR* q;
+	if (!psp || !*psp) return FALSE;
+	p = *psp;
+	if (*p != L'N') return FALSE;
+
+	if (_wcsnicmp(p, L"NRAA", 4) == 0 || _wcsnicmp(p, L"NSAA", 4) == 0) {
+		*psp = p + 4;
+		return TRUE;
+	}
+
+	if ((*(p + 1) == L'R' || *(p + 1) == L'S') &&
+		(*(p + 2) == L'A' || *(p + 2) == L'S')) {
+		WCHAR u = *(p + 3);
+		BOOL ok = FALSE;
+		if (*(p + 2) == L'A') {
+			ok = (u == L'B' || u == L'K' || u == L'M' || u == L'G') ? TRUE : FALSE;
+		}
+		else {
+			ok = (u == L'B' || u == L'K' || u == L'M') ? TRUE : FALSE;
+		}
+		if (!ok) return FALSE;
+		p += 4;
+		q = p;
+		if (tc_parse_num_format_w(&q, NULL, NULL, NULL)) p = q;
+		if (*p == L'.') {
+			p++;
+			q = p;
+			if (tc_parse_num_format_w(&q, NULL, NULL, NULL)) p = q;
+		}
+		*psp = p;
+		return TRUE;
+	}
+	return FALSE;
+}
+
+static BOOL tc_emit_network_token_w(WCHAR** dp, int* remain, const WCHAR** psp)
+{
+	const WCHAR* p;
+	if (!dp || !*dp || !remain || !psp || !*psp) return FALSE;
+	p = *psp;
+	if (*p != L'N') return FALSE;
+
+	if (_wcsnicmp(p, L"NRAA", 4) == 0) {
+		WCHAR buf[32];
+		tc_net_auto_label_w(buf, (int)(sizeof(buf)/sizeof(buf[0])), net[4], net[8]);
+		tc_wappend_text(dp, remain, buf);
+		*psp = p + 4;
+		return TRUE;
+	}
+	if (_wcsnicmp(p, L"NSAA", 4) == 0) {
+		WCHAR buf[32];
+		tc_net_auto_label_w(buf, (int)(sizeof(buf)/sizeof(buf[0])), net[5], net[9]);
+		tc_wappend_text(dp, remain, buf);
+		*psp = p + 4;
+		return TRUE;
+	}
+
+	if ((*(p + 1) == L'R' || *(p + 1) == L'S') &&
+		(*(p + 2) == L'A' || *(p + 2) == L'S')) {
+		double ntd = -1.0;
+		int nt;
+		int len = 1;
+		int slen = 0;
+		BOOL bComma = FALSE;
+		const WCHAR* p2;
+		WCHAR u = *(p + 3);
+
+		if (*(p + 1) == L'R') {
+			if (*(p + 2) == L'A') {
+				if (u == L'B') ntd = net[0];
+				else if (u == L'K') ntd = net[4];
+				else if (u == L'M') ntd = net[8];
+				else if (u == L'G') ntd = (int)(net[8] / megabytesInGigaByte);
+			}
+			else {
+				if (u == L'B') ntd = net[2];
+				else if (u == L'K') ntd = net[6];
+				else if (u == L'M') ntd = net[10];
+			}
+		}
+		else {
+			if (*(p + 2) == L'A') {
+				if (u == L'B') ntd = net[1];
+				else if (u == L'K') ntd = net[5];
+				else if (u == L'M') ntd = net[9];
+				else if (u == L'G') ntd = (int)(net[9] / megabytesInGigaByte);
+			}
+			else {
+				if (u == L'B') ntd = net[3];
+				else if (u == L'K') ntd = net[7];
+				else if (u == L'M') ntd = net[11];
+			}
+		}
+		if (ntd < 0.0) return FALSE;
+
+		p += 4;
+		nt = (int)ntd;
+		if (nt < 0) nt = 0;
+		p2 = p;
+		if (tc_parse_num_format_w(&p2, &len, &slen, &bComma)) p = p2;
+		tc_wappend_num_format(dp, remain, nt, len, slen, bComma);
+		ntd = ntd - (double)nt;
+		if (*p == L'.') {
+			int dlen;
+			int dslen;
+			BOOL dComma = FALSE;
+			p++;
+			p2 = p;
+			if (tc_parse_num_format_w(&p2, &dlen, &dslen, &dComma)) {
+				int fmtLen = dlen;
+				if (fmtLen > 3) fmtLen = 3;
+				tc_wappend_char(dp, remain, L'.');
+				while (fmtLen-- > 0) ntd *= 10.0;
+				nt = (int)ntd;
+				if (nt < 0) nt = 0;
+				tc_wappend_num_format(dp, remain, nt, dlen > 3 ? 3 : dlen, 0, FALSE);
+				p = p2;
+			}
+		}
+		*psp = p;
+		return TRUE;
+	}
+	return FALSE;
+}
+
+static BOOL tc_hdd_token_dv_w(WCHAR ch, int* dv)
+{
+	if (!dv) return FALSE;
+	if (ch >= L'A' && ch <= L'Z') {
+		*dv = (int)(ch - L'A');
+		return TRUE;
+	}
+	if (ch >= L'0' && ch <= L'9') {
+		*dv = (int)(ch - L'0') + 26;
+		return TRUE;
+	}
+	return FALSE;
+}
+
+static BOOL tc_scan_hdd_token_w(const WCHAR** psp)
+{
+	const WCHAR* p;
+	const WCHAR* q;
+	int dv;
+	if (!psp || !*psp) return FALSE;
+	p = *psp;
+	if (*p != L'H') return FALSE;
+	if (*(p + 1) != L'A' && *(p + 1) != L'U' && *(p + 1) != L'T') return FALSE;
+	if (!tc_hdd_token_dv_w(*(p + 2), &dv)) return FALSE;
+	if (*(p + 3) != L'M' && *(p + 3) != L'G' && *(p + 3) != L'P') return FALSE;
+	if (*(p + 1) == L'T' && *(p + 3) == L'P') return FALSE;
+	p += 4;
+	q = p;
+	if (tc_parse_num_format_w(&q, NULL, NULL, NULL)) p = q;
+	if (*p == L'.') {
+		p++;
+		q = p;
+		if (tc_parse_num_format_w(&q, NULL, NULL, NULL)) p = q;
+	}
+	*psp = p;
+	return TRUE;
+}
+
+static BOOL tc_emit_hdd_token_w(WCHAR** dp, int* remain, const WCHAR** psp)
+{
+	const WCHAR* p;
+	int dv;
+	double dsk = 0.0;
+	int dski;
+	int len = 1;
+	int slen = 0;
+	BOOL bComma = FALSE;
+	const WCHAR* p2;
+	WCHAR mode;
+	WCHAR unit;
+
+	if (!dp || !*dp || !remain || !psp || !*psp) return FALSE;
+	p = *psp;
+	if (*p != L'H') return FALSE;
+	mode = *(p + 1);
+	unit = *(p + 3);
+	if (mode != L'A' && mode != L'U' && mode != L'T') return FALSE;
+	if (!tc_hdd_token_dv_w(*(p + 2), &dv)) return FALSE;
+	if (unit != L'M' && unit != L'G' && unit != L'P') return FALSE;
+	if (mode == L'T' && unit == L'P') return FALSE;
+
+	if (mode == L'T') {
+		if (unit == L'M') dsk = diskAll[dv];
+		else if (unit == L'G') dsk = diskAll[dv + 36];
+	}
+	else if (mode == L'A') {
+		if (unit == L'M') dsk = diskFree[dv];
+		else if (unit == L'G') dsk = diskFree[dv + 36];
+		else if (unit == L'P') {
+			if (diskAll[dv] != 0.0) dsk = (diskFree[dv] / diskAll[dv]) * 100.0;
+			else dsk = 0.0;
+		}
+	}
+	else {
+		if (unit == L'M') dsk = diskAll[dv] - diskFree[dv];
+		else if (unit == L'G') dsk = diskAll[dv + 36] - diskFree[dv + 36];
+		else if (unit == L'P') {
+			if (diskAll[dv] != 0.0) dsk = ((diskAll[dv] - diskFree[dv]) / diskAll[dv]) * 100.0;
+			else dsk = 0.0;
+		}
+	}
+
+	p += 4;
+	dski = (int)dsk;
+	if (dski < 0) dski = 0;
+	p2 = p;
+	if (tc_parse_num_format_w(&p2, &len, &slen, &bComma)) p = p2;
+	tc_wappend_num_format(dp, remain, dski, len, slen, bComma);
+	dsk = dsk - (double)dski;
+	if (*p == L'.') {
+		int dlen;
+		int dslen;
+		BOOL dComma = FALSE;
+		int frac;
+		p++;
+		p2 = p;
+		if (tc_parse_num_format_w(&p2, &dlen, &dslen, &dComma)) {
+			int fmtLen = dlen;
+			if (fmtLen > 6) fmtLen = 6;
+			tc_wappend_char(dp, remain, L'.');
+			while (fmtLen-- > 0) dsk *= 10.0;
+			frac = (int)dsk;
+			if (frac < 0) frac = 0;
+			tc_wappend_num_format(dp, remain, frac, dlen > 6 ? 6 : dlen, 0, FALSE);
+			p = p2;
+		}
+	}
+	*psp = p;
+	return TRUE;
+}
+
+static BOOL tc_scan_gpu_token_w(const WCHAR** psp)
+{
+	const WCHAR* p;
+	const WCHAR* q;
+	if (!psp || !*psp) return FALSE;
+	p = *psp;
+	if (*p != L'G') return FALSE;
+	if (*(p + 1) != L'U' && *(p + 1) != L'I') return FALSE;
+	p += 2;
+	q = p;
+	if (tc_parse_num_format_w(&q, NULL, NULL, NULL)) p = q;
+	*psp = p;
+	return TRUE;
+}
+
+static BOOL tc_scan_ip_token_w(const WCHAR** psp)
+{
+	const WCHAR* p;
+	if (!psp || !*psp) return FALSE;
+	p = *psp;
+	if (*p != L'I' || *(p + 1) != L'P') return FALSE;
+	if (*(p + 2) != L'A' && *(p + 2) != L'E' && *(p + 2) != L'W' && *(p + 2) != L'L' && *(p + 2) != L'V') return FALSE;
+	*psp = p + 3;
+	return TRUE;
+}
+
+static void tc_wappend_ansi_fixed_w(WCHAR** dp, int* remain, const char* src, int fixed)
+{
+	WCHAR wbuf[128];
+	int len = 0;
+	int i;
+	if (!dp || !*dp || !remain || !src || fixed <= 0) return;
+	if (tc_ansi_to_utf16_compat((UINT)codepage, src, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) <= 0) {
+		wbuf[0] = L'\0';
+	}
+	len = (int)lstrlenW(wbuf);
+	if (len > fixed) len = fixed;
+	for (i = 0; i < len; ++i) tc_wappend_char(dp, remain, wbuf[i]);
+	for (; i < fixed; ++i) tc_wappend_char(dp, remain, L' ');
+}
+
+static BOOL tc_emit_uptime_token_w(WCHAR** dp, int* remain, const WCHAR** psp, DWORD* tickCache)
+{
+	const WCHAR* p;
+	const WCHAR* p2;
+	int len = 0;
+	int slen = 0;
+	BOOL bComma = FALSE;
+	int st;
+
+	if (!dp || !*dp || !remain || !psp || !*psp || !tickCache) return FALSE;
+	p = *psp;
+	if (*p != L'S') return FALSE;
+	p++;
+
+	if (*p == L'd' || *p == L'a' || *p == L'h' || *p == L'n' || *p == L's') {
+		p2 = p + 1;
+		if (!tc_parse_num_format_w(&p2, &len, &slen, &bComma)) return FALSE;
+		if (!*tickCache) *tickCache = GetTickCount();
+		if (*p == L'd') {
+			st = (int)(*tickCache / 86400000UL);
+			tc_wappend_num_format(dp, remain, st, len, slen, bComma);
+		}
+		else if (*p == L'a') {
+			st = (int)(*tickCache / 3600000UL);
+			tc_wappend_num_format(dp, remain, st, len, slen, bComma);
+		}
+		else if (*p == L'h') {
+			st = (int)((*tickCache / 3600000UL) % 24UL);
+			tc_wappend_num_format(dp, remain, st, len, slen, FALSE);
+		}
+		else if (*p == L'n') {
+			st = (int)((*tickCache / 60000UL) % 60UL);
+			tc_wappend_num_format(dp, remain, st, len, slen, FALSE);
+		}
+		else {
+			st = (int)((*tickCache / 1000UL) % 60UL);
+			tc_wappend_num_format(dp, remain, st, len, slen, FALSE);
+		}
+		*psp = p2;
+		return TRUE;
+	}
+
+	if (*p == L'T') {
+		DWORD dw;
+		int sth;
+		int stm;
+		int sts;
+		if (!*tickCache) *tickCache = GetTickCount();
+		dw = *tickCache / 1000UL;
+		sts = (int)(dw % 60UL); dw /= 60UL;
+		stm = (int)(dw % 60UL); dw /= 60UL;
+		sth = (int)dw;
+		tc_wappend_num_format(dp, remain, sth, 2, 0, FALSE);
+		tc_wappend_char(dp, remain, L':');
+		tc_wappend_num_format(dp, remain, stm, 2, 0, FALSE);
+		tc_wappend_char(dp, remain, L':');
+		tc_wappend_num_format(dp, remain, sts, 2, 0, FALSE);
+		*psp = p + 1;
+		return TRUE;
+	}
+
+	return FALSE;
+}
+
+static BOOL tc_emit_gpu_token_w(WCHAR** dp, int* remain, const WCHAR** psp)
+{
+	const WCHAR* p;
+	int value;
+	int len;
+	int slen;
+	BOOL bComma = FALSE;
+	const WCHAR* p2;
+	if (!dp || !*dp || !remain || !psp || !*psp) return FALSE;
+	p = *psp;
+	if (*p != L'G') return FALSE;
+	if (*(p + 1) == L'U') value = totalGPUUsage;
+	else if (*(p + 1) == L'I') value = numPDHGPUInstance;
+	else return FALSE;
+	if (value < 0) value = 0;
+	p += 2;
+	p2 = p;
+	if (tc_parse_num_format_w(&p2, &len, &slen, &bComma)) {
+		tc_wappend_num_format(dp, remain, value, len, slen, bComma);
+		p = p2;
+	}
+	else if (*(p - 1) == L'U') {
+		if (value > 99) tc_wappend_uint_fixed(dp, remain, value, 3);
+		else tc_wappend_uint_fixed(dp, remain, value, 2);
+	}
+	else {
+		if (value > 999) tc_wappend_uint_fixed(dp, remain, value, 4);
+		else if (value > 99) tc_wappend_uint_fixed(dp, remain, value, 3);
+		else tc_wappend_uint_fixed(dp, remain, value, 2);
+	}
+	*psp = p;
+	return TRUE;
+}
+
+static BOOL tc_emit_ip_token_w(WCHAR** dp, int* remain, const WCHAR** psp)
+{
+	const WCHAR* p;
+	char buf[32];
+	if (!dp || !*dp || !remain || !psp || !*psp) return FALSE;
+	p = *psp;
+	if (*p != L'I' || *(p + 1) != L'P') return FALSE;
+
+	if (*(p + 2) == L'E') {
+		tc_wappend_ansi_fixed_w(dp, remain, ipEther, 15);
+	}
+	else if (*(p + 2) == L'W') {
+		tc_wappend_ansi_fixed_w(dp, remain, ipWiFi, 15);
+	}
+	else if (*(p + 2) == L'L') {
+		tc_wappend_ansi_fixed_w(dp, remain, ipLTE, 15);
+	}
+	else if (*(p + 2) == L'V') {
+		tc_wappend_ansi_fixed_w(dp, remain, ipVPN, 15);
+	}
+	else if (*(p + 2) == L'A') {
+		strcpy(buf, "IP[Active] -NA-");
+		if (flag_VPN && lstrcmpi(ipVPN, "--- --- --- ---") != 0) {
+			strcpy(buf, ipVPN);
+		}
+		else if (active_physical_adapter_Win10 == 0) {
+			strcpy(buf, ipEther);
+		}
+		else if (active_physical_adapter_Win10 == 1) {
+			strcpy(buf, ipWiFi);
+		}
+		else if (active_physical_adapter_Win10 == 2) {
+			strcpy(buf, ipLTE);
+		}
+		else if (g_InternetConnectStat_Win10 == 0) {
+			strcpy(buf, ipEther);
+		}
+		else if (g_InternetConnectStat_Win10 == 1 || g_InternetConnectStat_Win10 == 4) {
+			strcpy(buf, ipWiFi);
+		}
+		else if (g_InternetConnectStat_Win10 == 2) {
+			strcpy(buf, ipLTE);
+		}
+		tc_wappend_ansi_fixed_w(dp, remain, buf, 15);
+	}
+	else {
+		return FALSE;
+	}
+
+	*psp = p + 3;
+	return TRUE;
+}
+
+static WCHAR tc_makeformatw_first_unsupported_char(const WCHAR* fmt)
+{
+	const WCHAR* sp = fmt;
+	if (!fmt) return L'\0';
+	while (*sp) {
+		if (*sp == L'<' && *(sp + 1) == L'%') {
+			sp += 2;
+			while (*sp) {
+				if (*sp == L'%' && *(sp + 1) == L'>') { sp += 2; break; }
+				if (*sp == L'\"') {
+					sp++;
+					while (*sp && *sp != L'\"') sp++;
+					if (*sp == L'\"') sp++;
+					continue;
+				}
+				if ((*sp == L'\\' && *(sp + 1) == L'n') || *sp == L'/' || *sp == L':') { sp += (*sp == L'\\') ? 2 : 1; continue; }
+				if (_wcsnicmp(sp, L"LDATE", 5) == 0) { sp += 5; continue; }
+				if (_wcsnicmp(sp, L"DATE", 4) == 0) { sp += 4; continue; }
+				if (_wcsnicmp(sp, L"TIME", 4) == 0) { sp += 4; continue; }
+				{ const WCHAR* p2 = sp; if (tc_scan_cpu_token_w(&p2)) { sp = p2; continue; } }
+				{ const WCHAR* p2 = sp; if (tc_scan_memory_token_w(&p2)) { sp = p2; continue; } }
+				{ const WCHAR* p2 = sp; if (tc_scan_network_token_w(&p2)) { sp = p2; continue; } }
+				{ const WCHAR* p2 = sp; if (tc_scan_hdd_token_w(&p2)) { sp = p2; continue; } }
+				{ const WCHAR* p2 = sp; if (tc_scan_gpu_token_w(&p2)) { sp = p2; continue; } }
+				{ const WCHAR* p2 = sp; if (tc_scan_ip_token_w(&p2)) { sp = p2; continue; } }
+				{ const WCHAR* p2 = sp; if (tc_scan_uptime_token_w(&p2)) { sp = p2; continue; } }
+				if (_wcsnicmp(sp, L"PCORE", 5) == 0) { sp += 5; continue; }
+				if (_wcsnicmp(sp, L"LPROC", 5) == 0) { sp += 5; continue; }
+				if (*sp == L'@' && *(sp + 1) == L'@' && *(sp + 2) == L'@') { sp += 3; if (*sp == L'.' && *(sp + 1) == L'@') sp += 2; continue; }
+				if (*sp == L'@') return *sp;
+				if (_wcsnicmp(sp, L"AM/PM", 5) == 0) { sp += 5; continue; }
+				if (_wcsnicmp(sp, L"AMPM", 4) == 0) { sp += 4; continue; }
+				if (_wcsnicmp(sp, L"am/pm", 5) == 0) { sp += 5; continue; }
+				if (*sp == L'a' && *(sp + 1) == L'a' && *(sp + 2) == L'a') { if (*(sp + 3) == L'a') sp += 4; else sp += 3; continue; }
+				if (*sp == L'y' && *(sp + 1) == L'y') { sp += (*(sp + 2) == L'y' && *(sp + 3) == L'y') ? 4 : 2; continue; }
+				if (*sp == L'd') {
+					if (_wcsnicmp(sp, L"dddd", 4) == 0) { sp += 4; continue; }
+					if (_wcsnicmp(sp, L"dde", 3) == 0) { sp += 3; continue; }
+					if (_wcsnicmp(sp, L"ddd", 3) == 0) { sp += 3; continue; }
+					if (*(sp + 1) == L'd') { sp += 2; continue; }
+					sp += 1; continue;
+				}
+				if (*sp == L'm') {
+					if (_wcsnicmp(sp, L"mmmm", 4) == 0) { sp += 4; continue; }
+					if (_wcsnicmp(sp, L"mme", 3) == 0) { sp += 3; continue; }
+					if (_wcsnicmp(sp, L"mmm", 3) == 0) { sp += 3; continue; }
+					if (*(sp + 1) == L'm') { sp += 2; continue; }
+					sp += 1; continue;
+				}
+				if (*sp == L'h') { if (*(sp + 1) == L'h') sp += 2; else sp += 1; continue; }
+				if (*sp == L'n') { if (*(sp + 1) == L'n') sp += 2; else sp += 1; continue; }
+				if (*sp == L's') { if (*(sp + 1) == L's') sp += 2; else sp += 1; continue; }
+				if (*sp == L't' && *(sp + 1) == L't') { sp += 2; continue; }
+				if (*sp == L't' && ((*(sp + 1) == L'd') || (*(sp + 1) == L'u') || (*(sp + 1) == L'e')) &&
+					((*(sp + 2) == L'+') || (*(sp + 2) == L'-')) &&
+					((*(sp + 3) >= L'0') && (*(sp + 3) <= L'2')) &&
+					((*(sp + 4) >= L'0') && (*(sp + 4) <= L'9')) &&
+					(*(sp + 5) == L':') &&
+					((*(sp + 6) >= L'0') && (*(sp + 6) <= L'5')) &&
+					((*(sp + 7) >= L'0') && (*(sp + 7) <= L'9'))) { sp += 8; continue; }
+				if (*sp == L'S' && *(sp + 1) == L't' && ((*(sp + 2) == L'U') || (*(sp + 2) == L'E'))) { sp += 3; continue; }
+				if (*sp == L'w' && ((*(sp + 1) == L'+') || (*(sp + 1) == L'-')) &&
+					((*(sp + 2) >= L'0') && (*(sp + 2) <= L'9')) &&
+					((*(sp + 3) >= L'0') && (*(sp + 3) <= L'9'))) { sp += 4; continue; }
+				if (tc_is_alpha_ascii_w(*sp)) return *sp;
+				sp++;
+			}
+		}
+		else {
+			sp++;
+		}
+	}
+	return L'\0';
+}
+
+static BOOL tc_makeformatw_can_native(const WCHAR* fmt)
+{
+	const WCHAR* sp = fmt;
+	if (!fmt) return FALSE;
+	while (*sp) {
+		if (*sp == L'<' && *(sp + 1) == L'%') {
+			sp += 2;
+			while (*sp) {
+				if (*sp == L'%' && *(sp + 1) == L'>') {
+					sp += 2;
+					break;
+				}
+				if (*sp == L'\"') {
+					sp++;
+					while (*sp && *sp != L'\"') sp++;
+					if (*sp == L'\"') sp++;
+					continue;
+				}
+				if ((*sp == L'\\' && *(sp + 1) == L'n') || *sp == L'/' || *sp == L':') {
+					sp += (*sp == L'\\') ? 2 : 1;
+					continue;
+				}
+				if (_wcsnicmp(sp, L"LDATE", 5) == 0) { sp += 5; continue; }
+				if (_wcsnicmp(sp, L"DATE", 4) == 0) { sp += 4; continue; }
+				if (_wcsnicmp(sp, L"TIME", 4) == 0) { sp += 4; continue; }
+				{ const WCHAR* p2 = sp; if (tc_scan_cpu_token_w(&p2)) { sp = p2; continue; } }
+				{ const WCHAR* p2 = sp; if (tc_scan_memory_token_w(&p2)) { sp = p2; continue; } }
+				{ const WCHAR* p2 = sp; if (tc_scan_network_token_w(&p2)) { sp = p2; continue; } }
+				{ const WCHAR* p2 = sp; if (tc_scan_hdd_token_w(&p2)) { sp = p2; continue; } }
+				{ const WCHAR* p2 = sp; if (tc_scan_gpu_token_w(&p2)) { sp = p2; continue; } }
+				{ const WCHAR* p2 = sp; if (tc_scan_ip_token_w(&p2)) { sp = p2; continue; } }
+				{ const WCHAR* p2 = sp; if (tc_scan_uptime_token_w(&p2)) { sp = p2; continue; } }
+				if (_wcsnicmp(sp, L"PCORE", 5) == 0) { sp += 5; continue; }
+				if (_wcsnicmp(sp, L"LPROC", 5) == 0) { sp += 5; continue; }
+				if (*sp == L'@' && *(sp + 1) == L'@' && *(sp + 2) == L'@') {
+					sp += 3;
+					if (*sp == L'.' && *(sp + 1) == L'@') sp += 2;
+					continue;
+				}
+				if (*sp == L'@') return FALSE;
+				if (_wcsnicmp(sp, L"AM/PM", 5) == 0) { sp += 5; continue; }
+				if (_wcsnicmp(sp, L"AMPM", 4) == 0) { sp += 4; continue; }
+				if (_wcsnicmp(sp, L"am/pm", 5) == 0) { sp += 5; continue; }
+				if (*sp == L'a' && *(sp + 1) == L'a' && *(sp + 2) == L'a') {
+					if (*(sp + 3) == L'a') { sp += 4; continue; }
+					sp += 3; continue;
+				}
+				if (*sp == L'y' && *(sp + 1) == L'y') { sp += (*(sp + 2) == L'y' && *(sp + 3) == L'y') ? 4 : 2; continue; }
+				if (*sp == L'd') {
+					if (_wcsnicmp(sp, L"dddd", 4) == 0) { sp += 4; continue; }
+					if (_wcsnicmp(sp, L"dde", 3) == 0) { sp += 3; continue; }
+					if (_wcsnicmp(sp, L"ddd", 3) == 0) { sp += 3; continue; }
+					if (*(sp + 1) == L'd') { sp += 2; continue; }
+					sp += 1; continue;
+				}
+				if (*sp == L'm') {
+					if (_wcsnicmp(sp, L"mmmm", 4) == 0) { sp += 4; continue; }
+					if (_wcsnicmp(sp, L"mme", 3) == 0) { sp += 3; continue; }
+					if (_wcsnicmp(sp, L"mmm", 3) == 0) { sp += 3; continue; }
+					if (*(sp + 1) == L'm') { sp += 2; continue; }
+					sp += 1; continue;
+				}
+				if (*sp == L'h') { if (*(sp + 1) == L'h') sp += 2; else sp += 1; continue; }
+				if (*sp == L'n') { if (*(sp + 1) == L'n') sp += 2; else sp += 1; continue; }
+				if (*sp == L's') { if (*(sp + 1) == L's') sp += 2; else sp += 1; continue; }
+				if (*sp == L't' && *(sp + 1) == L't') { sp += 2; continue; }
+				if (*sp == L't' && ((*(sp + 1) == L'd') || (*(sp + 1) == L'u') || (*(sp + 1) == L'e')) &&
+					((*(sp + 2) == L'+') || (*(sp + 2) == L'-')) &&
+					((*(sp + 3) >= L'0') && (*(sp + 3) <= L'2')) &&
+					((*(sp + 4) >= L'0') && (*(sp + 4) <= L'9')) &&
+					(*(sp + 5) == L':') &&
+					((*(sp + 6) >= L'0') && (*(sp + 6) <= L'5')) &&
+					((*(sp + 7) >= L'0') && (*(sp + 7) <= L'9'))) {
+					sp += 8; continue;
+				}
+				if (*sp == L'S' && *(sp + 1) == L't' && ((*(sp + 2) == L'U') || (*(sp + 2) == L'E'))) { sp += 3; continue; }
+				if (*sp == L'w' && ((*(sp + 1) == L'+') || (*(sp + 1) == L'-')) &&
+					((*(sp + 2) >= L'0') && (*(sp + 2) <= L'9')) &&
+					((*(sp + 3) >= L'0') && (*(sp + 3) <= L'9'))) {
+					sp += 4; continue;
+				}
+				if (tc_is_alpha_ascii_w(*sp)) return FALSE;
+				sp++;
+			}
+		}
+		else {
+			sp++;
+		}
+	}
+	return TRUE;
+}
+
+static BOOL tc_makeformatw_native_core(WCHAR* s, int sCch, SYSTEMTIME* pt, int beat100, const WCHAR* fmt)
+{
+	const WCHAR* sp = fmt;
+	WCHAR* dp = s;
+	int remain = sCch;
+	WCHAR sdate[16], stime[16], amStr[32], pmStr[32];
+	SYSTEMTIME disptime;
+	DWORD tickCount = 0;
+
+	if (!s || sCch <= 0 || !pt || !fmt) return FALSE;
+	s[0] = L'\0';
+	disptime = *pt;
+	tc_get_locale_sdate_w(sdate, (int)(sizeof(sdate) / sizeof(sdate[0])));
+	tc_get_locale_stime_w(stime, (int)(sizeof(stime) / sizeof(stime[0])));
+	tc_get_locale_ampm_w(TRUE, amStr, (int)(sizeof(amStr) / sizeof(amStr[0])));
+	tc_get_locale_ampm_w(FALSE, pmStr, (int)(sizeof(pmStr) / sizeof(pmStr[0])));
+
+	while (*sp) {
+		if (*sp == L'<' && *(sp + 1) == L'%') {
+			sp += 2;
+			while (*sp) {
+				if (*sp == L'%' && *(sp + 1) == L'>') { sp += 2; break; }
+				if (*sp == L'\"') {
+					sp++;
+					while (*sp && *sp != L'\"') tc_wappend_char(&dp, &remain, *sp++);
+					if (*sp == L'\"') sp++;
+					continue;
+				}
+				if (*sp == L'/') { tc_wappend_text(&dp, &remain, sdate); sp++; continue; }
+				if (*sp == L':') { tc_wappend_text(&dp, &remain, stime); sp++; continue; }
+				if (*sp == L'\\' && *(sp + 1) == L'n') { tc_wappend_char(&dp, &remain, L'\r'); tc_wappend_char(&dp, &remain, L'\n'); sp += 2; continue; }
+
+				if (*sp == L'@' && *(sp + 1) == L'@' && *(sp + 2) == L'@')
+				{
+					tc_wappend_char(&dp, &remain, L'@');
+					tc_wappend_char(&dp, &remain, (WCHAR)(L'0' + (beat100 / 10000)));
+					tc_wappend_char(&dp, &remain, (WCHAR)(L'0' + ((beat100 % 10000) / 1000)));
+					tc_wappend_char(&dp, &remain, (WCHAR)(L'0' + ((beat100 % 1000) / 100)));
+					sp += 3;
+					if (*sp == L'.' && *(sp + 1) == L'@') {
+						tc_wappend_char(&dp, &remain, L'.');
+						tc_wappend_char(&dp, &remain, (WCHAR)(L'0' + ((beat100 % 100) / 10)));
+						sp += 2;
+					}
+					continue;
+				}
+
+				if (_wcsnicmp(sp, L"LDATE", 5) == 0) {
+					WCHAR buf[128];
+					if (GetDateFormatW(MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), DATE_LONGDATE, &disptime, NULL, buf, (int)(sizeof(buf) / sizeof(buf[0]))) > 0) tc_wappend_text(&dp, &remain, buf);
+					sp += 5; continue;
+				}
+				if (_wcsnicmp(sp, L"DATE", 4) == 0) {
+					WCHAR buf[128];
+					if (GetDateFormatW(MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), DATE_SHORTDATE, &disptime, NULL, buf, (int)(sizeof(buf) / sizeof(buf[0]))) > 0) tc_wappend_text(&dp, &remain, buf);
+					sp += 4; continue;
+				}
+				if (_wcsnicmp(sp, L"TIME", 4) == 0) {
+					WCHAR buf[128];
+					if (GetTimeFormatW(MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), TIME_FORCE24HOURFORMAT, &disptime, NULL, buf, (int)(sizeof(buf) / sizeof(buf[0]))) > 0) tc_wappend_text(&dp, &remain, buf);
+					sp += 4; continue;
+				}
+
+				if (*sp == L'C' && (*(sp + 1) == L'U' || *(sp + 1) == L'C')) {
+					BOOL isClock = (*(sp + 1) == L'C') ? TRUE : FALSE;
+					const WCHAR* pnum = sp + 2;
+					int value = 0;
+					if (!isClock) {
+						if (tc_is_digit_ascii_w(*pnum)) {
+							int processorNum = (int)(*pnum - L'0');
+							value = (processorNum >= nLogicalProcessors) ? 0 : CPUUsage[processorNum];
+							pnum += 1;
+						}
+						else if (*pnum == L'e' && tc_is_digit_ascii_w(*(pnum + 1)) && tc_is_digit_ascii_w(*(pnum + 2))) {
+							int processorNum = (int)(*(pnum + 1) - L'0') * 10 + (int)(*(pnum + 2) - L'0');
+							value = (processorNum >= nLogicalProcessors) ? 0 : CPUUsage[processorNum];
+							pnum += 3;
+						}
+						else {
+							value = (totalCPUUsage >= 0) ? totalCPUUsage : 0;
+						}
+					}
+					else {
+						if (tc_is_digit_ascii_w(*pnum)) {
+							int processorNum = (int)(*pnum - L'0');
+							value = 0;
+							if (processorNum < nLogicalProcessors) value = b_EnableClock2 ? CPUClock2[processorNum] : iCPUClock[processorNum];
+							pnum += 1;
+						}
+						else if (*pnum == L'e' && tc_is_digit_ascii_w(*(pnum + 1)) && tc_is_digit_ascii_w(*(pnum + 2))) {
+							int processorNum = (int)(*(pnum + 1) - L'0') * 10 + (int)(*(pnum + 2) - L'0');
+							value = 0;
+							if (processorNum < nLogicalProcessors) value = b_EnableClock2 ? CPUClock2[processorNum] : iCPUClock[processorNum];
+							pnum += 3;
+						}
+						else {
+							value = b_EnableClock2 ? CPUClock2Ave : iCPUClock[0];
+						}
+					}
+					if (value < 0) value = 0;
+					{
+						int len;
+						int slen;
+						BOOL bComma = FALSE;
+						const WCHAR* p2 = pnum;
+						if (tc_parse_num_format_w(&p2, &len, &slen, &bComma)) {
+							tc_wappend_num_format(&dp, &remain, value, len, slen, bComma);
+							pnum = p2;
+						}
+						else if (!isClock) {
+							if (value > 99) tc_wappend_uint_fixed(&dp, &remain, value, 3);
+							else tc_wappend_uint_fixed(&dp, &remain, value, 2);
+						}
+						else {
+							tc_wappend_num_format(&dp, &remain, value, 3, 0, FALSE);
+						}
+					}
+					sp = pnum;
+					continue;
+				}
+
+				if (tc_emit_memory_token_w(&dp, &remain, &sp)) {
+					continue;
+				}
+				if (tc_emit_network_token_w(&dp, &remain, &sp)) {
+					continue;
+				}
+				if (tc_emit_hdd_token_w(&dp, &remain, &sp)) {
+					continue;
+				}
+				if (tc_emit_gpu_token_w(&dp, &remain, &sp)) {
+					continue;
+				}
+				if (tc_emit_ip_token_w(&dp, &remain, &sp)) {
+					continue;
+				}
+				if (tc_emit_uptime_token_w(&dp, &remain, &sp, &tickCount)) {
+					continue;
+				}
+
+				if (_wcsnicmp(sp, L"PCORE", 5) == 0) {
+					extern int nCores;
+					{ int cores = (nCores < 0) ? 0 : nCores; tc_wappend_uint_var(&dp, &remain, cores); }
+					sp += 5; continue;
+				}
+				if (_wcsnicmp(sp, L"LPROC", 5) == 0) {
+					extern int nLogicalProcessors;
+					{ int lproc = (nLogicalProcessors < 0) ? 0 : nLogicalProcessors; tc_wappend_uint_var(&dp, &remain, lproc); }
+					sp += 5; continue;
+				}
+
+				if (*sp == L't' && ((*(sp + 1) == L'd') || (*(sp + 1) == L'u') || (*(sp + 1) == L'e')) &&
+					((*(sp + 2) == L'+') || (*(sp + 2) == L'-')) &&
+					((*(sp + 3) >= L'0') && (*(sp + 3) <= L'2')) &&
+					((*(sp + 4) >= L'0') && (*(sp + 4) <= L'9')) &&
+					(*(sp + 5) == L':') &&
+					((*(sp + 6) >= L'0') && (*(sp + 6) <= L'5')) &&
+					((*(sp + 7) >= L'0') && (*(sp + 7) <= L'9')))
+				{
+					int td_hour = 0;
+					int td_min = 0;
+					BOOL td_neg = FALSE;
+					if (*(sp + 2) == L'-') td_neg = TRUE;
+					td_hour = (int)(*(sp + 3) - L'0') * 10 + (int)(*(sp + 4) - L'0');
+					td_min = (int)(*(sp + 6) - L'0') * 10 + (int)(*(sp + 7) - L'0');
+					if (td_hour > 23) { td_hour = 0; td_min = 0; }
+					if (*(sp + 1) == L'd') {
+						disptime = CalcTimeDifference_Win10(pt, td_hour, td_min, td_neg);
+					}
+					else if (*(sp + 1) == L'u') {
+						if (disptime.wYear > 2023) {
+							disptime = CalcTimeDifference_Win10(pt, td_hour - 1, td_min, td_neg);
+						}
+						else {
+							disptime = CalcTimeDifference_US_Win10(pt, td_hour, td_min, td_neg);
+						}
+					}
+					else {
+						disptime = CalcTimeDifference_Europe_Win10(pt, td_hour, td_min, td_neg);
+					}
+					sp += 8;
+					continue;
+				}
+
+				if (*sp == L'S' && *(sp + 1) == L't' && ((*(sp + 2) == L'U') || (*(sp + 2) == L'E')))
+				{
+					if (*(sp + 2) == L'U') {
+						tc_wappend_char(&dp, &remain, b_SummerTime_US ? L'*' : L' ');
+					}
+					else {
+						tc_wappend_char(&dp, &remain, b_SummerTime_Europe ? L'*' : L' ');
+					}
+					sp += 3;
+					continue;
+				}
+
+				if (*sp == L'w' && ((*(sp + 1) == L'+') || (*(sp + 1) == L'-')) &&
+					((*(sp + 2) >= L'0') && (*(sp + 2) <= L'9')) &&
+					((*(sp + 3) >= L'0') && (*(sp + 3) <= L'9')))
+				{
+					int xdiff = (int)(*(sp + 2) - L'0') * 10 + (int)(*(sp + 3) - L'0');
+					int hour = 0;
+					if (*(sp + 1) == L'-') xdiff = -xdiff;
+					hour = ((int)disptime.wHour + xdiff) % 24;
+					if (hour < 0) hour += 24;
+					hour = tc_hour_adjust_w(hour);
+					tc_wappend_uint_fixed(&dp, &remain, hour, 2);
+					sp += 4;
+					continue;
+				}
+
+				if (*sp == L'a' && *(sp + 1) == L'a' && *(sp + 2) == L'a')
+				{
+					WCHAR buf[64];
+					if (*(sp + 3) == L'a') {
+						if (GetDateFormatW(MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), 0, &disptime, L"dddd", buf, (int)(sizeof(buf) / sizeof(buf[0]))) > 0) tc_wappend_text(&dp, &remain, buf);
+						sp += 4;
+					}
+					else {
+						if (GetDateFormatW(MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), 0, &disptime, L"ddd", buf, (int)(sizeof(buf) / sizeof(buf[0]))) > 0) tc_wappend_text(&dp, &remain, buf);
+						sp += 3;
+					}
+					continue;
+				}
+
+				if (*sp == L'y' && *(sp + 1) == L'y') {
+					if (*(sp + 2) == L'y' && *(sp + 3) == L'y') tc_wappend_uint_fixed(&dp, &remain, (int)disptime.wYear, 4);
+					else tc_wappend_uint_fixed(&dp, &remain, (int)(disptime.wYear % 100), 2);
+					sp += (*(sp + 2) == L'y' && *(sp + 3) == L'y') ? 4 : 2;
+					continue;
+				}
+
+				if (*sp == L'd') {
+					if (_wcsnicmp(sp, L"dddd", 4) == 0) {
+						WCHAR buf[64];
+						if (GetDateFormatW(MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), 0, &disptime, L"dddd", buf, (int)(sizeof(buf) / sizeof(buf[0]))) > 0) tc_wappend_text(&dp, &remain, buf);
+						sp += 4; continue;
+					}
+					if (_wcsnicmp(sp, L"dde", 3) == 0) {
+						tc_wappend_ascii(&dp, &remain, DayOfWeekEng[disptime.wDayOfWeek]);
+						sp += 3; continue;
+					}
+					if (_wcsnicmp(sp, L"ddd", 3) == 0) {
+						WCHAR buf[64];
+						if (GetDateFormatW(MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), 0, &disptime, L"ddd", buf, (int)(sizeof(buf) / sizeof(buf[0]))) > 0) tc_wappend_text(&dp, &remain, buf);
+						sp += 3; continue;
+					}
+					if (*(sp + 1) == L'd') { tc_wappend_uint_fixed(&dp, &remain, (int)disptime.wDay, 2); sp += 2; continue; }
+					if (disptime.wDay > 9) tc_wappend_uint_fixed(&dp, &remain, (int)disptime.wDay, 2);
+					else tc_wappend_uint_var(&dp, &remain, (int)disptime.wDay);
+					sp++; continue;
+				}
+
+				if (*sp == L'm') {
+					if (_wcsnicmp(sp, L"mmmm", 4) == 0) {
+						WCHAR buf[64];
+						if (GetDateFormatW(MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), 0, &disptime, L"MMMM", buf, (int)(sizeof(buf) / sizeof(buf[0]))) > 0) tc_wappend_text(&dp, &remain, buf);
+						sp += 4; continue;
+					}
+					if (_wcsnicmp(sp, L"mme", 3) == 0) {
+						tc_wappend_ascii(&dp, &remain, MonthEng[disptime.wMonth - 1]);
+						sp += 3; continue;
+					}
+					if (_wcsnicmp(sp, L"mmm", 3) == 0) {
+						WCHAR buf[64];
+						if (GetDateFormatW(MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), 0, &disptime, L"MMM", buf, (int)(sizeof(buf) / sizeof(buf[0]))) > 0) tc_wappend_text(&dp, &remain, buf);
+						sp += 3; continue;
+					}
+					if (*(sp + 1) == L'm') { tc_wappend_uint_fixed(&dp, &remain, (int)disptime.wMonth, 2); sp += 2; continue; }
+					if (disptime.wMonth > 9) tc_wappend_uint_fixed(&dp, &remain, (int)disptime.wMonth, 2);
+					else tc_wappend_uint_var(&dp, &remain, (int)disptime.wMonth);
+					sp++; continue;
+				}
+
+				if (*sp == L'h') {
+					int hour = tc_hour_adjust_w((int)disptime.wHour);
+					if (*(sp + 1) == L'h') { tc_wappend_uint_fixed(&dp, &remain, hour, 2); sp += 2; continue; }
+					if (hour > 9) tc_wappend_uint_fixed(&dp, &remain, hour, 2);
+					else tc_wappend_uint_var(&dp, &remain, hour);
+					sp++; continue;
+				}
+
+				if (*sp == L'n') {
+					if (*(sp + 1) == L'n') { tc_wappend_uint_fixed(&dp, &remain, (int)disptime.wMinute, 2); sp += 2; continue; }
+					if (disptime.wMinute > 9) tc_wappend_uint_fixed(&dp, &remain, (int)disptime.wMinute, 2);
+					else tc_wappend_uint_var(&dp, &remain, (int)disptime.wMinute);
+					sp++; continue;
+				}
+
+				if (*sp == L's') {
+					if (*(sp + 1) == L's') { tc_wappend_uint_fixed(&dp, &remain, (int)disptime.wSecond, 2); sp += 2; continue; }
+					if (disptime.wSecond > 9) tc_wappend_uint_fixed(&dp, &remain, (int)disptime.wSecond, 2);
+					else tc_wappend_uint_var(&dp, &remain, (int)disptime.wSecond);
+					sp++; continue;
+				}
+
+				if (*sp == L't' && *(sp + 1) == L't') {
+					tc_wappend_text(&dp, &remain, (disptime.wHour < 12) ? amStr : pmStr);
+					sp += 2; continue;
+				}
+
+				if (_wcsnicmp(sp, L"AM/PM", 5) == 0) {
+					tc_wappend_char(&dp, &remain, (disptime.wHour < 12) ? L'A' : L'P');
+					tc_wappend_char(&dp, &remain, L'M');
+					sp += 5; continue;
+				}
+				if (_wcsnicmp(sp, L"AMPM", 4) == 0) {
+					tc_wappend_text(&dp, &remain, (disptime.wHour < 12) ? amStr : pmStr);
+					sp += 4; continue;
+				}
+				if (_wcsnicmp(sp, L"am/pm", 5) == 0) {
+					tc_wappend_char(&dp, &remain, (disptime.wHour < 12) ? L'a' : L'p');
+					tc_wappend_char(&dp, &remain, L'm');
+					sp += 5; continue;
+				}
+
+				if (tc_is_alpha_ascii_w(*sp)) return FALSE;
+				tc_wappend_char(&dp, &remain, *sp++);
+			}
+		}
+		else {
+			tc_wappend_char(&dp, &remain, *sp++);
+		}
+	}
+	return TRUE;
+}
+
+#ifndef TCLOCK_ENABLE_MAKEFORMATW_FALLBACK_LOG
+#define TCLOCK_ENABLE_MAKEFORMATW_FALLBACK_LOG 0
+#endif
+
+void MakeFormatW(WCHAR* s, int sCch, char* s_info, SYSTEMTIME* pt, int beat100, const WCHAR* fmt)
+{
+	char* fmtA = NULL;
+	char* outA = NULL;
+	char* infoA = NULL;
+	int fmtABytes;
+	int outABytes;
+	BOOL canNative = FALSE;
+
+	if (!s || sCch <= 0) return;
+	s[0] = L'\0';
+	if (!fmt || !pt) return;
+
+	canNative = tc_makeformatw_can_native(fmt);
+	if (canNative && tc_makeformatw_native_core(s, sCch, pt, beat100, fmt)) {
+		if (s_info) s_info[0] = '\0';
+		return;
+	}
+#if TCLOCK_ENABLE_MAKEFORMATW_FALLBACK_LOG
+	if (b_DebugLog) {
+		static DWORD s_lastFallbackLogTick = 0;
+		DWORD now = GetTickCount();
+		if ((now - s_lastFallbackLogTick) >= 5000) {
+			if (canNative) {
+				writeDebugLog_Win10("[format.c][MakeFormatW] native parse failed, fallback to ANSI bridge.", 999);
+			}
+			else {
+				WCHAR bad = tc_makeformatw_first_unsupported_char(fmt);
+				char msg[160];
+				if (bad && bad < 0x80) {
+					sprintf(msg, "[format.c][MakeFormatW] unsupported token '%c', fallback to ANSI bridge.", (char)bad);
+				}
+				else if (bad) {
+					sprintf(msg, "[format.c][MakeFormatW] unsupported token U+%04X, fallback to ANSI bridge.", (unsigned int)bad);
+				}
+				else {
+					sprintf(msg, "[format.c][MakeFormatW] unsupported token, fallback to ANSI bridge.");
+				}
+				writeDebugLog_Win10(msg, 999);
+			}
+			s_lastFallbackLogTick = now;
+		}
+	}
+#endif
+
+	fmtABytes = WideCharToMultiByte((UINT)codepage, 0, fmt, -1, NULL, 0, NULL, NULL);
+	if (fmtABytes <= 0) return;
+
+	fmtA = (char*)malloc((size_t)fmtABytes);
+	if (!fmtA) return;
+	if (WideCharToMultiByte((UINT)codepage, 0, fmt, -1, fmtA, fmtABytes, NULL, NULL) <= 0) {
+		free(fmtA);
+		return;
+	}
+
+	outABytes = sCch * 4;
+	if (outABytes < 64) outABytes = 64;
+	outA = (char*)malloc((size_t)outABytes);
+	if (s_info) {
+		infoA = (char*)malloc((size_t)outABytes);
+	}
+	if (!outA || (s_info && !infoA)) {
+		if (fmtA) free(fmtA);
+		if (outA) free(outA);
+		if (infoA) free(infoA);
+		return;
+	}
+
+	outA[0] = '\0';
+	if (infoA) infoA[0] = '\0';
+	MakeFormat(outA, infoA ? infoA : outA, pt, beat100, fmtA);
+
+	if (tc_ansi_to_utf16_compat((UINT)codepage, outA, s, sCch) <= 0) {
+		s[0] = L'\0';
+	}
+
+	if (s_info && infoA) {
+		strcpy(s_info, infoA);
+	}
+
+	free(fmtA);
+	free(outA);
+	free(infoA);
+}
 
 
 /*------------------------------------------------
@@ -3713,7 +5146,7 @@ DWORD FindFormat(char* fmt)
 					sp += 2;
 					ret |= FORMAT_VOL;
 				}
-				else if (*sp == 'G' && *(sp + 1) == 'U')
+				else if (*sp == 'G' && (*(sp + 1) == 'U' || *(sp + 1) == 'I'))
 				{
 					sp += 2;
 					ret |= FORMAT_GPU;
@@ -3726,6 +5159,160 @@ DWORD FindFormat(char* fmt)
 			}
 		}
 		else sp = CharNext(sp);
+	}
+	return ret;
+}
+
+DWORD FindFormatW(const WCHAR* fmt)
+{
+	const WCHAR* sp;
+	DWORD ret = 0;
+
+	if (!fmt) return 0;
+
+	sp = fmt;
+	while (*sp)
+	{
+		if (*sp == L'<' && *(sp + 1) == L'%')
+		{
+			sp += 2;
+			while (*sp)
+			{
+				if (*sp == L'%' && *(sp + 1) == L'>')
+				{
+					sp += 2;
+					break;
+				}
+				if (*sp == L'\"')
+				{
+					sp++;
+					while (*sp != L'\"' && *sp) sp++;
+					if (*sp == L'\"') sp++;
+				}
+				else if (*sp == L's')
+				{
+					sp++;
+					ret |= FORMAT_SECOND;
+				}
+				else if (*sp == L'@' && *(sp + 1) == L'@' && *(sp + 2) == L'@')
+				{
+					sp += 3;
+					if (*sp == L'.' && *(sp + 1) == L'@')
+					{
+						ret |= FORMAT_BEAT2;
+						sp += 2;
+					}
+					else
+					{
+						ret |= FORMAT_BEAT1;
+					}
+				}
+				else if (*sp == L'C' && *(sp + 1) == L'U' &&
+					(*(sp + 2) >= L'0' && *(sp + 2) <= L'7'))
+				{
+					sp += 3;
+					ret |= FORMAT_CPU;
+				}
+				else if (*sp == L'C' && *(sp + 1) == L'U')
+				{
+					sp += 2;
+					ret |= FORMAT_CPU;
+				}
+				else if (*sp == L'C' && *(sp + 1) == L'C')
+				{
+					sp += 2;
+					ret |= FORMAT_CPU;
+				}
+				else if (*sp == L'B' && *(sp + 1) == L'L')
+				{
+					sp += 2;
+					ret |= FORMAT_BATTERY;
+				}
+				else if (*sp == L'B' && (*(sp + 1) == L'h' || *(sp + 1) == L'n' || *(sp + 1) == L's' || *(sp + 1) == L'_'))
+				{
+					sp += 2;
+					ret |= FORMAT_BATTERY;
+				}
+				else if (*sp == L'A' && *(sp + 1) == L'D')
+				{
+					sp += 2;
+					ret |= FORMAT_BATTERY;
+				}
+				else if (*sp == L'a' && *(sp + 1) == L'd')
+				{
+					sp += 2;
+					ret |= FORMAT_BATTERY;
+				}
+				else if (*sp == L'M' && (*(sp + 1) == L'K' || *(sp + 1) == L'M'))
+				{
+					sp += 2;
+					ret |= FORMAT_MEMORY;
+				}
+				else if (*sp == L'M' &&
+					(*(sp + 1) == L'T' || *(sp + 1) == L'A' || *(sp + 1) == L'U') &&
+					(*(sp + 2) == L'P' || *(sp + 2) == L'F' || *(sp + 2) == L'V') &&
+					(*(sp + 3) == L'K' || *(sp + 3) == L'M' || *(sp + 3) == L'P' || *(sp + 3) == L'G'))
+				{
+					sp += 4;
+					ret |= FORMAT_MEMORY;
+				}
+				else if (*sp == L'N' &&
+					(*(sp + 1) == L'R' || *(sp + 1) == L'S') &&
+					(*(sp + 2) == L'S' || *(sp + 2) == L'A') &&
+					(*(sp + 3) == L'M' || *(sp + 3) == L'K' || *(sp + 3) == L'B' || *(sp + 3) == L'G' || *(sp + 3) == L'A'))
+				{
+					sp += 4;
+					ret |= FORMAT_NET;
+				}
+				else if (*sp == L'H' && (*(sp + 1) == L'A' || *(sp + 1) == L'U' || *(sp + 1) == L'T') && (*(sp + 2) >= L'A' && *(sp + 2) <= L'Z') && (*(sp + 3) == L'M' || *(sp + 3) == L'G' || *(sp + 3) == L'P'))
+				{
+					int dv;
+					dv = (int)(*(sp + 2) - L'A');
+					actdvl[dv] = 1;
+					sp += 4;
+					ret |= FORMAT_HDD;
+				}
+				else if (*sp == L'H' && (*(sp + 1) == L'A' || *(sp + 1) == L'U' || *(sp + 1) == L'T') && (*(sp + 2) >= L'0' && *(sp + 2) <= L'9') && (*(sp + 3) == L'M' || *(sp + 3) == L'G' || *(sp + 3) == L'P'))
+				{
+					int dv;
+					extern char strAdditionalMountPath;
+					dv = (int)(*(sp + 2) - L'0');
+					if (strlen(&strAdditionalMountPath + 64 * dv) > 0) {
+						actdvl[dv + 26] = 1;
+					}
+					sp += 4;
+					ret |= FORMAT_HDD;
+				}
+				else if (*sp == L'V' && *(sp + 1) == L'L')
+				{
+					sp += 2;
+					ret |= FORMAT_VOL;
+				}
+				else if (*sp == L'V' && *(sp + 1) == L'M')
+				{
+					sp += 2;
+					ret |= FORMAT_VOL;
+				}
+				else if (*sp == L'G' && (*(sp + 1) == L'U' || *(sp + 1) == L'I'))
+				{
+					sp += 2;
+					ret |= FORMAT_GPU;
+				}
+				else if (*sp == L'T' && (*(sp + 1) == L'E') && (*(sp + 2) == L'M') && (*(sp + 3) == L'P'))
+				{
+					sp += 4;
+					ret |= FORMAT_TEMP;
+				}
+				else
+				{
+					sp++;
+				}
+			}
+		}
+		else
+		{
+			sp++;
+		}
 	}
 	return ret;
 }

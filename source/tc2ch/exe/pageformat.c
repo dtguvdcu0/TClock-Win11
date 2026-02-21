@@ -12,6 +12,7 @@ static void OnLocale(HWND hDlg);
 static void OnCustom(HWND hDlg, BOOL bmouse);
 static void On12Hour(HWND hDlg);
 static void OnFormatCheck(HWND hDlg, WORD id);
+static void EnsureUnicodeEditControl(HWND hDlg, int id);
 
 static HWND hwndPage;
 static int ilang;  // language code. ex) 0x411 - Japanese
@@ -33,6 +34,41 @@ __inline void SendPSChanged(HWND hDlg)
 {
 	g_bApplyClock = TRUE;
 	SendMessage(GetParent(hDlg), PSM_CHANGED, (WPARAM)(hDlg), 0);
+}
+
+static void EnsureUnicodeEditControl(HWND hDlg, int id)
+{
+	HWND hOld;
+	HWND hNew;
+	RECT rc;
+	POINT pt;
+	DWORD style;
+	DWORD exStyle;
+	HFONT hFont;
+	BOOL enabled;
+	WCHAR wText[1024];
+
+	if (!hDlg) return;
+	hOld = GetDlgItem(hDlg, id);
+	if (!hOld) return;
+	if (IsWindowUnicode(hOld)) return;
+
+	style = (DWORD)GetWindowLongPtr(hOld, GWL_STYLE);
+	exStyle = (DWORD)GetWindowLongPtr(hOld, GWL_EXSTYLE);
+	hFont = (HFONT)SendMessage(hOld, WM_GETFONT, 0, 0);
+	enabled = IsWindowEnabled(hOld);
+	GetWindowRect(hOld, &rc);
+	pt.x = rc.left;
+	pt.y = rc.top;
+	ScreenToClient(hDlg, &pt);
+	if (GetWindowTextW(hOld, wText, (int)(sizeof(wText) / sizeof(wText[0]))) <= 0) wText[0] = L'\0';
+
+	DestroyWindow(hOld);
+	hNew = CreateWindowExW(exStyle, L"EDIT", wText, style,
+		pt.x, pt.y, rc.right - rc.left, rc.bottom - rc.top, hDlg, (HMENU)(INT_PTR)id, GetModuleHandle(NULL), NULL);
+	if (!hNew) return;
+	if (hFont) SendMessage(hNew, WM_SETFONT, (WPARAM)hFont, 0);
+	EnableWindow(hNew, enabled);
 }
 
 /*------------------------------------------------
@@ -205,7 +241,10 @@ void OnInit(HWND hDlg)
 		SendDlgItemMessage(hDlg, IDC_AMSYMBOL, WM_SETFONT, (WPARAM)hfont, 0);
 		SendDlgItemMessage(hDlg, IDC_PMSYMBOL, WM_SETFONT, (WPARAM)hfont, 0);
 	}
-	hfont = (HFONT)GetStockObject(SYSTEM_FIXED_FONT);
+	/* IDC_FORMAT must be Unicode edit to avoid non-ACP input degradation to '?'. */
+	EnsureUnicodeEditControl(hDlg, IDC_FORMAT);
+	/* Use GUI Unicode-capable font for format edit; SYSTEM_FIXED_FONT can display non-ACP as '?'. */
+	hfont = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
 	if(hfont)
 		SendDlgItemMessage(hDlg, IDC_FORMAT, WM_SETFONT, (WPARAM)hfont, 0);
 

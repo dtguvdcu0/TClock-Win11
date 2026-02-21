@@ -738,11 +738,11 @@ static UINT WINAPI TclockExeMain(void)
 		handle_PowerNotify = RegisterPowerSettingNotification(hwnd, &GUID_CONSOLE_DISPLAY_STATE, DEVICE_NOTIFY_WINDOW_HANDLE);
 	}
 
-	while(GetMessage(&msg, NULL, 0, 0))		//キューからメッセージを受け取るGetMessageの戻り値が0になる(＝WM_QUITがポストされる) まで、
+	while(GetMessageW(&msg, NULL, 0, 0))		//キューからメッセージを受け取るGetMessageの戻り値が0になる(＝WM_QUITがポストされる) まで、
 											//取得したメッセージをウィンドウプロシージャに送りつづける
 	{
 		if(g_hwndPropDlg && IsWindow(g_hwndPropDlg)
-			&& IsDialogMessage(g_hwndPropDlg, &msg))	//g_hwndPropDlgのメッセージは無視
+			&& IsDialogMessageW(g_hwndPropDlg, &msg))	//g_hwndPropDlgのメッセージは無視
 			;
 		//else if(g_hDlgTimer && IsWindow(g_hDlgTimer)
 		//	&& IsDialogMessage(g_hDlgTimer, &msg))		//g_hDlgTimerのメッセージは無視
@@ -750,7 +750,7 @@ static UINT WINAPI TclockExeMain(void)
 		else		//それ以外は以下の2関数で処理
 		{
 			TranslateMessage(&msg);	//TranslateMessage: 仮想キーメッセージを文字メッセージへ変換(?)
-			DispatchMessage(&msg);	// DispatchMessageで受け取ったメッセージをウィンドウプロシージャ(?)に送出.
+			DispatchMessageW(&msg);	// DispatchMessageで受け取ったメッセージをウィンドウプロシージャ(?)に送出.
 		}
 	}
 

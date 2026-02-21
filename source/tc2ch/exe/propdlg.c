@@ -95,7 +95,7 @@ void MyPropertyDialog(void)
 	g_bApplyLangDLL = FALSE;
 
 	if(!(g_hwndPropDlg && IsWindow(g_hwndPropDlg))) {
-		g_hwndPropDlg = CreateDialog(GetLangModule(), MAKEINTRESOURCE(GetSafeLanguageOffset() + IDD_PROPERTY), g_hwndMain, PropertyDialog);
+		g_hwndPropDlg = CreateDialogW(GetLangModule(), MAKEINTRESOURCEW(GetSafeLanguageOffset() + IDD_PROPERTY), g_hwndMain, PropertyDialog);
 		if(!(g_hwndPropDlg && IsWindow(g_hwndPropDlg))) {
 			err = GetLastError();
 			if (b_NormalLog) {
@@ -104,9 +104,9 @@ void MyPropertyDialog(void)
 			}
 
 			if (Language_Offset != 0)
-				g_hwndPropDlg = CreateDialog(GetLangModule(), MAKEINTRESOURCE(IDD_PROPERTY), g_hwndMain, PropertyDialog);
+				g_hwndPropDlg = CreateDialogW(GetLangModule(), MAKEINTRESOURCEW(IDD_PROPERTY), g_hwndMain, PropertyDialog);
 			else
-				g_hwndPropDlg = CreateDialog(GetLangModule(), MAKEINTRESOURCE(1000 + IDD_PROPERTY), g_hwndMain, PropertyDialog);
+				g_hwndPropDlg = CreateDialogW(GetLangModule(), MAKEINTRESOURCEW(1000 + IDD_PROPERTY), g_hwndMain, PropertyDialog);
 		}
 
 		if(!(g_hwndPropDlg && IsWindow(g_hwndPropDlg))) {
@@ -116,12 +116,17 @@ void MyPropertyDialog(void)
 				if(g_hInstResource) FreeLibrary(g_hInstResource);
 				g_hInstResource = hInst;
 				strcpy(g_langdllname, fname);
-				g_hwndPropDlg = CreateDialog(GetLangModule(), MAKEINTRESOURCE(GetSafeLanguageOffset() + IDD_PROPERTY), g_hwndMain, PropertyDialog);
+				g_hwndPropDlg = CreateDialogW(GetLangModule(), MAKEINTRESOURCEW(GetSafeLanguageOffset() + IDD_PROPERTY), g_hwndMain, PropertyDialog);
 			}
 		}
 	}
 
 	if(g_hwndPropDlg && IsWindow(g_hwndPropDlg)) {
+		if (b_NormalLog) {
+			char msg2[96];
+			wsprintf(msg2, "[propdlg] root unicode=%d", IsWindowUnicode(g_hwndPropDlg));
+			WriteNormalLog(msg2);
+		}
 		ShowWindow(g_hwndPropDlg, SW_SHOW);
 		UpdateWindow(g_hwndPropDlg);
 		SetForegroundWindow98(g_hwndPropDlg);
@@ -163,6 +168,20 @@ static VOID CreatePageDialog(HWND hParent, HWND hDlg[], BOOL bDlgFlg[], int inde
 	}
 	hInst   = GetLangModule();
 	hDlg[index] = CreateDialog(hInst, MAKEINTRESOURCE((WORD)wID), hParent, dlgprc);
+	SetPageDlgPos(hParent, hDlg[index]);
+
+	bDlgFlg[index] = TRUE;
+}
+
+static VOID CreatePageDialogW(HWND hParent, HWND hDlg[], BOOL bDlgFlg[], int index, int wID, DLGPROC dlgprc)
+{
+	HINSTANCE hInst;
+
+	if (bDlgFlg[index]) {
+		return;
+	}
+	hInst = GetLangModule();
+	hDlg[index] = CreateDialogW(hInst, MAKEINTRESOURCEW((WORD)wID), hParent, dlgprc);
 	SetPageDlgPos(hParent, hDlg[index]);
 
 	bDlgFlg[index] = TRUE;
@@ -302,7 +321,8 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 			}
 			pNMTV = (NM_TREEVIEW *)lParam;
 			switch (pNMTV->hdr.code){
-				case TVN_SELCHANGED:
+				case TVN_SELCHANGEDA:
+				case TVN_SELCHANGEDW:
 					ShowWindow(*hNowDlg, SW_HIDE);
 					UpdateWindow(*hNowDlg);
 					nowDlg = (int)pNMTV->itemNew.lParam;
@@ -356,7 +376,8 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 						case 101:
 							//nowDlg -= 10;
 							nowDlg = 1;
-							CreatePageDialog(hDwnd, hDlg, bDlgFlg, nowDlg, GetSafeLanguageOffset() + IDD_PAGEFORMAT, PageFormatProc);
+							/* Format page: force Unicode dialog creation to keep non-ACP input lossless. */
+							CreatePageDialogW(hDwnd, hDlg, bDlgFlg, nowDlg, GetSafeLanguageOffset() + IDD_PAGEFORMAT, PageFormatProc);
 							break;
 
 						//case 102:

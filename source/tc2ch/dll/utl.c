@@ -13,6 +13,7 @@ extern HANDLE hmod;
 BOOL g_bIniSetting = TRUE;
 char g_inifile[MAX_PATH];
 static const char* k_Utf8HexSuffix = "Utf8Hex";
+static BOOL tc_is_valid_utf8_bytes(const char* s);
 
 static int tc_hex_digit(int v)
 {
@@ -41,6 +42,14 @@ static BOOL tc_is_utf8_hex_target_key(const char* section, const char* entry)
 		 lstrcmpi(entry, "Tooltip") == 0 ||
 		 lstrcmpi(entry, "Tooltip2") == 0 ||
 		 lstrcmpi(entry, "Tooltip3") == 0)) return TRUE;
+	return FALSE;
+}
+
+static BOOL tc_should_keep_utf8_bytes(const char* section, const char* entry)
+{
+	if (!section || !entry || !*section || !*entry) return FALSE;
+	if (lstrcmpi(section, "Format") == 0 &&
+		(lstrcmpi(entry, "Format") == 0 || lstrcmpi(entry, "CustomFormat") == 0)) return TRUE;
 	return FALSE;
 }
 
@@ -110,6 +119,29 @@ static BOOL tc_decode_utf8_hex_to_ansi(const char* hex, char* outAnsi, int outAn
 
 	if (tc_utf8_to_utf16(u8, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) <= 0) return FALSE;
 	if (tc_utf16_to_ansi(GetACP(), wbuf, outAnsi, outAnsiBytes) <= 0) return FALSE;
+	return TRUE;
+}
+
+static BOOL tc_decode_utf8_hex_to_utf8(const char* hex, char* outUtf8, int outUtf8Bytes)
+{
+	char u8[8192];
+	int n;
+	int i;
+
+	if (!hex || !outUtf8 || outUtf8Bytes <= 0) return FALSE;
+	n = lstrlen(hex);
+	if ((n & 1) != 0) return FALSE;
+	if (n / 2 + 1 > (int)sizeof(u8)) return FALSE;
+
+	for (i = 0; i < n / 2; i++) {
+		int hi = tc_hex_value((unsigned char)hex[i * 2]);
+		int lo = tc_hex_value((unsigned char)hex[i * 2 + 1]);
+		if (hi < 0 || lo < 0) return FALSE;
+		u8[i] = (char)((hi << 4) | lo);
+	}
+	u8[n / 2] = '\0';
+	if (!tc_is_valid_utf8_bytes(u8)) return FALSE;
+	lstrcpyn(outUtf8, u8, outUtf8Bytes);
 	return TRUE;
 }
 
@@ -328,6 +360,7 @@ int GetMyRegStr(char* section, char* entry, char* val, int cbData,
 	int r = 0;
 	BOOL isUtf8 = FALSE;
 	BOOL needsHexBackfill = FALSE;
+	BOOL keepUtf8Bytes = FALSE;
 	char hexEntry[128];
 	const char missingSentinel[] = "\x1D";
 
@@ -336,6 +369,7 @@ int GetMyRegStr(char* section, char* entry, char* val, int cbData,
 	val[0] = '\0';
 
 	key[0] = 0;
+	keepUtf8Bytes = tc_should_keep_utf8_bytes(section, entry);
 
 
 	if(section && *section)
@@ -359,7 +393,7 @@ int GetMyRegStr(char* section, char* entry, char* val, int cbData,
 						tc_strip_wrapping_quotes(mainbuf);
 						lstrcpyn(val, mainbuf, cbData);
 						r = lstrlen(val);
-						if (isUtf8 && r > 0) {
+						if (isUtf8 && r > 0 && !keepUtf8Bytes) {
 							WCHAR wbuf[4096];
 							char abuf[4096];
 							if (tc_utf8_to_utf16(val, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) > 0 &&
@@ -376,7 +410,10 @@ int GetMyRegStr(char* section, char* entry, char* val, int cbData,
 				}
 				if (tc_build_utf8_hex_entry_name(entry, hexEntry, (int)sizeof(hexEntry))) {
 					if (tc_ini_utf8_read_string(g_inifile, key, hexEntry, "", hexbuf, (int)sizeof(hexbuf)) > 0) {
-						if (tc_decode_utf8_hex_to_ansi(hexbuf, val, cbData)) {
+						BOOL decoded = keepUtf8Bytes
+							? tc_decode_utf8_hex_to_utf8(hexbuf, val, cbData)
+							: tc_decode_utf8_hex_to_ansi(hexbuf, val, cbData);
+						if (decoded) {
 							r = lstrlen(val);
 							goto getmyregstr_done;
 						}
@@ -395,7 +432,7 @@ int GetMyRegStr(char* section, char* entry, char* val, int cbData,
 			r = GetPrivateProfileString(key, entry, defval ? defval : "", val, cbData, g_inifile);
 		}
 	}
-	if (isUtf8 && r > 0) {
+	if (isUtf8 && r > 0 && !keepUtf8Bytes) {
 		WCHAR wbuf[4096];
 		char abuf[4096];
 		if (tc_utf8_to_utf16(val, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) > 0 &&
@@ -406,7 +443,10 @@ int GetMyRegStr(char* section, char* entry, char* val, int cbData,
 	}
 	if (isUtf8 && needsHexBackfill && r > 0) {
 		char hexbuf[4096];
-		if (tc_encode_utf8_hex_from_ansi(val, hexbuf, (int)sizeof(hexbuf))) {
+		BOOL encoded = keepUtf8Bytes
+			? tc_encode_hex_from_utf8_bytes(val, hexbuf, (int)sizeof(hexbuf))
+			: tc_encode_utf8_hex_from_ansi(val, hexbuf, (int)sizeof(hexbuf));
+		if (encoded) {
 			tc_ini_utf8_write_string(g_inifile, key, hexEntry, hexbuf);
 		}
 	}

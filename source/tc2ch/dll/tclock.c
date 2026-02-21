@@ -2205,31 +2205,39 @@ static int NormalizeMainFormatTagMarkers(const char* raw, char* out, int outLen)
 	return sawTag ? FORMAT_TAG_NORMALIZE_HAS_TAG : FORMAT_TAG_NORMALIZE_NO_TAG;
 }
 
-static void BuildMainFormatWrapped(const char* raw, char* out, int outLen, BOOL logMalformed, const char* logContext)
+void BuildMainFormatWrapped(const char* raw, char* out, int outLen, BOOL logMalformed, const char* logContext)
 {
-	char normalized[1024];
+	char* normalized;
 	int normalize_result;
-	char wrapped[1024];
+	const char* content;
 
 	if (!raw || !out || outLen <= 0) return;
 	out[0] = '\0';
-	normalize_result = NormalizeMainFormatTagMarkers(raw, normalized, (int)sizeof(normalized));
-	if (normalize_result == FORMAT_TAG_NORMALIZE_HAS_TAG) {
-		_snprintf(wrapped, (int)sizeof(wrapped), "<%%%s%%>", normalized);
+
+	normalized = (char*)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, (SIZE_T)outLen);
+	if (!normalized) {
+		normalize_result = FORMAT_TAG_NORMALIZE_MALFORMED;
+		content = raw;
 	}
 	else {
-		_snprintf(wrapped, (int)sizeof(wrapped), "<%%%s%%>", raw);
-		if (normalize_result == FORMAT_TAG_NORMALIZE_MALFORMED && logMalformed && b_DebugLog) {
-			char msg[1024];
-			if (!logContext || !logContext[0]) logContext = "[tclock.c]";
-			_snprintf(msg, (int)sizeof(msg), "%s malformed Format tag sequence; fallback to legacy wrap.", logContext);
-			msg[sizeof(msg) - 1] = '\0';
-			writeDebugLog_Win10(msg, 999);
-		}
+		normalize_result = NormalizeMainFormatTagMarkers(raw, normalized, outLen);
+		content = (normalize_result == FORMAT_TAG_NORMALIZE_HAS_TAG) ? normalized : raw;
 	}
 
-	wrapped[sizeof(wrapped) - 1] = '\0';
-	lstrcpyn(out, wrapped, outLen);
+	_snprintf(out, outLen, "<%%%s%%>", content);
+	out[outLen - 1] = '\0';
+
+	if (normalize_result == FORMAT_TAG_NORMALIZE_MALFORMED && logMalformed && b_DebugLog) {
+		char msg[1024];
+		if (!logContext || !logContext[0]) logContext = "[tclock.c]";
+		_snprintf(msg, (int)sizeof(msg), "%s malformed Format tag sequence; fallback to legacy wrap.", logContext);
+		msg[sizeof(msg) - 1] = '\0';
+		writeDebugLog_Win10(msg, 999);
+	}
+
+	if (normalized) {
+		HeapFree(GetProcessHeap(), 0, normalized);
+	}
 }
 
 void ReadData()

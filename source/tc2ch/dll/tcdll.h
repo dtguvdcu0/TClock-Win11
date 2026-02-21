@@ -182,6 +182,7 @@ SYSTEMTIME CalcTimeDifference_Europe_Win10(SYSTEMTIME*, int, int, BOOL);
 //tclock.c
 void SetWindowVisible_Win10(HWND targetHWND, BOOL bVisibility);
 void DelayedResponseToSyschange(void);
+void BuildMainFormatWrapped(const char* raw, char* out, int outLen, BOOL logMalformed, const char* logContext);
 
 
 //for_win11.c

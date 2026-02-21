@@ -120,6 +120,42 @@ static void TooltipUpdateText(void);
 static void TooltipUpdate2(HDC hdc, LPRECT lprcDraw, LPRECT lprect, UINT uDrawFlags);
 static int TooltipDrawTextLogged(HDC hdc, LPCTSTR pszText, int cchText, LPRECT prc, UINT format, int tag);
 
+static void TooltipNormalizePhysicalNewlines(const char* src, char* dst, int dstLen)
+{
+	int i = 0;
+	int j = 0;
+	if (!src || !dst || dstLen <= 0) return;
+	dst[0] = '\0';
+	while (src[i] && j < dstLen - 1) {
+		if (src[i] == '\r') {
+			if (j < dstLen - 2) {
+				dst[j++] = '\\';
+				dst[j++] = 'n';
+			}
+			if (src[i + 1] == '\n') i++;
+			i++;
+			continue;
+		}
+		if (src[i] == '\n') {
+			if (j < dstLen - 2) {
+				dst[j++] = '\\';
+				dst[j++] = 'n';
+			}
+			i++;
+			continue;
+		}
+		dst[j++] = src[i++];
+	}
+	dst[j] = '\0';
+}
+
+static void TooltipBuildWrappedFormat(const char* src, char* out, int outLen, BOOL logMalformed, const char* logContext)
+{
+	char normalized[LEN_TOOLTIP];
+	TooltipNormalizePhysicalNewlines(src, normalized, (int)sizeof(normalized));
+	BuildMainFormatWrapped(normalized, out, outLen, logMalformed, logContext);
+}
+
 static int TooltipDrawTextLogged(HDC hdc, LPCTSTR pszText, int cchText, LPRECT prc, UINT format, int tag)
 {
 	int ret = DrawText(hdc, pszText, cchText, prc, format);
@@ -654,12 +690,18 @@ static void TooltipUpdateText(void)
 	}
 
 	GetDisplayTime(&t, &beat100);
-	MakeFormat(s, s_info, &t, beat100, fmt);
+	{
+		char fmt_wrapped[LEN_TOOLTIP];
+		TooltipBuildWrappedFormat(fmt, fmt_wrapped, (int)sizeof(fmt_wrapped), TRUE, "[tooltip.c][TooltipUpdateText]");
+		MakeFormat(s, s_info, &t, beat100, fmt_wrapped);
+	}
 	//strcpy(formatTooltip, s);
 
 	if(tiptitle[0] != 0)
 	{
-		MakeFormat(tipt, tipt_info, &t, beat100, tiptitle);
+		char tiptitle_wrapped[300];
+		TooltipBuildWrappedFormat(tiptitle, tiptitle_wrapped, (int)sizeof(tiptitle_wrapped), TRUE, "[tooltip.c][TooltipTitle]");
+		MakeFormat(tipt, tipt_info, &t, beat100, tiptitle_wrapped);
 		strcpy(titleTooltip, tipt);
 		sprintf(formatTooltip, "\n\n\n%s", s);	//タイトルがある場合は高さ確保のための空行x3を入れる。
 	}
@@ -937,7 +979,11 @@ DWORD TooltipFindFormat(void)
 			}
 		}
 	}
-	dwInfoTooltip |= FindFormat(tip);
+	{
+		char tip_wrapped[LEN_TOOLTIP];
+		TooltipBuildWrappedFormat(tip, tip_wrapped, (int)sizeof(tip_wrapped), TRUE, "[tooltip.c][TooltipFindFormat]");
+		dwInfoTooltip |= FindFormat(tip_wrapped);
+	}
 	//	Tooltipのテキストをレジストリから読み込む
 	//GetMyRegStr("Tooltip", "Tooltip2", tip, sizeof(tip), "");
 	strcpy(tip, fmtToolTip2);
@@ -990,7 +1036,11 @@ DWORD TooltipFindFormat(void)
 			}
 		}
 	}
-	dwInfoTooltip |= FindFormat(tip);
+	{
+		char tip_wrapped[LEN_TOOLTIP];
+		TooltipBuildWrappedFormat(tip, tip_wrapped, (int)sizeof(tip_wrapped), TRUE, "[tooltip.c][TooltipFindFormat]");
+		dwInfoTooltip |= FindFormat(tip_wrapped);
+	}
 	//	Tooltipのテキストをレジストリから読み込む
 	//GetMyRegStr("Tooltip", "Tooltip3", tip, sizeof(tip), "");
 	strcpy(tip, fmtToolTip3);
@@ -1042,10 +1092,18 @@ DWORD TooltipFindFormat(void)
 			}
 		}
 	}
-	dwInfoTooltip |= FindFormat(tip);
+	{
+		char tip_wrapped[LEN_TOOLTIP];
+		TooltipBuildWrappedFormat(tip, tip_wrapped, (int)sizeof(tip_wrapped), TRUE, "[tooltip.c][TooltipFindFormat]");
+		dwInfoTooltip |= FindFormat(tip_wrapped);
+	}
 
 	strcpy(tip, tiptitle);
-	dwInfoTooltip |= FindFormat(tip);
+	{
+		char tip_wrapped[LEN_TOOLTIP];
+		TooltipBuildWrappedFormat(tip, tip_wrapped, (int)sizeof(tip_wrapped), TRUE, "[tooltip.c][TooltipFindFormatTitle]");
+		dwInfoTooltip |= FindFormat(tip_wrapped);
+	}
 	return dwInfoTooltip;
 }
 

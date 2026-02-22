@@ -244,7 +244,14 @@ static int MessageBoxUtf8Compat(HWND hwnd, const char* text, const char* caption
 			lstrcpynW(wCaption, L"TClock-Win11", sizeof(wCaption) / sizeof(wCaption[0]));
 	}
 
-	return MessageBoxW(hwnd, wText, wCaption, type);
+	{
+		UINT uBeep = 0xFFFFFFFF;
+		if (type & MB_ICONHAND) uBeep = MB_ICONHAND;
+		else if (type & MB_ICONQUESTION) uBeep = MB_ICONQUESTION;
+		else if (type & MB_ICONEXCLAMATION) uBeep = MB_ICONEXCLAMATION;
+		else if (type & MB_ICONASTERISK) uBeep = MB_ICONASTERISK;
+		return MyMessageBoxW(hwnd, wText, wCaption, type, uBeep);
+	}
 }
 
 static BOOL SetHideClockPolicyValue(DWORD value)

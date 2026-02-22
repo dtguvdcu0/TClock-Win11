@@ -628,13 +628,15 @@ int MyMessageBoxW(HWND hwnd, const wchar_t* msg, const wchar_t* title, UINT uTyp
 	MSGBOXPARAMSW mbp;
 	const wchar_t* pMsg = msg ? msg : L"";
 	const wchar_t* pTitle = title ? title : L"TClock-Win11";
+	UINT baseType = uType & ~MB_ICONMASK;
+	HINSTANCE hIconInst = g_hInst ? g_hInst : GetModuleHandleW(NULL);
 
 	mbp.cbSize = sizeof(MSGBOXPARAMSW);
 	mbp.hwndOwner = hwnd;
-	mbp.hInstance = g_hInst;
+	mbp.hInstance = hIconInst;
 	mbp.lpszText = pMsg;
 	mbp.lpszCaption = pTitle;
-	mbp.dwStyle = MB_USERICON | uType;
+	mbp.dwStyle = MB_USERICON | baseType;
 	mbp.lpszIcon = MAKEINTRESOURCEW(IDI_ICON1);
 	mbp.dwContextHelpId = 0;
 	mbp.lpfnMsgBoxCallback = NULL;

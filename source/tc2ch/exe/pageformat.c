@@ -21,6 +21,7 @@ static BOOL bDayOfWeekIsLast;   // yy/mm/dd ddd
 static BOOL bTimeMarkerIsFirst; // AM/PM hh:nn:ss
 static char sMon[11];  //
 static char *pCustomFormat = NULL;
+static HFONT g_hFormatEditFont = NULL;
 
 
 extern BOOL b_EnglishMenu;
@@ -148,6 +149,7 @@ BOOL CALLBACK PageFormatProc(HWND hDlg, UINT message,
 			return TRUE;
 		case WM_DESTROY:
 			if(pCustomFormat) free(pCustomFormat); pCustomFormat = NULL;
+			if(g_hFormatEditFont) { DeleteObject(g_hFormatEditFont); g_hFormatEditFont = NULL; }
 			break;
 	}
 	return FALSE;
@@ -255,10 +257,32 @@ void OnInit(HWND hDlg)
 	}
 	/* IDC_FORMAT must be Unicode edit to avoid non-ACP input degradation to '?'. */
 	EnsureUnicodeEditControl(hDlg, IDC_FORMAT);
-	/* Use GUI Unicode-capable font for format edit; SYSTEM_FIXED_FONT can display non-ACP as '?'. */
-	hfont = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
+	/* IDC_FORMAT is intentionally one step larger for readability. */
+	hfont = (HFONT)SendMessage(hDlg, WM_GETFONT, 0, 0);
+	if(!hfont) hfont = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
 	if(hfont)
+	{
+		LOGFONT lf;
+		if(GetObject(hfont, sizeof(lf), &lf) == sizeof(lf))
+		{
+			int dpiY = 96;
+			int pt;
+			HDC hdc = GetDC(hDlg);
+			if(hdc)
+			{
+				dpiY = GetDeviceCaps(hdc, LOGPIXELSY);
+				ReleaseDC(hDlg, hdc);
+			}
+			pt = MulDiv((lf.lfHeight < 0) ? -lf.lfHeight : lf.lfHeight, 72, dpiY);
+			if(pt < 8) pt = 8;
+			pt += 2;
+			lf.lfHeight = -MulDiv(pt, dpiY, 72);
+			if(g_hFormatEditFont) { DeleteObject(g_hFormatEditFont); g_hFormatEditFont = NULL; }
+			g_hFormatEditFont = CreateFontIndirect(&lf);
+			if(g_hFormatEditFont) hfont = g_hFormatEditFont;
+		}
 		SendDlgItemMessage(hDlg, IDC_FORMAT, WM_SETFONT, (WPARAM)hfont, 0);
+	}
 
 	// Fill and select the "Locale" combobox
 	EnumSystemLocales(EnumLocalesProc, LCID_INSTALLED);

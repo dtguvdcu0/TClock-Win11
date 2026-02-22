@@ -3348,8 +3348,7 @@ BOOL WINAPI FormatMenuLabel_Win11(const char* fmt, char* out, int outBytes)
 	outW[0] = L'\0';
 
 	BuildMainFormatWrapped(fmt, tmp, (int)sizeof(tmp), FALSE, "[tclock.c][FormatMenuLabel]");
-	if (tc_utf8_to_utf16(tmp, tmpW, (int)(sizeof(tmpW) / sizeof(tmpW[0]))) <= 0 &&
-		MultiByteToWideChar((UINT)codepage, 0, tmp, -1, tmpW, (int)(sizeof(tmpW) / sizeof(tmpW[0]))) <= 0) {
+	if (tc_utf8_to_utf16(tmp, tmpW, (int)(sizeof(tmpW) / sizeof(tmpW[0]))) <= 0) {
 		return FALSE;
 	}
 
@@ -3371,9 +3370,7 @@ BOOL WINAPI FormatMenuLabel_Win11(const char* fmt, char* out, int outBytes)
 	InitFormat(&t);
 	MakeFormatW(outW, (int)(sizeof(outW) / sizeof(outW[0])), info, &t, beat100, tmpW);
 	if (tc_utf16_to_utf8(outW, out, outBytes) <= 0) {
-		if (tc_utf16_to_ansi_compat((UINT)codepage, outW, out, outBytes) <= 0) {
-			out[0] = '\0';
-		}
+		out[0] = '\0';
 	}
 	return out[0] ? TRUE : FALSE;
 }

@@ -171,11 +171,13 @@ static DWORD TooltipFindFormatWrapped(const char* raw, const char* logContext)
 	char tip_wrapped[LEN_TOOLTIP];
 	WCHAR tip_wrapped_w[LEN_TOOLTIP];
 	TooltipBuildWrappedFormat(raw, tip_wrapped, (int)sizeof(tip_wrapped), TRUE, logContext);
-	if (tc_ansi_to_utf16_compat((UINT)codepage, tip_wrapped, tip_wrapped_w, (int)(sizeof(tip_wrapped_w) / sizeof(tip_wrapped_w[0]))) > 0) {
+	if (tc_utf8_to_utf16(tip_wrapped, tip_wrapped_w, (int)(sizeof(tip_wrapped_w) / sizeof(tip_wrapped_w[0]))) > 0 ||
+		tc_ansi_to_utf16_compat((UINT)codepage, tip_wrapped, tip_wrapped_w, (int)(sizeof(tip_wrapped_w) / sizeof(tip_wrapped_w[0]))) > 0) {
 		return FindFormatW(tip_wrapped_w);
 	}
 	return FindFormat(tip_wrapped);
 }
+
 
 static int TooltipDrawTextLogged(HDC hdc, LPCTSTR pszText, int cchText, LPRECT prc, UINT format, int tag)
 {
@@ -467,7 +469,6 @@ static BOOL GetTooltipText(PSTR pszText)
 
 	if (tc_read_text_file_utf8(szFilePath, &utf8Text, &utf8Size, &hadBom)) {
 		char utf8buf[LEN_TOOLTIP];
-		WCHAR wbuf[LEN_TOOLTIP];
 		int copyBytes = (int)utf8Size;
 
 		if (copyBytes > LEN_TOOLTIP - 1) copyBytes = LEN_TOOLTIP - 1;
@@ -478,12 +479,9 @@ static BOOL GetTooltipText(PSTR pszText)
 		tc_free_text_buffer(utf8Text);
 
 		if (copyBytes == 0) return FALSE;
-
-		if (tc_ansi_to_utf16_compat(CP_UTF8, utf8buf, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) > 0 &&
-			tc_utf16_to_ansi_compat((UINT)codepage, wbuf, pszText, LEN_TOOLTIP) > 0) {
-			if (pszText[0] == '\0') return FALSE;
-			return TRUE;
-		}
+		lstrcpyn(pszText, utf8buf, LEN_TOOLTIP);
+		if (pszText[0] == '\0') return FALSE;
+		return TRUE;
 	}
 
 	hFile = CreateFile(szFilePath,
@@ -689,7 +687,8 @@ static void TooltipUpdateText(void)
 
 	SYSTEMTIME t;
 	int beat100;
-	char fmt[LEN_TOOLTIP], s[LEN_TOOLTIP], s_info[LEN_TOOLTIP], tipt[300], tipt_info[300];
+	char fmt[LEN_TOOLTIP], s_info[LEN_TOOLTIP], tipt_info[300];
+	WCHAR s_w[LEN_TOOLTIP], tipt_w[300];
 	DWORD dw;
 	RECT rcClock;
 	int clLen, mPos;
@@ -765,26 +764,41 @@ static void TooltipUpdateText(void)
 	GetDisplayTime(&t, &beat100);
 	{
 		char fmt_wrapped[LEN_TOOLTIP];
+		WCHAR fmt_wrapped_w[LEN_TOOLTIP];
+		fmt_wrapped_w[0] = L'\0';
+		s_w[0] = L'\0';
 		TooltipBuildWrappedFormat(fmt, fmt_wrapped, (int)sizeof(fmt_wrapped), TRUE, "[tooltip.c][TooltipUpdateText]");
-		MakeFormat(s, s_info, &t, beat100, fmt_wrapped);
+		if (tc_utf8_to_utf16(fmt_wrapped, fmt_wrapped_w, (int)(sizeof(fmt_wrapped_w) / sizeof(fmt_wrapped_w[0]))) <= 0 &&
+			tc_ansi_to_utf16_compat((UINT)codepage, fmt_wrapped, fmt_wrapped_w, (int)(sizeof(fmt_wrapped_w) / sizeof(fmt_wrapped_w[0]))) <= 0) {
+			lstrcpynW(fmt_wrapped_w, L"TClock <%LDATE%>", (int)(sizeof(fmt_wrapped_w) / sizeof(fmt_wrapped_w[0])));
+		}
+		MakeFormatW(s_w, (int)(sizeof(s_w) / sizeof(s_w[0])), s_info, &t, beat100, fmt_wrapped_w);
 	}
 
 	if(tiptitle[0] != 0)
 	{
 		char tiptitle_wrapped[300];
+		WCHAR tiptitle_wrapped_w[300];
+		tiptitle_wrapped_w[0] = L'\0';
+		tipt_w[0] = L'\0';
 		TooltipBuildWrappedFormat(tiptitle, tiptitle_wrapped, (int)sizeof(tiptitle_wrapped), TRUE, "[tooltip.c][TooltipTitle]");
-		MakeFormat(tipt, tipt_info, &t, beat100, tiptitle_wrapped);
-		strcpy(titleTooltip, tipt);
-		sprintf(formatTooltip, "\n\n\n%s", s);	//????????????????????x3?????
+		if (tc_utf8_to_utf16(tiptitle_wrapped, tiptitle_wrapped_w, (int)(sizeof(tiptitle_wrapped_w) / sizeof(tiptitle_wrapped_w[0]))) <= 0 &&
+			tc_ansi_to_utf16_compat((UINT)codepage, tiptitle_wrapped, tiptitle_wrapped_w, (int)(sizeof(tiptitle_wrapped_w) / sizeof(tiptitle_wrapped_w[0]))) <= 0) {
+			tiptitle_wrapped_w[0] = L'\0';
+		}
+		MakeFormatW(tipt_w, (int)(sizeof(tipt_w) / sizeof(tipt_w[0])), tipt_info, &t, beat100, tiptitle_wrapped_w);
+		lstrcpynW(titleTooltipW, tipt_w, (int)(sizeof(titleTooltipW) / sizeof(titleTooltipW[0])));
+		lstrcpynW(formatTooltipW, L"\n\n\n", (int)(sizeof(formatTooltipW) / sizeof(formatTooltipW[0])));
+		lstrcpynW(formatTooltipW + lstrlenW(formatTooltipW), s_w, (int)((sizeof(formatTooltipW) / sizeof(formatTooltipW[0])) - lstrlenW(formatTooltipW)));
 	}
 	else
 	{
-		strcpy(titleTooltip, "");
-		strcpy(formatTooltip, s);
+		titleTooltipW[0] = L'\0';
+		lstrcpynW(formatTooltipW, s_w, (int)(sizeof(formatTooltipW) / sizeof(formatTooltipW[0])));
 	}
-	TooltipSyncWideText();
 	TooltipSyncAnsiMirrorFromWide();
 }
+
 
 /*------------------------------------------------
 　ツールチップの表示更新

@@ -50,6 +50,11 @@ static BOOL tc_should_keep_utf8_bytes(const char* section, const char* entry)
 	if (!section || !entry || !*section || !*entry) return FALSE;
 	if (lstrcmpi(section, "Format") == 0 &&
 		(lstrcmpi(entry, "Format") == 0 || lstrcmpi(entry, "CustomFormat") == 0)) return TRUE;
+	if (lstrcmpi(section, "Tooltip") == 0 &&
+		(lstrcmpi(entry, "TipTitle") == 0 ||
+		 lstrcmpi(entry, "Tooltip") == 0 ||
+		 lstrcmpi(entry, "Tooltip2") == 0 ||
+		 lstrcmpi(entry, "Tooltip3") == 0)) return TRUE;
 	return FALSE;
 }
 

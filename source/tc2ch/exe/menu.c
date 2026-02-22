@@ -129,6 +129,50 @@ static PFN_FormatMenuLabel_Win11 g_pfnFormatMenuLabel_Win11 = NULL;
 static BOOL g_menuFormatApiChecked = FALSE;
 static int tc_menu_append_text(char* dst, int dstLen, int pos, const char* src);
 static BOOL tc_menu_match_token(const char* p, const char* token);
+static BOOL tc_menu_should_keep_utf8_value(const char* key);
+static BOOL tc_menu_utf8_or_ansi_to_wide(const char* text, WCHAR* wbuf, int wbufCch);
+static BOOL tc_menu_insert_string(HMENU hMenu, UINT position, UINT flags, UINT_PTR id, const char* text);
+static BOOL tc_menu_modify_string(HMENU hMenu, UINT item, UINT flags, UINT_PTR id, const char* text);
+
+static BOOL tc_menu_should_keep_utf8_value(const char* key)
+{
+	const char* p;
+	if (!key || !key[0]) return FALSE;
+	for (p = key; p[0]; ++p) {
+		if (p[0] == 'L' && p[1] == 'a' && p[2] == 'b' && p[3] == 'e' && p[4] == 'l') {
+			return TRUE;
+		}
+	}
+	return FALSE;
+}
+
+static BOOL tc_menu_utf8_or_ansi_to_wide(const char* text, WCHAR* wbuf, int wbufCch)
+{
+	if (!wbuf || wbufCch <= 0) return FALSE;
+	wbuf[0] = L'\0';
+	if (!text || !text[0]) return TRUE;
+	if (tc_utf8_to_utf16(text, wbuf, wbufCch) > 0) return TRUE;
+	if (MultiByteToWideChar(CP_ACP, 0, text, -1, wbuf, wbufCch) > 0) return TRUE;
+	return FALSE;
+}
+
+static BOOL tc_menu_insert_string(HMENU hMenu, UINT position, UINT flags, UINT_PTR id, const char* text)
+{
+	WCHAR wtext[1024];
+	if (tc_menu_utf8_or_ansi_to_wide(text, wtext, (int)(sizeof(wtext) / sizeof(wtext[0])))) {
+		return InsertMenuW(hMenu, position, flags, id, wtext);
+	}
+	return InsertMenu(hMenu, position, flags, id, text ? text : "");
+}
+
+static BOOL tc_menu_modify_string(HMENU hMenu, UINT item, UINT flags, UINT_PTR id, const char* text)
+{
+	WCHAR wtext[1024];
+	if (tc_menu_utf8_or_ansi_to_wide(text, wtext, (int)(sizeof(wtext) / sizeof(wtext[0])))) {
+		return ModifyMenuW(hMenu, item, flags, id, wtext);
+	}
+	return ModifyMenu(hMenu, item, flags, id, text ? text : "");
+}
 
 static void tc_menu_dynamic_reset(void)
 {
@@ -762,7 +806,7 @@ void MenuOnTimerTick(HWND hwnd)
 		text[0] = '\0';
 		tc_menu_resolve_label_text(e->itemIndex, e->plainLabel, e->format, e->intervalSec, text, (int)sizeof(text));
 		if (text[0]) {
-			ModifyMenu(hPopupMenu, e->cmdId, MF_BYCOMMAND, e->cmdId, text);
+			tc_menu_modify_string(hPopupMenu, e->cmdId, MF_BYCOMMAND, e->cmdId, text);
 		}
 	}
 	for (i = 0; i < g_menuAlarmCount; ++i) {
@@ -771,7 +815,7 @@ void MenuOnTimerTick(HWND hwnd)
 		alarmText[0] = '\0';
 		tc_menu_alarm_format_label(e2, alarmText, (int)sizeof(alarmText));
 		if (alarmText[0]) {
-			ModifyMenu(hPopupMenu, e2->id, MF_BYCOMMAND, e2->id, alarmText);
+			tc_menu_modify_string(hPopupMenu, e2->id, MF_BYCOMMAND, e2->id, alarmText);
 		}
 	}
 }
@@ -1007,7 +1051,7 @@ static void tc_menu_section_cache_get_str(const TC_MENU_SECTION_CACHE* cache, co
 	s = tc_menu_section_cache_find(cache, key);
 	if (s) {
 		lstrcpyn(out, s, outBytes);
-		if (cache && cache->isUtf8 && out[0]) {
+		if (cache && cache->isUtf8 && out[0] && !tc_menu_should_keep_utf8_value(key)) {
 			WCHAR wbuf[4096];
 			char abuf[4096];
 			if (tc_utf8_to_utf16(out, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) > 0 &&
@@ -1269,7 +1313,7 @@ static void tc_menu_apply_custom_from_ini(HMENU hMenu)
 			lstrcpyn(alarmEntry->soundFile, alarmSoundFile, (int)sizeof(alarmEntry->soundFile));
 			tc_menu_alarm_restore_runtime(alarmEntry);
 			tc_menu_alarm_format_label(alarmEntry, alarmText, (int)sizeof(alarmText));
-			InsertMenu(hMenu, insertPos, MF_BYPOSITION | MF_STRING, cmdId, alarmText[0] ? alarmText : label);
+			tc_menu_insert_string(hMenu, insertPos, MF_BYPOSITION | MF_STRING, cmdId, alarmText[0] ? alarmText : label);
 			++insertPos;
 			continue;
 		}
@@ -1283,7 +1327,7 @@ static void tc_menu_apply_custom_from_ini(HMENU hMenu)
 			tc_menu_resolve_label_text(i, label, labelFormat, labelUpdateSec, resolvedLabel, (int)sizeof(resolvedLabel));
 			cmdId = tc_menu_dynamic_register(3, "", "", "", SW_SHOWNORMAL);
 			if (!cmdId) continue;
-			InsertMenu(hMenu, insertPos, MF_BYPOSITION | MF_STRING, cmdId, resolvedLabel[0] ? resolvedLabel : label);
+			tc_menu_insert_string(hMenu, insertPos, MF_BYPOSITION | MF_STRING, cmdId, resolvedLabel[0] ? resolvedLabel : label);
 			if (labelFormat[0]) {
 				tc_menu_live_register(cmdId, i, labelUpdateSec, label, labelFormat);
 			}
@@ -1375,7 +1419,7 @@ static void tc_menu_apply_custom_from_ini(HMENU hMenu)
 			continue;
 		}
 
-		InsertMenu(hMenu, insertPos, MF_BYPOSITION | MF_STRING, cmdId, resolvedLabel[0] ? resolvedLabel : label);
+		tc_menu_insert_string(hMenu, insertPos, MF_BYPOSITION | MF_STRING, cmdId, resolvedLabel[0] ? resolvedLabel : label);
 		if (labelFormat[0]) {
 			tc_menu_live_register(cmdId, i, labelUpdateSec, label, labelFormat);
 		}
@@ -1494,8 +1538,8 @@ void OnContextMenu(HWND hwnd, HWND hwndClicked, int xPos, int yPos)
 			wsprintf(tcapCaptureLabel, "%s", SafeMyString(IDS_TCAP_CAPTURE));
 			wsprintf(tcapSettingsLabel, "%s", SafeMyString(IDS_TCAP_SETTING));
 			InsertMenu(hPopupMenu, insertPos, MF_BYPOSITION | MF_SEPARATOR, 0, NULL);
-			InsertMenu(hPopupMenu, insertPos + 1, MF_BYPOSITION | MF_STRING, IDC_TCAP_CAPTURE, tcapCaptureLabel);
-			InsertMenu(hPopupMenu, insertPos + 2, MF_BYPOSITION | MF_STRING, IDC_TCAP_SETTINGS, tcapSettingsLabel);
+			tc_menu_insert_string(hPopupMenu, insertPos + 1, MF_BYPOSITION | MF_STRING, IDC_TCAP_CAPTURE, tcapCaptureLabel);
+			tc_menu_insert_string(hPopupMenu, insertPos + 2, MF_BYPOSITION | MF_STRING, IDC_TCAP_SETTINGS, tcapSettingsLabel);
 		}
 	}
 
@@ -1695,21 +1739,21 @@ void OnContextMenu(HWND hwnd, HWND hwndClicked, int xPos, int yPos)
 		if (driveIndex_Win10 > 1)
 		{
 			driveIndex_Win10--;
-			ModifyMenu(hPopupMenu, IDC_REMOVE_DRIVE0, MF_BYCOMMAND, IDC_REMOVE_DRIVE0 + driveIndex_Win10, driveList_Win10[driveIndex_Win10]);
+			tc_menu_modify_string(hPopupMenu, IDC_REMOVE_DRIVE0, MF_BYCOMMAND, IDC_REMOVE_DRIVE0 + driveIndex_Win10, driveList_Win10[driveIndex_Win10]);
 			driveIndex_Win10--;
 			for (i = driveIndex_Win10; i >= 0; i--)
 			{
-				InsertMenu(hPopupMenu, IDC_REMOVE_DRIVE0 + i + 1, MF_BYCOMMAND, IDC_REMOVE_DRIVE0 + i, driveList_Win10[i]);
+				tc_menu_insert_string(hPopupMenu, IDC_REMOVE_DRIVE0 + i + 1, MF_BYCOMMAND, IDC_REMOVE_DRIVE0 + i, driveList_Win10[i]);
 			}
 		}
 		else if (driveIndex_Win10 == 1)
 		{
-			ModifyMenu(hPopupMenu, IDC_REMOVE_DRIVE0, MF_BYCOMMAND, IDC_REMOVE_DRIVE0, driveList_Win10[0]);
+			tc_menu_modify_string(hPopupMenu, IDC_REMOVE_DRIVE0, MF_BYCOMMAND, IDC_REMOVE_DRIVE0, driveList_Win10[0]);
 			EnableMenuItem(hPopupMenu, IDC_REMOVE_DRIVE0, MF_BYCOMMAND | MF_ENABLED);
 		}
 		else
 		{
-			ModifyMenu(hPopupMenu, IDC_REMOVE_DRIVE0, MF_BYCOMMAND, IDC_REMOVE_DRIVE0, stringMenuItem_RemoveDriveNoDrive);
+			tc_menu_modify_string(hPopupMenu, IDC_REMOVE_DRIVE0, MF_BYCOMMAND, IDC_REMOVE_DRIVE0, stringMenuItem_RemoveDriveNoDrive);
 			EnableMenuItem(hPopupMenu, IDC_REMOVE_DRIVE0, MF_BYCOMMAND | MF_GRAYED);
 		}
 
@@ -2065,8 +2109,8 @@ void InitializeMenuItems(void)
 		char tcapSettingsLabel[128];
 		wsprintf(tcapCaptureLabel, "%s", SafeMyString(IDS_TCAP_CAPTURE));
 		wsprintf(tcapSettingsLabel, "%s", SafeMyString(IDS_TCAP_SETTING));
-		ModifyMenu(hPopupMenu, IDC_TCAP_CAPTURE, MF_BYCOMMAND, IDC_TCAP_CAPTURE, tcapCaptureLabel);
-		ModifyMenu(hPopupMenu, IDC_TCAP_SETTINGS, MF_BYCOMMAND, IDC_TCAP_SETTINGS, tcapSettingsLabel);
+		tc_menu_modify_string(hPopupMenu, IDC_TCAP_CAPTURE, MF_BYCOMMAND, IDC_TCAP_CAPTURE, tcapCaptureLabel);
+		tc_menu_modify_string(hPopupMenu, IDC_TCAP_SETTINGS, MF_BYCOMMAND, IDC_TCAP_SETTINGS, tcapSettingsLabel);
 	}
 	ModifyMenu(hPopupMenu, IDC_SHOWPROP, MF_BYCOMMAND, IDC_SHOWPROP, SafeMyString(IDS_PROPERTY));
 	ModifyMenu(hPopupMenu, IDC_EXIT, MF_BYCOMMAND, IDC_EXIT, SafeMyString(IDS_EXITTCLOCK));

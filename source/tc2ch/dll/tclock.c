@@ -3334,6 +3334,8 @@ BOOL WINAPI FormatMenuLabel_Win11(const char* fmt, char* out, int outBytes)
 	int beat100 = 0;
 	char info[1024];
 	char tmp[1024];
+	WCHAR tmpW[1024];
+	WCHAR outW[1024];
 	DWORD dwInfo = 0;
 
 	if (!fmt || !fmt[0] || !out || outBytes <= 0) {
@@ -3342,8 +3344,16 @@ BOOL WINAPI FormatMenuLabel_Win11(const char* fmt, char* out, int outBytes)
 	out[0] = '\0';
 	tmp[0] = '\0';
 	info[0] = '\0';
+	tmpW[0] = L'\0';
+	outW[0] = L'\0';
+
 	BuildMainFormatWrapped(fmt, tmp, (int)sizeof(tmp), FALSE, "[tclock.c][FormatMenuLabel]");
-	dwInfo = FindFormat(tmp);
+	if (tc_utf8_to_utf16(tmp, tmpW, (int)(sizeof(tmpW) / sizeof(tmpW[0]))) <= 0 &&
+		MultiByteToWideChar((UINT)codepage, 0, tmp, -1, tmpW, (int)(sizeof(tmpW) / sizeof(tmpW[0]))) <= 0) {
+		return FALSE;
+	}
+
+	dwInfo = FindFormatW(tmpW);
 	if (dwInfo & (FORMAT_BATTERY | FORMAT_MEMORY | FORMAT_NET | FORMAT_HDD | FORMAT_CPU | FORMAT_VOL | FORMAT_GPU | FORMAT_TEMP)) {
 		UpdateSysRes(
 			(dwInfo & FORMAT_BATTERY) ? TRUE : FALSE,
@@ -3359,9 +3369,15 @@ BOOL WINAPI FormatMenuLabel_Win11(const char* fmt, char* out, int outBytes)
 
 	GetDisplayTime(&t, &beat100);
 	InitFormat(&t);
-	MakeFormat(out, info, &t, beat100, tmp);
+	MakeFormatW(outW, (int)(sizeof(outW) / sizeof(outW[0])), info, &t, beat100, tmpW);
+	if (tc_utf16_to_utf8(outW, out, outBytes) <= 0) {
+		if (tc_utf16_to_ansi_compat((UINT)codepage, outW, out, outBytes) <= 0) {
+			out[0] = '\0';
+		}
+	}
 	return out[0] ? TRUE : FALSE;
 }
+
 
 void PlayChime(BOOL b_sedondary)
 {

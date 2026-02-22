@@ -1287,7 +1287,7 @@ void InitError(int n)
 {
 	char s[160];
 
-	wsprintf(s, "%s: %d", MyString(IDS_NOTFOUNDCLOCK), n);
+	wsprintf(s, "%s: %d", MyStringUTF8(IDS_NOTFOUNDCLOCK), n);
 	MyMessageBox(NULL, s, NULL, MB_OK, MB_ICONEXCLAMATION);
 }
 

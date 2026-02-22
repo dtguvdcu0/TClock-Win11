@@ -503,6 +503,48 @@ char* MyString(UINT id)
 	return buf;
 }
 
+char* MyStringUTF8(UINT id)
+{
+	static char buf[MAX_PATH];
+	WCHAR wbuf[MAX_PATH];
+	HINSTANCE hInst;
+	int n = 0;
+
+	extern int Language_Offset;
+	extern BOOL b_DebugLog;
+
+	buf[0] = 0;
+	wbuf[0] = L'\0';
+	hInst = GetLangModule();
+	if(hInst) {
+		n = LoadStringW(hInst, id + Language_Offset, wbuf, MAX_PATH);
+		if(n == 0) {
+			if(Language_Offset != 0) {
+				n = LoadStringW(hInst, id, wbuf, MAX_PATH);
+			}
+			else {
+				n = LoadStringW(hInst, id + 1000, wbuf, MAX_PATH);
+			}
+		}
+		if (n > 0) {
+			if (tc_utf16_to_utf8(wbuf, buf, MAX_PATH) <= 0) {
+				buf[0] = '\0';
+			}
+		}
+	}
+
+	if (strlen(buf) == 0) {
+		if (b_DebugLog) {
+			char tmp[160];
+			wsprintf(tmp, "[utl.c][MyStringUTF8] NG id=%u off=%d hInst=%p", id, Language_Offset, hInst);
+			WriteDebug_New2(tmp);
+		}
+		strcpy(buf, "NG_String");
+	}
+
+	return buf;
+}
+
 /*-------------------------------------------
   アイコンつきメッセージボックス
 ---------------------------------------------*/
@@ -572,27 +614,26 @@ int GetClassNameUTF8(HWND hwnd, char* text, int textBytes)
 	return 0;
 }
 
-int MyMessageBox(HWND hwnd, char* msg, char* title, UINT uType, UINT uBeep)
+static int DecodeUtf8Strict(const char* src, wchar_t* dst, int dstCch)
+{
+	int ret;
+	if (!src || !dst || dstCch <= 0) return 0;
+	ret = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, src, -1, dst, dstCch);
+	if (ret <= 0) dst[0] = L'\0';
+	return ret;
+}
+
+int MyMessageBoxW(HWND hwnd, const wchar_t* msg, const wchar_t* title, UINT uType, UINT uBeep)
 {
 	MSGBOXPARAMSW mbp;
-	wchar_t wMsg[2048];
-	wchar_t wTitle[256];
-
-	if (!msg) msg = "";
-	if (!title) title = "TClock-Win11";
-
-	if (DecodeUtf8OrAcp(msg, wMsg, (int)(sizeof(wMsg) / sizeof(wMsg[0]))) <= 0) {
-		lstrcpynW(wMsg, L"[Message decode error]", (int)(sizeof(wMsg) / sizeof(wMsg[0])));
-	}
-	if (DecodeUtf8OrAcp(title, wTitle, (int)(sizeof(wTitle) / sizeof(wTitle[0]))) <= 0) {
-		lstrcpynW(wTitle, L"TClock-Win11", (int)(sizeof(wTitle) / sizeof(wTitle[0])));
-	}
+	const wchar_t* pMsg = msg ? msg : L"";
+	const wchar_t* pTitle = title ? title : L"TClock-Win11";
 
 	mbp.cbSize = sizeof(MSGBOXPARAMSW);
 	mbp.hwndOwner = hwnd;
 	mbp.hInstance = g_hInst;
-	mbp.lpszText = wMsg;
-	mbp.lpszCaption = wTitle;
+	mbp.lpszText = pMsg;
+	mbp.lpszCaption = pTitle;
 	mbp.dwStyle = MB_USERICON | uType;
 	mbp.lpszIcon = MAKEINTRESOURCEW(IDI_ICON1);
 	mbp.dwContextHelpId = 0;
@@ -601,6 +642,24 @@ int MyMessageBox(HWND hwnd, char* msg, char* title, UINT uType, UINT uBeep)
 	if(uBeep != 0xFFFFFFFF)
 		MessageBeep(uBeep);
 	return MessageBoxIndirectW(&mbp);
+}
+
+int MyMessageBox(HWND hwnd, char* msg, char* title, UINT uType, UINT uBeep)
+{
+	wchar_t wMsg[2048];
+	wchar_t wTitle[256];
+
+	if (!msg) msg = "";
+	if (!title) title = "TClock-Win11";
+
+	if (DecodeUtf8Strict(msg, wMsg, (int)(sizeof(wMsg) / sizeof(wMsg[0]))) <= 0) {
+		lstrcpynW(wMsg, L"[Message decode error]", (int)(sizeof(wMsg) / sizeof(wMsg[0])));
+	}
+	if (DecodeUtf8Strict(title, wTitle, (int)(sizeof(wTitle) / sizeof(wTitle[0]))) <= 0) {
+		lstrcpynW(wTitle, L"TClock-Win11", (int)(sizeof(wTitle) / sizeof(wTitle[0])));
+	}
+
+	return MyMessageBoxW(hwnd, wMsg, wTitle, uType, uBeep);
 }
 
 HINSTANCE ShellExecuteUtf8Compat(HWND hwnd, const char* op, const char* file, const char* params, const char* dir, int showCmd)

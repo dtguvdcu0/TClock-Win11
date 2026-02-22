@@ -142,6 +142,9 @@ static BOOL tc_menu_should_keep_utf8_value(const char* key)
 		if (p[0] == 'L' && p[1] == 'a' && p[2] == 'b' && p[3] == 'e' && p[4] == 'l') {
 			return TRUE;
 		}
+		if (p[0] == 'M' && p[1] == 'e' && p[2] == 's' && p[3] == 's' && p[4] == 'a' && p[5] == 'g' && p[6] == 'e') {
+			return TRUE;
+		}
 	}
 	return FALSE;
 }

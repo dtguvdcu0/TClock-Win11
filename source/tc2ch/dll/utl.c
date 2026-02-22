@@ -865,16 +865,9 @@ HINSTANCE ShellExecuteUtf8Compat_DLL(HWND hwnd, const char* op, const char* file
 	const wchar_t* pDir = NULL;
 
 	if (op && tc_ansi_to_utf16_compat(CP_UTF8, op, wOp, (int)(sizeof(wOp) / sizeof(wOp[0]))) > 0) pOp = wOp;
-	else if (op && tc_ansi_to_utf16_compat(CP_ACP, op, wOp, (int)(sizeof(wOp) / sizeof(wOp[0]))) > 0) pOp = wOp;
-
 	if (file && tc_ansi_to_utf16_compat(CP_UTF8, file, wFile, (int)(sizeof(wFile) / sizeof(wFile[0]))) > 0) pFile = wFile;
-	else if (file && tc_ansi_to_utf16_compat(CP_ACP, file, wFile, (int)(sizeof(wFile) / sizeof(wFile[0]))) > 0) pFile = wFile;
-
 	if (params && tc_ansi_to_utf16_compat(CP_UTF8, params, wParams, (int)(sizeof(wParams) / sizeof(wParams[0]))) > 0) pParams = wParams;
-	else if (params && tc_ansi_to_utf16_compat(CP_ACP, params, wParams, (int)(sizeof(wParams) / sizeof(wParams[0]))) > 0) pParams = wParams;
-
 	if (dir && tc_ansi_to_utf16_compat(CP_UTF8, dir, wDir, (int)(sizeof(wDir) / sizeof(wDir[0]))) > 0) pDir = wDir;
-	else if (dir && tc_ansi_to_utf16_compat(CP_ACP, dir, wDir, (int)(sizeof(wDir) / sizeof(wDir[0]))) > 0) pDir = wDir;
 
 	return ShellExecuteW(hwnd, pOp, pFile, pParams, pDir, showCmd);
 }

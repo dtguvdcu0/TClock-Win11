@@ -170,11 +170,10 @@ static DWORD TooltipFindFormatWrapped(const char* raw, const char* logContext)
 	char tip_wrapped[LEN_TOOLTIP];
 	WCHAR tip_wrapped_w[LEN_TOOLTIP];
 	TooltipBuildWrappedFormat(raw, tip_wrapped, (int)sizeof(tip_wrapped), TRUE, logContext);
-	if (tc_utf8_to_utf16(tip_wrapped, tip_wrapped_w, (int)(sizeof(tip_wrapped_w) / sizeof(tip_wrapped_w[0]))) > 0 ||
-		tc_ansi_to_utf16_compat((UINT)codepage, tip_wrapped, tip_wrapped_w, (int)(sizeof(tip_wrapped_w) / sizeof(tip_wrapped_w[0]))) > 0) {
+	if (tc_utf8_to_utf16(tip_wrapped, tip_wrapped_w, (int)(sizeof(tip_wrapped_w) / sizeof(tip_wrapped_w[0]))) > 0) {
 		return FindFormatW(tip_wrapped_w);
 	}
-	return FindFormat(tip_wrapped);
+	return 0;
 }
 
 
@@ -733,8 +732,7 @@ static void TooltipUpdateText(void)
 		fmt_wrapped_w[0] = L'\0';
 		s_w[0] = L'\0';
 		TooltipBuildWrappedFormat(fmt, fmt_wrapped, (int)sizeof(fmt_wrapped), TRUE, "[tooltip.c][TooltipUpdateText]");
-		if (tc_utf8_to_utf16(fmt_wrapped, fmt_wrapped_w, (int)(sizeof(fmt_wrapped_w) / sizeof(fmt_wrapped_w[0]))) <= 0 &&
-			tc_ansi_to_utf16_compat((UINT)codepage, fmt_wrapped, fmt_wrapped_w, (int)(sizeof(fmt_wrapped_w) / sizeof(fmt_wrapped_w[0]))) <= 0) {
+		if (tc_utf8_to_utf16(fmt_wrapped, fmt_wrapped_w, (int)(sizeof(fmt_wrapped_w) / sizeof(fmt_wrapped_w[0]))) <= 0) {
 			lstrcpynW(fmt_wrapped_w, L"TClock <%LDATE%>", (int)(sizeof(fmt_wrapped_w) / sizeof(fmt_wrapped_w[0])));
 		}
 		MakeFormatW(s_w, (int)(sizeof(s_w) / sizeof(s_w[0])), s_info, &t, beat100, fmt_wrapped_w);
@@ -747,8 +745,7 @@ static void TooltipUpdateText(void)
 		tiptitle_wrapped_w[0] = L'\0';
 		tipt_w[0] = L'\0';
 		TooltipBuildWrappedFormat(tiptitle, tiptitle_wrapped, (int)sizeof(tiptitle_wrapped), TRUE, "[tooltip.c][TooltipTitle]");
-		if (tc_utf8_to_utf16(tiptitle_wrapped, tiptitle_wrapped_w, (int)(sizeof(tiptitle_wrapped_w) / sizeof(tiptitle_wrapped_w[0]))) <= 0 &&
-			tc_ansi_to_utf16_compat((UINT)codepage, tiptitle_wrapped, tiptitle_wrapped_w, (int)(sizeof(tiptitle_wrapped_w) / sizeof(tiptitle_wrapped_w[0]))) <= 0) {
+		if (tc_utf8_to_utf16(tiptitle_wrapped, tiptitle_wrapped_w, (int)(sizeof(tiptitle_wrapped_w) / sizeof(tiptitle_wrapped_w[0]))) <= 0) {
 			tiptitle_wrapped_w[0] = L'\0';
 		}
 		MakeFormatW(tipt_w, (int)(sizeof(tipt_w) / sizeof(tipt_w[0])), tipt_info, &t, beat100, tiptitle_wrapped_w);

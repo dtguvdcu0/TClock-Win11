@@ -4761,12 +4761,12 @@ void MakeFormatW(WCHAR* s, int sCch, char* s_info, SYSTEMTIME* pt, int beat100, 
 		s[0] = L'\0';
 	}
 
-	fmtABytes = WideCharToMultiByte((UINT)codepage, 0, fmt, -1, NULL, 0, NULL, NULL);
+	fmtABytes = WideCharToMultiByte(CP_UTF8, 0, fmt, -1, NULL, 0, NULL, NULL);
 	if (fmtABytes <= 0) return;
 
 	fmtA = (char*)malloc((size_t)fmtABytes);
 	if (!fmtA) return;
-	if (WideCharToMultiByte((UINT)codepage, 0, fmt, -1, fmtA, fmtABytes, NULL, NULL) <= 0) {
+	if (WideCharToMultiByte(CP_UTF8, 0, fmt, -1, fmtA, fmtABytes, NULL, NULL) <= 0) {
 		free(fmtA);
 		return;
 	}
@@ -4789,7 +4789,7 @@ void MakeFormatW(WCHAR* s, int sCch, char* s_info, SYSTEMTIME* pt, int beat100, 
 	MakeFormat(outA, infoA ? infoA : outA, pt, beat100, fmtA);
 
 	if (!nativeOutputReady) {
-		if (tc_ansi_to_utf16_compat((UINT)codepage, outA, s, sCch) <= 0) {
+		if (tc_utf8_to_utf16(outA, s, sCch) <= 0) {
 			s[0] = L'\0';
 		}
 	}

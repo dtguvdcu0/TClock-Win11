@@ -1374,7 +1374,7 @@ extern "C" void saveAndOpenProfTable(BOOL b_Open)
 
 	if (b_Open)
 	{
-		ShellExecuteUtf8Compat_DLL(NULL, "open", "notepad.exe", fname, NULL, SW_SHOWNORMAL);
+		ShellExecuteUtf8Strict_DLL(NULL, "open", "notepad.exe", fname, NULL, SW_SHOWNORMAL);
 	}
 
 }

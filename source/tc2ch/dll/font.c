@@ -4,6 +4,7 @@
          KAZUBON 1999
 ---------------------------------------------*/
 #include "tcdll.h"
+#include "../common/text_codec.h"
 static LONG g_depth_CreateMyFont = 0;
 static const wchar_t kFontMsGothicW[] = L"\xFF2D\xFF33 \x30B4\x30B7\x30C3\x30AF";
 static const wchar_t kFontMsGothicAsciiW[] = L"MS Gothic";
@@ -30,8 +31,7 @@ int GetLocaleInfoCompat(WORD wLanguageID, LCTYPE LCType, char* dst, int n);
 static BOOL DecodeToWideBestEffort(const char* src, wchar_t* dst, int dstCount)
 {
 	if (!src || !dst || dstCount <= 0) return FALSE;
-	if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, src, -1, dst, dstCount) > 0) return TRUE;
-	return MultiByteToWideChar(CP_ACP, 0, src, -1, dst, dstCount) > 0;
+	return MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, src, -1, dst, dstCount) > 0;
 }
 
 static BOOL EqualsWideNoCase(const wchar_t* a, const wchar_t* b)
@@ -121,13 +121,13 @@ HFONT CreateMyFont(char* fontname, int fontsize,
 	memset(&lf, 0, sizeof(LOGFONT));
 
 	langid = (WORD)GetMyRegLong("Format", "Locale", (int)GetUserDefaultLangID());
-	cp = CP_ACP;
+	cp = tc_current_ansi_codepage();
 	if(GetLocaleInfoCompat(langid, LOCALE_IDEFAULTANSICODEPAGE, s, 10) > 0)
 	{
 		char *p;
 		p = s; cp = 0;
 		while('0' <= *p && *p <= '9') cp = cp * 10 + *p++ - '0';
-		if(!IsValidCodePage(cp)) cp = CP_ACP;
+		if(!IsValidCodePage(cp)) cp = tc_current_ansi_codepage();
 	}
 
 	charset = 0;

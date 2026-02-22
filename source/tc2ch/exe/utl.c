@@ -42,6 +42,9 @@ static BOOL tc_is_utf8_hex_target_key(const char* section, const char* entry)
 		 lstrcmpi(entry, "Tooltip") == 0 ||
 		 lstrcmpi(entry, "Tooltip2") == 0 ||
 		 lstrcmpi(entry, "Tooltip3") == 0)) return TRUE;
+	if (lstrcmpi(section, "TCapture") == 0 && lstrcmpi(entry, "Path") == 0) return TRUE;
+	if (lstrcmpi(section, "ETC") == 0 &&
+		(lstrcmpi(entry, "TCapturePath") == 0 || lstrcmpi(entry, "2chHelpURL") == 0)) return TRUE;
 	return FALSE;
 }
 
@@ -69,7 +72,7 @@ static BOOL tc_encode_utf8_hex_from_ansi(const char* ansi, char* outHex, int out
 	int c;
 
 	if (!ansi || !outHex || outHexBytes <= 0) return FALSE;
-	cps[cpCount++] = GetACP();
+	cps[cpCount++] = tc_current_ansi_codepage();
 	if (cps[0] != 932) cps[cpCount++] = 932;
 	if (cps[0] != CP_UTF8 && (cpCount == 1 || cps[1] != CP_UTF8)) cps[cpCount++] = CP_UTF8;
 
@@ -111,7 +114,7 @@ static BOOL tc_decode_utf8_hex_to_ansi(const char* hex, char* outAnsi, int outAn
 	u8[n / 2] = '\0';
 
 	if (tc_utf8_to_utf16(u8, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) <= 0) return FALSE;
-	if (tc_utf16_to_ansi(GetACP(), wbuf, outAnsi, outAnsiBytes) <= 0) return FALSE;
+	if (tc_utf16_to_ansi_compat(0, wbuf, outAnsi, outAnsiBytes) <= 0) return FALSE;
 	return TRUE;
 }
 
@@ -461,17 +464,14 @@ void str0cat(char* dst, const char* src)
 /*-------------------------------------------
   returns a resource string
 ---------------------------------------------*/
-char* MyString(UINT id)
+const wchar_t* MyStringW(UINT id)
 {
-	static char buf[MAX_PATH];
-	WCHAR wbuf[MAX_PATH];
+	static wchar_t wbuf[MAX_PATH];
 	HINSTANCE hInst;
 	int n = 0;
-
 	extern int Language_Offset;
 	extern BOOL b_DebugLog;
 
-	buf[0] = 0;
 	wbuf[0] = L'\0';
 	hInst = GetLangModule();
 	if(hInst) {
@@ -484,23 +484,18 @@ char* MyString(UINT id)
 				n = LoadStringW(hInst, id + 1000, wbuf, MAX_PATH);
 			}
 		}
-		if (n > 0) {
-			if (tc_utf16_to_ansi_compat(CP_ACP, wbuf, buf, MAX_PATH) <= 0) {
-				buf[0] = '\0';
-			}
-		}
 	}
 
-	if (strlen(buf) == 0) {
+	if (wbuf[0] == L'\0') {
 		if (b_DebugLog) {
 			char tmp[160];
-			wsprintf(tmp, "[utl.c][MyString] NG id=%u off=%d hInst=%p", id, Language_Offset, hInst);
+			wsprintf(tmp, "[utl.c][MyStringW] NG id=%u off=%d hInst=%p", id, Language_Offset, hInst);
 			WriteDebug_New2(tmp);
 		}
-		strcpy(buf, "NG_String");
+		lstrcpynW(wbuf, L"NG_String", MAX_PATH);
 	}
 
-	return buf;
+	return wbuf;
 }
 
 char* MyStringUTF8(UINT id)
@@ -548,22 +543,21 @@ char* MyStringUTF8(UINT id)
 /*-------------------------------------------
   アイコンつきメッセージボックス
 ---------------------------------------------*/
-static int DecodeUtf8OrAcp(const char* src, wchar_t* dst, int dstCch)
+static int DecodeUtf8Strict(const char* src, wchar_t* dst, int dstCch)
 {
 	int ret;
 	if (!src || !dst || dstCch <= 0) return 0;
 	ret = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, src, -1, dst, dstCch);
-	if (ret <= 0) ret = MultiByteToWideChar(CP_ACP, 0, src, -1, dst, dstCch);
 	if (ret <= 0) dst[0] = L'\0';
 	return ret;
 }
 
-BOOL SetWindowTextUTF8(HWND hwnd, const char* text)
+BOOL SetWindowTextUTF8Strict(HWND hwnd, const char* text)
 {
 	wchar_t wText[1024];
 	if (!hwnd) return FALSE;
 	if (!text) text = "";
-	if (DecodeUtf8OrAcp(text, wText, (int)(sizeof(wText) / sizeof(wText[0]))) <= 0) {
+	if (DecodeUtf8Strict(text, wText, (int)(sizeof(wText) / sizeof(wText[0]))) <= 0) {
 		lstrcpynW(wText, L"", (int)(sizeof(wText) / sizeof(wText[0])));
 	}
 	return SetWindowTextW(hwnd, wText);
@@ -582,13 +576,13 @@ int GetWindowTextUTF8(HWND hwnd, char* text, int textBytes)
 	return 0;
 }
 
-BOOL SetDlgItemTextUTF8(HWND hDlg, int id, const char* text)
+BOOL SetDlgItemTextUTF8Strict(HWND hDlg, int id, const char* text)
 {
 	HWND hItem;
 	if (!hDlg) return FALSE;
 	hItem = GetDlgItem(hDlg, id);
 	if (!hItem) return FALSE;
-	return SetWindowTextUTF8(hItem, text);
+	return SetWindowTextUTF8Strict(hItem, text);
 }
 
 int GetDlgItemTextUTF8(HWND hDlg, int id, char* text, int textBytes)
@@ -602,6 +596,50 @@ int GetDlgItemTextUTF8(HWND hDlg, int id, char* text, int textBytes)
 	return GetWindowTextUTF8(hItem, text, textBytes);
 }
 
+
+int CBAddStringUTF8Compat(HWND hDlg, int idCombo, const char* utf8)
+{
+	HWND hCombo;
+	WCHAR wbuf[512];
+	char abuf[512];
+	if (!utf8) utf8 = "";
+	hCombo = GetDlgItem(hDlg, idCombo);
+	if (hCombo && MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8, -1, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) > 0) {
+		LRESULT idxW = SendMessageW(hCombo, CB_ADDSTRING, 0, (LPARAM)wbuf);
+		if (idxW != CB_ERR && idxW != CB_ERRSPACE) {
+			return (int)idxW;
+		}
+	}
+	if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8, -1, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) > 0 &&
+		tc_utf16_to_ansi_compat(0, wbuf, abuf, (int)sizeof(abuf)) > 0) {
+		return CBAddString(hDlg, idCombo, (LPARAM)abuf);
+	}
+	return CBAddString(hDlg, idCombo, (LPARAM)utf8);
+}
+
+void NormalizeUtf8ForAcpCombo(const char* src, char* dst, int dstBytes)
+{
+	WCHAR wbuf[256];
+	const unsigned char* p;
+	if (!dst || dstBytes <= 1) return;
+	dst[0] = '\0';
+	if (!src || !src[0]) return;
+	p = (const unsigned char*)src;
+	while (*p && *p < 0x80) ++p;
+	if (*p == 0) {
+		lstrcpyn(dst, src, dstBytes);
+		return;
+	}
+	if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, src, -1, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) <= 0) {
+		lstrcpyn(dst, src, dstBytes);
+		return;
+	}
+	if (tc_utf16_to_ansi_compat(0, wbuf, dst, dstBytes) <= 0) {
+		lstrcpyn(dst, src, dstBytes);
+		return;
+	}
+}
+
 int GetClassNameUTF8(HWND hwnd, char* text, int textBytes)
 {
 	wchar_t wText[1024];
@@ -612,15 +650,6 @@ int GetClassNameUTF8(HWND hwnd, char* text, int textBytes)
 	if (tc_utf16_to_utf8(wText, text, textBytes) > 0) return lstrlen(text);
 	text[0] = '\0';
 	return 0;
-}
-
-static int DecodeUtf8Strict(const char* src, wchar_t* dst, int dstCch)
-{
-	int ret;
-	if (!src || !dst || dstCch <= 0) return 0;
-	ret = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, src, -1, dst, dstCch);
-	if (ret <= 0) dst[0] = L'\0';
-	return ret;
 }
 
 int MyMessageBoxW(HWND hwnd, const wchar_t* msg, const wchar_t* title, UINT uType, UINT uBeep)
@@ -646,25 +675,7 @@ int MyMessageBoxW(HWND hwnd, const wchar_t* msg, const wchar_t* title, UINT uTyp
 	return MessageBoxIndirectW(&mbp);
 }
 
-int MyMessageBoxUTF8(HWND hwnd, const char* msg, const char* title, UINT uType, UINT uBeep)
-{
-	wchar_t wMsg[2048];
-	wchar_t wTitle[256];
-
-	if (!msg) msg = "";
-	if (!title) title = "TClock-Win11";
-
-	if (DecodeUtf8Strict(msg, wMsg, (int)(sizeof(wMsg) / sizeof(wMsg[0]))) <= 0) {
-		lstrcpynW(wMsg, L"[Message decode error]", (int)(sizeof(wMsg) / sizeof(wMsg[0])));
-	}
-	if (DecodeUtf8Strict(title, wTitle, (int)(sizeof(wTitle) / sizeof(wTitle[0]))) <= 0) {
-		lstrcpynW(wTitle, L"TClock-Win11", (int)(sizeof(wTitle) / sizeof(wTitle[0])));
-	}
-
-	return MyMessageBoxW(hwnd, wMsg, wTitle, uType, uBeep);
-}
-
-HINSTANCE ShellExecuteUtf8Compat(HWND hwnd, const char* op, const char* file, const char* params, const char* dir, int showCmd)
+HINSTANCE ShellExecuteUtf8Strict(HWND hwnd, const char* op, const char* file, const char* params, const char* dir, int showCmd)
 {
 	wchar_t wOp[64];
 	wchar_t wFile[2048];
@@ -675,12 +686,25 @@ HINSTANCE ShellExecuteUtf8Compat(HWND hwnd, const char* op, const char* file, co
 	const wchar_t* pParams = NULL;
 	const wchar_t* pDir = NULL;
 
-	if (op && DecodeUtf8OrAcp(op, wOp, (int)(sizeof(wOp) / sizeof(wOp[0]))) > 0) pOp = wOp;
-	if (file && DecodeUtf8OrAcp(file, wFile, (int)(sizeof(wFile) / sizeof(wFile[0]))) > 0) pFile = wFile;
-	if (params && DecodeUtf8OrAcp(params, wParams, (int)(sizeof(wParams) / sizeof(wParams[0]))) > 0) pParams = wParams;
-	if (dir && DecodeUtf8OrAcp(dir, wDir, (int)(sizeof(wDir) / sizeof(wDir[0]))) > 0) pDir = wDir;
+	if (op && DecodeUtf8Strict(op, wOp, (int)(sizeof(wOp) / sizeof(wOp[0]))) > 0) pOp = wOp;
+	if (file && DecodeUtf8Strict(file, wFile, (int)(sizeof(wFile) / sizeof(wFile[0]))) > 0) pFile = wFile;
+	if (params && DecodeUtf8Strict(params, wParams, (int)(sizeof(wParams) / sizeof(wParams[0]))) > 0) pParams = wParams;
+	if (dir && DecodeUtf8Strict(dir, wDir, (int)(sizeof(wDir) / sizeof(wDir[0]))) > 0) pDir = wDir;
 
 	return ShellExecuteW(hwnd, pOp, pFile, pParams, pDir, showCmd);
+}
+
+DWORD GetModuleFileNameUTF8(HMODULE hmod, char* outUtf8, DWORD outBytes)
+{
+	wchar_t wPath[MAX_PATH];
+	DWORD wlen;
+
+	if (!outUtf8 || outBytes == 0) return 0;
+	outUtf8[0] = '\0';
+	wlen = GetModuleFileNameW(hmod, wPath, (DWORD)(sizeof(wPath) / sizeof(wPath[0])));
+	if (wlen == 0 || wlen >= (DWORD)(sizeof(wPath) / sizeof(wPath[0]))) return 0;
+	if (tc_utf16_to_ansi_compat(CP_UTF8, wPath, outUtf8, (int)outBytes) <= 0) return 0;
+	return (DWORD)strlen(outUtf8);
 }
 
 /*------------------------------------------------
@@ -694,7 +718,6 @@ int GetLocaleInfoCompat(int ilang, LCTYPE LCType, char* dst, int n)
 	*dst = 0;
 	Locale = MAKELCID((WORD)ilang, SORT_DEFAULT);
 	//if(GetVersion() & 0x80000000) // 95
-	//	r = GetLocaleInfoA(Locale, LCType, dst, n);
 	//else  // NT
 	{
 		WCHAR* pw;
@@ -702,7 +725,7 @@ int GetLocaleInfoCompat(int ilang, LCTYPE LCType, char* dst, int n)
 		if(!pw) return 0;
 		r = GetLocaleInfoW(Locale, LCType, pw, n);
 		if(r)
-			tc_utf16_to_ansi_compat(CP_ACP, pw, dst, n);
+			tc_utf16_to_ansi_compat(0, pw, dst, n);
 		GlobalFreePtr(pw);
 	}
 	return r;
@@ -965,7 +988,7 @@ int GetMyRegStr(char* section, char* entry, char* val, int cbData,
 							WCHAR wbuf[4096];
 							char abuf[4096];
 							if (tc_utf8_to_utf16(val, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) > 0 &&
-								tc_utf16_to_ansi(GetACP(), wbuf, abuf, (int)sizeof(abuf)) > 0) {
+								tc_utf16_to_ansi_compat(0, wbuf, abuf, (int)sizeof(abuf)) > 0) {
 								lstrcpyn(val, abuf, cbData);
 								r = lstrlen(val);
 							}
@@ -1002,7 +1025,7 @@ int GetMyRegStr(char* section, char* entry, char* val, int cbData,
 		WCHAR wbuf[4096];
 		char abuf[4096];
 		if (tc_utf8_to_utf16(val, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) > 0 &&
-			tc_utf16_to_ansi(GetACP(), wbuf, abuf, (int)sizeof(abuf)) > 0) {
+			tc_utf16_to_ansi_compat(0, wbuf, abuf, (int)sizeof(abuf)) > 0) {
 			lstrcpyn(val, abuf, cbData);
 			r = lstrlen(val);
 		}
@@ -1400,7 +1423,7 @@ PSTR CreateFullPathName(HINSTANCE hmod, PSTR fname)
 	}
 
 	// TClockの位置を基準パスとして指定文字列を相対パスとして追加
-	if (GetModuleFileName(hmod, szTClockPath, MAX_PATH) == 0) {
+	if (GetModuleFileNameUTF8(hmod, szTClockPath, MAX_PATH) == 0) {
 		return NULL;
 	}
 	del_title(szTClockPath);

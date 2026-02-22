@@ -5,6 +5,7 @@
 ---------------------------------------------*/
 
 #include "tclock.h"
+#include "..\common\text_codec.h"
 
 
 static void OnInit(HWND hDlg);
@@ -14,6 +15,8 @@ static void OnSansho(HWND hDlg, WORD id);
 static void OnTipSwitch(HWND hDlg, WORD id);
 static void InitComboFontTip(HWND hDlg); //635@p5
 static void SetComboFontSizeTip(HWND hDlg, BOOL bInit);
+static void NormalizeTooltipSettingUtf8InPlace(char* value, int valueBytes, const char* entry);
+static void NormalizeUtf8InPlaceNoWriteback(char* value, int valueBytes);
 static HFONT hfontb;  // for IDC_BOLD
 static HFONT hfonti;  // for IDC_ITALIC
 static COMBOCOLOR combocolor[3] = {
@@ -37,32 +40,6 @@ extern BOOL b_DebugLog;
 
 static HFONT hfont_sample_tip;
 
-static void tc_normalize_font_name_for_combo(const char* src, char* dst, int dstBytes)
-{
-	WCHAR wbuf[256];
-	char abuf[256];
-	const unsigned char* p;
-	if (!dst || dstBytes <= 1) return;
-	dst[0] = '\0';
-	if (!src || !src[0]) return;
-	/* Limit conversion attempts to non-ASCII payload to avoid unnecessary rewrites. */
-	p = (const unsigned char*)src;
-	while (*p && *p < 0x80) ++p;
-	if (*p == 0) {
-		lstrcpyn(dst, src, dstBytes);
-		return;
-	}
-	if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, src, -1, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) <= 0) {
-		lstrcpyn(dst, src, dstBytes);
-		return;
-	}
-	if (WideCharToMultiByte(GetACP(), 0, wbuf, -1, abuf, (int)sizeof(abuf), NULL, NULL) <= 0) {
-		lstrcpyn(dst, src, dstBytes);
-		return;
-	}
-	lstrcpyn(dst, abuf, dstBytes);
-}
-
 typedef struct {
 	BOOL disable;
 	int func[4];
@@ -75,19 +52,6 @@ __inline void SendPSChanged(HWND hDlg)
 {
 	g_bApplyTaskbar = TRUE;
 	SendMessage(GetParent(hDlg), PSM_CHANGED, (WPARAM)(hDlg), 0);
-}
-
-static int CBAddStringUtf8AsAcpBoundary(HWND hDlg, int idCombo, const char* utf8)
-{
-	WCHAR wbuf[512];
-	char abuf[512];
-	if (!utf8) utf8 = "";
-	if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8, -1, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) > 0 &&
-		WideCharToMultiByte(CP_ACP, 0, wbuf, -1, abuf, (int)sizeof(abuf), NULL, NULL) > 0) {
-		return CBAddString(hDlg, idCombo, (LPARAM)abuf);
-	}
-	abuf[0] = '\0';
-	return CBAddString(hDlg, idCombo, (LPARAM)abuf);
 }
 
 /*------------------------------------------------
@@ -268,23 +232,27 @@ void OnInit(HWND hDlg)
 
 
 	for(i = IDS_TICONNO; i <= IDS_TICONERR; i++)
-		CBAddStringUtf8AsAcpBoundary(hDlg, IDC_TICON, MyStringUTF8(i));
+		CBAddStringUTF8Compat(hDlg, IDC_TICON, MyStringUTF8(i));
 	CBSetCurSel(hDlg, IDC_TICON,
 		GetMyRegLong("Tooltip", "TipIcon", 0));
 
 	GetMyRegStr("Tooltip", "TipTitle", s, 300, "");
-	SetDlgItemTextUTF8(hDlg, IDC_Win10ITLE, s);
+	NormalizeTooltipSettingUtf8InPlace(s, (int)sizeof(s), "TipTitle");
+	SetDlgItemTextUTF8Strict(hDlg, IDC_Win10ITLE, s);
 	//end
 
 	GetMyRegStr("Tooltip", "Tooltip", s, 1024, "");
 	if(s[0] == 0) strcpy(s, "TClock <%LDATE%>");
-	SetDlgItemTextUTF8(hDlg, IDC_TOOLTIP, s);
+	NormalizeTooltipSettingUtf8InPlace(s, (int)sizeof(s), "Tooltip");
+	SetDlgItemTextUTF8Strict(hDlg, IDC_TOOLTIP, s);
 	GetMyRegStr("Tooltip", "Tooltip2", s, 1024, "");
 	if(s[0] == 0) strcpy(s, "TClock <%LDATE%>");
-	SetDlgItemTextUTF8(hDlg, IDC_TOOLTIP2, s);
+	NormalizeTooltipSettingUtf8InPlace(s, (int)sizeof(s), "Tooltip2");
+	SetDlgItemTextUTF8Strict(hDlg, IDC_TOOLTIP2, s);
 	GetMyRegStr("Tooltip", "Tooltip3", s, 1024, "");
 	if(s[0] == 0) strcpy(s, "TClock <%LDATE%>");
-	SetDlgItemTextUTF8(hDlg, IDC_TOOLTIP3, s);
+	NormalizeTooltipSettingUtf8InPlace(s, (int)sizeof(s), "Tooltip3");
+	SetDlgItemTextUTF8Strict(hDlg, IDC_TOOLTIP3, s);
 
 	bTip2 = GetMyRegLong("Tooltip", "Tip2Use", FALSE);
 	CheckDlgButton(hDlg, IDC_TIP2,bTip2);
@@ -299,7 +267,7 @@ void OnInit(HWND hDlg)
 	//CheckDlgButton(hDlg, IDC_ENABLEDOUBLEBUFFERING, GetMyRegLong("Tooltip", "TipEnableDoubleBuffering", FALSE));
 
 
-	SetDlgItemTextUTF8(hDlg, IDC_TOOLTIP3, s);
+	SetDlgItemTextUTF8Strict(hDlg, IDC_TOOLTIP3, s);
 	if (!bTip2){
 		CheckDlgButton(hDlg, IDC_TIP3,FALSE);
 		EnableDlgItem(hDlg,IDC_TIP3,FALSE);
@@ -316,7 +284,7 @@ void OnInit(HWND hDlg)
 		GetMyRegLong("Tooltip", "TipItalic", FALSE));
 	//for(i = IDS_TIPTYPENORMAL; i <= IDS_TIPTYPEIECOMP; i++)
 	for (i = IDS_TIPTYPENORMAL; i <= IDS_TIPTYPEBALLOON; i++)
-		CBAddStringUtf8AsAcpBoundary(hDlg, IDC_BALLOONFLG, MyStringUTF8(i));
+		CBAddStringUTF8Compat(hDlg, IDC_BALLOONFLG, MyStringUTF8(i));
 	CBSetCurSel(hDlg, IDC_BALLOONFLG,
 		GetMyRegLong("Tooltip", "BalloonFlg", 0));
 	AdjustDlgConboBoxDropDown(hDlg, IDC_BALLOONFLG, 3);
@@ -453,21 +421,22 @@ void OnSansho(HWND hDlg, WORD id)
 	char filter[80], deffile[MAX_PATH], fname[MAX_PATH], tipfname[MAX_PATH];
 
 	filter[0] = 0;
-	str0cat(filter, MyString(IDS_TIPFILEEXT));
+	str0cat(filter, MyStringUTF8(IDS_TIPFILEEXT));
 	str0cat(filter, "*.txt");
-	str0cat(filter, MyString(IDS_ALLFILE));
+	str0cat(filter, MyStringUTF8(IDS_ALLFILE));
 	str0cat(filter, "*.*");
 
 	GetDlgItemTextUTF8(hDlg, id - 1, deffile, MAX_PATH);
 
-	if(!SelectMyFile(hDlg, filter, 0, deffile, fname)) // propsheet.c
+	if(!SelectMyFileUTF8(hDlg, filter, 0, deffile, fname, (int)sizeof(fname))) // propsheet.c
 		return;
 
 	strcpy(tipfname,"file:");
 	strcat(tipfname,fname);
 	strcpy(fname,tipfname);
 
-	SetDlgItemTextUTF8(hDlg, id - 1, fname);
+	NormalizeUtf8InPlaceNoWriteback(fname, (int)sizeof(fname));
+	SetDlgItemTextUTF8Strict(hDlg, id - 1, fname);
 	PostMessage(hDlg, WM_NEXTDLGCTL, 1, FALSE);
 	SendPSChanged(hDlg);
 }
@@ -523,7 +492,7 @@ void InitComboFontTip(HWND hDlg)
 	s[0] = '\0';
 	GetMyRegStr("Tooltip", "TipFont", s, 80, "");
 	sNorm[0] = '\0';
-	tc_normalize_font_name_for_combo(s, sNorm, (int)sizeof(sNorm));
+	NormalizeUtf8ForAcpCombo(s, sNorm, (int)sizeof(sNorm));
 	if(s[0] == 0)
 	{
 		HFONT hfont;
@@ -650,4 +619,28 @@ void RefreshFontSample_ToolTip(HWND hDlg)
 
 
 
+}
+static void NormalizeUtf8InPlaceNoWriteback(char* value, int valueBytes)
+{
+	WCHAR wbuf[2048];
+	char utf8[2048];
+	if (!value || valueBytes <= 0 || value[0] == '\0') return;
+	if (tc_utf8_to_utf16(value, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) > 0) return;
+	if (tc_utf16_to_utf8(wbuf, utf8, (int)sizeof(utf8)) <= 0) return;
+	lstrcpyn(value, utf8, valueBytes);
+}
+
+static void NormalizeTooltipSettingUtf8InPlace(char* value, int valueBytes, const char* entry)
+{
+	char before[2048];
+	WCHAR wbuf[2048];
+	char utf8[2048];
+	if (!value || valueBytes <= 0 || !entry) return;
+	lstrcpyn(before, value, (int)sizeof(before));
+	if (tc_utf8_to_utf16(value, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) > 0) return;
+	if (tc_utf16_to_utf8(wbuf, utf8, (int)sizeof(utf8)) <= 0) return;
+	lstrcpyn(value, utf8, valueBytes);
+	if (lstrcmp(before, value) != 0) {
+		SetMyRegStr("Tooltip", (char*)entry, value);
+	}
 }

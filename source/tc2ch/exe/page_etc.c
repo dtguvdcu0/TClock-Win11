@@ -132,7 +132,7 @@ static void OnInit(HWND hDlg)
 		else {
 			char tempStr[64];
 			wsprintf(tempStr, "Current Value: %d deg.", tempInt % 200);
-			SetWindowTextUTF8(GetDlgItem(hDlg, IDC_LABEL_CURRENT_TEMP), tempStr);
+			SetWindowTextUTF8Strict(GetDlgItem(hDlg, IDC_LABEL_CURRENT_TEMP), tempStr);
 		}
 
 	}
@@ -150,7 +150,7 @@ static void OnInit(HWND hDlg)
 		else {
 			char tempStr[64];
 			wsprintf(tempStr, "Not Available");
-			SetWindowTextUTF8(GetDlgItem(hDlg, IDC_LABEL_CURRENT_TEMP), tempStr);
+			SetWindowTextUTF8Strict(GetDlgItem(hDlg, IDC_LABEL_CURRENT_TEMP), tempStr);
 		}
 	}
 
@@ -189,7 +189,7 @@ static void OnUpdate(HWND hDlg)
 	else {
 		char tempStr[64];
 		wsprintf(tempStr, "Current Value: %d deg.", tempInt % 200);
-		SetWindowTextUTF8(GetDlgItem(hDlg, IDC_LABEL_CURRENT_TEMP), tempStr);
+		SetWindowTextUTF8Strict(GetDlgItem(hDlg, IDC_LABEL_CURRENT_TEMP), tempStr);
 	}
 
 }

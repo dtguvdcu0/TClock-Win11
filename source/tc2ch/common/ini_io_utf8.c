@@ -176,7 +176,7 @@ static BOOL tc_ansi_to_utf8_compat(const char* ansi, char* outUtf8, int outBytes
 {
     WCHAR w[2048];
     if (!ansi || !outUtf8 || outBytes <= 0) return FALSE;
-    if (tc_ansi_to_utf16(GetACP(), ansi, w, (int)(sizeof(w) / sizeof(w[0]))) <= 0) return FALSE;
+    if (tc_ansi_to_utf16(0, ansi, w, (int)(sizeof(w) / sizeof(w[0]))) <= 0) return FALSE;
     return (tc_utf16_to_utf8(w, outUtf8, outBytes) > 0) ? TRUE : FALSE;
 }
 

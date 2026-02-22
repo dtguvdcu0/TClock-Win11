@@ -125,7 +125,7 @@ static void OnInit(HWND hDlg)
 		char tempStr[64];
 		wsprintf(tempStr, "Current Clock Width = %d, Clock Height = %d"
 			, (int)GetMyRegLong("Status_DoNotEdit", "ClockWidth", 0), (int)GetMyRegLong("Status_DoNotEdit", "ClockHeight", 0));
-		SetWindowTextUTF8(GetDlgItem(hDlg, IDC_LABEL_HEIGHT), tempStr);
+		SetWindowTextUTF8Strict(GetDlgItem(hDlg, IDC_LABEL_HEIGHT), tempStr);
 	}
 
 	LOGFONT logfont;

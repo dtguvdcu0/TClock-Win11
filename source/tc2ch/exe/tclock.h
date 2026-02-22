@@ -231,8 +231,8 @@ extern BOOL g_bApplyClock;
 extern BOOL g_bApplyTaskbar;
 extern BOOL g_bApplyLangDLL;
 void MyPropertyDialog(void);
-BOOL SelectMyFile(HWND hDlg, const char *filter, DWORD nFilterIndex,
-	const char *deffile, char *retfile);
+BOOL SelectMyFileUTF8(HWND hDlg, const char *filterUtf8, DWORD nFilterIndex,
+	const char *deffileUtf8, char *retfileUtf8, int retfileUtf8Bytes);
 
 // pageformat.c
 void InitFormat(void);
@@ -265,15 +265,17 @@ int ext_cmp(const char *fname, const char *ext);
 void parse(char *dst, char *src, int n);
 void parsechar(char *dst, char *src, char ch, int n);
 void str0cat(char* dst, const char* src);
-char* MyString(UINT id);
+const wchar_t* MyStringW(UINT id);
 char* MyStringUTF8(UINT id);
 int MyMessageBoxW(HWND hwnd, const wchar_t* msg, const wchar_t* title, UINT uType, UINT uBeep);
-int MyMessageBoxUTF8(HWND hwnd, const char* msg, const char* title, UINT uType, UINT uBeep);
-HINSTANCE ShellExecuteUtf8Compat(HWND hwnd, const char* op, const char* file, const char* params, const char* dir, int showCmd);
-BOOL SetWindowTextUTF8(HWND hwnd, const char* text);
+HINSTANCE ShellExecuteUtf8Strict(HWND hwnd, const char* op, const char* file, const char* params, const char* dir, int showCmd);
+DWORD GetModuleFileNameUTF8(HMODULE hmod, char* outUtf8, DWORD outBytes);
+BOOL SetWindowTextUTF8Strict(HWND hwnd, const char* text);
 int GetWindowTextUTF8(HWND hwnd, char* text, int textBytes);
-BOOL SetDlgItemTextUTF8(HWND hDlg, int id, const char* text);
+BOOL SetDlgItemTextUTF8Strict(HWND hDlg, int id, const char* text);
 int GetDlgItemTextUTF8(HWND hDlg, int id, char* text, int textBytes);
+int CBAddStringUTF8Compat(HWND hDlg, int idCombo, const char* utf8);
+void NormalizeUtf8ForAcpCombo(const char* src, char* dst, int dstBytes);
 int GetClassNameUTF8(HWND hwnd, char* text, int textBytes);
 int GetLocaleInfoCompat(int ilang, LCTYPE LCType, char* dst, int n);
 int GetLocaleInfoUTF8Compat(int ilang, LCTYPE LCType, char* dst, int n);

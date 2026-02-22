@@ -150,8 +150,8 @@ void OnDrawItemColorCombo(LPARAM lParam, int maxcol)
 			// print color names
 			if(maxcol > 16 && 16 <= pdis->itemID && pdis->itemID <= 19)
 			{
-				char s[80];
-				strcpy(s, MyString(IDS_BTNFACE + pdis->itemID - 16));
+				WCHAR s[80];
+				lstrcpynW(s, MyStringW(IDS_BTNFACE + pdis->itemID - 16), (int)(sizeof(s) / sizeof(s[0])));
 				SetBkMode(pdis->hDC, TRANSPARENT);
 				GetTextMetrics(pdis->hDC, &tm);
 				if((GetRValue(col)+GetGValue(col)+GetBValue(col)) <= 384)
@@ -159,8 +159,8 @@ void OnDrawItemColorCombo(LPARAM lParam, int maxcol)
 				else
 					SetTextColor(pdis->hDC, RGB(0,0,0));
 				y = (pdis->rcItem.bottom - pdis->rcItem.top - tm.tmHeight)/2;
-				TextOut(pdis->hDC, pdis->rcItem.left + 4, pdis->rcItem.top + y,
-					s, strlen(s));
+				TextOutW(pdis->hDC, pdis->rcItem.left + 4, pdis->rcItem.top + y,
+					s, lstrlenW(s));
 			}
 			if(!(pdis->itemState & ODS_FOCUS)) break;
 		}

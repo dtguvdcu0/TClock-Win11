@@ -31,32 +31,6 @@ extern BOOL b_DebugLog;
 
 static HFONT hfont_sample;
 
-static void tc_normalize_font_name_for_combo(const char* src, char* dst, int dstBytes)
-{
-	WCHAR wbuf[256];
-	char abuf[256];
-	const unsigned char* p;
-	if (!dst || dstBytes <= 1) return;
-	dst[0] = '\0';
-	if (!src || !src[0]) return;
-	/* Limit conversion attempts to non-ASCII payload to avoid unnecessary rewrites. */
-	p = (const unsigned char*)src;
-	while (*p && *p < 0x80) ++p;
-	if (*p == 0) {
-		lstrcpyn(dst, src, dstBytes);
-		return;
-	}
-	if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, src, -1, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) <= 0) {
-		lstrcpyn(dst, src, dstBytes);
-		return;
-	}
-	if (WideCharToMultiByte(GetACP(), 0, wbuf, -1, abuf, (int)sizeof(abuf), NULL, NULL) <= 0) {
-		lstrcpyn(dst, src, dstBytes);
-		return;
-	}
-	lstrcpyn(dst, abuf, dstBytes);
-}
-
 static COMBOCOLOR combocolor[4] = {
 	{ IDC_COLBACK,      "BackColor",   0x80000000|COLOR_3DFACE },
 	{ IDC_COLBACK2,     "BackColor2",  0xFFFFFFFF },
@@ -68,19 +42,6 @@ __inline void SendPSChanged(HWND hDlg)
 {
 	g_bApplyClock = TRUE;
 	SendMessage(GetParent(hDlg), PSM_CHANGED, (WPARAM)(hDlg), 0);
-}
-
-static int CBAddStringUtf8AsAcpBoundary(HWND hDlg, int idCombo, const char* utf8)
-{
-	WCHAR wbuf[512];
-	char abuf[512];
-	if (!utf8) utf8 = "";
-	if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8, -1, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) > 0 &&
-		WideCharToMultiByte(CP_ACP, 0, wbuf, -1, abuf, (int)sizeof(abuf), NULL, NULL) > 0) {
-		return CBAddString(hDlg, idCombo, (LPARAM)abuf);
-	}
-	abuf[0] = '\0';
-	return CBAddString(hDlg, idCombo, (LPARAM)abuf);
 }
 
 static DWORD GetSpinPos(HWND hDlg, int ctrlId)
@@ -244,11 +205,11 @@ void OnInit(HWND hDlg)
 
 
 	//「テキストの位置」の設定
-	index = CBAddStringUtf8AsAcpBoundary(hDlg, IDC_TEXTPOS, MyStringUTF8(IDS_TEXTCENTER));
+	index = CBAddStringUTF8Compat(hDlg, IDC_TEXTPOS, MyStringUTF8(IDS_TEXTCENTER));
 //	CBSetItemData(hDlg, IDC_TEXTPOS, index, 0);
-	index = CBAddStringUtf8AsAcpBoundary(hDlg, IDC_TEXTPOS, MyStringUTF8(IDS_TEXTLEFT));
+	index = CBAddStringUTF8Compat(hDlg, IDC_TEXTPOS, MyStringUTF8(IDS_TEXTLEFT));
 //	CBSetItemData(hDlg, IDC_TEXTPOS, index, 1);
-	index = CBAddStringUtf8AsAcpBoundary(hDlg, IDC_TEXTPOS, MyStringUTF8(IDS_TEXTRIGHT));
+	index = CBAddStringUTF8Compat(hDlg, IDC_TEXTPOS, MyStringUTF8(IDS_TEXTRIGHT));
 //	CBSetItemData(hDlg, IDC_TEXTPOS, index, 2);
 
 
@@ -529,7 +490,7 @@ void InitComboFont(HWND hDlg)
 	s[0] = '\0';
 	GetMyRegStr("Color_Font", "Font", s, 80, "");
 	sNorm[0] = '\0';
-	tc_normalize_font_name_for_combo(s, sNorm, (int)sizeof(sNorm));
+	NormalizeUtf8ForAcpCombo(s, sNorm, (int)sizeof(sNorm));
 	if(s[0] == 0)
 	{
 		HFONT hfont;

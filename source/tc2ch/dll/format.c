@@ -12,8 +12,11 @@
 #include <stdlib.h>
 #include "../common/text_codec.h"
 #define MAX_PROCESSOR               64
+#ifndef TC_FORMAT_ENABLE_ANSI_DATE_TIME_TOKENS
+#define TC_FORMAT_ENABLE_ANSI_DATE_TIME_TOKENS 1
+#endif
 
-int codepage = CP_ACP;
+int codepage = 0;
 int actdvl[36] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 static char DayOfWeekShort[11], DayOfWeekLong[31];
 static char DayOfWeekShortPrev[11], DayOfWeekLongPrev[31];
@@ -741,11 +744,17 @@ static BOOL tc_custom_utf8_to_utf16(const char* src, wchar_t* dst, int dstCch)
 }
 
 static BOOL tc_custom_text_to_utf16_compat(const char* src, wchar_t* dst, int dstCch)
+/* ※ Shift-JISなど既存設定読み込みの互換境界（UTF-8失敗時のみ codepage 許容） */
 {
 	if (!src || !dst || dstCch <= 0) return FALSE;
 	dst[0] = L'\0';
-	if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, src, -1, dst, dstCch) > 0) return TRUE;
-	return tc_ansi_to_utf16_compat(CP_ACP, src, dst, dstCch) > 0;
+	if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, src, -1, dst, dstCch) > 0) {
+		return TRUE;
+	}
+	if (tc_ansi_to_utf16_compat(0, src, dst, dstCch) > 0) {
+		return TRUE;
+	}
+	return FALSE;
 }
 
 static void tc_custom_wide_append(wchar_t* dst, int dstCch, int* pos, const wchar_t* src)
@@ -987,7 +996,7 @@ static void tc_custom_refresh_one(int idx, DWORD nowTick, BOOL forceRefresh)
 		e->nextRefreshTick = nowTick + (DWORD)(e->refreshSec * 1000);
 		return;
 	}
-	if (tc_utf16_to_ansi_compat(CP_ACP, wbuf, ansi, (int)sizeof(ansi)) <= 0) {
+	if (tc_utf16_to_ansi_compat(0, wbuf, ansi, (int)sizeof(ansi)) <= 0) {
 		tc_custom_set_fallback(e);
 		e->nextRefreshTick = nowTick + (DWORD)(e->refreshSec * 1000);
 		return;
@@ -1278,8 +1287,9 @@ int GetLocaleInfoCompat(WORD wLanguageID, LCTYPE LCType, char* dst, int n)
 		pw = (WCHAR*)GlobalAllocPtr(GHND, sizeof(WCHAR)*(n+1));
 		*pw = 0;
 		r = GetLocaleInfoW(Locale, LCType, pw, n);
-		if(r)
+		if(r) {
 			tc_utf16_to_ansi_compat((UINT)codepage, pw, dst, n);
+		}
 		GlobalFreePtr(pw);
 	}
 	return r;
@@ -1303,13 +1313,16 @@ int GetDateFormatCompat(WORD wLanguageID, DWORD dwFlags, CONST SYSTEMTIME *t,
 		{
 			pw1 = (WCHAR*)GlobalAllocPtr(GHND,
 				sizeof(WCHAR)*(strlen(fmt)+1));
-			if(pw1)
+			if(pw1) {
+				/* ※ 旧形式フォーマット文字列互換：設定 codepage で wide 化 */
 				tc_ansi_to_utf16_compat((UINT)codepage, fmt, pw1, (int)strlen(fmt) + 1);
+			}
 		}
 		pw2 = (WCHAR*)GlobalAllocPtr(GHND, sizeof(WCHAR)*(n+1));
 		r = GetDateFormatW(Locale, dwFlags, t, pw1, pw2, n);
-		if(r)
+		if(r) {
 			tc_utf16_to_ansi_compat((UINT)codepage, pw2, dst, n);
+		}
 		if(pw1) GlobalFreePtr(pw1);
 		GlobalFreePtr(pw2);
 	}
@@ -1334,13 +1347,16 @@ int GetTimeFormatCompat(WORD wLanguageID, DWORD dwFlags, CONST SYSTEMTIME *t,
 		{
 			pw1 = (WCHAR*)GlobalAllocPtr(GHND,
 				sizeof(WCHAR)*(strlen(fmt)+1));
-			if(pw1)
+			if(pw1) {
+				/* ??????????????: ?? codepage ? wide ? */
 				tc_ansi_to_utf16_compat((UINT)codepage, fmt, pw1, (int)strlen(fmt) + 1);
+			}
 		}
 		pw2 = (WCHAR*)GlobalAllocPtr(GHND, sizeof(WCHAR)*(n+1));
 		r = GetTimeFormatW(Locale, dwFlags, t, pw1, pw2, n);
-		if(r)
+		if(r) {
 			tc_utf16_to_ansi_compat((UINT)codepage, pw2, dst, n);
+		}
 		if(pw1) GlobalFreePtr(pw1);
 		GlobalFreePtr(pw2);
 	}
@@ -1359,14 +1375,14 @@ void InitFormat(SYSTEMTIME* lt)
 
 	ilang = GetMyRegLong("Format", "Locale", (int)GetUserDefaultLangID());
 
-	codepage = CP_ACP;
+	codepage = 0;
 	if(GetLocaleInfoCompat((WORD)ilang, LOCALE_IDEFAULTANSICODEPAGE,
 		s, 10) > 0)
 	{
 		p = s; codepage = 0;
 		while('0' <= *p && *p <= '9')
 			codepage = codepage * 10 + *p++ - '0';
-		if(!IsValidCodePage(codepage)) codepage = CP_ACP;
+		if(!IsValidCodePage(codepage)) codepage = 0;
 	}
 
 	i = lt->wDayOfWeek;
@@ -3314,6 +3330,7 @@ void MakeFormat(char* s, char* s_info, SYSTEMTIME* pt, int beat100, char* fmt)
 
 
 
+				#if TC_FORMAT_ENABLE_ANSI_DATE_TIME_TOKENS
 				else if(*sp == 'L' && _strncmp(sp, "LDATE", 5) == 0)
 				{
 					char date_buf[80], *date_ptr;
@@ -3347,6 +3364,7 @@ void MakeFormat(char* s, char* s_info, SYSTEMTIME* pt, int beat100, char* fmt)
 					}
 					sp += 4;
 				}
+				#endif
 				else if(*sp == 'S')
 				{
 					int len, slen, st;
@@ -4248,6 +4266,7 @@ static void tc_wappend_ansi_fixed_w(WCHAR** dp, int* remain, const char* src, in
 	int len = 0;
 	int i;
 	if (!dp || !*dp || !remain || !src || fixed <= 0) return;
+	/* ※ 表示トークンは codepage 指定互換入力を許可（Shift-JIS 経路維持） */
 	if (tc_ansi_to_utf16_compat((UINT)codepage, src, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) <= 0) {
 		wbuf[0] = L'\0';
 	}

@@ -5,6 +5,7 @@
 ---------------------------------------------*/
 
 #include "tclock.h"
+#include "..\common\text_codec.h"
 #define USE_ANALOG_CLOCK	1	// add by 505
 
 #ifdef USE_ANALOG_CLOCK	// add by 505
@@ -13,6 +14,7 @@ static void OnInit(HWND hDlg);
 static void OnApply(HWND hDlg);
 static void OnBrowseAnalogClockBitmapFile(HWND hDlg);
 static int GetSpinPos(HWND hDlg, int ctrlId);
+static void NormalizeUtf8InPlaceNoWriteback(char* value, int valueBytes);
 
 //extern int confNo;
 
@@ -28,19 +30,6 @@ __inline void SendPSChanged(HWND hDlg)
 {
 	g_bApplyClock = TRUE;
 	SendMessage(GetParent(hDlg), PSM_CHANGED, (WPARAM)(hDlg), 0);
-}
-
-static int CBAddStringUtf8AsAcpBoundary(HWND hDlg, int idCombo, const char* utf8)
-{
-	WCHAR wbuf[512];
-	char abuf[512];
-	if (!utf8) utf8 = "";
-	if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8, -1, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) > 0 &&
-		WideCharToMultiByte(CP_ACP, 0, wbuf, -1, abuf, (int)sizeof(abuf), NULL, NULL) > 0) {
-		return CBAddString(hDlg, idCombo, (LPARAM)abuf);
-	}
-	abuf[0] = '\0';
-	return CBAddString(hDlg, idCombo, (LPARAM)abuf);
 }
 
 static int GetSpinPos(HWND hDlg, int ctrlId)
@@ -152,9 +141,9 @@ void OnInit(HWND hDlg)
 		GetMyRegLong("AnalogClock", "AnalogClockMinHandBold", FALSE));
 
 	//「アナログ時計位置」の設定
-	index = CBAddStringUtf8AsAcpBoundary(hDlg, IDC_ACLOCK_POS, MyStringUTF8(IDS_ACLOCKLEFT));
-	index = CBAddStringUtf8AsAcpBoundary(hDlg, IDC_ACLOCK_POS, MyStringUTF8(IDS_ACLOCKRIGHT));
-	index = CBAddStringUtf8AsAcpBoundary(hDlg, IDC_ACLOCK_POS, MyStringUTF8(IDS_ACLOCKMIDDLE));
+	index = CBAddStringUTF8Compat(hDlg, IDC_ACLOCK_POS, MyStringUTF8(IDS_ACLOCKLEFT));
+	index = CBAddStringUTF8Compat(hDlg, IDC_ACLOCK_POS, MyStringUTF8(IDS_ACLOCKRIGHT));
+	index = CBAddStringUTF8Compat(hDlg, IDC_ACLOCK_POS, MyStringUTF8(IDS_ACLOCKMIDDLE));
 	CBSetCurSel(hDlg, IDC_ACLOCK_POS,
 		GetMyRegLong("AnalogClock", "AnalogClockPos", 0));
 
@@ -177,7 +166,8 @@ void OnInit(HWND hDlg)
 		(int)(short)GetMyRegLong("AnalogClock", "AnalogClockSize", 0));
 
 	index = GetMyRegStr("AnalogClock", "AnalogClockBmp", fname, MAX_PATH, "..\\tclock.bmp");
-	SetDlgItemTextUTF8(hDlg, IDC_ACLOCKBMP, fname);
+	NormalizeUtf8InPlaceNoWriteback(fname, (int)sizeof(fname));
+	SetDlgItemTextUTF8Strict(hDlg, IDC_ACLOCKBMP, fname);
 }
 
 /*------------------------------------------------
@@ -227,16 +217,17 @@ static void OnBrowseAnalogClockBitmapFile(HWND hDlg)
 	char fname[MAX_PATH];
 
 	filter[0] = filter[1] = 0;
-	str0cat(filter, MyString(IDS_BMPFILE)); str0cat(filter, "*.bmp");
-	str0cat(filter, MyString(IDS_ALLFILE)); str0cat(filter, "*.*");
+	str0cat(filter, MyStringUTF8(IDS_BMPFILE)); str0cat(filter, "*.bmp");
+	str0cat(filter, MyStringUTF8(IDS_ALLFILE)); str0cat(filter, "*.*");
 
 	GetDlgItemTextUTF8(hDlg, IDC_ACLOCKBMP, deffile, MAX_PATH);
 
-	if (!SelectMyFile(hDlg, filter, 0, deffile, fname)) {// propsheet.c
+	if (!SelectMyFileUTF8(hDlg, filter, 0, deffile, fname, (int)sizeof(fname))) {// propsheet.c
 		return;
 	}
 
-	SetDlgItemTextUTF8(hDlg, IDC_ACLOCKBMP, fname);
+	NormalizeUtf8InPlaceNoWriteback(fname, (int)sizeof(fname));
+	SetDlgItemTextUTF8Strict(hDlg, IDC_ACLOCKBMP, fname);
 
 	PostMessage(hDlg, WM_NEXTDLGCTL, 1, FALSE);
 
@@ -244,3 +235,12 @@ static void OnBrowseAnalogClockBitmapFile(HWND hDlg)
 }
 
 #endif //USE_ANALOG_CLOCK	// add by 505
+static void NormalizeUtf8InPlaceNoWriteback(char* value, int valueBytes)
+{
+	WCHAR wbuf[MAX_PATH];
+	char utf8[MAX_PATH];
+	if (!value || valueBytes <= 0 || value[0] == '\0') return;
+	if (tc_utf8_to_utf16(value, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) <= 0) return;
+	if (tc_utf16_to_utf8(wbuf, utf8, (int)sizeof(utf8)) <= 0) return;
+	lstrcpyn(value, utf8, valueBytes);
+}

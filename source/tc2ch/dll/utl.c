@@ -82,7 +82,7 @@ static BOOL tc_encode_utf8_hex_from_ansi(const char* ansi, char* outHex, int out
 	int c;
 
 	if (!ansi || !outHex || outHexBytes <= 0) return FALSE;
-	cps[cpCount++] = GetACP();
+	cps[cpCount++] = tc_current_ansi_codepage();
 	if (cps[0] != 932) cps[cpCount++] = 932;
 	if (cps[0] != CP_UTF8 && (cpCount == 1 || cps[1] != CP_UTF8)) cps[cpCount++] = CP_UTF8;
 
@@ -123,7 +123,7 @@ static BOOL tc_decode_utf8_hex_to_ansi(const char* hex, char* outAnsi, int outAn
 	u8[n / 2] = '\0';
 
 	if (tc_utf8_to_utf16(u8, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) <= 0) return FALSE;
-	if (tc_utf16_to_ansi(GetACP(), wbuf, outAnsi, outAnsiBytes) <= 0) return FALSE;
+	if (tc_utf16_to_ansi_compat(0, wbuf, outAnsi, outAnsiBytes) <= 0) return FALSE;
 	return TRUE;
 }
 
@@ -335,24 +335,6 @@ void parse(char *dst, char *src, int n)
 /*-------------------------------------------
   returns a resource string
 ---------------------------------------------*/
-char* MyString(UINT id)
-{
-	static char buf[80];
-	WCHAR wbuf[80];
-	int n;
-
-	buf[0] = 0;
-	wbuf[0] = L'\0';
-	n = LoadStringW(hmod, id, wbuf, 80);
-	if(n > 0)
-	{
-		if(tc_utf16_to_ansi_compat(CP_ACP, wbuf, buf, 80) <= 0)
-			buf[0] = 0;
-	}
-
-	return buf;
-}
-
 char mykey[] = "Software\\Kazubon\\TClock";
 
 /*------------------------------------------------
@@ -402,7 +384,7 @@ int GetMyRegStr(char* section, char* entry, char* val, int cbData,
 							WCHAR wbuf[4096];
 							char abuf[4096];
 							if (tc_utf8_to_utf16(val, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) > 0 &&
-								tc_utf16_to_ansi(GetACP(), wbuf, abuf, (int)sizeof(abuf)) > 0) {
+								tc_utf16_to_ansi_compat(0, wbuf, abuf, (int)sizeof(abuf)) > 0) {
 								lstrcpyn(val, abuf, cbData);
 								r = lstrlen(val);
 							}
@@ -441,7 +423,7 @@ int GetMyRegStr(char* section, char* entry, char* val, int cbData,
 		WCHAR wbuf[4096];
 		char abuf[4096];
 		if (tc_utf8_to_utf16(val, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) > 0 &&
-			tc_utf16_to_ansi(GetACP(), wbuf, abuf, (int)sizeof(abuf)) > 0) {
+			tc_utf16_to_ansi_compat(0, wbuf, abuf, (int)sizeof(abuf)) > 0) {
 			lstrcpyn(val, abuf, cbData);
 			r = lstrlen(val);
 		}
@@ -853,7 +835,7 @@ int GetClassNameUTF8_DLL(HWND hwnd, char* text, int textBytes)
 	return 0;
 }
 
-HINSTANCE ShellExecuteUtf8Compat_DLL(HWND hwnd, const char* op, const char* file, const char* params, const char* dir, int showCmd)
+HINSTANCE ShellExecuteUtf8Strict_DLL(HWND hwnd, const char* op, const char* file, const char* params, const char* dir, int showCmd)
 {
 	wchar_t wOp[64];
 	wchar_t wFile[2048];
@@ -864,10 +846,10 @@ HINSTANCE ShellExecuteUtf8Compat_DLL(HWND hwnd, const char* op, const char* file
 	const wchar_t* pParams = NULL;
 	const wchar_t* pDir = NULL;
 
-	if (op && tc_ansi_to_utf16_compat(CP_UTF8, op, wOp, (int)(sizeof(wOp) / sizeof(wOp[0]))) > 0) pOp = wOp;
-	if (file && tc_ansi_to_utf16_compat(CP_UTF8, file, wFile, (int)(sizeof(wFile) / sizeof(wFile[0]))) > 0) pFile = wFile;
-	if (params && tc_ansi_to_utf16_compat(CP_UTF8, params, wParams, (int)(sizeof(wParams) / sizeof(wParams[0]))) > 0) pParams = wParams;
-	if (dir && tc_ansi_to_utf16_compat(CP_UTF8, dir, wDir, (int)(sizeof(wDir) / sizeof(wDir[0]))) > 0) pDir = wDir;
+	if (op && tc_utf8_to_utf16(op, wOp, (int)(sizeof(wOp) / sizeof(wOp[0]))) > 0) pOp = wOp;
+	if (file && tc_utf8_to_utf16(file, wFile, (int)(sizeof(wFile) / sizeof(wFile[0]))) > 0) pFile = wFile;
+	if (params && tc_utf8_to_utf16(params, wParams, (int)(sizeof(wParams) / sizeof(wParams[0]))) > 0) pParams = wParams;
+	if (dir && tc_utf8_to_utf16(dir, wDir, (int)(sizeof(wDir) / sizeof(wDir[0]))) > 0) pDir = wDir;
 
 	return ShellExecuteW(hwnd, pOp, pFile, pParams, pDir, showCmd);
 }

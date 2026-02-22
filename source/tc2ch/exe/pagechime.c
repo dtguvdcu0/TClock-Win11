@@ -5,6 +5,7 @@ add by Mantis Mountain Mobile (=MMM, TTTT)
 ---------------------------------------------*/
 
 #include "tclock.h"
+#include "..\common\text_codec.h"
 
 static void OnInit(HWND hDlg);
 static void OnApply(HWND hDlg);
@@ -13,6 +14,7 @@ static void OnPlayWav(HWND hDlg, BOOL bSecondary);
 static void OnStopWav(HWND hDlg);
 static void OnChangeHours(HWND hDlg);
 static void OnChangeEnable(HWND hDlg);
+static void NormalizeUtf8InPlaceNoWriteback(char* value, int valueBytes);
 
 
 //extern int confNo;
@@ -147,10 +149,12 @@ void OnInit(HWND hDlg)
 		(int)(short)GetMyRegLong("Chime", "BlinksOnChime", 3));
 
 	GetMyRegStr("Chime", "ChimeWav", fname, MAX_PATH, "C:\\Windows\\Media\\notify.wav");
-	SetDlgItemTextUTF8(hDlg, IDC_CHIME_WAV, fname);
+	NormalizeUtf8InPlaceNoWriteback(fname, (int)sizeof(fname));
+	SetDlgItemTextUTF8Strict(hDlg, IDC_CHIME_WAV, fname);
 
 	GetMyRegStr("Chime", "SecondaryChimeWav", fname2, MAX_PATH, "C:\\Windows\\Media\\chimes.wav");
-	SetDlgItemTextUTF8(hDlg, IDC_CHIME_WAV2, fname2);
+	NormalizeUtf8InPlaceNoWriteback(fname2, (int)sizeof(fname2));
+	SetDlgItemTextUTF8Strict(hDlg, IDC_CHIME_WAV2, fname2);
 
 	hStart = (int)(short)GetMyRegLong("Chime", "ChimeHourStart", 0);
 	hEnd = (int)(short)GetMyRegLong("Chime", "ChimeHourEnd", 24);
@@ -261,27 +265,29 @@ void OnBrowseChimeWavFile(HWND hDlg, BOOL bSecondary)
 	char deffile[MAX_PATH];
 
 	filter[0] = filter[1] = 0;
-	str0cat(filter, MyString(IDS_WAVFILE));
+	str0cat(filter, MyStringUTF8(IDS_WAVFILE));
 	str0cat(filter, "*.wav");
 	
-	str0cat(filter, MyString(IDS_ALLFILE));
+	str0cat(filter, MyStringUTF8(IDS_ALLFILE));
 	str0cat(filter, "*.*");
 
 	if (!bSecondary) {
 		GetDlgItemTextUTF8(hDlg, IDC_CHIME_WAV, deffile, MAX_PATH);
-		if (!SelectMyFile(hDlg, filter, 0, deffile, fname)) {
+		if (!SelectMyFileUTF8(hDlg, filter, 0, deffile, fname, (int)sizeof(fname))) {
 			return;
 		}
 
-		SetDlgItemTextUTF8(hDlg, IDC_CHIME_WAV, fname);
+		NormalizeUtf8InPlaceNoWriteback(fname, (int)sizeof(fname));
+		SetDlgItemTextUTF8Strict(hDlg, IDC_CHIME_WAV, fname);
 	}
 	else {
 		GetDlgItemTextUTF8(hDlg, IDC_CHIME_WAV2, deffile, MAX_PATH);
-		if (!SelectMyFile(hDlg, filter, 0, deffile, fname2)) {
+		if (!SelectMyFileUTF8(hDlg, filter, 0, deffile, fname2, (int)sizeof(fname2))) {
 			return;
 		}
 
-		SetDlgItemTextUTF8(hDlg, IDC_CHIME_WAV2, fname2);
+		NormalizeUtf8InPlaceNoWriteback(fname2, (int)sizeof(fname2));
+		SetDlgItemTextUTF8Strict(hDlg, IDC_CHIME_WAV2, fname2);
 	}
 
 	SendPSChanged(hDlg);
@@ -311,4 +317,13 @@ void OnStopWav(HWND hDlg)
 {
 	UNREFERENCED_PARAMETER(hDlg);
 	PlaySound(NULL, 0, 0);
+}
+static void NormalizeUtf8InPlaceNoWriteback(char* value, int valueBytes)
+{
+	WCHAR wbuf[MAX_PATH];
+	char utf8[MAX_PATH];
+	if (!value || valueBytes <= 0 || value[0] == '\0') return;
+	if (tc_utf8_to_utf16(value, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) <= 0) return;
+	if (tc_utf16_to_utf8(wbuf, utf8, (int)sizeof(utf8)) <= 0) return;
+	lstrcpyn(value, utf8, valueBytes);
 }

@@ -5,9 +5,11 @@
 ---------------------------------------------*/
 
 #include "tclock.h"
+#include "..\common\text_codec.h"
 
 static void OnInit(HWND hDlg);
 static void OnApply(HWND hDlg);
+static void LoadRegUtf8AndSetStrict(HWND hDlg, int id, const char* section, const char* entry, const char* defval);
 
 __inline void SendPSChanged(HWND hDlg)
 {
@@ -62,57 +64,37 @@ INT_PTR CALLBACK PageKeywordProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
 --------------------------------------------------*/
 static void OnInit(HWND hDlg)
 {
+	LoadRegUtf8AndSetStrict(hDlg, IDC_ETHERNET_KEYWORD1, "ETC", "Ethernet_Keyword1", "");
+	LoadRegUtf8AndSetStrict(hDlg, IDC_ETHERNET_KEYWORD2, "ETC", "Ethernet_Keyword2", "");
+	LoadRegUtf8AndSetStrict(hDlg, IDC_ETHERNET_KEYWORD3, "ETC", "Ethernet_Keyword3", "");
+	LoadRegUtf8AndSetStrict(hDlg, IDC_ETHERNET_KEYWORD4, "ETC", "Ethernet_Keyword4", "");
+	LoadRegUtf8AndSetStrict(hDlg, IDC_ETHERNET_KEYWORD5, "ETC", "Ethernet_Keyword5", "");
+
+	LoadRegUtf8AndSetStrict(hDlg, IDC_VPN_KEYWORD1, "VPN", "VPN_Keyword1", "");
+	LoadRegUtf8AndSetStrict(hDlg, IDC_VPN_KEYWORD2, "VPN", "VPN_Keyword2", "");
+	LoadRegUtf8AndSetStrict(hDlg, IDC_VPN_KEYWORD3, "VPN", "VPN_Keyword3", "");
+	LoadRegUtf8AndSetStrict(hDlg, IDC_VPN_KEYWORD4, "VPN", "VPN_Keyword4", "");
+	LoadRegUtf8AndSetStrict(hDlg, IDC_VPN_KEYWORD5, "VPN", "VPN_Keyword5", "");
+
+	LoadRegUtf8AndSetStrict(hDlg, IDC_VPN_EXCLUDE1, "VPN", "VPN_Exclude1", "");
+	LoadRegUtf8AndSetStrict(hDlg, IDC_VPN_EXCLUDE2, "VPN", "VPN_Exclude2", "");
+	LoadRegUtf8AndSetStrict(hDlg, IDC_VPN_EXCLUDE3, "VPN", "VPN_Exclude3", "");
+	LoadRegUtf8AndSetStrict(hDlg, IDC_VPN_EXCLUDE4, "VPN", "VPN_Exclude4", "");
+	LoadRegUtf8AndSetStrict(hDlg, IDC_VPN_EXCLUDE5, "VPN", "VPN_Exclude5", "");
+}
+
+static void LoadRegUtf8AndSetStrict(HWND hDlg, int id, const char* section, const char* entry, const char* defval)
+{
 	char str[32];
+	char before[32];
+	WCHAR wbuf[64];
 
-	GetMyRegStr("ETC", "Ethernet_Keyword1", str, 32, "");
-	SetDlgItemTextUTF8(hDlg, IDC_ETHERNET_KEYWORD1, str);
-
-	GetMyRegStr("ETC", "Ethernet_Keyword2", str, 32, "");
-	SetDlgItemTextUTF8(hDlg, IDC_ETHERNET_KEYWORD2, str);
-
-	GetMyRegStr("ETC", "Ethernet_Keyword3", str, 32, "");
-	SetDlgItemTextUTF8(hDlg, IDC_ETHERNET_KEYWORD3, str);
-
-	GetMyRegStr("ETC", "Ethernet_Keyword4", str, 32, "");
-	SetDlgItemTextUTF8(hDlg, IDC_ETHERNET_KEYWORD4, str);
-
-	GetMyRegStr("ETC", "Ethernet_Keyword5", str, 32, "");
-	SetDlgItemTextUTF8(hDlg, IDC_ETHERNET_KEYWORD5, str);
-
-
-	GetMyRegStr("VPN", "VPN_Keyword1", str, 32, "");
-	SetDlgItemTextUTF8(hDlg, IDC_VPN_KEYWORD1, str);
-
-	GetMyRegStr("VPN", "VPN_Keyword2", str, 32, "");
-	SetDlgItemTextUTF8(hDlg, IDC_VPN_KEYWORD2, str);
-
-	GetMyRegStr("VPN", "VPN_Keyword3", str, 32, "");
-	SetDlgItemTextUTF8(hDlg, IDC_VPN_KEYWORD3, str);
-
-	GetMyRegStr("VPN", "VPN_Keyword4", str, 32, "");
-	SetDlgItemTextUTF8(hDlg, IDC_VPN_KEYWORD4, str);
-
-	GetMyRegStr("VPN", "VPN_Keyword5", str, 32, "");
-	SetDlgItemTextUTF8(hDlg, IDC_VPN_KEYWORD5, str);
-
-
-	GetMyRegStr("VPN", "VPN_Exclude1", str, 32, "");
-	SetDlgItemTextUTF8(hDlg, IDC_VPN_EXCLUDE1, str);
-
-	GetMyRegStr("VPN", "VPN_Exclude2", str, 32, "");
-	SetDlgItemTextUTF8(hDlg, IDC_VPN_EXCLUDE2, str);
-
-	GetMyRegStr("VPN", "VPN_Exclude3", str, 32, "");
-	SetDlgItemTextUTF8(hDlg, IDC_VPN_EXCLUDE3, str);
-
-	GetMyRegStr("VPN", "VPN_Exclude4", str, 32, "");
-	SetDlgItemTextUTF8(hDlg, IDC_VPN_EXCLUDE4, str);
-
-	GetMyRegStr("VPN", "VPN_Exclude5", str, 32, "");
-	SetDlgItemTextUTF8(hDlg, IDC_VPN_EXCLUDE5, str);
-
-
-
+	GetMyRegStr((char*)section, (char*)entry, str, (int)sizeof(str), (char*)defval);
+	lstrcpyn(before, str, (int)sizeof(before));
+	if (tc_utf8_to_utf16(str, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) <= 0) {
+		return;
+	}
+	SetDlgItemTextUTF8Strict(hDlg, id, str);
 }
 
 /*------------------------------------------------

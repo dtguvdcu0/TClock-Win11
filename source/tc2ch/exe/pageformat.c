@@ -5,6 +5,7 @@
 ---------------------------------------------*/
 
 #include "tclock.h"
+#include "..\common\text_codec.h"
 
 static void OnInit(HWND hDlg);
 static void OnApply(HWND hDlg);
@@ -13,6 +14,7 @@ static void OnCustom(HWND hDlg, BOOL bmouse);
 static void On12Hour(HWND hDlg);
 static void OnFormatCheck(HWND hDlg, WORD id);
 static void EnsureUnicodeEditControl(HWND hDlg, int id);
+static void NormalizeFormatSettingUtf8InPlace(char* value, int valueBytes, const char* entry);
 
 static HWND hwndPage;
 static int ilang;  // language code. ex) 0x411 - Japanese
@@ -70,18 +72,6 @@ static void EnsureUnicodeEditControl(HWND hDlg, int id)
 	if (!hNew) return;
 	if (hFont) SendMessage(hNew, WM_SETFONT, (WPARAM)hFont, 0);
 	EnableWindow(hNew, enabled);
-}
-
-static int ComboAddStringUtf8AsAcp(HWND hDlg, int id, const char* utf8)
-{
-	WCHAR wbuf[256];
-	char abuf[256];
-	if (!utf8) utf8 = "";
-	if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8, -1, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) > 0 &&
-		WideCharToMultiByte(GetACP(), 0, wbuf, -1, abuf, (int)sizeof(abuf), NULL, NULL) > 0) {
-		return CBAddString(hDlg, id, (LPARAM)abuf);
-	}
-	return CBAddString(hDlg, id, (LPARAM)utf8);
 }
 
 /*------------------------------------------------
@@ -218,7 +208,7 @@ BOOL CALLBACK EnumLocalesProc(LPTSTR lpLocaleString)
 		{
 			GetLocaleInfoUTF8Compat(x, LOCALE_SENGCOUNTRY, s2, 40);
 			wsprintf(s, "%s (%s)", s1, s2);
-			index = ComboAddStringUtf8AsAcp(hwndPage, IDC_LOCALE, s);
+			index = CBAddStringUTF8Compat(hwndPage, IDC_LOCALE, s);
 		}
 		else
 			index = CBAddString(hwndPage, IDC_LOCALE, (LPARAM)lpLocaleString);
@@ -226,7 +216,7 @@ BOOL CALLBACK EnumLocalesProc(LPTSTR lpLocaleString)
 	else
 	{
 		if (GetLocaleInfoUTF8Compat(x, LOCALE_SLANGUAGE, s, 80) > 0)
-			index = ComboAddStringUtf8AsAcp(hwndPage, IDC_LOCALE, s);
+			index = CBAddStringUTF8Compat(hwndPage, IDC_LOCALE, s);
 		else
 			index = CBAddString(hwndPage, IDC_LOCALE, (LPARAM)lpLocaleString);
 	}
@@ -345,11 +335,14 @@ void OnInit(HWND hDlg)
 
 
 	GetMyRegStr("Format", "Format", s, 1024, "");
-	SetDlgItemTextUTF8(hDlg, IDC_FORMAT, s);
+	NormalizeFormatSettingUtf8InPlace(s, (int)sizeof(s), "Format");
+	SetDlgItemTextUTF8Strict(hDlg, IDC_FORMAT, s);
 
 	pCustomFormat = malloc(1024);
-	if(pCustomFormat)
+	if(pCustomFormat) {
 		GetMyRegStr("Format", "CustomFormat", pCustomFormat, 1024, "");
+		NormalizeFormatSettingUtf8InPlace(pCustomFormat, 1024, "CustomFormat");
+	}
 
 	On12Hour(hDlg);
 	OnCustom(hDlg, FALSE);
@@ -421,7 +414,7 @@ void OnCustom(HWND hDlg, BOOL bmouse)
 		if(b)
 		{
 			if(pCustomFormat[0])
-				SetDlgItemTextUTF8(hDlg, IDC_FORMAT, pCustomFormat);
+				SetDlgItemTextUTF8Strict(hDlg, IDC_FORMAT, pCustomFormat);
 		}
 		else GetDlgItemTextUTF8(hDlg, IDC_FORMAT, pCustomFormat, 1024);
 	}
@@ -499,7 +492,7 @@ void OnFormatCheck(HWND hDlg, WORD id)
 	}
 
 	CreateFormat(s, checks);
-	SetDlgItemTextUTF8(hDlg, IDC_FORMAT, s);
+	SetDlgItemTextUTF8Strict(hDlg, IDC_FORMAT, s);
 	SendPSChanged(hDlg);
 }
 
@@ -715,4 +708,18 @@ void CreateFormat(char* dst, int* checks)
 	}
 
 	if(CHECKS(IDC_INTERNETTIME)) strcat(dst, "@@@");
+}
+static void NormalizeFormatSettingUtf8InPlace(char* value, int valueBytes, const char* entry)
+{
+	char before[2048];
+	WCHAR wbuf[2048];
+	char utf8[2048];
+	if (!value || valueBytes <= 0 || !entry) return;
+	lstrcpyn(before, value, (int)sizeof(before));
+	if (tc_utf8_to_utf16(value, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) > 0) return;
+	if (tc_utf16_to_utf8(wbuf, utf8, (int)sizeof(utf8)) <= 0) return;
+	lstrcpyn(value, utf8, valueBytes);
+	if (lstrcmp(before, value) != 0) {
+		SetMyRegStr("Format", (char*)entry, value);
+	}
 }

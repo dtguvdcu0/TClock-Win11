@@ -53,6 +53,8 @@ PLISTIDL    g_ptListIDL = NULL;
 UINT uItemID;
 BOOL getODFlg = FALSE;
 
+static void NormalizeUtf8InPlaceNoWriteback(char* value, int valueBytes);
+
 char *Unicode2Ansi(LPCWSTR psUnicode)
 {
 	int iLengthW = lstrlenW(psUnicode);
@@ -189,6 +191,7 @@ BOOL AddUserMenu(HMENU hMenu, LPMALLOC pMalloc, LPCTSTR path)
 {
 	int nResult = 0;
 	char itemName[1024], tmpPath[MAX_PATH];
+	WCHAR wtmpPath[MAX_PATH];
 	OLECHAR ochPath[MAX_PATH];
 	STRRET strret;
 	SHFILEINFO    tSHFileInfo;
@@ -215,7 +218,7 @@ BOOL AddUserMenu(HMENU hMenu, LPMALLOC pMalloc, LPCTSTR path)
 		return FALSE;
 	}
 
-	if(tc_ansi_to_utf16_compat(CP_UTF8, path, ochPath, MAX_PATH) <= 0)
+	if(tc_utf8_to_utf16(path, ochPath, MAX_PATH) <= 0)
 	{
 		pFolder->lpVtbl->Release(pFolder);
 		pDesktop->lpVtbl->Release(pDesktop);
@@ -267,7 +270,8 @@ BOOL AddUserMenu(HMENU hMenu, LPMALLOC pMalloc, LPCTSTR path)
 				}
 			}
 			pItemID = ConcatPidls(pItemIDFolder,pItemIDFile);
-			if(!(SHGetPathFromIDList(pItemID,tmpPath)))
+			if(!(SHGetPathFromIDListW(pItemID, wtmpPath)) ||
+				tc_utf16_to_utf8(wtmpPath, tmpPath, (int)sizeof(tmpPath)) <= 0)
 			{
 				nResult = -1;
 				break;
@@ -383,7 +387,8 @@ BOOL AddUserMenu(HMENU hMenu, LPMALLOC pMalloc, LPCTSTR path)
 				}
 
 				pItemID = ConcatPidls(pItemIDFolder,pItemIDFile);
-				if(!(SHGetPathFromIDList(pItemID,tmpPath)))
+				if(!(SHGetPathFromIDListW(pItemID, wtmpPath)) ||
+					tc_utf16_to_utf8(wtmpPath, tmpPath, (int)sizeof(tmpPath)) <= 0)
 				{
 					nResult = -1;
 					break;
@@ -447,6 +452,16 @@ BOOL AddUserMenu(HMENU hMenu, LPMALLOC pMalloc, LPCTSTR path)
 	if(nResult != 0)
 		return FALSE;
 	return TRUE;
+}
+
+static void NormalizeUtf8InPlaceNoWriteback(char* value, int valueBytes)
+{
+	WCHAR wbuf[MAX_PATH];
+	char utf8[MAX_PATH];
+	if (!value || valueBytes <= 0 || value[0] == '\0') return;
+	if (tc_utf8_to_utf16(value, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) <= 0) return;
+	if (tc_utf16_to_utf8(wbuf, utf8, (int)sizeof(utf8)) <= 0) return;
+	lstrcpyn(value, utf8, valueBytes);
 }
 
 void OnMeasureItem(HWND hwnd, WPARAM wParam, LPARAM lParam)
@@ -589,7 +604,7 @@ void OnMenuRButtonUp(HWND hwnd, WPARAM wParam, LPARAM lParam)
 			return;
 		}
 
-		if(tc_ansi_to_utf16_compat(CP_UTF8, path, ochPath, MAX_PATH) <= 0)
+		if(tc_utf8_to_utf16(path, ochPath, MAX_PATH) <= 0)
 		{
 			pFolder->lpVtbl->Release(pFolder);
 			pDesktop->lpVtbl->Release(pDesktop);
@@ -714,6 +729,7 @@ void showUserMenu(HWND hwnd, HWND hwndClicked, int xPos, int yPos, int btn, int 
 		wsprintf(entry, "%d%dFile", btn, clk);
 		GetMyRegStr("Mouse", entry, fname, 1024, "");
 		del_title(fname);
+		NormalizeUtf8InPlaceNoWriteback(fname, (int)sizeof(fname));
 
 		hMenu = CreatePopupMenu();
 		if(hMenu == NULL)

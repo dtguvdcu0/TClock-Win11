@@ -5,6 +5,7 @@
 
 //#define NONAMELESSUNION
 #include "tclock.h"
+#include "..\common\text_codec.h"
 
 #define MAX_PAGE  20
 #define WM_TCLOCK_APPLY_REFRESH (WM_APP + 101)
@@ -39,7 +40,7 @@ INT_PTR CALLBACK PageColorAdditionalProc(HWND, UINT, WPARAM, LPARAM);
 typedef struct{
 	HTREEITEM hParent;
 	HTREEITEM hInsertAfter;
-	TV_ITEM item;
+	TVITEMW item;
 } _TV_INSERTSTRUCT;
 
 
@@ -218,37 +219,37 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 			tv.item.state = TVIS_EXPANDED;
 			tv.item.stateMask = TVIS_EXPANDED;
 
-			tv.item.pszText = MyString(IDS_CLOCK);
+			tv.item.pszText = (LPWSTR)MyStringW(IDS_CLOCK);
 			tv.item.lParam = 0;
-			hParent[0] = TreeView_InsertItem(hTree, &tv);
+			hParent[0] = (HTREEITEM)SendMessageW(hTree, TVM_INSERTITEMW, 0, (LPARAM)&tv);
 
 			tv.item.lParam = 1;
-			tv.item.pszText = MyString(IDS_TOOLTIP);
-			hParent[1] = TreeView_InsertItem(hTree, &tv);
+			tv.item.pszText = (LPWSTR)MyStringW(IDS_TOOLTIP);
+			hParent[1] = (HTREEITEM)SendMessageW(hTree, TVM_INSERTITEMW, 0, (LPARAM)&tv);
 
 			tv.item.lParam = 6;
-			tv.item.pszText = MyString(IDS_PROP_MOUSE);
-			hParent[6] = TreeView_InsertItem(hTree, &tv);
+			tv.item.pszText = (LPWSTR)MyStringW(IDS_PROP_MOUSE);
+			hParent[6] = (HTREEITEM)SendMessageW(hTree, TVM_INSERTITEMW, 0, (LPARAM)&tv);
 
 			tv.item.lParam = 7;
-			tv.item.pszText = MyString(IDS_PROP_ETC);
-			hParent[7] = TreeView_InsertItem(hTree, &tv);
+			tv.item.pszText = (LPWSTR)MyStringW(IDS_PROP_ETC);
+			hParent[7] = (HTREEITEM)SendMessageW(hTree, TVM_INSERTITEMW, 0, (LPARAM)&tv);
 
 			tv.item.lParam = 2;
-			tv.item.pszText = MyString(IDS_PROP_KEYWORDS);
-			hParent[2] = TreeView_InsertItem(hTree, &tv);
+			tv.item.pszText = (LPWSTR)MyStringW(IDS_PROP_KEYWORDS);
+			hParent[2] = (HTREEITEM)SendMessageW(hTree, TVM_INSERTITEMW, 0, (LPARAM)&tv);
 
 			tv.item.lParam = 5;
-			tv.item.pszText = MyString(IDS_PROP_WIN11);
-			hParent[5] = TreeView_InsertItem(hTree, &tv);
+			tv.item.pszText = (LPWSTR)MyStringW(IDS_PROP_WIN11);
+			hParent[5] = (HTREEITEM)SendMessageW(hTree, TVM_INSERTITEMW, 0, (LPARAM)&tv);
 
 			tv.item.lParam = 3;
-			tv.item.pszText = MyString(IDS_ABOUT);
-			hParent[3] = TreeView_InsertItem(hTree, &tv);
+			tv.item.pszText = (LPWSTR)MyStringW(IDS_ABOUT);
+			hParent[3] = (HTREEITEM)SendMessageW(hTree, TVM_INSERTITEMW, 0, (LPARAM)&tv);
 
 			tv.item.lParam = 4;
-			tv.item.pszText = MyString(IDS_MISC);
-			hParent[4] = TreeView_InsertItem(hTree, &tv);
+			tv.item.pszText = (LPWSTR)MyStringW(IDS_MISC);
+			hParent[4] = (HTREEITEM)SendMessageW(hTree, TVM_INSERTITEMW, 0, (LPARAM)&tv);
 
 
 
@@ -256,39 +257,39 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 			tv.item.mask = TVIF_TEXT | TVIF_PARAM;
 
 			tv.item.lParam = 100;
-			tv.item.pszText = MyString(IDS_PROP_COLOR);
-			hChild[0] = TreeView_InsertItem(hTree, &tv);
+			tv.item.pszText = (LPWSTR)MyStringW(IDS_PROP_COLOR);
+			hChild[0] = (HTREEITEM)SendMessageW(hTree, TVM_INSERTITEMW, 0, (LPARAM)&tv);
 
 			tv.item.lParam = 106;
-			tv.item.pszText = MyString(IDS_PROP_COLOR_ADDITIONAL);
-			hChild[6] = TreeView_InsertItem(hTree, &tv);
+			tv.item.pszText = (LPWSTR)MyStringW(IDS_PROP_COLOR_ADDITIONAL);
+			hChild[6] = (HTREEITEM)SendMessageW(hTree, TVM_INSERTITEMW, 0, (LPARAM)&tv);
 
 			tv.item.lParam = 101;
-			tv.item.pszText = MyString(IDS_PROP_FORMAT);
-			hChild[1] = TreeView_InsertItem(hTree, &tv);
+			tv.item.pszText = (LPWSTR)MyStringW(IDS_PROP_FORMAT);
+			hChild[1] = (HTREEITEM)SendMessageW(hTree, TVM_INSERTITEMW, 0, (LPARAM)&tv);
 
 			tv.item.lParam = 107;
-			tv.item.pszText = MyString(IDS_PROP_CHIME);
-			hChild[7] = TreeView_InsertItem(hTree, &tv);
+			tv.item.pszText = (LPWSTR)MyStringW(IDS_PROP_CHIME);
+			hChild[7] = (HTREEITEM)SendMessageW(hTree, TVM_INSERTITEMW, 0, (LPARAM)&tv);
 
 			tv.item.lParam = 103;
-			tv.item.pszText = MyString(IDS_PROP_GRAPH);
-			hChild[3] = TreeView_InsertItem(hTree, &tv);
+			tv.item.pszText = (LPWSTR)MyStringW(IDS_PROP_GRAPH);
+			hChild[3] = (HTREEITEM)SendMessageW(hTree, TVM_INSERTITEMW, 0, (LPARAM)&tv);
 
 			//	BarMeter設定	20181103
 			tv.item.lParam = 105;
-			tv.item.pszText = MyString(IDS_BARMETER);
-			hChild[5] = TreeView_InsertItem(hTree, &tv);
+			tv.item.pszText = (LPWSTR)MyStringW(IDS_BARMETER);
+			hChild[5] = (HTREEITEM)SendMessageW(hTree, TVM_INSERTITEMW, 0, (LPARAM)&tv);
 
 
 			//tv.item.lParam = 102;
-			//tv.item.pszText = MyString(IDS_PROP_MOUSE);
-			//hChild[2] = TreeView_InsertItem(hTree, &tv);
+			//tv.item.pszText = (LPWSTR)MyStringW(IDS_PROP_MOUSE);
+			//hChild[2] = (HTREEITEM)SendMessageW(hTree, TVM_INSERTITEMW, 0, (LPARAM)&tv);
 
 
 			tv.item.lParam = 104;
-			tv.item.pszText = MyString(IDS_PROP_ANALOG);
-			hChild[4] = TreeView_InsertItem(hTree, &tv);
+			tv.item.pszText = (LPWSTR)MyStringW(IDS_PROP_ANALOG);
+			hChild[4] = (HTREEITEM)SendMessageW(hTree, TVM_INSERTITEMW, 0, (LPARAM)&tv);
 
 
 
@@ -500,7 +501,7 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 				else {
 					add_title(fname, "readme_jp.txt");
 				}
-				ShellExecuteUtf8Compat(NULL, "open", "notepad.exe", fname, NULL, SW_SHOWNORMAL);
+				ShellExecuteUtf8Strict(NULL, "open", "notepad.exe", fname, NULL, SW_SHOWNORMAL);
 			}
 			InterlockedDecrement(&g_propdlgCommandDepth);
 			}
@@ -569,49 +570,99 @@ void SetMyDialgPos(HWND hwnd)
 }
 
 /*------------------------------------------------
-   select file
+   select file (UTF-8 contract)
 --------------------------------------------------*/
-BOOL SelectMyFile(HWND hDlg, const char *filter, DWORD nFilterIndex,
-	const char *deffile, char *retfile)
+static int DecodeUtf8OrLegacyForDialog(const char* src, wchar_t* dst, int dstCch)
 {
-	OPENFILENAME ofn;
-	char fname[MAX_PATH], ftitle[MAX_PATH], initdir[MAX_PATH];
+	int r;
+	if (!src || !dst || dstCch <= 0) return 0;
+	r = tc_utf8_to_utf16(src, dst, dstCch);
+	if (r <= 0) dst[0] = L'\0';
+	return r;
+}
+
+static BOOL Utf8MultiSzToWide(const char* src, wchar_t* dst, int dstCch)
+{
+	const char* p;
+	int pos = 0;
+	wchar_t wseg[512];
+	if (!src || !dst || dstCch <= 0) return FALSE;
+	p = src;
+	for (;;)
+	{
+		if (*p == '\0') {
+			if (pos >= dstCch) return FALSE;
+			dst[pos++] = L'\0';
+			break;
+		}
+		if (tc_utf8_to_utf16(p, wseg, (int)(sizeof(wseg) / sizeof(wseg[0]))) <= 0) return FALSE;
+		{
+			int wlen = lstrlenW(wseg);
+			if (pos + wlen + 1 > dstCch) return FALSE;
+			memcpy(dst + pos, wseg, (size_t)(wlen + 1) * sizeof(wchar_t));
+			pos += wlen + 1;
+		}
+		p += lstrlen(p) + 1;
+	}
+	return TRUE;
+}
+
+BOOL SelectMyFileUTF8(HWND hDlg, const char *filterUtf8, DWORD nFilterIndex,
+	const char *deffileUtf8, char *retfileUtf8, int retfileUtf8Bytes)
+{
+	OPENFILENAMEW ofn;
+	wchar_t fname[MAX_PATH], ftitle[MAX_PATH], initdir[MAX_PATH], wfilter[1024], wdeffile[MAX_PATH];
 	BOOL r;
 
-	memset(&ofn, '\0', sizeof(OPENFILENAME));
+	if (!retfileUtf8 || retfileUtf8Bytes <= 0) return FALSE;
+	retfileUtf8[0] = '\0';
+	memset(&ofn, '\0', sizeof(OPENFILENAMEW));
 
-	strcpy(initdir, g_mydir);
-	if(deffile[0])
+	if (DecodeUtf8OrLegacyForDialog(g_mydir, initdir, (int)(sizeof(initdir) / sizeof(initdir[0]))) <= 0) {
+		initdir[0] = L'\0';
+	}
+	if (deffileUtf8 && deffileUtf8[0] &&
+		DecodeUtf8OrLegacyForDialog(deffileUtf8, wdeffile, (int)(sizeof(wdeffile) / sizeof(wdeffile[0]))) > 0)
 	{
-		WIN32_FIND_DATA fd;
-		HANDLE hfind;
-		hfind = FindFirstFile(deffile, &fd);
-		if(hfind != INVALID_HANDLE_VALUE)
+		WIN32_FIND_DATAW fd;
+		HANDLE hfind = FindFirstFileW(wdeffile, &fd);
+		if (hfind != INVALID_HANDLE_VALUE)
 		{
+			int i;
+			int lastSep = -1;
 			FindClose(hfind);
-			strcpy(initdir, deffile);
-			del_title(initdir);
+			lstrcpynW(initdir, wdeffile, (int)(sizeof(initdir) / sizeof(initdir[0])));
+			for (i = 0; initdir[i] != L'\0'; ++i) {
+				if (initdir[i] == L'\\' || initdir[i] == L'/') lastSep = i;
+			}
+			if (lastSep >= 0) initdir[lastSep] = L'\0';
 		}
 	}
 
-	fname[0] = 0;
-	ofn.lStructSize = sizeof(OPENFILENAME);
+	if (!Utf8MultiSzToWide(filterUtf8 ? filterUtf8 : "", wfilter, (int)(sizeof(wfilter) / sizeof(wfilter[0])))) {
+		return FALSE;
+	}
+
+	fname[0] = L'\0';
+	ofn.lStructSize = sizeof(OPENFILENAMEW);
 	ofn.hwndOwner = hDlg;
 	ofn.hInstance = g_hInst;
-	ofn.lpstrFilter = filter;
+	ofn.lpstrFilter = wfilter;
 	ofn.nFilterIndex = nFilterIndex;
-	ofn.lpstrFile= fname;
+	ofn.lpstrFile = fname;
 	ofn.nMaxFile = MAX_PATH;
 	ofn.lpstrFileTitle = ftitle;
 	ofn.nMaxFileTitle = MAX_PATH;
 	ofn.lpstrInitialDir = initdir;
+	ofn.Flags = OFN_HIDEREADONLY | OFN_EXPLORER;
 
-	ofn.Flags = OFN_HIDEREADONLY | OFN_EXPLORER ;
-	r = GetOpenFileName(&ofn);
-	if(!r) return r;
-
-	strcpy(retfile, ofn.lpstrFile);
-
-	return r;
+	r = GetOpenFileNameW(&ofn);
+	if (!r) return FALSE;
+	if (tc_utf16_to_utf8(ofn.lpstrFile, retfileUtf8, retfileUtf8Bytes) <= 0) {
+		retfileUtf8[0] = '\0';
+		return FALSE;
+	}
+	return TRUE;
 }
+
 

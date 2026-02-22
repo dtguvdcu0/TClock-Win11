@@ -13,6 +13,7 @@ static void OnApply(HWND hDlg);
 
 static void OnStartup(HWND hDlg);
 BOOL CreateLink(LPCSTR fname, LPCSTR dstpath, LPCSTR name);
+static BOOL Utf8ToWideStrict(const char* src, wchar_t* dst, int dstCch);
 
 #define SendPSChanged(hDlg) SendMessage(GetParent(hDlg),PSM_CHANGED,(WPARAM)(hDlg),0)
 
@@ -45,11 +46,11 @@ BOOL CALLBACK PageMiscProc(HWND hDlg, UINT message,
 					int r;
 					r = DelRegAll();
 					if (r == 0)
-						MyMessageBoxUTF8(hDlg,MyStringUTF8(IDS_DELREGNGINI), "TClock-Win11",MB_OK,MB_ICONEXCLAMATION);
+						MyMessageBoxW(hDlg, MyStringW(IDS_DELREGNGINI), L"TClock-Win11", MB_OK, MB_ICONEXCLAMATION);
 					else if (r == 1)
-						MyMessageBoxUTF8(hDlg,MyStringUTF8(IDS_DELREGOK), "TClock-Win11",MB_OK,MB_ICONINFORMATION);
+						MyMessageBoxW(hDlg, MyStringW(IDS_DELREGOK), L"TClock-Win11", MB_OK, MB_ICONINFORMATION);
 					else
-						MyMessageBoxUTF8(hDlg,MyStringUTF8(IDS_DELREGNG),"TClock-Win11",MB_OK,MB_ICONEXCLAMATION);
+						MyMessageBoxW(hDlg, MyStringW(IDS_DELREGNG), L"TClock-Win11", MB_OK, MB_ICONEXCLAMATION);
 				}
 				break;
 				//  readme.txtを開く
@@ -100,17 +101,20 @@ void OnApply(HWND hDlg)
 void OnStartup(HWND hDlg)
 {
 	LPITEMIDLIST pidl;
+	WCHAR wdstpath[MAX_PATH];
 	char dstpath[MAX_PATH], myexe[MAX_PATH];
 
-	if(SHGetSpecialFolderLocation(hDlg, CSIDL_STARTUP, &pidl) == NOERROR &&
-		SHGetPathFromIDList(pidl, dstpath) == TRUE)
-		;
-	else return;
+	if(SHGetSpecialFolderLocation(hDlg, CSIDL_STARTUP, &pidl) != NOERROR)
+		return;
+	if(SHGetPathFromIDListW(pidl, wdstpath) != TRUE)
+		return;
+	if(tc_utf16_to_utf8(wdstpath, dstpath, (int)sizeof(dstpath)) <= 0)
+		return;
 
-	if(MyMessageBoxUTF8(hDlg, MyStringUTF8(IDS_STARTUPLINK),
-		"TClock-Win11", MB_YESNO, MB_ICONQUESTION) != IDYES) return;
+	if(MyMessageBoxW(hDlg, MyStringW(IDS_STARTUPLINK),
+		L"TClock-Win11", MB_YESNO, MB_ICONQUESTION) != IDYES) return;
 
-	GetModuleFileName(GetModuleHandle(NULL), myexe, MAX_PATH);
+	GetModuleFileNameUTF8(GetModuleHandle(NULL), myexe, MAX_PATH);
 	CreateLink(myexe, dstpath, "TClock-Win11");
 }
 
@@ -120,35 +124,48 @@ void OnStartup(HWND hDlg)
 BOOL CreateLink(LPCSTR fname, LPCSTR dstpath, LPCSTR name)
 {
 	HRESULT hres;
-	IShellLink* psl;
+	IShellLinkW* psl;
 
 	CoInitialize(NULL);
 
 	hres = CoCreateInstance(&CLSID_ShellLink, NULL,
-		CLSCTX_INPROC_SERVER, &IID_IShellLink, &psl);
+		CLSCTX_INPROC_SERVER, &IID_IShellLinkW, (LPVOID*)&psl);
 	if(SUCCEEDED(hres))
 	{
 		IPersistFile* ppf;
 		char path[MAX_PATH];
+		char lnkfile[MAX_PATH];
+		WCHAR wfname[MAX_PATH], wpath[MAX_PATH], wname[MAX_PATH], wlnkfile[MAX_PATH];
 
-		psl->lpVtbl->SetPath(psl, fname);
-		psl->lpVtbl->SetDescription(psl, name);
+		if (!Utf8ToWideStrict(fname, wfname, (int)(sizeof(wfname) / sizeof(wfname[0]))) ||
+			!Utf8ToWideStrict(name, wname, (int)(sizeof(wname) / sizeof(wname[0])))) {
+			psl->lpVtbl->Release(psl);
+			CoUninitialize();
+			return FALSE;
+		}
+
 		strcpy(path, fname);
 		del_title(path);
-		psl->lpVtbl->SetWorkingDirectory(psl, path);
+		if (!Utf8ToWideStrict(path, wpath, (int)(sizeof(wpath) / sizeof(wpath[0])))) {
+			psl->lpVtbl->Release(psl);
+			CoUninitialize();
+			return FALSE;
+		}
+
+		psl->lpVtbl->SetPath(psl, wfname);
+		psl->lpVtbl->SetDescription(psl, wname);
+		psl->lpVtbl->SetWorkingDirectory(psl, wpath);
 
 		hres = psl->lpVtbl->QueryInterface(psl, &IID_IPersistFile,
-			&ppf);
+			(LPVOID*)&ppf);
 
 		if(SUCCEEDED(hres))
 		{
-			WCHAR wsz[MAX_PATH];
-			char lnkfile[MAX_PATH];
 			strcpy(lnkfile, dstpath);
 			add_title(lnkfile, (char*)name);
 			strcat(lnkfile, ".lnk");
 
-			if(tc_ansi_to_utf16_compat(CP_UTF8, lnkfile, wsz, MAX_PATH) <= 0)
+			if(!Utf8ToWideStrict(lnkfile, wlnkfile, (int)(sizeof(wlnkfile) / sizeof(wlnkfile[0]))))
 			{
 				ppf->lpVtbl->Release(ppf);
 				psl->lpVtbl->Release(psl);
@@ -156,7 +173,7 @@ BOOL CreateLink(LPCSTR fname, LPCSTR dstpath, LPCSTR name)
 				return FALSE;
 			}
 
-			hres = ppf->lpVtbl->Save(ppf, wsz, TRUE);
+			hres = ppf->lpVtbl->Save(ppf, wlnkfile, TRUE);
 			ppf->lpVtbl->Release(ppf);
 		}
 		psl->lpVtbl->Release(psl);
@@ -165,4 +182,10 @@ BOOL CreateLink(LPCSTR fname, LPCSTR dstpath, LPCSTR name)
 
 	if(SUCCEEDED(hres)) return TRUE;
 	else return FALSE;
+}
+
+static BOOL Utf8ToWideStrict(const char* src, wchar_t* dst, int dstCch)
+{
+	if (!src || !dst || dstCch <= 0) return FALSE;
+	return tc_utf8_to_utf16(src, dst, dstCch) > 0;
 }

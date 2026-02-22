@@ -208,6 +208,7 @@ static int TooltipDrawTextLoggedW(HDC hdc, LPCWSTR pszText, int cchText, LPRECT 
 }
 
 static void TooltipSyncWideText(void)
+/* ※ Tooltip 設定は codepage 互換入力を維持（Shift-JIS 読み込み経路） */
 {
 	if (tc_ansi_to_utf16_compat((UINT)codepage, formatTooltip, formatTooltipW, sizeof(formatTooltipW) / sizeof(WCHAR)) <= 0) {
 		formatTooltipW[0] = L'\0';

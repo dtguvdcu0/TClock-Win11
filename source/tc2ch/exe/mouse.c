@@ -5,6 +5,7 @@
 ---------------------------------------------*/
 
 #include "tclock.h"
+#include "..\common\text_codec.h"
 
 
 // XButton Messages
@@ -39,15 +40,32 @@ static const char *atomName[4] = {
 	"hotkey4_atom_tcklock2ch"
 };
 
+static void tc_mouse_normalize_setting_utf8_in_place(char* value, int valueBytes)
+{
+	WCHAR wbuf[MAX_PATH];
+	char utf8[MAX_PATH];
+	if (!value || valueBytes <= 0 || value[0] == '\0') return;
+	if (tc_utf8_to_utf16(value, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) <= 0) return;
+	if (tc_utf16_to_utf8(wbuf, utf8, (int)sizeof(utf8)) <= 0) return;
+	lstrcpyn(value, utf8, valueBytes);
+}
+
 static void GetTCapturePathConfigMouse(char* outPath, int outPathLen)
 {
 	char legacyPath[MAX_PATH];
+	char before[MAX_PATH];
 	if (!outPath || outPathLen <= 0) return;
 	outPath[0] = '\0';
 	GetMyRegStr("TCapture", "Path", outPath, outPathLen, "");
-	if (outPath[0]) return;
+	if (outPath[0]) {
+		lstrcpyn(before, outPath, (int)sizeof(before));
+		tc_mouse_normalize_setting_utf8_in_place(outPath, outPathLen);
+		if (lstrcmp(before, outPath) != 0) SetMyRegStr("TCapture", "Path", outPath);
+		return;
+	}
 	GetMyRegStr("ETC", "TCapturePath", legacyPath, MAX_PATH, "TCapture.exe");
 	if (legacyPath[0] == '\0') strcpy(legacyPath, "TCapture.exe");
+	tc_mouse_normalize_setting_utf8_in_place(legacyPath, (int)sizeof(legacyPath));
 	lstrcpyn(outPath, legacyPath, outPathLen);
 	SetMyRegStr("TCapture", "Path", outPath);
 	DelMyReg("ETC", "TCapturePath");
@@ -146,12 +164,13 @@ static void TriggerTCaptureProfile(HWND hwnd, const char* profileName)
 	int i;
 	if (!profileName || !profileName[0]) return;
 	if (!ResolveTCaptureExePathMouse(exePath, MAX_PATH)) return;
+	tc_mouse_normalize_setting_utf8_in_place(exePath, (int)sizeof(exePath));
 	lstrcpyn(safeProfile, profileName, (int)sizeof(safeProfile));
 	for (i = 0; safeProfile[i]; ++i) {
 		if (safeProfile[i] == '"') safeProfile[i] = '\'';
 	}
 	wsprintf(params, "--capture --profile \"%s\"", safeProfile);
-	ShellExecuteUtf8Compat(hwnd, "open", exePath, params, g_mydir, SW_SHOWNORMAL);
+	ShellExecuteUtf8Strict(hwnd, "open", exePath, params, g_mydir, SW_SHOWNORMAL);
 }
 
 /*------------------------------------------------

@@ -134,7 +134,6 @@ int ext_cmp(char *fname, char *ext);
 void del_title(char *path);
 
 void parse(char *dst, char *src, int n);
-char* MyString(UINT id);
 
 BOOL DelMyReg_DLL(char* section, char* entry);
 BOOL DelMyRegKey_DLL(char* section);
@@ -143,7 +142,7 @@ int GetClassNameUTF8_DLL(HWND hwnd, char* text, int textBytes);
 #ifdef __cplusplus
 extern "C" {
 #endif
-HINSTANCE ShellExecuteUtf8Compat_DLL(HWND hwnd, const char* op, const char* file, const char* params, const char* dir, int showCmd);
+HINSTANCE ShellExecuteUtf8Strict_DLL(HWND hwnd, const char* op, const char* file, const char* params, const char* dir, int showCmd);
 #ifdef __cplusplus
 }
 #endif

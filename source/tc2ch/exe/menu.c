@@ -46,8 +46,6 @@ BOOL b_MenuItems_Initialized = FALSE;
 extern BOOL b_NormalLog;
 extern BOOL b_SkipHideClockRestore;
 
-static char* SafeMyStringAcpBoundary(UINT id);
-static BOOL ModifyMenuAcpBoundary(HMENU hMenu, UINT item, UINT flags, UINT_PTR id, UINT strId);
 
 #define TC_MENU_CUSTOM_MAX_ITEMS 64
 #define TC_MENU_SECTION "MenuCustom"
@@ -131,9 +129,9 @@ static BOOL g_menuFormatApiChecked = FALSE;
 static int tc_menu_append_text(char* dst, int dstLen, int pos, const char* src);
 static BOOL tc_menu_match_token(const char* p, const char* token);
 static BOOL tc_menu_should_keep_utf8_value(const char* key);
-static BOOL tc_menu_utf8_or_ansi_to_wide(const char* text, WCHAR* wbuf, int wbufCch);
-static BOOL tc_menu_insert_string(HMENU hMenu, UINT position, UINT flags, UINT_PTR id, const char* text);
-static BOOL tc_menu_modify_string(HMENU hMenu, UINT item, UINT flags, UINT_PTR id, const char* text);
+static void tc_menu_prepare_utf8_arg(const char* src, char* dst, int dstBytes);
+static BOOL tc_menu_try_decode_utf8_hex(const char* hex, char* out, int outBytes);
+static BOOL tc_menu_encode_hex_from_utf8_bytes(const char* utf8, char* outHex, int outHexBytes);
 static BOOL tc_menu_is_valid_utf8_text(const char* text);
 static const char* tc_menu_alarm_message_utf8_or_default(const TC_MENU_ALARM_ENTRY* e);
 
@@ -148,32 +146,73 @@ static BOOL tc_menu_should_keep_utf8_value(const char* key)
 		if (p[0] == 'M' && p[1] == 'e' && p[2] == 's' && p[3] == 's' && p[4] == 'a' && p[5] == 'g' && p[6] == 'e') {
 			return TRUE;
 		}
+		if (p[0] == 'T' && p[1] == 'a' && p[2] == 'r' && p[3] == 'g' && p[4] == 'e' && p[5] == 't') {
+			return TRUE;
+		}
+		if (p[0] == 'F' && p[1] == 'i' && p[2] == 'l' && p[3] == 'e') {
+			return TRUE;
+		}
+		if (p[0] == 'A' && p[1] == 'r' && p[2] == 'g' && p[3] == 's') {
+			return TRUE;
+		}
+		if (p[0] == 'W' && p[1] == 'o' && p[2] == 'r' && p[3] == 'k' && p[4] == 'D' && p[5] == 'i' && p[6] == 'r') {
+			return TRUE;
+		}
 	}
 	return FALSE;
 }
 
-static BOOL tc_menu_utf8_or_ansi_to_wide(const char* text, WCHAR* wbuf, int wbufCch)
+static int tc_menu_hex_to_int(unsigned char ch)
+{
+	if (ch >= '0' && ch <= '9') return (int)(ch - '0');
+	if (ch >= 'A' && ch <= 'F') return (int)(ch - 'A' + 10);
+	if (ch >= 'a' && ch <= 'f') return (int)(ch - 'a' + 10);
+	return -1;
+}
+
+static BOOL tc_menu_try_decode_utf8_hex(const char* hex, char* out, int outBytes)
+{
+	int i = 0;
+	int o = 0;
+	WCHAR wtmp[1024];
+	if (!hex || !out || outBytes <= 0) return FALSE;
+	while (hex[i] && hex[i + 1]) {
+		int h;
+		int l;
+		if (o >= outBytes - 1) return FALSE;
+		h = tc_menu_hex_to_int((unsigned char)hex[i]);
+		l = tc_menu_hex_to_int((unsigned char)hex[i + 1]);
+		if (h < 0 || l < 0) return FALSE;
+		out[o++] = (char)((h << 4) | l);
+		i += 2;
+	}
+	if (hex[i] != '\0') return FALSE;
+	out[o] = '\0';
+	if (o == 0) return TRUE;
+	return (tc_utf8_to_utf16(out, wtmp, (int)(sizeof(wtmp) / sizeof(wtmp[0]))) > 0) ? TRUE : FALSE;
+}
+
+static BOOL tc_menu_utf8_to_wide_strict(const char* text, WCHAR* wbuf, int wbufCch)
 {
 	if (!wbuf || wbufCch <= 0) return FALSE;
 	wbuf[0] = L'\0';
 	if (!text || !text[0]) return TRUE;
-	if (tc_utf8_to_utf16(text, wbuf, wbufCch) > 0) return TRUE;
-	return FALSE;
+	return (tc_utf8_to_utf16(text, wbuf, wbufCch) > 0) ? TRUE : FALSE;
 }
 
-static BOOL tc_menu_insert_string(HMENU hMenu, UINT position, UINT flags, UINT_PTR id, const char* text)
+static BOOL tc_menu_insert_string_utf8(HMENU hMenu, UINT position, UINT flags, UINT_PTR id, const char* text)
 {
 	WCHAR wtext[1024];
-	if (tc_menu_utf8_or_ansi_to_wide(text, wtext, (int)(sizeof(wtext) / sizeof(wtext[0])))) {
+	if (tc_menu_utf8_to_wide_strict(text, wtext, (int)(sizeof(wtext) / sizeof(wtext[0])))) {
 		return InsertMenuW(hMenu, position, flags, id, wtext);
 	}
 	return FALSE;
 }
 
-static BOOL tc_menu_modify_string(HMENU hMenu, UINT item, UINT flags, UINT_PTR id, const char* text)
+static BOOL tc_menu_modify_string_utf8(HMENU hMenu, UINT item, UINT flags, UINT_PTR id, const char* text)
 {
 	WCHAR wtext[1024];
-	if (tc_menu_utf8_or_ansi_to_wide(text, wtext, (int)(sizeof(wtext) / sizeof(wtext[0])))) {
+	if (tc_menu_utf8_to_wide_strict(text, wtext, (int)(sizeof(wtext) / sizeof(wtext[0])))) {
 		return ModifyMenuW(hMenu, item, flags, id, wtext);
 	}
 	return FALSE;
@@ -347,8 +386,10 @@ static void tc_menu_alarm_notify_finish(TC_MENU_ALARM_ENTRY* e)
 	if (!e || e->finishedNotified) return;
 	e->finishedNotified = TRUE;
 	if (e->notifyFlags & 1) {
-		MyMessageBoxUTF8(NULL, tc_menu_alarm_message_utf8_or_default(e),
-			"TClock-Win11", MB_OK | MB_SETFOREGROUND | MB_ICONINFORMATION, 0xFFFFFFFF);
+		WCHAR wMsg[2048];
+		if (tc_menu_utf8_to_wide_strict(tc_menu_alarm_message_utf8_or_default(e), wMsg, (int)(sizeof(wMsg) / sizeof(wMsg[0])))) {
+			MyMessageBoxW(NULL, wMsg, L"TClock-Win11", MB_OK | MB_SETFOREGROUND | MB_ICONINFORMATION, 0xFFFFFFFF);
+		}
 	}
 	if (e->notifyFlags & 2) {
 		if (e->soundFile[0]) {
@@ -482,15 +523,25 @@ static int tc_menu_dynamic_execute(UINT id)
 			continue;
 		}
 		if (e->mode == 1) {
-			ShellExecuteUtf8Compat(g_hwndMain, "open", e->target[0] ? e->target : NULL,
-				e->args[0] ? e->args : NULL,
-				e->workdir[0] ? e->workdir : NULL,
+			char targetUtf8[MAX_PATH];
+			char argsUtf8[512];
+			char workdirUtf8[MAX_PATH];
+			tc_menu_prepare_utf8_arg(e->target, targetUtf8, (int)sizeof(targetUtf8));
+			tc_menu_prepare_utf8_arg(e->args, argsUtf8, (int)sizeof(argsUtf8));
+			tc_menu_prepare_utf8_arg(e->workdir, workdirUtf8, (int)sizeof(workdirUtf8));
+			ShellExecuteUtf8Strict(g_hwndMain, "open", targetUtf8[0] ? targetUtf8 : NULL,
+				argsUtf8[0] ? argsUtf8 : NULL,
+				workdirUtf8[0] ? workdirUtf8 : NULL,
 				e->show ? e->show : SW_SHOWNORMAL);
 			return 1;
 		}
 		if (e->mode == 2) {
-			ShellExecuteUtf8Compat(g_hwndMain, "open", "cmd.exe", e->target[0] ? e->target : NULL,
-				e->workdir[0] ? e->workdir : NULL,
+			char targetUtf8[MAX_PATH];
+			char workdirUtf8[MAX_PATH];
+			tc_menu_prepare_utf8_arg(e->target, targetUtf8, (int)sizeof(targetUtf8));
+			tc_menu_prepare_utf8_arg(e->workdir, workdirUtf8, (int)sizeof(workdirUtf8));
+			ShellExecuteUtf8Strict(g_hwndMain, "open", "cmd.exe", targetUtf8[0] ? targetUtf8 : NULL,
+				workdirUtf8[0] ? workdirUtf8 : NULL,
 				e->show ? e->show : SW_SHOWNORMAL);
 			return 1;
 		}
@@ -512,15 +563,48 @@ static LONG tc_menu_get_tcapture_enable(void)
 	return (v != 0) ? 1 : 0;
 }
 
+static void tc_menu_normalize_setting_utf8_in_place(char* value, int valueBytes)
+{
+	WCHAR wbuf[MAX_PATH];
+	char utf8[MAX_PATH];
+	if (!value || valueBytes <= 0 || value[0] == '\0') return;
+	if (tc_utf8_to_utf16(value, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) <= 0) return;
+	if (tc_utf16_to_utf8(wbuf, utf8, (int)sizeof(utf8)) <= 0) return;
+	lstrcpyn(value, utf8, valueBytes);
+}
+
+static void tc_menu_prepare_utf8_arg(const char* src, char* dst, int dstBytes)
+{
+	WCHAR wbuf[MAX_PATH];
+	if (!dst || dstBytes <= 0) return;
+	dst[0] = '\0';
+	if (!src || src[0] == '\0') return;
+	lstrcpyn(dst, src, dstBytes);
+	if (tc_utf8_to_utf16(dst, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) <= 0) {
+		dst[0] = '\0';
+		return;
+	}
+	if (tc_utf16_to_utf8(wbuf, dst, dstBytes) <= 0) {
+		dst[0] = '\0';
+	}
+}
+
 static void tc_menu_get_tcapture_path(char* outPath, int outPathLen)
 {
 	char legacy[MAX_PATH];
+	char before[MAX_PATH];
 	if (!outPath || outPathLen <= 0) return;
 	outPath[0] = '\0';
 	GetMyRegStr("TCapture", "Path", outPath, outPathLen, "");
-	if (outPath[0] != '\0') return;
+	if (outPath[0] != '\0') {
+		lstrcpyn(before, outPath, (int)sizeof(before));
+		tc_menu_normalize_setting_utf8_in_place(outPath, outPathLen);
+		if (lstrcmp(before, outPath) != 0) SetMyRegStr("TCapture", "Path", outPath);
+		return;
+	}
 	GetMyRegStr("ETC", "TCapturePath", legacy, MAX_PATH, "TCapture.exe");
 	if (legacy[0] == '\0') strcpy(legacy, "TCapture.exe");
+	tc_menu_normalize_setting_utf8_in_place(legacy, (int)sizeof(legacy));
 	lstrcpyn(outPath, legacy, outPathLen);
 	SetMyRegStr("TCapture", "Path", outPath);
 	DelMyReg("ETC", "TCapturePath");
@@ -536,11 +620,17 @@ typedef struct {
 static DWORD WINAPI tc_menu_delayed_launch_thread(LPVOID lp)
 {
 	TC_MENU_DELAYED_LAUNCH* launch = (TC_MENU_DELAYED_LAUNCH*)lp;
+	char fileUtf8[MAX_PATH];
+	char argsUtf8[256];
+	char workdirUtf8[MAX_PATH];
 	if (!launch) return 0;
 	Sleep(250);
-	ShellExecuteUtf8Compat(g_hwndMain, "open", launch->file[0] ? launch->file : NULL,
-		launch->args[0] ? launch->args : NULL,
-		launch->workdir[0] ? launch->workdir : NULL,
+	tc_menu_prepare_utf8_arg(launch->file, fileUtf8, (int)sizeof(fileUtf8));
+	tc_menu_prepare_utf8_arg(launch->args, argsUtf8, (int)sizeof(argsUtf8));
+	tc_menu_prepare_utf8_arg(launch->workdir, workdirUtf8, (int)sizeof(workdirUtf8));
+	ShellExecuteUtf8Strict(g_hwndMain, "open", fileUtf8[0] ? fileUtf8 : NULL,
+		argsUtf8[0] ? argsUtf8 : NULL,
+		workdirUtf8[0] ? workdirUtf8 : NULL,
 		launch->showCmd ? launch->showCmd : SW_SHOWNORMAL);
 	free(launch);
 	return 0;
@@ -550,8 +640,16 @@ static void tc_menu_launch_with_delay(const char* file, const char* args, const 
 {
 	TC_MENU_DELAYED_LAUNCH* launch = (TC_MENU_DELAYED_LAUNCH*)malloc(sizeof(TC_MENU_DELAYED_LAUNCH));
 	HANDLE hThread;
+	char fileUtf8[MAX_PATH];
+	char argsUtf8[256];
+	char workdirUtf8[MAX_PATH];
 	if (!launch) {
-		ShellExecuteUtf8Compat(g_hwndMain, "open", file, args, workdir, showCmd ? showCmd : SW_SHOWNORMAL);
+		tc_menu_prepare_utf8_arg(file, fileUtf8, (int)sizeof(fileUtf8));
+		tc_menu_prepare_utf8_arg(args, argsUtf8, (int)sizeof(argsUtf8));
+		tc_menu_prepare_utf8_arg(workdir, workdirUtf8, (int)sizeof(workdirUtf8));
+		ShellExecuteUtf8Strict(g_hwndMain, "open", fileUtf8[0] ? fileUtf8 : NULL,
+			argsUtf8[0] ? argsUtf8 : NULL,
+			workdirUtf8[0] ? workdirUtf8 : NULL, showCmd ? showCmd : SW_SHOWNORMAL);
 		return;
 	}
 	ZeroMemory(launch, sizeof(TC_MENU_DELAYED_LAUNCH));
@@ -564,8 +662,12 @@ static void tc_menu_launch_with_delay(const char* file, const char* args, const 
 		CloseHandle(hThread);
 	}
 	else {
-		ShellExecuteUtf8Compat(g_hwndMain, "open", launch->file, launch->args[0] ? launch->args : NULL,
-			launch->workdir[0] ? launch->workdir : NULL, launch->showCmd ? launch->showCmd : SW_SHOWNORMAL);
+		tc_menu_prepare_utf8_arg(launch->file, fileUtf8, (int)sizeof(fileUtf8));
+		tc_menu_prepare_utf8_arg(launch->args, argsUtf8, (int)sizeof(argsUtf8));
+		tc_menu_prepare_utf8_arg(launch->workdir, workdirUtf8, (int)sizeof(workdirUtf8));
+		ShellExecuteUtf8Strict(g_hwndMain, "open", fileUtf8[0] ? fileUtf8 : NULL,
+			argsUtf8[0] ? argsUtf8 : NULL,
+			workdirUtf8[0] ? workdirUtf8 : NULL, launch->showCmd ? launch->showCmd : SW_SHOWNORMAL);
 		free(launch);
 	}
 }
@@ -823,7 +925,7 @@ void MenuOnTimerTick(HWND hwnd)
 		text[0] = '\0';
 		tc_menu_resolve_label_text(e->itemIndex, e->plainLabel, e->format, e->intervalSec, text, (int)sizeof(text));
 		if (text[0]) {
-			tc_menu_modify_string(hPopupMenu, e->cmdId, MF_BYCOMMAND, e->cmdId, text);
+			tc_menu_modify_string_utf8(hPopupMenu, e->cmdId, MF_BYCOMMAND, e->cmdId, text);
 		}
 	}
 	for (i = 0; i < g_menuAlarmCount; ++i) {
@@ -832,7 +934,7 @@ void MenuOnTimerTick(HWND hwnd)
 		alarmText[0] = '\0';
 		tc_menu_alarm_format_label(e2, alarmText, (int)sizeof(alarmText));
 		if (alarmText[0]) {
-			tc_menu_modify_string(hPopupMenu, e2->id, MF_BYCOMMAND, e2->id, alarmText);
+			tc_menu_modify_string_utf8(hPopupMenu, e2->id, MF_BYCOMMAND, e2->id, alarmText);
 		}
 	}
 }
@@ -908,17 +1010,17 @@ static BOOL tc_menu_get_default_item(int index, char* type, int typeLen, char* a
 static const char* tc_menu_default_label_for_action(const char* action)
 {
 	if (!action || !action[0]) return "";
-	if (_stricmp(action, "taskmgr") == 0) return SafeMyStringAcpBoundary(IDS_TASKMGR);
-	if (_stricmp(action, "cmd") == 0) return SafeMyStringAcpBoundary(IDS_CMD);
-	if (_stricmp(action, "alarm_clock") == 0) return SafeMyStringAcpBoundary(IDS_ALARM_CLOCK);
-	if (_stricmp(action, "pullback") == 0) return SafeMyStringAcpBoundary(IDS_PULLBACK);
-	if (_stricmp(action, "control_panel") == 0) return SafeMyStringAcpBoundary(IDS_CONTROLPNL);
-	if (_stricmp(action, "power_options") == 0) return SafeMyStringAcpBoundary(IDS_POWERPNL);
-	if (_stricmp(action, "network_connections") == 0) return SafeMyStringAcpBoundary(IDS_NETWORKPNL);
-	if (_stricmp(action, "settings_home") == 0) return SafeMyStringAcpBoundary(IDS_SETTING);
-	if (_stricmp(action, "settings_network") == 0) return SafeMyStringAcpBoundary(IDS_NETWORKSTG);
-	if (_stricmp(action, "settings_datetime") == 0) return SafeMyStringAcpBoundary(IDS_PROPDATE);
-	if (_stricmp(action, "remove_drive_dynamic") == 0) return SafeMyStringAcpBoundary(IDS_ABOUTRMVDRV);
+	if (_stricmp(action, "taskmgr") == 0) return MyStringUTF8(IDS_TASKMGR);
+	if (_stricmp(action, "cmd") == 0) return MyStringUTF8(IDS_CMD);
+	if (_stricmp(action, "alarm_clock") == 0) return MyStringUTF8(IDS_ALARM_CLOCK);
+	if (_stricmp(action, "pullback") == 0) return MyStringUTF8(IDS_PULLBACK);
+	if (_stricmp(action, "control_panel") == 0) return MyStringUTF8(IDS_CONTROLPNL);
+	if (_stricmp(action, "power_options") == 0) return MyStringUTF8(IDS_POWERPNL);
+	if (_stricmp(action, "network_connections") == 0) return MyStringUTF8(IDS_NETWORKPNL);
+	if (_stricmp(action, "settings_home") == 0) return MyStringUTF8(IDS_SETTING);
+	if (_stricmp(action, "settings_network") == 0) return MyStringUTF8(IDS_NETWORKSTG);
+	if (_stricmp(action, "settings_datetime") == 0) return MyStringUTF8(IDS_PROPDATE);
+	if (_stricmp(action, "remove_drive_dynamic") == 0) return MyStringUTF8(IDS_ABOUTRMVDRV);
 	return action;
 }
 
@@ -1044,6 +1146,40 @@ static const char* tc_menu_section_cache_find(const TC_MENU_SECTION_CACHE* cache
 	return NULL;
 }
 
+static BOOL tc_menu_encode_hex_from_utf8_bytes(const char* utf8, char* outHex, int outHexBytes)
+{
+	int i;
+	int n;
+	static const char hex[] = "0123456789ABCDEF";
+	WCHAR wtmp[1024];
+	if (!utf8 || !outHex || outHexBytes <= 0) return FALSE;
+	if (utf8[0] == '\0') { outHex[0] = '\0'; return TRUE; }
+	if (tc_utf8_to_utf16(utf8, wtmp, (int)(sizeof(wtmp) / sizeof(wtmp[0]))) <= 0) return FALSE;
+	n = lstrlen(utf8);
+	if (n * 2 + 1 > outHexBytes) return FALSE;
+	for (i = 0; i < n; ++i) {
+		unsigned char b = (unsigned char)utf8[i];
+		outHex[i * 2] = hex[(b >> 4) & 0x0F];
+		outHex[i * 2 + 1] = hex[b & 0x0F];
+	}
+	outHex[n * 2] = '\0';
+	return TRUE;
+}
+
+static BOOL tc_menu_try_get_utf8hex_value(const TC_MENU_SECTION_CACHE* cache, const char* key, char* out, int outBytes)
+{
+	char hexKey[128];
+	const char* hex;
+	if (!cache || !cache->isUtf8 || !key || !key[0] || !out || outBytes <= 0) return FALSE;
+	if (!tc_menu_should_keep_utf8_value(key)) return FALSE;
+	lstrcpyn(hexKey, key, (int)sizeof(hexKey));
+	if (lstrlen(hexKey) + 7 >= (int)sizeof(hexKey)) return FALSE;
+	lstrcat(hexKey, "Utf8Hex");
+	hex = tc_menu_section_cache_find(cache, hexKey);
+	if (!hex || !hex[0]) return FALSE;
+	return tc_menu_try_decode_utf8_hex(hex, out, outBytes);
+}
+
 static int tc_menu_section_cache_get_long(const TC_MENU_SECTION_CACHE* cache, const char* key, int defval)
 {
 	const char* s = tc_menu_section_cache_find(cache, key);
@@ -1065,6 +1201,9 @@ static void tc_menu_section_cache_get_str(const TC_MENU_SECTION_CACHE* cache, co
 {
 	const char* s;
 	if (!out || outBytes <= 0) return;
+	if (tc_menu_try_get_utf8hex_value(cache, key, out, outBytes)) {
+		return;
+	}
 	s = tc_menu_section_cache_find(cache, key);
 	if (s) {
 		lstrcpyn(out, s, outBytes);
@@ -1072,13 +1211,56 @@ static void tc_menu_section_cache_get_str(const TC_MENU_SECTION_CACHE* cache, co
 			WCHAR wbuf[4096];
 			char abuf[4096];
 			if (tc_utf8_to_utf16(out, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) > 0 &&
-				tc_utf16_to_ansi(GetACP(), wbuf, abuf, (int)sizeof(abuf)) > 0) {
+				tc_utf16_to_ansi_compat(0, wbuf, abuf, (int)sizeof(abuf)) > 0) {
 				lstrcpyn(out, abuf, outBytes);
 			}
 		}
 	} else {
 		lstrcpyn(out, defval ? defval : "", outBytes);
 	}
+}
+
+static BOOL tc_menu_backfill_label_utf8hex(TC_MENU_SECTION_CACHE* cache)
+{
+	static const char* kLabelFields[] = {
+		"Label",
+		"AlarmLabelIdle",
+		"AlarmLabelRun",
+		"AlarmLabelPause",
+		"AlarmLabelDone",
+		"AlarmMessage"
+	};
+	int count;
+	int i;
+	int f;
+	BOOL changed = FALSE;
+	if (!cache) return FALSE;
+	count = tc_menu_section_cache_get_long(cache, "ItemCount", 0);
+	if (count < 0) count = 0;
+	if (count > TC_MENU_CUSTOM_MAX_ITEMS) count = TC_MENU_CUSTOM_MAX_ITEMS;
+	for (i = 1; i <= count; ++i) {
+		for (f = 0; f < (int)(sizeof(kLabelFields) / sizeof(kLabelFields[0])); ++f) {
+			char key[96];
+			char hexKey[120];
+			const char* raw;
+			const char* rawHex;
+			char hexBuf[512];
+			wsprintf(key, "Item%d%s", i, kLabelFields[f]);
+			raw = tc_menu_section_cache_find(cache, key);
+			if (!raw || !raw[0]) continue;
+			wsprintf(hexKey, "%sUtf8Hex", key);
+			rawHex = tc_menu_section_cache_find(cache, hexKey);
+			if (rawHex && rawHex[0]) continue;
+			if (tc_menu_encode_hex_from_utf8_bytes(raw, hexBuf, (int)sizeof(hexBuf))) {
+				SetMyRegStr(TC_MENU_SECTION, hexKey, hexBuf);
+				changed = TRUE;
+			}
+		}
+	}
+	if (changed) {
+		tc_menu_section_cache_load(cache);
+	}
+	return changed;
 }
 
 static BOOL tc_menu_is_custom_enabled(void)
@@ -1175,8 +1357,13 @@ static void tc_menu_ensure_ini_defaults(void)
 			wsprintf(key, "Item%dAction", i);
 			SetMyRegStr(TC_MENU_SECTION, key, action);
 			defaultLabel = tc_menu_default_label_for_action(action);
+			char labelHex[512];
 			wsprintf(key, "Item%dLabel", i);
 			SetMyRegStr(TC_MENU_SECTION, key, (char*)defaultLabel);
+			if (tc_menu_encode_hex_from_utf8_bytes(defaultLabel, labelHex, (int)sizeof(labelHex))) {
+				wsprintf(key, "Item%dLabelUtf8Hex", i);
+				SetMyRegStr(TC_MENU_SECTION, key, labelHex);
+			}
 			execType = tc_menu_default_exec_type_for_action(action);
 			wsprintf(key, "Item%dExecType", i);
 			SetMyRegStr(TC_MENU_SECTION, key, (char*)execType);
@@ -1196,6 +1383,7 @@ static void tc_menu_apply_custom_from_ini(HMENU hMenu)
 	int globalLabelUpdateSec;
 	int count;
 	tc_menu_section_cache_load(&cache);
+	tc_menu_backfill_label_utf8hex(&cache);
 	globalLabelUpdateSec = tc_menu_section_cache_get_long(&cache, "LabelFormatUpdateSec", 1);
 	count = tc_menu_section_cache_get_long(&cache, "ItemCount", 0);
 	if (globalLabelUpdateSec < 0) globalLabelUpdateSec = 0;
@@ -1330,7 +1518,7 @@ static void tc_menu_apply_custom_from_ini(HMENU hMenu)
 			lstrcpyn(alarmEntry->soundFile, alarmSoundFile, (int)sizeof(alarmEntry->soundFile));
 			tc_menu_alarm_restore_runtime(alarmEntry);
 			tc_menu_alarm_format_label(alarmEntry, alarmText, (int)sizeof(alarmText));
-			tc_menu_insert_string(hMenu, insertPos, MF_BYPOSITION | MF_STRING, cmdId, alarmText[0] ? alarmText : label);
+			tc_menu_insert_string_utf8(hMenu, insertPos, MF_BYPOSITION | MF_STRING, cmdId, alarmText[0] ? alarmText : label);
 			++insertPos;
 			continue;
 		}
@@ -1344,7 +1532,7 @@ static void tc_menu_apply_custom_from_ini(HMENU hMenu)
 			tc_menu_resolve_label_text(i, label, labelFormat, labelUpdateSec, resolvedLabel, (int)sizeof(resolvedLabel));
 			cmdId = tc_menu_dynamic_register(3, "", "", "", SW_SHOWNORMAL);
 			if (!cmdId) continue;
-			tc_menu_insert_string(hMenu, insertPos, MF_BYPOSITION | MF_STRING, cmdId, resolvedLabel[0] ? resolvedLabel : label);
+			tc_menu_insert_string_utf8(hMenu, insertPos, MF_BYPOSITION | MF_STRING, cmdId, resolvedLabel[0] ? resolvedLabel : label);
 			if (labelFormat[0]) {
 				tc_menu_live_register(cmdId, i, labelUpdateSec, label, labelFormat);
 			}
@@ -1436,7 +1624,7 @@ static void tc_menu_apply_custom_from_ini(HMENU hMenu)
 			continue;
 		}
 
-		tc_menu_insert_string(hMenu, insertPos, MF_BYPOSITION | MF_STRING, cmdId, resolvedLabel[0] ? resolvedLabel : label);
+		tc_menu_insert_string_utf8(hMenu, insertPos, MF_BYPOSITION | MF_STRING, cmdId, resolvedLabel[0] ? resolvedLabel : label);
 		if (labelFormat[0]) {
 			tc_menu_live_register(cmdId, i, labelUpdateSec, label, labelFormat);
 		}
@@ -1444,31 +1632,6 @@ static void tc_menu_apply_custom_from_ini(HMENU hMenu)
 	}
 
 	tc_menu_normalize_separators(hMenu);
-}
-
-static char* SafeMyStringAcpBoundary(UINT id)
-{
-	char* s = MyString(id);
-	if (s[0] && strcmp(s, "NG_String") != 0) {
-		return s;
-	}
-
-	/* Recover once if language module was lost/corrupted at runtime. */
-	{
-		char fname[MAX_PATH];
-		HINSTANCE hInst = LoadLanguageDLL(fname);
-		if (hInst != NULL) {
-			if (g_hInstResource) FreeLibrary(g_hInstResource);
-			g_hInstResource = hInst;
-			strcpy(g_langdllname, fname);
-			s = MyString(id);
-			if (s[0] && strcmp(s, "NG_String") != 0) {
-				return s;
-			}
-		}
-	}
-
-	return "String_Error";
 }
 
 void MenuOnMenuRButtonUp(HWND hwnd, WPARAM wParam, LPARAM lParam)
@@ -1493,11 +1656,6 @@ void MenuOnMenuRButtonUp(HWND hwnd, WPARAM wParam, LPARAM lParam)
    when the clock is right-clicked
    show pop-up menu
 --------------------------------------------------*/
-static BOOL ModifyMenuAcpBoundary(HMENU hMenu, UINT item, UINT flags, UINT_PTR id, UINT strId)
-{
-	return ModifyMenu(hMenu, item, flags, id, SafeMyStringAcpBoundary(strId));
-}
-
 void OnContextMenu(HWND hwnd, HWND hwndClicked, int xPos, int yPos)
 {
 	int i;
@@ -1557,11 +1715,11 @@ void OnContextMenu(HWND hwnd, HWND hwndClicked, int xPos, int yPos)
 			}
 			char tcapCaptureLabel[128];
 			char tcapSettingsLabel[128];
-			wsprintf(tcapCaptureLabel, "%s", SafeMyStringAcpBoundary(IDS_TCAP_CAPTURE));
-			wsprintf(tcapSettingsLabel, "%s", SafeMyStringAcpBoundary(IDS_TCAP_SETTING));
+			lstrcpyn(tcapCaptureLabel, MyStringUTF8(IDS_TCAP_CAPTURE), (int)sizeof(tcapCaptureLabel));
+			lstrcpyn(tcapSettingsLabel, MyStringUTF8(IDS_TCAP_SETTING), (int)sizeof(tcapSettingsLabel));
 			InsertMenu(hPopupMenu, insertPos, MF_BYPOSITION | MF_SEPARATOR, 0, NULL);
-			tc_menu_insert_string(hPopupMenu, insertPos + 1, MF_BYPOSITION | MF_STRING, IDC_TCAP_CAPTURE, tcapCaptureLabel);
-			tc_menu_insert_string(hPopupMenu, insertPos + 2, MF_BYPOSITION | MF_STRING, IDC_TCAP_SETTINGS, tcapSettingsLabel);
+			tc_menu_insert_string_utf8(hPopupMenu, insertPos + 1, MF_BYPOSITION | MF_STRING, IDC_TCAP_CAPTURE, tcapCaptureLabel);
+			tc_menu_insert_string_utf8(hPopupMenu, insertPos + 2, MF_BYPOSITION | MF_STRING, IDC_TCAP_SETTINGS, tcapSettingsLabel);
 		}
 	}
 
@@ -1607,11 +1765,13 @@ void OnContextMenu(HWND hwnd, HWND hwndClicked, int xPos, int yPos)
 
 	if (b_UnplugDriveAvailable && GetMenuState(hPopupMenu, IDC_REMOVE_DRIVE0, MF_BYCOMMAND) != 0xFFFFFFFF)
 	{
-	char   volume_name[256], volume_system[256];
+	char   volume_name[768];
+	WCHAR  volume_name_w[256], volume_system_w[256];
 	DWORD	serial, length, flags;
 	DWORD   dwDrive;
 	INT     nDrive;
 	char	driveLetter[20];
+	WCHAR	driveLetterW[20];
 	char	strTemp_Win10[256];
 
 	char	driveList_Win10[10][265];
@@ -1652,8 +1812,9 @@ void OnContextMenu(HWND hwnd, HWND hwndClicked, int xPos, int yPos)
 			if (dwDrive & (1 << nDrive)) {
 
 				wsprintf(driveLetter, "%c:\\", 'A' + nDrive);
+				wsprintfW(driveLetterW, L"%c:\\", L'A' + nDrive);
 
-				UINT tempDriveType = GetDriveType(driveLetter);
+				UINT tempDriveType = GetDriveTypeW(driveLetterW);
 				
 				if (b_DebugLog && tempDriveType != DRIVE_UNKNOWN)
 				{
@@ -1663,8 +1824,11 @@ void OnContextMenu(HWND hwnd, HWND hwndClicked, int xPos, int yPos)
 
 				if (tempDriveType == DRIVE_REMOVABLE)
 				{
-					if (GetVolumeInformation(driveLetter, volume_name, sizeof(volume_name), &serial, &length, &flags, volume_system, sizeof(volume_system)) != 0)
+					if (GetVolumeInformationW(driveLetterW, volume_name_w, (DWORD)(sizeof(volume_name_w) / sizeof(volume_name_w[0])), &serial, &length, &flags, volume_system_w, (DWORD)(sizeof(volume_system_w) / sizeof(volume_system_w[0]))) != 0)
 					{
+						if (tc_utf16_to_utf8(volume_name_w, volume_name, (int)sizeof(volume_name)) <= 0) {
+							volume_name[0] = '\0';
+						}
 						//wsprintf(driveList_Win10[driveIndex_Win10], "%s%s (%c:)", stringMenuItem_RemoveDriveHeader, volume_name, ('A' + nDrive));
 						wsprintf(driveList_Win10[driveIndex_Win10], "%s(%c) %s", stringMenuItem_RemoveDriveHeader, ('A' + nDrive), volume_name);
 						wsprintf(driveLetter_Win10[driveIndex_Win10], "%c", 'A' + nDrive);
@@ -1723,8 +1887,11 @@ void OnContextMenu(HWND hwnd, HWND hwndClicked, int xPos, int yPos)
 						{
 							if (tpStorageDeviceDescripter->BusType == BusTypeUsb)	// BusTypeUsb = 0x7
 							{
-								if (GetVolumeInformation(driveLetter, volume_name, sizeof(volume_name), &serial, &length, &flags, volume_system, sizeof(volume_system)) != 0)
+								if (GetVolumeInformationW(driveLetterW, volume_name_w, (DWORD)(sizeof(volume_name_w) / sizeof(volume_name_w[0])), &serial, &length, &flags, volume_system_w, (DWORD)(sizeof(volume_system_w) / sizeof(volume_system_w[0]))) != 0)
 								{
+									if (tc_utf16_to_utf8(volume_name_w, volume_name, (int)sizeof(volume_name)) <= 0) {
+										volume_name[0] = '\0';
+									}
 									wsprintf(driveList_Win10[driveIndex_Win10], "%s(%c) %s (HDD)", stringMenuItem_RemoveDriveHeader, ('A' + nDrive), volume_name);
 									wsprintf(driveLetter_Win10[driveIndex_Win10], "%c", 'A' + nDrive);
 									driveIndex_Win10++;
@@ -1761,21 +1928,21 @@ void OnContextMenu(HWND hwnd, HWND hwndClicked, int xPos, int yPos)
 		if (driveIndex_Win10 > 1)
 		{
 			driveIndex_Win10--;
-			tc_menu_modify_string(hPopupMenu, IDC_REMOVE_DRIVE0, MF_BYCOMMAND, IDC_REMOVE_DRIVE0 + driveIndex_Win10, driveList_Win10[driveIndex_Win10]);
+			tc_menu_modify_string_utf8(hPopupMenu, IDC_REMOVE_DRIVE0, MF_BYCOMMAND, IDC_REMOVE_DRIVE0 + driveIndex_Win10, driveList_Win10[driveIndex_Win10]);
 			driveIndex_Win10--;
 			for (i = driveIndex_Win10; i >= 0; i--)
 			{
-				tc_menu_insert_string(hPopupMenu, IDC_REMOVE_DRIVE0 + i + 1, MF_BYCOMMAND, IDC_REMOVE_DRIVE0 + i, driveList_Win10[i]);
+				tc_menu_insert_string_utf8(hPopupMenu, IDC_REMOVE_DRIVE0 + i + 1, MF_BYCOMMAND, IDC_REMOVE_DRIVE0 + i, driveList_Win10[i]);
 			}
 		}
 		else if (driveIndex_Win10 == 1)
 		{
-			tc_menu_modify_string(hPopupMenu, IDC_REMOVE_DRIVE0, MF_BYCOMMAND, IDC_REMOVE_DRIVE0, driveList_Win10[0]);
+			tc_menu_modify_string_utf8(hPopupMenu, IDC_REMOVE_DRIVE0, MF_BYCOMMAND, IDC_REMOVE_DRIVE0, driveList_Win10[0]);
 			EnableMenuItem(hPopupMenu, IDC_REMOVE_DRIVE0, MF_BYCOMMAND | MF_ENABLED);
 		}
 		else
 		{
-			tc_menu_modify_string(hPopupMenu, IDC_REMOVE_DRIVE0, MF_BYCOMMAND, IDC_REMOVE_DRIVE0, stringMenuItem_RemoveDriveNoDrive);
+			tc_menu_modify_string_utf8(hPopupMenu, IDC_REMOVE_DRIVE0, MF_BYCOMMAND, IDC_REMOVE_DRIVE0, stringMenuItem_RemoveDriveNoDrive);
 			EnableMenuItem(hPopupMenu, IDC_REMOVE_DRIVE0, MF_BYCOMMAND | MF_GRAYED);
 		}
 
@@ -1825,7 +1992,7 @@ void OnTClockCommand(HWND hwnd, WORD wID, WORD wCode)
 	{
 		case IDC_SHOWDIR: // Show Directory
 			if (b_DebugLog) WriteDebug_New2("[menu.c][OnTClockCommand] IDC_SHOWDIR received");
-			ShellExecuteUtf8Compat(g_hwndMain, NULL, g_mydir, NULL, NULL, SW_SHOWNORMAL);
+			ShellExecuteUtf8Strict(g_hwndMain, NULL, g_mydir, NULL, NULL, SW_SHOWNORMAL);
 			break;
 		case IDC_TCAP_CAPTURE: // TCapture capture default profile
 		{
@@ -1862,7 +2029,7 @@ void OnTClockCommand(HWND hwnd, WORD wID, WORD wCode)
 			}
 			if (PathFileExists(tcapPath)) {
 				const char* tcapSettingsParams = b_EnglishMenu ? "--settings --lang en" : "--settings --lang ja";
-				ShellExecuteUtf8Compat(g_hwndMain, "open", tcapPath, tcapSettingsParams, g_mydir, SW_SHOWNORMAL);
+				ShellExecuteUtf8Strict(g_hwndMain, "open", tcapPath, tcapSettingsParams, g_mydir, SW_SHOWNORMAL);
 			}
 			return;
 		}
@@ -1996,7 +2163,7 @@ void OnTClockCommand(HWND hwnd, WORD wID, WORD wCode)
 			if (b_DebugLog) WriteDebug_New2("Remove Drive Application will be executed:");
 			if (b_DebugLog) WriteDebug_New2(strAppTemp_Win10);
 			if (b_DebugLog) WriteDebug_New2(driveLetter_Win10[wID - IDC_REMOVE_DRIVE0]);
-			ShellExecuteUtf8Compat(NULL, "open", strAppTemp_Win10, driveLetter_Win10[wID - IDC_REMOVE_DRIVE0], NULL, SW_SHOWNORMAL);
+			ShellExecuteUtf8Strict(NULL, "open", strAppTemp_Win10, driveLetter_Win10[wID - IDC_REMOVE_DRIVE0], NULL, SW_SHOWNORMAL);
 			return;
 		}
 
@@ -2072,7 +2239,6 @@ void InitializeMenuItems(void)
 {
 
 	extern BOOL b_EnglishMenu;
-	char s[64];
 	char stringLTE[32];
 
 
@@ -2082,8 +2248,8 @@ void InitializeMenuItems(void)
 
 
 
-	strcpy(stringMenuItem_RemoveDriveHeader, SafeMyStringAcpBoundary(IDS_RMVDRVHEAD));
-	strcpy(stringMenuItem_RemoveDriveNoDrive, SafeMyStringAcpBoundary(IDS_NORMVDRV));
+	lstrcpyn(stringMenuItem_RemoveDriveHeader, MyStringUTF8(IDS_RMVDRVHEAD), (int)sizeof(stringMenuItem_RemoveDriveHeader));
+	lstrcpyn(stringMenuItem_RemoveDriveNoDrive, MyStringUTF8(IDS_NORMVDRV), (int)sizeof(stringMenuItem_RemoveDriveNoDrive));
 
 
 	//if (b_AcceptRisk)
@@ -2099,34 +2265,33 @@ void InitializeMenuItems(void)
 	//	DeleteMenu(hPopupMenu, IDC_TOGGLE_CLOUD_APP, MF_BYCOMMAND);
 	//}
 
-	wsprintf(s, SafeMyStringAcpBoundary(IDS_MENURETRIEVE));
 //	ModifyMenu(hPopupMenu, IDC_TOGGLE_DATAPLANFUNC, MF_BYCOMMAND, IDC_TOGGLE_DATAPLANFUNC, s);
 
-	ModifyMenuAcpBoundary(hPopupMenu, IDC_TASKMAN, MF_BYCOMMAND, IDC_TASKMAN, IDS_TASKMGR);
-	ModifyMenuAcpBoundary(hPopupMenu, IDC_CMD, MF_BYCOMMAND, IDC_CMD, IDS_CMD);
-	ModifyMenuAcpBoundary(hPopupMenu, IDC_ALARM_CLOCK, MF_BYCOMMAND, IDC_ALARM_CLOCK, IDS_ALARM_CLOCK);
-	ModifyMenuAcpBoundary(hPopupMenu, IDC_PULLBACK, MF_BYCOMMAND, IDC_PULLBACK, IDS_PULLBACK);
-	ModifyMenuAcpBoundary(hPopupMenu, IDC_VISTACALENDAR, MF_BYCOMMAND, IDC_VISTACALENDAR, IDS_VISTACALENDAR);
-	ModifyMenuAcpBoundary(hPopupMenu, IDC_SHOWAVAILABLENETWORKS, MF_BYCOMMAND, IDC_SHOWAVAILABLENETWORKS, IDS_SHOWAVAILABLENETWORKS);
-	ModifyMenuAcpBoundary(hPopupMenu, IDC_CONTROLPNL, MF_BYCOMMAND, IDC_CONTROLPNL, IDS_CONTROLPNL);
-	ModifyMenuAcpBoundary(hPopupMenu, IDC_POWERPNL, MF_BYCOMMAND, IDC_POWERPNL, IDS_POWERPNL);
-	ModifyMenuAcpBoundary(hPopupMenu, IDC_NETWORKPNL, MF_BYCOMMAND, IDC_NETWORKPNL, IDS_NETWORKPNL);
-	ModifyMenuAcpBoundary(hPopupMenu, IDC_SETTING, MF_BYCOMMAND, IDC_SETTING, IDS_SETTING);
-	ModifyMenuAcpBoundary(hPopupMenu, IDC_NETWORKSTG, MF_BYCOMMAND, IDC_NETWORKSTG, IDS_NETWORKSTG);
-	ModifyMenuAcpBoundary(hPopupMenu, IDC_DATETIME_Win10, MF_BYCOMMAND, IDC_DATETIME_Win10, IDS_PROPDATE);
-	ModifyMenuAcpBoundary(hPopupMenu, IDC_REMOVE_DRIVE0, MF_BYCOMMAND, IDC_REMOVE_DRIVE0, IDS_ABOUTRMVDRV);
-	ModifyMenuAcpBoundary(hPopupMenu, IDC_SHOWDIR, MF_BYCOMMAND, IDC_SHOWDIR, IDS_OPENTCFOLDER);
+	tc_menu_modify_string_utf8(hPopupMenu, IDC_TASKMAN, MF_BYCOMMAND, IDC_TASKMAN, MyStringUTF8(IDS_TASKMGR));
+	tc_menu_modify_string_utf8(hPopupMenu, IDC_CMD, MF_BYCOMMAND, IDC_CMD, MyStringUTF8(IDS_CMD));
+	tc_menu_modify_string_utf8(hPopupMenu, IDC_ALARM_CLOCK, MF_BYCOMMAND, IDC_ALARM_CLOCK, MyStringUTF8(IDS_ALARM_CLOCK));
+	tc_menu_modify_string_utf8(hPopupMenu, IDC_PULLBACK, MF_BYCOMMAND, IDC_PULLBACK, MyStringUTF8(IDS_PULLBACK));
+	tc_menu_modify_string_utf8(hPopupMenu, IDC_VISTACALENDAR, MF_BYCOMMAND, IDC_VISTACALENDAR, MyStringUTF8(IDS_VISTACALENDAR));
+	tc_menu_modify_string_utf8(hPopupMenu, IDC_SHOWAVAILABLENETWORKS, MF_BYCOMMAND, IDC_SHOWAVAILABLENETWORKS, MyStringUTF8(IDS_SHOWAVAILABLENETWORKS));
+	tc_menu_modify_string_utf8(hPopupMenu, IDC_CONTROLPNL, MF_BYCOMMAND, IDC_CONTROLPNL, MyStringUTF8(IDS_CONTROLPNL));
+	tc_menu_modify_string_utf8(hPopupMenu, IDC_POWERPNL, MF_BYCOMMAND, IDC_POWERPNL, MyStringUTF8(IDS_POWERPNL));
+	tc_menu_modify_string_utf8(hPopupMenu, IDC_NETWORKPNL, MF_BYCOMMAND, IDC_NETWORKPNL, MyStringUTF8(IDS_NETWORKPNL));
+	tc_menu_modify_string_utf8(hPopupMenu, IDC_SETTING, MF_BYCOMMAND, IDC_SETTING, MyStringUTF8(IDS_SETTING));
+	tc_menu_modify_string_utf8(hPopupMenu, IDC_NETWORKSTG, MF_BYCOMMAND, IDC_NETWORKSTG, MyStringUTF8(IDS_NETWORKSTG));
+	tc_menu_modify_string_utf8(hPopupMenu, IDC_DATETIME_Win10, MF_BYCOMMAND, IDC_DATETIME_Win10, MyStringUTF8(IDS_PROPDATE));
+	tc_menu_modify_string_utf8(hPopupMenu, IDC_REMOVE_DRIVE0, MF_BYCOMMAND, IDC_REMOVE_DRIVE0, MyStringUTF8(IDS_ABOUTRMVDRV));
+	tc_menu_modify_string_utf8(hPopupMenu, IDC_SHOWDIR, MF_BYCOMMAND, IDC_SHOWDIR, MyStringUTF8(IDS_OPENTCFOLDER));
 	{
 		char tcapCaptureLabel[128];
 		char tcapSettingsLabel[128];
-		wsprintf(tcapCaptureLabel, "%s", SafeMyStringAcpBoundary(IDS_TCAP_CAPTURE));
-		wsprintf(tcapSettingsLabel, "%s", SafeMyStringAcpBoundary(IDS_TCAP_SETTING));
-		tc_menu_modify_string(hPopupMenu, IDC_TCAP_CAPTURE, MF_BYCOMMAND, IDC_TCAP_CAPTURE, tcapCaptureLabel);
-		tc_menu_modify_string(hPopupMenu, IDC_TCAP_SETTINGS, MF_BYCOMMAND, IDC_TCAP_SETTINGS, tcapSettingsLabel);
+		lstrcpyn(tcapCaptureLabel, MyStringUTF8(IDS_TCAP_CAPTURE), (int)sizeof(tcapCaptureLabel));
+		lstrcpyn(tcapSettingsLabel, MyStringUTF8(IDS_TCAP_SETTING), (int)sizeof(tcapSettingsLabel));
+		tc_menu_modify_string_utf8(hPopupMenu, IDC_TCAP_CAPTURE, MF_BYCOMMAND, IDC_TCAP_CAPTURE, tcapCaptureLabel);
+		tc_menu_modify_string_utf8(hPopupMenu, IDC_TCAP_SETTINGS, MF_BYCOMMAND, IDC_TCAP_SETTINGS, tcapSettingsLabel);
 	}
-	ModifyMenuAcpBoundary(hPopupMenu, IDC_SHOWPROP, MF_BYCOMMAND, IDC_SHOWPROP, IDS_PROPERTY);
-	ModifyMenuAcpBoundary(hPopupMenu, IDC_EXIT, MF_BYCOMMAND, IDC_EXIT, IDS_EXITTCLOCK);
-	ModifyMenuAcpBoundary(hPopupMenu, IDC_RESTART, MF_BYCOMMAND, IDC_RESTART, IDS_RESTART);
+	tc_menu_modify_string_utf8(hPopupMenu, IDC_SHOWPROP, MF_BYCOMMAND, IDC_SHOWPROP, MyStringUTF8(IDS_PROPERTY));
+	tc_menu_modify_string_utf8(hPopupMenu, IDC_EXIT, MF_BYCOMMAND, IDC_EXIT, MyStringUTF8(IDS_EXITTCLOCK));
+	tc_menu_modify_string_utf8(hPopupMenu, IDC_RESTART, MF_BYCOMMAND, IDC_RESTART, MyStringUTF8(IDS_RESTART));
 
 
 

@@ -72,6 +72,7 @@ void RedrawTClock(void);
 void SetTClockFont(void);
 void GetTaskbarSize(void);
 void RestartOnRefresh(void);
+static void NormalizeUtf8InPlaceNoWriteback(char* value, int valueBytes);
 static void RefreshAutoBackColors(BOOL force, char* reason);
 static void RefreshClockWorkFont(void);
 static void StartupAutoAdjustPass(void);
@@ -6848,6 +6849,16 @@ void checkDisplayStatus_Win10(void)
 
 }
 
+static void NormalizeUtf8InPlaceNoWriteback(char* value, int valueBytes)
+{
+	WCHAR wbuf[MAX_PATH];
+	char utf8[MAX_PATH];
+	if (!value || valueBytes <= 0 || value[0] == '\0') return;
+	if (tc_utf8_to_utf16(value, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) <= 0) return;
+	if (tc_utf16_to_utf8(wbuf, utf8, (int)sizeof(utf8)) <= 0) return;
+	lstrcpyn(value, utf8, valueBytes);
+}
+
 void RestartTClockFromDLL(void)
 {
 	if (b_DebugLog) writeDebugLog_Win10("TClock will be restarted ...", 999);
@@ -6856,7 +6867,8 @@ void RestartTClockFromDLL(void)
 	char fname[MAX_PATH];
 	strcpy(fname, g_mydir_dll);
 	add_title(fname, "TClock-Win11.exe");
-	ShellExecuteUtf8Compat_DLL(NULL, "open", fname, "/restart", NULL, SW_HIDE);
+	NormalizeUtf8InPlaceNoWriteback(fname, (int)sizeof(fname));
+	ShellExecuteUtf8Strict_DLL(NULL, "open", fname, "/restart", NULL, SW_HIDE);
 	/* Prevent WM_DESTROY auto-restart from launching a second child process. */
 	bAutoRestart = FALSE;
 	/* Ensure old EXE process is terminated even when WM_DESTROY branch is skipped. */

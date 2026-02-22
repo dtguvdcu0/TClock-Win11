@@ -91,8 +91,8 @@ static BOOL IsUserAdmin(void);
 static BOOL AddMessageFilters(void);
 static BOOL HasCommandLineOption(const wchar_t *option);
 static BOOL PrefixEqualsNoCaseW(const wchar_t* text, const wchar_t* prefix, int prefixLen);
-static int MessageBoxUtf8Compat(HWND hwnd, const char* text, const char* caption, UINT type);
-static int DecodeDialogAnsiToWide(const char* ansi, wchar_t* wide, int wideCch);
+static int MessageBoxUtf8Strict(HWND hwnd, const char* text, const char* caption, UINT type);
+static int DecodeDialogUtf8StrictToWide(const char* utf8, wchar_t* wide, int wideCch);
 static BOOL SetHideClockPolicyValue(DWORD value);
 static BOOL IsHideClockPolicyEnabled(void);
 static BOOL WaitExplorerReady(DWORD timeoutMs);
@@ -215,16 +215,13 @@ static BOOL HasCommandLineOption(const wchar_t *option)
 	return FALSE;
 }
 
-static int DecodeDialogAnsiToWide(const char* ansi, wchar_t* wide, int wideCch)
+static int DecodeDialogUtf8StrictToWide(const char* utf8, wchar_t* wide, int wideCch)
 {
-	int ret;
-	if (!ansi) ansi = "";
-	ret = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, ansi, -1, wide, wideCch);
-	if (ret > 0) return ret;
-	return MultiByteToWideChar(CP_ACP, 0, ansi, -1, wide, wideCch);
+	if (!utf8) utf8 = "";
+	return MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8, -1, wide, wideCch);
 }
 
-static int MessageBoxUtf8Compat(HWND hwnd, const char* text, const char* caption, UINT type)
+static int MessageBoxUtf8Strict(HWND hwnd, const char* text, const char* caption, UINT type)
 {
 	wchar_t wText[2048];
 	wchar_t wCaption[256];
@@ -234,12 +231,12 @@ static int MessageBoxUtf8Compat(HWND hwnd, const char* text, const char* caption
 	if (!text) text = "";
 	if (!caption) caption = "TClock-Win11";
 
-	retText = DecodeDialogAnsiToWide(text, wText, sizeof(wText) / sizeof(wText[0]));
+	retText = DecodeDialogUtf8StrictToWide(text, wText, sizeof(wText) / sizeof(wText[0]));
 	if (retText <= 0) {
 		lstrcpynW(wText, L"[Message decode error]", sizeof(wText) / sizeof(wText[0]));
 	}
 
-	retCaption = DecodeDialogAnsiToWide(caption, wCaption, sizeof(wCaption) / sizeof(wCaption[0]));
+	retCaption = DecodeDialogUtf8StrictToWide(caption, wCaption, sizeof(wCaption) / sizeof(wCaption[0]));
 	if (retCaption <= 0) {
 			lstrcpynW(wCaption, L"TClock-Win11", sizeof(wCaption) / sizeof(wCaption[0]));
 	}
@@ -346,17 +343,34 @@ static LONG GetTCaptureEnableConfig(void)
     return (v != 0) ? 1 : 0;
 }
 
+static void NormalizeSettingUtf8InPlace(char* value, int valueBytes)
+{
+    WCHAR wbuf[MAX_PATH];
+    char utf8[MAX_PATH];
+    if (!value || valueBytes <= 0 || value[0] == '\0') return;
+    if (tc_utf8_to_utf16(value, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) <= 0) return;
+    if (tc_utf16_to_utf8(wbuf, utf8, (int)sizeof(utf8)) <= 0) return;
+    lstrcpyn(value, utf8, valueBytes);
+}
+
 static void GetTCapturePathConfig(char* outPath, int outPathLen)
 {
     char legacyPath[MAX_PATH];
+    char before[MAX_PATH];
     if (!outPath || outPathLen <= 0) return;
     outPath[0] = '\0';
 
     GetMyRegStr("TCapture", "Path", outPath, outPathLen, "");
-    if (outPath[0] != '\0') return;
+    if (outPath[0] != '\0') {
+        lstrcpyn(before, outPath, (int)sizeof(before));
+        NormalizeSettingUtf8InPlace(outPath, outPathLen);
+        if (lstrcmp(before, outPath) != 0) SetMyRegStr("TCapture", "Path", outPath);
+        return;
+    }
 
     GetMyRegStr("ETC", "TCapturePath", legacyPath, MAX_PATH, "TCapture.exe");
     if (legacyPath[0] == '\0') strcpy(legacyPath, "TCapture.exe");
+    NormalizeSettingUtf8InPlace(legacyPath, (int)sizeof(legacyPath));
     lstrcpyn(outPath, legacyPath, outPathLen);
     SetMyRegStr("TCapture", "Path", outPath);
     DelMyReg("ETC", "TCapturePath");
@@ -409,7 +423,7 @@ static void LaunchTCaptureAgentIfEnabled(void)
     SyncTCaptureIntegrationIniPath(exePath);
 
     launchParams = b_EnglishMenu ? "--agent --lang en" : "--agent --lang ja";
-    launchResult = ShellExecuteUtf8Compat(NULL, "open", exePath, launchParams, g_mydir, SW_HIDE);
+    launchResult = ShellExecuteUtf8Strict(NULL, "open", exePath, launchParams, g_mydir, SW_HIDE);
     if ((INT_PTR)launchResult <= 32 && b_DebugLog) {
         WriteDebug_New2("[exemain.c] Failed to launch TCapture agent");
     }
@@ -430,7 +444,7 @@ BOOL WaitQuitPrevTClock(int cycle)
 		Sleep(100);
 	}
 
-	MessageBoxUtf8Compat(NULL, "TClock-Win11の再起動がうまくいかなかった可能性があります。現時点で正常に時計が改造されていない場合は、タスクマネージャーからTClock-Win11のプロセスを強制終了してください。\n\nRestarting TClock-Win11 may be unsuccessful. If you don't see the modified Clock on Taskbar, please kill the previous TClock-Win11 in the Taskmanager.",
+	MessageBoxUtf8Strict(NULL, "TClock-Win11の再起動がうまくいかなかった可能性があります。現時点で正常に時計が改造されていない場合は、タスクマネージャーからTClock-Win11のプロセスを強制終了してください。\n\nRestarting TClock-Win11 may be unsuccessful. If you don't see the modified Clock on Taskbar, please kill the previous TClock-Win11 in the Taskmanager.",
 		"TClock-Win11", MB_ICONEXCLAMATION | MB_SETFOREGROUND);
 
 	return TRUE;
@@ -497,7 +511,7 @@ static UINT WINAPI TclockExeMain(void)
 	//	}
 	//	if (hwnd != NULL)
 	//	{
-	//		MessageBoxUtf8Compat(NULL, "既存のTClock-Win10のプロセス終了に時間がかかっています。『OK』を押しても再起動しない場合にはタスクマネージャーからTClock-Win10のプロセスを強制終了してください。\n\nTerminating Previous TClock-Win10 is taking a long time. If you do not have the restarted TClock-Win10 even after clicking \"OK\", please kill the previous TClock-Win10 in the Taskmanager.",
+	//		MessageBoxUtf8Strict(NULL, "既存のTClock-Win10のプロセス終了に時間がかかっています。『OK』を押しても再起動しない場合にはタスクマネージャーからTClock-Win10のプロセスを強制終了してください。\n\nTerminating Previous TClock-Win10 is taking a long time. If you do not have the restarted TClock-Win10 even after clicking \"OK\", please kill the previous TClock-Win10 in the Taskmanager.",
 	//			"TClock-Win10", MB_ICONEXCLAMATION | MB_SETFOREGROUND);
 	//		hwnd = FindWindowW(szClassName, szWindowText);
 	//		if (hwnd != NULL) return 1;
@@ -512,7 +526,7 @@ static UINT WINAPI TclockExeMain(void)
 
 	// check wow64
 	if (IsWow64()) {
-		MessageBoxUtf8Compat(NULL, "本実行ファイルは32bit (x86)バイナリです。\n64bit環境ではx64バイナリを使用する必要があります。\n\nThis is 32bit (x86) binary.\nx64 binary is required for 64bit Windows.",
+		MessageBoxUtf8Strict(NULL, "本実行ファイルは32bit (x86)バイナリです。\n64bit環境ではx64バイナリを使用する必要があります。\n\nThis is 32bit (x86) binary.\nx64 binary is required for 64bit Windows.",
 			"TClock-Win11", MB_ICONERROR | MB_SETFOREGROUND);
 		return 1;
 	}
@@ -529,7 +543,7 @@ static UINT WINAPI TclockExeMain(void)
 	// Call WINAPI CheckWinVersion_Win10() in tcdll.dll
 	if (CheckWinVersion_Win10() < 0x0400) // = WIN10, 1024
 	{
-		MessageBoxUtf8Compat(NULL, "本アプリケーションはWindows10以降用です。\n\nThis application works on Windows 10(Anniversary Update) or later.",
+		MessageBoxUtf8Strict(NULL, "本アプリケーションはWindows10以降用です。\n\nThis application works on Windows 10(Anniversary Update) or later.",
 			"TClock-Win11", MB_ICONERROR | MB_SETFOREGROUND);
 		return 1;
 	}
@@ -538,7 +552,7 @@ static UINT WINAPI TclockExeMain(void)
 
 
 	// get the path where .exe is positioned
-	GetModuleFileName(g_hInst, g_mydir, MAX_PATH);	//この時点ではフルパス付きのtclock実行ファイル名を取得
+	GetModuleFileNameUTF8(g_hInst, g_mydir, MAX_PATH);	//この時点ではフルパス付きのtclock実行ファイル名を取得
 	char fname[MAX_PATH];
 	strcpy(fname, g_mydir);		//exeのファイル名がついたままのg_mydirをfnameに入れて
 	getExeVersion(fname);		//fileバージョンを取得してexeVersionM, exeVersionLを取得->DLLバージョンチェックに利用
@@ -548,7 +562,7 @@ static UINT WINAPI TclockExeMain(void)
 
 	//CheckRegistry();
 	if (!CheckRegistry_Win10()) {		//名前にはRegistryとあるが、iniファイルを探し、なければ作成する関数
-		MessageBoxUtf8Compat(NULL, "tclock-win11.iniが見当たらず、また作成に失敗しました。アプリケーションを終了します。\n\nCould not access / create tclock-win11.ini.",
+		MessageBoxUtf8Strict(NULL, "tclock-win11.iniが見当たらず、また作成に失敗しました。アプリケーションを終了します。\n\nCould not access / create tclock-win11.ini.",
 			"TClock-Win11", MB_ICONERROR | MB_SETFOREGROUND);
 		return 1;
 	}
@@ -565,7 +579,7 @@ static UINT WINAPI TclockExeMain(void)
 			Sleep(100);
 		}
 		if (hwnd == NULL) {
-			MessageBoxUtf8Compat(NULL,
+			MessageBoxUtf8Strict(NULL,
 				"TClock-Win11 is already launching in another process. Please wait a moment and retry.",
 				"TClock-Win11", MB_ICONEXCLAMATION | MB_SETFOREGROUND);
 			return 1;
@@ -587,7 +601,7 @@ static UINT WINAPI TclockExeMain(void)
 		}
 		else
 		{
-			int reply = MessageBoxUtf8Compat(NULL, "TClockのプロセスが稼働中です。再起動しますか？\n『OK』を選ぶと現在のプロセスを終了して新プロセスで再起動します。\n『キャンセル』を選ぶと現在のプロセスを維持します。\n\nPrevious TClock process is still running. Will you restart TClock?\nChoosing:\n\"OK\" initiates restarting from existing TClock Process.\n\"Cancel\" simply aborts this new process",
+			int reply = MessageBoxUtf8Strict(NULL, "TClockのプロセスが稼働中です。再起動しますか？\n『OK』を選ぶと現在のプロセスを終了して新プロセスで再起動します。\n『キャンセル』を選ぶと現在のプロセスを維持します。\n\nPrevious TClock process is still running. Will you restart TClock?\nChoosing:\n\"OK\" initiates restarting from existing TClock Process.\n\"Cancel\" simply aborts this new process",
 				"TClock-Win11", MB_ICONEXCLAMATION | MB_OKCANCEL | MB_DEFBUTTON1 | MB_SETFOREGROUND);
 			if (reply == IDOK)
 			{
@@ -654,7 +668,7 @@ static UINT WINAPI TclockExeMain(void)
 	//起動時に前回終了時の連続リスタート回数を取得する
 	countRestart = GetMyRegLong("Status_DoNotEdit", "CountAutoRestart", 0);
 	if (countRestart >= MAX_AUTORESTART) {
-		MessageBoxUtf8Compat(NULL, "クラッシュループを検出しました。アプリケーションを終了します。\n\nTClock is terminated because of repeting crash.",
+		MessageBoxUtf8Strict(NULL, "クラッシュループを検出しました。アプリケーションを終了します。\n\nTClock is terminated because of repeting crash.",
 			"TClock-Win11", MB_ICONERROR | MB_SETFOREGROUND);
 		SetMyRegLong("Status_DoNotEdit", "CountAutoRestart", 0);
 		return 1;
@@ -725,7 +739,7 @@ static UINT WINAPI TclockExeMain(void)
 
 
 	if(OleInitialize(NULL) != S_OK){	//STA（シングルスレッドアパートメント）スレッドとして初期化し、OLE用の追加処理を行う…らしい。
-		MessageBoxUtf8Compat(NULL, "OLEの初期化に失敗しました。\n\nFailed to initialize OLE.", "TClock-Win11", MB_ICONERROR);
+		MessageBoxUtf8Strict(NULL, "OLEの初期化に失敗しました。\n\nFailed to initialize OLE.", "TClock-Win11", MB_ICONERROR);
 	}
 
 	g_hwndMain = hwnd;	//メイン隠しウィンドウのハンドルをグローバル変数のg_hwndMainにコピー
@@ -1180,7 +1194,7 @@ LRESULT CALLBACK WndProc(HWND hwnd,	UINT message, WPARAM wParam, LPARAM lParam)	
 			strcpy(fname, g_mydir);
 			add_title(fname, "TClock-Win11.exe");
             b_SkipHideClockRestore = TRUE;
-			ShellExecuteUtf8Compat(NULL, "open", fname, "/restart", NULL, SW_HIDE);
+			ShellExecuteUtf8Strict(NULL, "open", fname, "/restart", NULL, SW_HIDE);
 			/* Avoid double-restart: this path already spawned a new process. */
 			g_hwndClock = NULL;
 			PostMessage(hwnd, WM_CLOSE, 0, 0);
@@ -1292,10 +1306,10 @@ void TerminateTClockFromDLL(HWND hwnd)
 ---------------------------------------------------------*/
 void InitError(int n)
 {
-	char s[160];
+	wchar_t s[160];
 
-	wsprintf(s, "%s: %d", MyStringUTF8(IDS_NOTFOUNDCLOCK), n);
-	MyMessageBoxUTF8(NULL, s, NULL, MB_OK, MB_ICONEXCLAMATION);
+	wsprintfW(s, L"%s: %d", MyStringW(IDS_NOTFOUNDCLOCK), n);
+	MyMessageBoxW(NULL, s, NULL, MB_OK, MB_ICONEXCLAMATION);
 }
 
 /*-------------------------------------------------------
@@ -1443,7 +1457,7 @@ HINSTANCE LoadLanguageDLL(char *langdllname)
 
 	if(hfind == INVALID_HANDLE_VALUE)
 	{
-		GetModuleFileName(g_hInst, fname, MAX_PATH);
+		GetModuleFileNameUTF8(g_hInst, fname, MAX_PATH);
 		del_title(fname);
 
 		add_title(fname, "tclang-win11.dll");
@@ -1516,14 +1530,15 @@ BOOL CheckDLL(char *fname)
 	}
 	if(!br)
 	{
-		char msg[MAX_PATH+30];
-		wchar_t wmsg[MAX_PATH+30];
+		char titleA[MAX_PATH + 1];
+		wchar_t wTitle[MAX_PATH + 1];
+		wchar_t wmsg[MAX_PATH + 64];
 
-		strcpy(msg, "Invalid file version: ");
-		get_title(msg + strlen(msg), fname);
-		if (MultiByteToWideChar(CP_ACP, 0, msg, -1, wmsg, MAX_PATH+30) <= 0) {
-			lstrcpynW(wmsg, L"[Message decode error]", MAX_PATH+30);
+		get_title(titleA, fname);
+		if (tc_utf8_to_utf16(titleA, wTitle, (int)(sizeof(wTitle) / sizeof(wTitle[0]))) <= 0) {
+			lstrcpynW(wTitle, L"[decode error]", (int)(sizeof(wTitle) / sizeof(wTitle[0])));
 		}
+		wsprintfW(wmsg, L"Invalid file version: %s", wTitle);
 		MyMessageBoxW(NULL, wmsg,
 			NULL, MB_OK, MB_ICONEXCLAMATION);
 	}
@@ -1534,6 +1549,7 @@ BOOL CheckDLL(char *fname)
 void My2chHelp(HWND hwnd)
 {
 	char helpurl[1024];
+	char helpurlUtf8[1024];
 
 	GetMyRegStr("ETC", "2chHelpURL", helpurl, 1024, "");
 	if (helpurl[0] == 0)
@@ -1542,7 +1558,17 @@ void My2chHelp(HWND hwnd)
 		SetMyRegStr("ETC", "2chHelpURL", helpurl);
 	}
 
-	ShellExecuteUtf8Compat(hwnd, NULL, helpurl, NULL, "", SW_SHOW);
+	lstrcpyn(helpurlUtf8, helpurl, (int)sizeof(helpurlUtf8));
+	{
+		char before[1024];
+		lstrcpyn(before, helpurlUtf8, (int)sizeof(before));
+		NormalizeSettingUtf8InPlace(helpurlUtf8, (int)sizeof(helpurlUtf8));
+		if (lstrcmp(before, helpurlUtf8) != 0) {
+			SetMyRegStr("ETC", "2chHelpURL", helpurlUtf8);
+		}
+	}
+
+	ShellExecuteUtf8Strict(hwnd, NULL, helpurlUtf8, NULL, "", SW_SHOW);
 }
 
 
@@ -1846,7 +1872,7 @@ void CreateDefaultIniFile_Win10(char *fname)
 	}
 	else
 	{
-		MessageBoxUtf8Compat(NULL, "tclock-win11.iniの作成に失敗しました。書き込み可能なフォルダで実行してください",
+		MessageBoxUtf8Strict(NULL, "tclock-win11.iniの作成に失敗しました。書き込み可能なフォルダで実行してください",
 			"TClock-Win11", MB_ICONERROR | MB_OK);
 	}
 }
@@ -1921,7 +1947,7 @@ BOOL CheckRegistry_Win10(void)
 		//		"\n\nTooltip can be disabled (On \"Tooltip\" settings)"
 		//		);
 
-		//	MessageBoxUtf8Compat(NULL, tempString, "TClock-Win10", MB_OK | MB_SETFOREGROUND | MB_ICONINFORMATION);
+		//	MessageBoxUtf8Strict(NULL, tempString, "TClock-Win10", MB_OK | MB_SETFOREGROUND | MB_ICONINFORMATION);
 		//}
 
 

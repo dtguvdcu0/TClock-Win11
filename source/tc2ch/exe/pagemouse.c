@@ -6,6 +6,8 @@
 
 #include "tclock.h"
 
+#include "..\\common\\text_codec.h"
+
 static void OnInit(HWND hDlg);
 static void OnApply(HWND hDlg);
 static void OnDestroy(HWND hDlg);
@@ -36,19 +38,6 @@ __inline void SendPSChanged(HWND hDlg)
 {
 	g_bApplyClock = TRUE;
 	SendMessage(GetParent(hDlg), PSM_CHANGED, (WPARAM)(hDlg), 0);
-}
-
-static int CBAddStringUtf8AsAcpBoundary(HWND hDlg, int idCombo, const char* utf8)
-{
-	WCHAR wbuf[512];
-	char abuf[512];
-	if (!utf8) utf8 = "";
-	if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8, -1, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) > 0 &&
-		WideCharToMultiByte(CP_ACP, 0, wbuf, -1, abuf, (int)sizeof(abuf), NULL, NULL) > 0) {
-		return CBAddString(hDlg, idCombo, (LPARAM)abuf);
-	}
-	abuf[0] = '\0';
-	return CBAddString(hDlg, idCombo, (LPARAM)abuf);
 }
 
 extern BOOL b_EnglishMenu;
@@ -143,6 +132,16 @@ BOOL CALLBACK PageMouseProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
 /*------------------------------------------------
 　ページの初期化
 --------------------------------------------------*/
+static void NormalizeUtf8InPlaceNoWriteback(char* value, int valueBytes)
+{
+	WCHAR wbuf[MAX_PATH];
+	char utf8[MAX_PATH];
+	if (!value || valueBytes <= 0 || value[0] == '\0') return;
+	if (tc_utf8_to_utf16(value, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) <= 0) return;
+	if (tc_utf16_to_utf8(wbuf, utf8, (int)sizeof(utf8)) <= 0) return;
+	lstrcpyn(value, utf8, valueBytes);
+}
+
 void OnInit(HWND hDlg)
 {
 	char s[256];
@@ -162,11 +161,12 @@ void OnInit(HWND hDlg)
 	}
 
 	for(i = IDS_NONE; i <= IDS_MOVETO; i++)
-		CBAddStringUtf8AsAcpBoundary(hDlg, IDC_DROPFILES, MyStringUTF8(i));
+		CBAddStringUTF8Compat(hDlg, IDC_DROPFILES, MyStringUTF8(i));
 	CBSetCurSel(hDlg, IDC_DROPFILES,
 		GetMyRegLong(reg_section, "DropFiles", 0));
 	GetMyRegStr(reg_section, "DropFilesApp", s, 256, "");
-	SetDlgItemTextUTF8(hDlg, IDC_DROPFILESAPP, s);
+	NormalizeUtf8InPlaceNoWriteback(s, (int)sizeof(s));
+	SetDlgItemTextUTF8Strict(hDlg, IDC_DROPFILESAPP, s);
 
 	pData = malloc(sizeof(CLICKDATA) * 28);
 
@@ -191,6 +191,7 @@ void OnInit(HWND hDlg)
 			{
 				wsprintf(entry, "%d%dFile", i, j+1);
 				GetMyRegStr(reg_section, entry, pData[i].fname[j], 256, "");
+				NormalizeUtf8InPlaceNoWriteback(pData[i].fname[j], (int)sizeof(pData[i].fname[j]));
 			}
 
 		}
@@ -198,7 +199,7 @@ void OnInit(HWND hDlg)
 
 
 	for(i = IDS_LEFTBUTTON; i <= IDS_SWHEEL2; i++)
-		CBAddStringUtf8AsAcpBoundary(hDlg, IDC_MOUSEBUTTON, MyStringUTF8(i));
+		CBAddStringUTF8Compat(hDlg, IDC_MOUSEBUTTON, MyStringUTF8(i));
 	AdjustDlgConboBoxDropDown(hDlg, IDC_MOUSEBUTTON, 22);
 
 	CheckDlgButton(hDlg, IDC_RCLICKMENU,
@@ -276,8 +277,8 @@ void OnDropFilesChange(HWND hDlg)
 {
 	int i, n;
 	n = CBGetCurSel(hDlg, IDC_DROPFILES);
-	SetDlgItemTextUTF8(hDlg, IDC_LABDROPFILESAPP,
-		MyString(n >= 3?IDS_LABFOLDER:IDS_LABPROGRAM));
+	SetDlgItemTextUTF8Strict(hDlg, IDC_LABDROPFILESAPP,
+		MyStringUTF8(n >= 3?IDS_LABFOLDER:IDS_LABPROGRAM));
 	for(i = IDC_LABDROPFILESAPP; i <= IDC_DROPFILESAPPSANSHO; i++)
 		ShowDlgItem(hDlg, i, (2 <= n && n <= 4));
 
@@ -403,8 +404,9 @@ void OnMouseFunc(HWND hDlg)
 
 	if(func == MOUSEFUNC_OPENFILE || func == MOUSEFUNC_FILELIST)
 	{
-		SetDlgItemTextUTF8(hDlg, IDC_LABMOUSEFILE, MyStringUTF8(IDS_FILE));
-		SetDlgItemTextUTF8(hDlg, IDC_MOUSEFILE, pData[button].fname[click]);
+		NormalizeUtf8InPlaceNoWriteback(pData[button].fname[click], (int)sizeof(pData[button].fname[click]));
+		SetDlgItemTextUTF8Strict(hDlg, IDC_LABMOUSEFILE, MyStringUTF8(IDS_FILE));
+		SetDlgItemTextUTF8Strict(hDlg, IDC_MOUSEFILE, pData[button].fname[click]);
 	}
 
 }
@@ -460,7 +462,8 @@ void OnSansho(HWND hDlg, WORD id)
 			if(pidl)
 			{
 				SHGetPathFromIDList(pidl, fname);
-				SetDlgItemTextUTF8(hDlg, id - 1, fname);
+				NormalizeUtf8InPlaceNoWriteback(fname, (int)sizeof(fname));
+				SetDlgItemTextUTF8Strict(hDlg, id - 1, fname);
 				PostMessage(hDlg, WM_NEXTDLGCTL, 1, FALSE);
 				SendPSChanged(hDlg);
 			}
@@ -471,18 +474,19 @@ void OnSansho(HWND hDlg, WORD id)
 	filter[0] = 0;
 	if(id == IDC_DROPFILESAPPSANSHO)
 	{
-		str0cat(filter, MyString(IDS_PROGRAMFILE));
+		str0cat(filter, MyStringUTF8(IDS_PROGRAMFILE));
 		str0cat(filter, "*.exe");
 	}
-	str0cat(filter, MyString(IDS_ALLFILE));
+	str0cat(filter, MyStringUTF8(IDS_ALLFILE));
 	str0cat(filter, "*.*");
 
 	GetDlgItemTextUTF8(hDlg, id - 1, deffile, MAX_PATH);
 
-	if(!SelectMyFile(hDlg, filter, 0, deffile, fname)) // propsheet.c
+	if(!SelectMyFileUTF8(hDlg, filter, 0, deffile, fname, (int)sizeof(fname))) // propsheet.c
 		return;
 
-	SetDlgItemTextUTF8(hDlg, id - 1, fname);
+	NormalizeUtf8InPlaceNoWriteback(fname, (int)sizeof(fname));
+	SetDlgItemTextUTF8Strict(hDlg, id - 1, fname);
 	PostMessage(hDlg, WM_NEXTDLGCTL, 1, FALSE);
 	SendPSChanged(hDlg);
 }
@@ -500,7 +504,7 @@ void InitMouseFuncList(HWND hDlg)
 	for (i = 0; i < cnt; i++)
 	{
 		//リストの各項目を追加
-		index = CBAddStringUtf8AsAcpBoundary(hDlg, IDC_MOUSEFUNC, MyStringUTF8(pmfl[i].idstring));
+		index = CBAddStringUTF8Compat(hDlg, IDC_MOUSEFUNC, MyStringUTF8(pmfl[i].idstring));
 		CBSetItemData(hDlg, IDC_MOUSEFUNC, index, pmfl[i].mousefunc);
 	}
 	//リスト項目の表示数を指定

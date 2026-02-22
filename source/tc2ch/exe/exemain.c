@@ -244,7 +244,14 @@ static int MessageBoxUtf8Compat(HWND hwnd, const char* text, const char* caption
 			lstrcpynW(wCaption, L"TClock-Win11", sizeof(wCaption) / sizeof(wCaption[0]));
 	}
 
-	return MessageBoxW(hwnd, wText, wCaption, type);
+	{
+		UINT uBeep = 0xFFFFFFFF;
+		if (type & MB_ICONHAND) uBeep = MB_ICONHAND;
+		else if (type & MB_ICONQUESTION) uBeep = MB_ICONQUESTION;
+		else if (type & MB_ICONEXCLAMATION) uBeep = MB_ICONEXCLAMATION;
+		else if (type & MB_ICONASTERISK) uBeep = MB_ICONASTERISK;
+		return MyMessageBoxW(hwnd, wText, wCaption, type, uBeep);
+	}
 }
 
 static BOOL SetHideClockPolicyValue(DWORD value)
@@ -738,11 +745,11 @@ static UINT WINAPI TclockExeMain(void)
 		handle_PowerNotify = RegisterPowerSettingNotification(hwnd, &GUID_CONSOLE_DISPLAY_STATE, DEVICE_NOTIFY_WINDOW_HANDLE);
 	}
 
-	while(GetMessage(&msg, NULL, 0, 0))		//キューからメッセージを受け取るGetMessageの戻り値が0になる(＝WM_QUITがポストされる) まで、
+	while(GetMessageW(&msg, NULL, 0, 0))		//キューからメッセージを受け取るGetMessageの戻り値が0になる(＝WM_QUITがポストされる) まで、
 											//取得したメッセージをウィンドウプロシージャに送りつづける
 	{
 		if(g_hwndPropDlg && IsWindow(g_hwndPropDlg)
-			&& IsDialogMessage(g_hwndPropDlg, &msg))	//g_hwndPropDlgのメッセージは無視
+			&& IsDialogMessageW(g_hwndPropDlg, &msg))	//g_hwndPropDlgのメッセージは無視
 			;
 		//else if(g_hDlgTimer && IsWindow(g_hDlgTimer)
 		//	&& IsDialogMessage(g_hDlgTimer, &msg))		//g_hDlgTimerのメッセージは無視
@@ -750,7 +757,7 @@ static UINT WINAPI TclockExeMain(void)
 		else		//それ以外は以下の2関数で処理
 		{
 			TranslateMessage(&msg);	//TranslateMessage: 仮想キーメッセージを文字メッセージへ変換(?)
-			DispatchMessage(&msg);	// DispatchMessageで受け取ったメッセージをウィンドウプロシージャ(?)に送出.
+			DispatchMessageW(&msg);	// DispatchMessageで受け取ったメッセージをウィンドウプロシージャ(?)に送出.
 		}
 	}
 
@@ -1287,8 +1294,8 @@ void InitError(int n)
 {
 	char s[160];
 
-	wsprintf(s, "%s: %d", MyString(IDS_NOTFOUNDCLOCK), n);
-	MyMessageBox(NULL, s, NULL, MB_OK, MB_ICONEXCLAMATION);
+	wsprintf(s, "%s: %d", MyStringUTF8(IDS_NOTFOUNDCLOCK), n);
+	MyMessageBoxUTF8(NULL, s, NULL, MB_OK, MB_ICONEXCLAMATION);
 }
 
 /*-------------------------------------------------------
@@ -1455,7 +1462,7 @@ HINSTANCE LoadLanguageDLL(char *langdllname)
 	}
 
 	if(hInst == NULL)
-		MyMessageBox(NULL, "Can't load a language module.",
+		MyMessageBoxW(NULL, L"Can't load a language module.",
 			NULL, MB_OK, MB_ICONEXCLAMATION);
 	else strcpy(langdllname, fname);
 	return hInst;
@@ -1510,10 +1517,14 @@ BOOL CheckDLL(char *fname)
 	if(!br)
 	{
 		char msg[MAX_PATH+30];
+		wchar_t wmsg[MAX_PATH+30];
 
 		strcpy(msg, "Invalid file version: ");
 		get_title(msg + strlen(msg), fname);
-		MyMessageBox(NULL, msg,
+		if (MultiByteToWideChar(CP_ACP, 0, msg, -1, wmsg, MAX_PATH+30) <= 0) {
+			lstrcpynW(wmsg, L"[Message decode error]", MAX_PATH+30);
+		}
+		MyMessageBoxW(NULL, wmsg,
 			NULL, MB_OK, MB_ICONEXCLAMATION);
 	}
 	return br;
@@ -1527,7 +1538,7 @@ void My2chHelp(HWND hwnd)
 	GetMyRegStr("ETC", "2chHelpURL", helpurl, 1024, "");
 	if (helpurl[0] == 0)
 	{
-		strcpy(helpurl, MyString(IDS_HELP2CH));
+		strcpy(helpurl, MyStringUTF8(IDS_HELP2CH));
 		SetMyRegStr("ETC", "2chHelpURL", helpurl);
 	}
 

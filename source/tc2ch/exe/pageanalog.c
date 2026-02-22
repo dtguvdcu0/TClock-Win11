@@ -30,6 +30,19 @@ __inline void SendPSChanged(HWND hDlg)
 	SendMessage(GetParent(hDlg), PSM_CHANGED, (WPARAM)(hDlg), 0);
 }
 
+static int CBAddStringUtf8AsAcpBoundary(HWND hDlg, int idCombo, const char* utf8)
+{
+	WCHAR wbuf[512];
+	char abuf[512];
+	if (!utf8) utf8 = "";
+	if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8, -1, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) > 0 &&
+		WideCharToMultiByte(CP_ACP, 0, wbuf, -1, abuf, (int)sizeof(abuf), NULL, NULL) > 0) {
+		return CBAddString(hDlg, idCombo, (LPARAM)abuf);
+	}
+	abuf[0] = '\0';
+	return CBAddString(hDlg, idCombo, (LPARAM)abuf);
+}
+
 static int GetSpinPos(HWND hDlg, int ctrlId)
 {
 	return (int)(short)SendDlgItemMessage(hDlg, ctrlId, UDM_GETPOS, 0, 0);
@@ -139,9 +152,9 @@ void OnInit(HWND hDlg)
 		GetMyRegLong("AnalogClock", "AnalogClockMinHandBold", FALSE));
 
 	//「アナログ時計位置」の設定
-	index = CBAddString(hDlg, IDC_ACLOCK_POS, (LPARAM)MyString(IDS_ACLOCKLEFT));
-	index = CBAddString(hDlg, IDC_ACLOCK_POS, (LPARAM)MyString(IDS_ACLOCKRIGHT));
-	index = CBAddString(hDlg, IDC_ACLOCK_POS, (LPARAM)MyString(IDS_ACLOCKMIDDLE));
+	index = CBAddStringUtf8AsAcpBoundary(hDlg, IDC_ACLOCK_POS, MyStringUTF8(IDS_ACLOCKLEFT));
+	index = CBAddStringUtf8AsAcpBoundary(hDlg, IDC_ACLOCK_POS, MyStringUTF8(IDS_ACLOCKRIGHT));
+	index = CBAddStringUtf8AsAcpBoundary(hDlg, IDC_ACLOCK_POS, MyStringUTF8(IDS_ACLOCKMIDDLE));
 	CBSetCurSel(hDlg, IDC_ACLOCK_POS,
 		GetMyRegLong("AnalogClock", "AnalogClockPos", 0));
 

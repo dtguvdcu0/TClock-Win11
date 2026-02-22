@@ -12,6 +12,7 @@ static void OnLocale(HWND hDlg);
 static void OnCustom(HWND hDlg, BOOL bmouse);
 static void On12Hour(HWND hDlg);
 static void OnFormatCheck(HWND hDlg, WORD id);
+static void EnsureUnicodeEditControl(HWND hDlg, int id);
 
 static HWND hwndPage;
 static int ilang;  // language code. ex) 0x411 - Japanese
@@ -33,6 +34,53 @@ __inline void SendPSChanged(HWND hDlg)
 {
 	g_bApplyClock = TRUE;
 	SendMessage(GetParent(hDlg), PSM_CHANGED, (WPARAM)(hDlg), 0);
+}
+
+static void EnsureUnicodeEditControl(HWND hDlg, int id)
+{
+	HWND hOld;
+	HWND hNew;
+	RECT rc;
+	POINT pt;
+	DWORD style;
+	DWORD exStyle;
+	HFONT hFont;
+	BOOL enabled;
+	WCHAR wText[1024];
+
+	if (!hDlg) return;
+	hOld = GetDlgItem(hDlg, id);
+	if (!hOld) return;
+	if (IsWindowUnicode(hOld)) return;
+
+	style = (DWORD)GetWindowLongPtr(hOld, GWL_STYLE);
+	exStyle = (DWORD)GetWindowLongPtr(hOld, GWL_EXSTYLE);
+	hFont = (HFONT)SendMessage(hOld, WM_GETFONT, 0, 0);
+	enabled = IsWindowEnabled(hOld);
+	GetWindowRect(hOld, &rc);
+	pt.x = rc.left;
+	pt.y = rc.top;
+	ScreenToClient(hDlg, &pt);
+	if (GetWindowTextW(hOld, wText, (int)(sizeof(wText) / sizeof(wText[0]))) <= 0) wText[0] = L'\0';
+
+	DestroyWindow(hOld);
+	hNew = CreateWindowExW(exStyle, L"EDIT", wText, style,
+		pt.x, pt.y, rc.right - rc.left, rc.bottom - rc.top, hDlg, (HMENU)(INT_PTR)id, GetModuleHandle(NULL), NULL);
+	if (!hNew) return;
+	if (hFont) SendMessage(hNew, WM_SETFONT, (WPARAM)hFont, 0);
+	EnableWindow(hNew, enabled);
+}
+
+static int ComboAddStringUtf8AsAcp(HWND hDlg, int id, const char* utf8)
+{
+	WCHAR wbuf[256];
+	char abuf[256];
+	if (!utf8) utf8 = "";
+	if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8, -1, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) > 0 &&
+		WideCharToMultiByte(GetACP(), 0, wbuf, -1, abuf, (int)sizeof(abuf), NULL, NULL) > 0) {
+		return CBAddString(hDlg, id, (LPARAM)abuf);
+	}
+	return CBAddString(hDlg, id, (LPARAM)utf8);
 }
 
 /*------------------------------------------------
@@ -133,7 +181,7 @@ void InitLocale(HWND hwnd)
 	}
 	GetLocaleInfoCompat(ilang, LOCALE_IDATE, s, 20);
 	idate = atoi(s);
-	GetLocaleInfoCompat(ilang, LOCALE_SABBREVDAYNAME1, sMon, 10);
+	GetLocaleInfoUTF8Compat(ilang, LOCALE_SABBREVDAYNAME1, sMon, 10);
 
 	bDayOfWeekIsLast = FALSE;
 	for(i = 0; aLangDayOfWeekIsLast[i]; i++)
@@ -164,19 +212,19 @@ BOOL CALLBACK EnumLocalesProc(LPTSTR lpLocaleString)
 	x = atox(lpLocaleString);
 	if (b_EnglishMenu)
 	{
-		if (GetLocaleInfoCompat(x, LOCALE_SENGLANGUAGE, s1, 40) > 0)
+		if (GetLocaleInfoUTF8Compat(x, LOCALE_SENGLANGUAGE, s1, 40) > 0)
 		{
-			GetLocaleInfoCompat(x, LOCALE_SENGCOUNTRY, s2, 40);
+			GetLocaleInfoUTF8Compat(x, LOCALE_SENGCOUNTRY, s2, 40);
 			wsprintf(s, "%s (%s)", s1, s2);
-			index = CBAddString(hwndPage, IDC_LOCALE, (LPARAM)s);
+			index = ComboAddStringUtf8AsAcp(hwndPage, IDC_LOCALE, s);
 		}
 		else
 			index = CBAddString(hwndPage, IDC_LOCALE, (LPARAM)lpLocaleString);
 	}
 	else
 	{
-		if (GetLocaleInfoCompat(x, LOCALE_SLANGUAGE, s, 80) > 0)
-			index = CBAddString(hwndPage, IDC_LOCALE, (LPARAM)s);
+		if (GetLocaleInfoUTF8Compat(x, LOCALE_SLANGUAGE, s, 80) > 0)
+			index = ComboAddStringUtf8AsAcp(hwndPage, IDC_LOCALE, s);
 		else
 			index = CBAddString(hwndPage, IDC_LOCALE, (LPARAM)lpLocaleString);
 	}
@@ -205,7 +253,10 @@ void OnInit(HWND hDlg)
 		SendDlgItemMessage(hDlg, IDC_AMSYMBOL, WM_SETFONT, (WPARAM)hfont, 0);
 		SendDlgItemMessage(hDlg, IDC_PMSYMBOL, WM_SETFONT, (WPARAM)hfont, 0);
 	}
-	hfont = (HFONT)GetStockObject(SYSTEM_FIXED_FONT);
+	/* IDC_FORMAT must be Unicode edit to avoid non-ACP input degradation to '?'. */
+	EnsureUnicodeEditControl(hDlg, IDC_FORMAT);
+	/* Use GUI Unicode-capable font for format edit; SYSTEM_FIXED_FONT can display non-ACP as '?'. */
+	hfont = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
 	if(hfont)
 		SendDlgItemMessage(hDlg, IDC_FORMAT, WM_SETFONT, (WPARAM)hfont, 0);
 

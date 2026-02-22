@@ -31,6 +31,19 @@ __inline void SendPSChanged(HWND hDlg)
 	SendMessage(GetParent(hDlg), PSM_CHANGED, (WPARAM)(hDlg), 0);
 }
 
+static int CBAddStringUtf8AsAcpBoundary(HWND hDlg, int idCombo, const char* utf8)
+{
+	WCHAR wbuf[512];
+	char abuf[512];
+	if (!utf8) utf8 = "";
+	if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8, -1, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) > 0 &&
+		WideCharToMultiByte(CP_ACP, 0, wbuf, -1, abuf, (int)sizeof(abuf), NULL, NULL) > 0) {
+		return CBAddString(hDlg, idCombo, (LPARAM)abuf);
+	}
+	abuf[0] = '\0';
+	return CBAddString(hDlg, idCombo, (LPARAM)abuf);
+}
+
 /*------------------------------------------------
    dialog procedure of this page
 --------------------------------------------------*/
@@ -556,9 +569,9 @@ void InitGraphMode(HWND hDlg)
 {
 	int index;
 
-	index = CBAddString(hDlg, IDC_GRAPHMODE, (LPARAM)MyString(IDS_GMNET));
+	index = CBAddStringUtf8AsAcpBoundary(hDlg, IDC_GRAPHMODE, MyStringUTF8(IDS_GMNET));
 	CBSetItemData(hDlg, IDC_GRAPHMODE, index, 1);
-	index = CBAddString(hDlg, IDC_GRAPHMODE, (LPARAM)MyString(IDS_GMCPU));
+	index = CBAddStringUtf8AsAcpBoundary(hDlg, IDC_GRAPHMODE, MyStringUTF8(IDS_GMCPU));
 	CBSetItemData(hDlg, IDC_GRAPHMODE, index, 2);
 	//リスト項目の表示数を指定
 	AdjustDlgConboBoxDropDown(hDlg, IDC_GRAPHMODE, 2);
@@ -568,9 +581,9 @@ void InitGraphType(HWND hDlg)
 {
 	int index;
 
-	index = CBAddString(hDlg, IDC_GRAPHTYPE, (LPARAM)MyString(IDS_GTBAR));
+	index = CBAddStringUtf8AsAcpBoundary(hDlg, IDC_GRAPHTYPE, MyStringUTF8(IDS_GTBAR));
 	CBSetItemData(hDlg, IDC_GRAPHTYPE, index, 1);
-	index = CBAddString(hDlg, IDC_GRAPHTYPE, (LPARAM)MyString(IDS_GTLINE));
+	index = CBAddStringUtf8AsAcpBoundary(hDlg, IDC_GRAPHTYPE, MyStringUTF8(IDS_GTLINE));
 	CBSetItemData(hDlg, IDC_GRAPHTYPE, index, 2);
 	//リスト項目の表示数を指定
 	AdjustDlgConboBoxDropDown(hDlg, IDC_GRAPHTYPE, 2);

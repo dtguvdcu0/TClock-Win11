@@ -46,7 +46,8 @@ BOOL b_MenuItems_Initialized = FALSE;
 extern BOOL b_NormalLog;
 extern BOOL b_SkipHideClockRestore;
 
-static char* SafeMyString(UINT id);
+static char* SafeMyStringAcpBoundary(UINT id);
+static BOOL ModifyMenuAcpBoundary(HMENU hMenu, UINT item, UINT flags, UINT_PTR id, UINT strId);
 
 #define TC_MENU_CUSTOM_MAX_ITEMS 64
 #define TC_MENU_SECTION "MenuCustom"
@@ -129,6 +130,69 @@ static PFN_FormatMenuLabel_Win11 g_pfnFormatMenuLabel_Win11 = NULL;
 static BOOL g_menuFormatApiChecked = FALSE;
 static int tc_menu_append_text(char* dst, int dstLen, int pos, const char* src);
 static BOOL tc_menu_match_token(const char* p, const char* token);
+static BOOL tc_menu_should_keep_utf8_value(const char* key);
+static BOOL tc_menu_utf8_or_ansi_to_wide(const char* text, WCHAR* wbuf, int wbufCch);
+static BOOL tc_menu_insert_string(HMENU hMenu, UINT position, UINT flags, UINT_PTR id, const char* text);
+static BOOL tc_menu_modify_string(HMENU hMenu, UINT item, UINT flags, UINT_PTR id, const char* text);
+static BOOL tc_menu_is_valid_utf8_text(const char* text);
+static const char* tc_menu_alarm_message_utf8_or_default(const TC_MENU_ALARM_ENTRY* e);
+
+static BOOL tc_menu_should_keep_utf8_value(const char* key)
+{
+	const char* p;
+	if (!key || !key[0]) return FALSE;
+	for (p = key; p[0]; ++p) {
+		if (p[0] == 'L' && p[1] == 'a' && p[2] == 'b' && p[3] == 'e' && p[4] == 'l') {
+			return TRUE;
+		}
+		if (p[0] == 'M' && p[1] == 'e' && p[2] == 's' && p[3] == 's' && p[4] == 'a' && p[5] == 'g' && p[6] == 'e') {
+			return TRUE;
+		}
+	}
+	return FALSE;
+}
+
+static BOOL tc_menu_utf8_or_ansi_to_wide(const char* text, WCHAR* wbuf, int wbufCch)
+{
+	if (!wbuf || wbufCch <= 0) return FALSE;
+	wbuf[0] = L'\0';
+	if (!text || !text[0]) return TRUE;
+	if (tc_utf8_to_utf16(text, wbuf, wbufCch) > 0) return TRUE;
+	return FALSE;
+}
+
+static BOOL tc_menu_insert_string(HMENU hMenu, UINT position, UINT flags, UINT_PTR id, const char* text)
+{
+	WCHAR wtext[1024];
+	if (tc_menu_utf8_or_ansi_to_wide(text, wtext, (int)(sizeof(wtext) / sizeof(wtext[0])))) {
+		return InsertMenuW(hMenu, position, flags, id, wtext);
+	}
+	return FALSE;
+}
+
+static BOOL tc_menu_modify_string(HMENU hMenu, UINT item, UINT flags, UINT_PTR id, const char* text)
+{
+	WCHAR wtext[1024];
+	if (tc_menu_utf8_or_ansi_to_wide(text, wtext, (int)(sizeof(wtext) / sizeof(wtext[0])))) {
+		return ModifyMenuW(hMenu, item, flags, id, wtext);
+	}
+	return FALSE;
+}
+
+static BOOL tc_menu_is_valid_utf8_text(const char* text)
+{
+	WCHAR wbuf[512];
+	if (!text || !text[0]) return FALSE;
+	return tc_utf8_to_utf16(text, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) > 0;
+}
+
+static const char* tc_menu_alarm_message_utf8_or_default(const TC_MENU_ALARM_ENTRY* e)
+{
+	static const char kDefaultMessage[] = "Timer finished";
+	if (!e) return kDefaultMessage;
+	if (tc_menu_is_valid_utf8_text(e->message)) return e->message;
+	return kDefaultMessage;
+}
 
 static void tc_menu_dynamic_reset(void)
 {
@@ -283,15 +347,12 @@ static void tc_menu_alarm_notify_finish(TC_MENU_ALARM_ENTRY* e)
 	if (!e || e->finishedNotified) return;
 	e->finishedNotified = TRUE;
 	if (e->notifyFlags & 1) {
-		MyMessageBox(NULL, e->message[0] ? e->message : "Timer finished",
+		MyMessageBoxUTF8(NULL, tc_menu_alarm_message_utf8_or_default(e),
 			"TClock-Win11", MB_OK | MB_SETFOREGROUND | MB_ICONINFORMATION, 0xFFFFFFFF);
 	}
 	if (e->notifyFlags & 2) {
 		if (e->soundFile[0]) {
-			n = MultiByteToWideChar(CP_UTF8, 0, e->soundFile, -1, wPath, MAX_PATH);
-			if (n <= 0) {
-				n = MultiByteToWideChar(CP_ACP, 0, e->soundFile, -1, wPath, MAX_PATH);
-			}
+			n = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, e->soundFile, -1, wPath, MAX_PATH);
 			if (n > 0) {
 				PlaySoundW(wPath, NULL, SND_FILENAME | SND_ASYNC);
 			} else {
@@ -762,7 +823,7 @@ void MenuOnTimerTick(HWND hwnd)
 		text[0] = '\0';
 		tc_menu_resolve_label_text(e->itemIndex, e->plainLabel, e->format, e->intervalSec, text, (int)sizeof(text));
 		if (text[0]) {
-			ModifyMenu(hPopupMenu, e->cmdId, MF_BYCOMMAND, e->cmdId, text);
+			tc_menu_modify_string(hPopupMenu, e->cmdId, MF_BYCOMMAND, e->cmdId, text);
 		}
 	}
 	for (i = 0; i < g_menuAlarmCount; ++i) {
@@ -771,7 +832,7 @@ void MenuOnTimerTick(HWND hwnd)
 		alarmText[0] = '\0';
 		tc_menu_alarm_format_label(e2, alarmText, (int)sizeof(alarmText));
 		if (alarmText[0]) {
-			ModifyMenu(hPopupMenu, e2->id, MF_BYCOMMAND, e2->id, alarmText);
+			tc_menu_modify_string(hPopupMenu, e2->id, MF_BYCOMMAND, e2->id, alarmText);
 		}
 	}
 }
@@ -847,17 +908,17 @@ static BOOL tc_menu_get_default_item(int index, char* type, int typeLen, char* a
 static const char* tc_menu_default_label_for_action(const char* action)
 {
 	if (!action || !action[0]) return "";
-	if (_stricmp(action, "taskmgr") == 0) return SafeMyString(IDS_TASKMGR);
-	if (_stricmp(action, "cmd") == 0) return SafeMyString(IDS_CMD);
-	if (_stricmp(action, "alarm_clock") == 0) return SafeMyString(IDS_ALARM_CLOCK);
-	if (_stricmp(action, "pullback") == 0) return SafeMyString(IDS_PULLBACK);
-	if (_stricmp(action, "control_panel") == 0) return SafeMyString(IDS_CONTROLPNL);
-	if (_stricmp(action, "power_options") == 0) return SafeMyString(IDS_POWERPNL);
-	if (_stricmp(action, "network_connections") == 0) return SafeMyString(IDS_NETWORKPNL);
-	if (_stricmp(action, "settings_home") == 0) return SafeMyString(IDS_SETTING);
-	if (_stricmp(action, "settings_network") == 0) return SafeMyString(IDS_NETWORKSTG);
-	if (_stricmp(action, "settings_datetime") == 0) return SafeMyString(IDS_PROPDATE);
-	if (_stricmp(action, "remove_drive_dynamic") == 0) return SafeMyString(IDS_ABOUTRMVDRV);
+	if (_stricmp(action, "taskmgr") == 0) return SafeMyStringAcpBoundary(IDS_TASKMGR);
+	if (_stricmp(action, "cmd") == 0) return SafeMyStringAcpBoundary(IDS_CMD);
+	if (_stricmp(action, "alarm_clock") == 0) return SafeMyStringAcpBoundary(IDS_ALARM_CLOCK);
+	if (_stricmp(action, "pullback") == 0) return SafeMyStringAcpBoundary(IDS_PULLBACK);
+	if (_stricmp(action, "control_panel") == 0) return SafeMyStringAcpBoundary(IDS_CONTROLPNL);
+	if (_stricmp(action, "power_options") == 0) return SafeMyStringAcpBoundary(IDS_POWERPNL);
+	if (_stricmp(action, "network_connections") == 0) return SafeMyStringAcpBoundary(IDS_NETWORKPNL);
+	if (_stricmp(action, "settings_home") == 0) return SafeMyStringAcpBoundary(IDS_SETTING);
+	if (_stricmp(action, "settings_network") == 0) return SafeMyStringAcpBoundary(IDS_NETWORKSTG);
+	if (_stricmp(action, "settings_datetime") == 0) return SafeMyStringAcpBoundary(IDS_PROPDATE);
+	if (_stricmp(action, "remove_drive_dynamic") == 0) return SafeMyStringAcpBoundary(IDS_ABOUTRMVDRV);
 	return action;
 }
 
@@ -1007,7 +1068,7 @@ static void tc_menu_section_cache_get_str(const TC_MENU_SECTION_CACHE* cache, co
 	s = tc_menu_section_cache_find(cache, key);
 	if (s) {
 		lstrcpyn(out, s, outBytes);
-		if (cache && cache->isUtf8 && out[0]) {
+		if (cache && cache->isUtf8 && out[0] && !tc_menu_should_keep_utf8_value(key)) {
 			WCHAR wbuf[4096];
 			char abuf[4096];
 			if (tc_utf8_to_utf16(out, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) > 0 &&
@@ -1269,7 +1330,7 @@ static void tc_menu_apply_custom_from_ini(HMENU hMenu)
 			lstrcpyn(alarmEntry->soundFile, alarmSoundFile, (int)sizeof(alarmEntry->soundFile));
 			tc_menu_alarm_restore_runtime(alarmEntry);
 			tc_menu_alarm_format_label(alarmEntry, alarmText, (int)sizeof(alarmText));
-			InsertMenu(hMenu, insertPos, MF_BYPOSITION | MF_STRING, cmdId, alarmText[0] ? alarmText : label);
+			tc_menu_insert_string(hMenu, insertPos, MF_BYPOSITION | MF_STRING, cmdId, alarmText[0] ? alarmText : label);
 			++insertPos;
 			continue;
 		}
@@ -1283,7 +1344,7 @@ static void tc_menu_apply_custom_from_ini(HMENU hMenu)
 			tc_menu_resolve_label_text(i, label, labelFormat, labelUpdateSec, resolvedLabel, (int)sizeof(resolvedLabel));
 			cmdId = tc_menu_dynamic_register(3, "", "", "", SW_SHOWNORMAL);
 			if (!cmdId) continue;
-			InsertMenu(hMenu, insertPos, MF_BYPOSITION | MF_STRING, cmdId, resolvedLabel[0] ? resolvedLabel : label);
+			tc_menu_insert_string(hMenu, insertPos, MF_BYPOSITION | MF_STRING, cmdId, resolvedLabel[0] ? resolvedLabel : label);
 			if (labelFormat[0]) {
 				tc_menu_live_register(cmdId, i, labelUpdateSec, label, labelFormat);
 			}
@@ -1375,7 +1436,7 @@ static void tc_menu_apply_custom_from_ini(HMENU hMenu)
 			continue;
 		}
 
-		InsertMenu(hMenu, insertPos, MF_BYPOSITION | MF_STRING, cmdId, resolvedLabel[0] ? resolvedLabel : label);
+		tc_menu_insert_string(hMenu, insertPos, MF_BYPOSITION | MF_STRING, cmdId, resolvedLabel[0] ? resolvedLabel : label);
 		if (labelFormat[0]) {
 			tc_menu_live_register(cmdId, i, labelUpdateSec, label, labelFormat);
 		}
@@ -1385,7 +1446,7 @@ static void tc_menu_apply_custom_from_ini(HMENU hMenu)
 	tc_menu_normalize_separators(hMenu);
 }
 
-static char* SafeMyString(UINT id)
+static char* SafeMyStringAcpBoundary(UINT id)
 {
 	char* s = MyString(id);
 	if (s[0] && strcmp(s, "NG_String") != 0) {
@@ -1432,6 +1493,11 @@ void MenuOnMenuRButtonUp(HWND hwnd, WPARAM wParam, LPARAM lParam)
    when the clock is right-clicked
    show pop-up menu
 --------------------------------------------------*/
+static BOOL ModifyMenuAcpBoundary(HMENU hMenu, UINT item, UINT flags, UINT_PTR id, UINT strId)
+{
+	return ModifyMenu(hMenu, item, flags, id, SafeMyStringAcpBoundary(strId));
+}
+
 void OnContextMenu(HWND hwnd, HWND hwndClicked, int xPos, int yPos)
 {
 	int i;
@@ -1491,11 +1557,11 @@ void OnContextMenu(HWND hwnd, HWND hwndClicked, int xPos, int yPos)
 			}
 			char tcapCaptureLabel[128];
 			char tcapSettingsLabel[128];
-			wsprintf(tcapCaptureLabel, "%s", SafeMyString(IDS_TCAP_CAPTURE));
-			wsprintf(tcapSettingsLabel, "%s", SafeMyString(IDS_TCAP_SETTING));
+			wsprintf(tcapCaptureLabel, "%s", SafeMyStringAcpBoundary(IDS_TCAP_CAPTURE));
+			wsprintf(tcapSettingsLabel, "%s", SafeMyStringAcpBoundary(IDS_TCAP_SETTING));
 			InsertMenu(hPopupMenu, insertPos, MF_BYPOSITION | MF_SEPARATOR, 0, NULL);
-			InsertMenu(hPopupMenu, insertPos + 1, MF_BYPOSITION | MF_STRING, IDC_TCAP_CAPTURE, tcapCaptureLabel);
-			InsertMenu(hPopupMenu, insertPos + 2, MF_BYPOSITION | MF_STRING, IDC_TCAP_SETTINGS, tcapSettingsLabel);
+			tc_menu_insert_string(hPopupMenu, insertPos + 1, MF_BYPOSITION | MF_STRING, IDC_TCAP_CAPTURE, tcapCaptureLabel);
+			tc_menu_insert_string(hPopupMenu, insertPos + 2, MF_BYPOSITION | MF_STRING, IDC_TCAP_SETTINGS, tcapSettingsLabel);
 		}
 	}
 
@@ -1695,21 +1761,21 @@ void OnContextMenu(HWND hwnd, HWND hwndClicked, int xPos, int yPos)
 		if (driveIndex_Win10 > 1)
 		{
 			driveIndex_Win10--;
-			ModifyMenu(hPopupMenu, IDC_REMOVE_DRIVE0, MF_BYCOMMAND, IDC_REMOVE_DRIVE0 + driveIndex_Win10, driveList_Win10[driveIndex_Win10]);
+			tc_menu_modify_string(hPopupMenu, IDC_REMOVE_DRIVE0, MF_BYCOMMAND, IDC_REMOVE_DRIVE0 + driveIndex_Win10, driveList_Win10[driveIndex_Win10]);
 			driveIndex_Win10--;
 			for (i = driveIndex_Win10; i >= 0; i--)
 			{
-				InsertMenu(hPopupMenu, IDC_REMOVE_DRIVE0 + i + 1, MF_BYCOMMAND, IDC_REMOVE_DRIVE0 + i, driveList_Win10[i]);
+				tc_menu_insert_string(hPopupMenu, IDC_REMOVE_DRIVE0 + i + 1, MF_BYCOMMAND, IDC_REMOVE_DRIVE0 + i, driveList_Win10[i]);
 			}
 		}
 		else if (driveIndex_Win10 == 1)
 		{
-			ModifyMenu(hPopupMenu, IDC_REMOVE_DRIVE0, MF_BYCOMMAND, IDC_REMOVE_DRIVE0, driveList_Win10[0]);
+			tc_menu_modify_string(hPopupMenu, IDC_REMOVE_DRIVE0, MF_BYCOMMAND, IDC_REMOVE_DRIVE0, driveList_Win10[0]);
 			EnableMenuItem(hPopupMenu, IDC_REMOVE_DRIVE0, MF_BYCOMMAND | MF_ENABLED);
 		}
 		else
 		{
-			ModifyMenu(hPopupMenu, IDC_REMOVE_DRIVE0, MF_BYCOMMAND, IDC_REMOVE_DRIVE0, stringMenuItem_RemoveDriveNoDrive);
+			tc_menu_modify_string(hPopupMenu, IDC_REMOVE_DRIVE0, MF_BYCOMMAND, IDC_REMOVE_DRIVE0, stringMenuItem_RemoveDriveNoDrive);
 			EnableMenuItem(hPopupMenu, IDC_REMOVE_DRIVE0, MF_BYCOMMAND | MF_GRAYED);
 		}
 
@@ -1919,8 +1985,8 @@ void OnTClockCommand(HWND hwnd, WORD wID, WORD wCode)
 		{
 			if (wID == IDC_REMOVE_DRIVE0 && !b_UnplugDriveAvailable)
 			{
-				MyMessageBox(NULL, "TClockフォルダにフリーソフトのUnplugDrive Portable (UnplugDrive.exe)を置くと、リムーバブルドライブ取り外し機能を利用することができます。\n\nHaving UnplugDrive.exe (Japanese freeware) in TClock folder enables \"Remove Drive\" function.",
-					"TClock-Win11", MB_OK | MB_SETFOREGROUND | MB_ICONINFORMATION, 0xFFFFFFFF);
+				MyMessageBoxW(NULL, L"TClockフォルダにフリーソフトのUnplugDrive Portable (UnplugDrive.exe)を置くと、リムーバブルドライブ取り外し機能を利用することができます。\n\nHaving UnplugDrive.exe (Japanese freeware) in TClock folder enables \"Remove Drive\" function.",
+					L"TClock-Win11", MB_OK | MB_SETFOREGROUND | MB_ICONINFORMATION, 0xFFFFFFFF);
 				return;
 			}
 
@@ -1994,17 +2060,7 @@ void OnTClockCommand(HWND hwnd, WORD wID, WORD wCode)
 			return;
 		}
 	}
-    if (b_DebugLog) {
-        char tmp[96];
-        wsprintf(tmp, "[menu.c][OnTClockCommand] Unknown wID=%u", wID);
-        WriteDebug_New2(tmp);
-    }
-    if (b_NormalLog) {
-        char tmp2[96];
-        wsprintf(tmp2, "[Warning] Unknown menu command wID=%u", wID);
-        WriteNormalLog(tmp2);
-    }
-    return;
+	return;
 }
 
 
@@ -2026,8 +2082,8 @@ void InitializeMenuItems(void)
 
 
 
-	strcpy(stringMenuItem_RemoveDriveHeader, SafeMyString(IDS_RMVDRVHEAD));
-	strcpy(stringMenuItem_RemoveDriveNoDrive, SafeMyString(IDS_NORMVDRV));
+	strcpy(stringMenuItem_RemoveDriveHeader, SafeMyStringAcpBoundary(IDS_RMVDRVHEAD));
+	strcpy(stringMenuItem_RemoveDriveNoDrive, SafeMyStringAcpBoundary(IDS_NORMVDRV));
 
 
 	//if (b_AcceptRisk)
@@ -2043,34 +2099,34 @@ void InitializeMenuItems(void)
 	//	DeleteMenu(hPopupMenu, IDC_TOGGLE_CLOUD_APP, MF_BYCOMMAND);
 	//}
 
-	wsprintf(s, SafeMyString(IDS_MENURETRIEVE));
+	wsprintf(s, SafeMyStringAcpBoundary(IDS_MENURETRIEVE));
 //	ModifyMenu(hPopupMenu, IDC_TOGGLE_DATAPLANFUNC, MF_BYCOMMAND, IDC_TOGGLE_DATAPLANFUNC, s);
 
-	ModifyMenu(hPopupMenu, IDC_TASKMAN, MF_BYCOMMAND, IDC_TASKMAN, SafeMyString(IDS_TASKMGR));
-	ModifyMenu(hPopupMenu, IDC_CMD, MF_BYCOMMAND, IDC_CMD,SafeMyString(IDS_CMD));
-	ModifyMenu(hPopupMenu, IDC_ALARM_CLOCK, MF_BYCOMMAND, IDC_ALARM_CLOCK, SafeMyString(IDS_ALARM_CLOCK));
-	ModifyMenu(hPopupMenu, IDC_PULLBACK, MF_BYCOMMAND, IDC_PULLBACK, SafeMyString(IDS_PULLBACK));
-	ModifyMenu(hPopupMenu, IDC_VISTACALENDAR, MF_BYCOMMAND, IDC_VISTACALENDAR, SafeMyString(IDS_VISTACALENDAR));
-	ModifyMenu(hPopupMenu, IDC_SHOWAVAILABLENETWORKS, MF_BYCOMMAND, IDC_SHOWAVAILABLENETWORKS, SafeMyString(IDS_SHOWAVAILABLENETWORKS));
-	ModifyMenu(hPopupMenu, IDC_CONTROLPNL, MF_BYCOMMAND, IDC_CONTROLPNL, SafeMyString(IDS_CONTROLPNL));
-	ModifyMenu(hPopupMenu, IDC_POWERPNL, MF_BYCOMMAND, IDC_POWERPNL, SafeMyString(IDS_POWERPNL));
-	ModifyMenu(hPopupMenu, IDC_NETWORKPNL, MF_BYCOMMAND, IDC_NETWORKPNL, SafeMyString(IDS_NETWORKPNL));
-	ModifyMenu(hPopupMenu, IDC_SETTING, MF_BYCOMMAND, IDC_SETTING, SafeMyString(IDS_SETTING));
-	ModifyMenu(hPopupMenu, IDC_NETWORKSTG, MF_BYCOMMAND, IDC_NETWORKSTG, SafeMyString(IDS_NETWORKSTG));
-	ModifyMenu(hPopupMenu, IDC_DATETIME_Win10, MF_BYCOMMAND, IDC_DATETIME_Win10, SafeMyString(IDS_PROPDATE));
-	ModifyMenu(hPopupMenu, IDC_REMOVE_DRIVE0, MF_BYCOMMAND, IDC_REMOVE_DRIVE0, SafeMyString(IDS_ABOUTRMVDRV));
-	ModifyMenu(hPopupMenu, IDC_SHOWDIR, MF_BYCOMMAND, IDC_SHOWDIR, SafeMyString(IDS_OPENTCFOLDER));
+	ModifyMenuAcpBoundary(hPopupMenu, IDC_TASKMAN, MF_BYCOMMAND, IDC_TASKMAN, IDS_TASKMGR);
+	ModifyMenuAcpBoundary(hPopupMenu, IDC_CMD, MF_BYCOMMAND, IDC_CMD, IDS_CMD);
+	ModifyMenuAcpBoundary(hPopupMenu, IDC_ALARM_CLOCK, MF_BYCOMMAND, IDC_ALARM_CLOCK, IDS_ALARM_CLOCK);
+	ModifyMenuAcpBoundary(hPopupMenu, IDC_PULLBACK, MF_BYCOMMAND, IDC_PULLBACK, IDS_PULLBACK);
+	ModifyMenuAcpBoundary(hPopupMenu, IDC_VISTACALENDAR, MF_BYCOMMAND, IDC_VISTACALENDAR, IDS_VISTACALENDAR);
+	ModifyMenuAcpBoundary(hPopupMenu, IDC_SHOWAVAILABLENETWORKS, MF_BYCOMMAND, IDC_SHOWAVAILABLENETWORKS, IDS_SHOWAVAILABLENETWORKS);
+	ModifyMenuAcpBoundary(hPopupMenu, IDC_CONTROLPNL, MF_BYCOMMAND, IDC_CONTROLPNL, IDS_CONTROLPNL);
+	ModifyMenuAcpBoundary(hPopupMenu, IDC_POWERPNL, MF_BYCOMMAND, IDC_POWERPNL, IDS_POWERPNL);
+	ModifyMenuAcpBoundary(hPopupMenu, IDC_NETWORKPNL, MF_BYCOMMAND, IDC_NETWORKPNL, IDS_NETWORKPNL);
+	ModifyMenuAcpBoundary(hPopupMenu, IDC_SETTING, MF_BYCOMMAND, IDC_SETTING, IDS_SETTING);
+	ModifyMenuAcpBoundary(hPopupMenu, IDC_NETWORKSTG, MF_BYCOMMAND, IDC_NETWORKSTG, IDS_NETWORKSTG);
+	ModifyMenuAcpBoundary(hPopupMenu, IDC_DATETIME_Win10, MF_BYCOMMAND, IDC_DATETIME_Win10, IDS_PROPDATE);
+	ModifyMenuAcpBoundary(hPopupMenu, IDC_REMOVE_DRIVE0, MF_BYCOMMAND, IDC_REMOVE_DRIVE0, IDS_ABOUTRMVDRV);
+	ModifyMenuAcpBoundary(hPopupMenu, IDC_SHOWDIR, MF_BYCOMMAND, IDC_SHOWDIR, IDS_OPENTCFOLDER);
 	{
 		char tcapCaptureLabel[128];
 		char tcapSettingsLabel[128];
-		wsprintf(tcapCaptureLabel, "%s", SafeMyString(IDS_TCAP_CAPTURE));
-		wsprintf(tcapSettingsLabel, "%s", SafeMyString(IDS_TCAP_SETTING));
-		ModifyMenu(hPopupMenu, IDC_TCAP_CAPTURE, MF_BYCOMMAND, IDC_TCAP_CAPTURE, tcapCaptureLabel);
-		ModifyMenu(hPopupMenu, IDC_TCAP_SETTINGS, MF_BYCOMMAND, IDC_TCAP_SETTINGS, tcapSettingsLabel);
+		wsprintf(tcapCaptureLabel, "%s", SafeMyStringAcpBoundary(IDS_TCAP_CAPTURE));
+		wsprintf(tcapSettingsLabel, "%s", SafeMyStringAcpBoundary(IDS_TCAP_SETTING));
+		tc_menu_modify_string(hPopupMenu, IDC_TCAP_CAPTURE, MF_BYCOMMAND, IDC_TCAP_CAPTURE, tcapCaptureLabel);
+		tc_menu_modify_string(hPopupMenu, IDC_TCAP_SETTINGS, MF_BYCOMMAND, IDC_TCAP_SETTINGS, tcapSettingsLabel);
 	}
-	ModifyMenu(hPopupMenu, IDC_SHOWPROP, MF_BYCOMMAND, IDC_SHOWPROP, SafeMyString(IDS_PROPERTY));
-	ModifyMenu(hPopupMenu, IDC_EXIT, MF_BYCOMMAND, IDC_EXIT, SafeMyString(IDS_EXITTCLOCK));
-	ModifyMenu(hPopupMenu, IDC_RESTART, MF_BYCOMMAND, IDC_RESTART, SafeMyString(IDS_RESTART));
+	ModifyMenuAcpBoundary(hPopupMenu, IDC_SHOWPROP, MF_BYCOMMAND, IDC_SHOWPROP, IDS_PROPERTY);
+	ModifyMenuAcpBoundary(hPopupMenu, IDC_EXIT, MF_BYCOMMAND, IDC_EXIT, IDS_EXITTCLOCK);
+	ModifyMenuAcpBoundary(hPopupMenu, IDC_RESTART, MF_BYCOMMAND, IDC_RESTART, IDS_RESTART);
 
 
 

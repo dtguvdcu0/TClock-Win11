@@ -335,6 +335,7 @@ static SIZE  sizeAnalogBitmapSize = { 0, 0 };
 static BOOL InitAnalogClockData(HWND hWnd);
 static BOOL bGraphTimerStart = FALSE;
 char format[1024];
+static WCHAR* g_formatW = NULL; /* Wide version of format[], dynamically allocated */
 BOOL bHour12, bHourZero;
 SYSTEMTIME LastTime;
 int beatLast = -1;
@@ -469,6 +470,27 @@ static void ClockTextOutCompat(HDC hdc, int x, int y, const char* sp, int len)
 			writeDebugLog_Win10("[tclock.c][TextDraw] TextOut failed", 999);
 			writeDebugLog_Win10("[tclock.c][TextDraw] GetLastError=", (int)GetLastError());
 			s_lastLogTick = now;
+		}
+	}
+}
+
+static BOOL ClockGetTextExtentCompatW(HDC hdc, const WCHAR* sp, int wlen, SIZE* psz)
+{
+	if (!sp || wlen <= 0 || !psz) return FALSE;
+	return GetTextExtentPoint32W(hdc, sp, wlen, psz);
+}
+
+static void ClockTextOutCompatW(HDC hdc, int x, int y, const WCHAR* sp, int wlen)
+{
+	BOOL ok = FALSE;
+	if (sp && wlen > 0)
+		ok = TextOutW(hdc, x, y, sp, wlen);
+	if (!ok && b_DebugLog) {
+		static DWORD s_lastLogTickW = 0;
+		DWORD now = GetTickCount();
+		if ((now - s_lastLogTickW) >= 2000) {
+			writeDebugLog_Win10("[tclock.c][TextDrawW] TextOutW failed", 999);
+			s_lastLogTickW = now;
 		}
 	}
 }
@@ -3044,10 +3066,36 @@ void ReadData()
 
 		GetMyRegStr("Format", "Format", fmt_raw, 1024, "mm/dd ddd\\n hh:nn:ss " );
 		BuildMainFormatWrapped(fmt_raw, format, (int)sizeof(format), TRUE, "[tclock.c][ReadData]");
+		/* Convert format[] to Wide g_formatW for W-path draw (UTF-8 first, then codepage fallback). */
+		{
+			extern int codepage;
+			WCHAR wtmp[4096];
+			if (g_formatW) { free(g_formatW); g_formatW = NULL; }
+			if (tc_utf8_to_utf16(format, wtmp, (int)(sizeof(wtmp) / sizeof(wtmp[0]))) > 0) {
+				int fwLen = lstrlenW(wtmp) + 1;
+				g_formatW = (WCHAR*)malloc((size_t)fwLen * sizeof(WCHAR));
+				if (g_formatW) lstrcpyW(g_formatW, wtmp);
+			}
+			if (!g_formatW) {
+				int fwLen = MultiByteToWideChar((UINT)codepage, 0, format, -1, NULL, 0);
+				if (fwLen > 0) {
+					g_formatW = (WCHAR*)malloc((size_t)fwLen * sizeof(WCHAR));
+					if (g_formatW && MultiByteToWideChar((UINT)codepage, 0, format, -1, g_formatW, fwLen) <= 0) {
+						free(g_formatW); g_formatW = NULL;
+					}
+				}
+			}
+			if (g_formatW) {
+				char formatAnsi[sizeof(format)];
+				if (tc_utf16_to_ansi((UINT)codepage, g_formatW, formatAnsi, (int)sizeof(formatAnsi)) > 0) {
+					lstrcpyn(format, formatAnsi, (int)sizeof(format));
+				}
+			}
+		}
 	}
 
 
-	dwInfoFormat = FindFormat(format);
+	dwInfoFormat = g_formatW ? FindFormatW(g_formatW) : FindFormat(format);
 	bDispSecond = (dwInfoFormat&FORMAT_SECOND)? TRUE:FALSE;
 	nDispBeat = dwInfoFormat & (FORMAT_BEAT1 | FORMAT_BEAT2);
 
@@ -3096,7 +3144,7 @@ void InitSysInfo()
 	bGetBattery = bGetMem = FALSE;
 	memset(&msMemory, 0, sizeof(msMemory));
 
-	dwInfoFormat = FindFormat(format);
+	dwInfoFormat = g_formatW ? FindFormatW(g_formatW) : FindFormat(format);
 	dwInfoTip = TooltipFindFormat();
 
 	//bGetBattery = ((dwInfoFormat | dwInfoTip) & FORMAT_BATTERY) ? TRUE : FALSE;
@@ -3286,6 +3334,8 @@ BOOL WINAPI FormatMenuLabel_Win11(const char* fmt, char* out, int outBytes)
 	int beat100 = 0;
 	char info[1024];
 	char tmp[1024];
+	WCHAR tmpW[1024];
+	WCHAR outW[1024];
 	DWORD dwInfo = 0;
 
 	if (!fmt || !fmt[0] || !out || outBytes <= 0) {
@@ -3294,8 +3344,15 @@ BOOL WINAPI FormatMenuLabel_Win11(const char* fmt, char* out, int outBytes)
 	out[0] = '\0';
 	tmp[0] = '\0';
 	info[0] = '\0';
+	tmpW[0] = L'\0';
+	outW[0] = L'\0';
+
 	BuildMainFormatWrapped(fmt, tmp, (int)sizeof(tmp), FALSE, "[tclock.c][FormatMenuLabel]");
-	dwInfo = FindFormat(tmp);
+	if (tc_utf8_to_utf16(tmp, tmpW, (int)(sizeof(tmpW) / sizeof(tmpW[0]))) <= 0) {
+		return FALSE;
+	}
+
+	dwInfo = FindFormatW(tmpW);
 	if (dwInfo & (FORMAT_BATTERY | FORMAT_MEMORY | FORMAT_NET | FORMAT_HDD | FORMAT_CPU | FORMAT_VOL | FORMAT_GPU | FORMAT_TEMP)) {
 		UpdateSysRes(
 			(dwInfo & FORMAT_BATTERY) ? TRUE : FALSE,
@@ -3311,9 +3368,13 @@ BOOL WINAPI FormatMenuLabel_Win11(const char* fmt, char* out, int outBytes)
 
 	GetDisplayTime(&t, &beat100);
 	InitFormat(&t);
-	MakeFormat(out, info, &t, beat100, tmp);
+	MakeFormatW(outW, (int)(sizeof(outW) / sizeof(outW[0])), info, &t, beat100, tmpW);
+	if (tc_utf16_to_utf8(outW, out, outBytes) <= 0) {
+		out[0] = '\0';
+	}
 	return out[0] ? TRUE : FALSE;
 }
+
 
 void PlayChime(BOOL b_sedondary)
 {
@@ -4538,6 +4599,65 @@ void Textout_Tclock_Win10_3(int x, int y, char* sp, int len, int infoval)
 	}
 }
 
+void Textout_Tclock_Win10_3W(int x, int y, const WCHAR* spW, int wlen, int infoval)
+{
+	COLORREF textshadow, textcol_dow, textcol_temp;
+
+	textshadow = TextColorFromInfoVal(99);
+	textcol_dow = TextColorFromInfoVal(88);
+	textcol_temp = TextColorFromInfoVal(infoval);
+
+	if (fillbackcolor)
+	{
+		if (bClockShadow)
+		{
+			SetTextColor(hdcClock, textshadow);
+			ClockTextOutCompatW(hdcClock, x + nShadowRange, y + nShadowRange, spW, wlen);
+		}
+		if (bClockBorder)
+		{
+			SetTextColor(hdcClock, textshadow);
+			ClockTextOutCompatW(hdcClock, x - 1, y + 1, spW, wlen);
+			ClockTextOutCompatW(hdcClock, x + 1, y - 1, spW, wlen);
+			ClockTextOutCompatW(hdcClock, x + 1, y + 1, spW, wlen);
+			ClockTextOutCompatW(hdcClock, x, y - 1, spW, wlen);
+			ClockTextOutCompatW(hdcClock, x + 1, y, spW, wlen);
+			ClockTextOutCompatW(hdcClock, x - 1, y - 1, spW, wlen);
+		}
+		SetTextColor(hdcClock, textcol_temp);
+		ClockTextOutCompatW(hdcClock, x, y, spW, wlen);
+	}
+	else
+	{
+		if (bClockShadow)
+		{
+			SetTextColor(hdcClock_work, RGB(0, 0, 255));
+			ClockTextOutCompatW(hdcClock_work, x + nShadowRange, y + nShadowRange, spW, wlen);
+		}
+		if (bClockBorder)
+		{
+			SetTextColor(hdcClock_work, RGB(0, 0, 255));
+			ClockTextOutCompatW(hdcClock_work, x - 1, y + 1, spW, wlen);
+			ClockTextOutCompatW(hdcClock_work, x + 1, y - 1, spW, wlen);
+			ClockTextOutCompatW(hdcClock_work, x + 1, y + 1, spW, wlen);
+			ClockTextOutCompatW(hdcClock_work, x, y - 1, spW, wlen);
+			ClockTextOutCompatW(hdcClock_work, x + 1, y, spW, wlen);
+			ClockTextOutCompatW(hdcClock_work, x - 1, y - 1, spW, wlen);
+		}
+		{
+			BOOL use_dow_channel = FALSE;
+			if (infoval == 88) { use_dow_channel = TRUE; }
+			else if (bUseAllColor) { use_dow_channel = TRUE; }
+			else if ((infoval == 0x02) && bUseDateColor) { use_dow_channel = TRUE; }
+			else if ((infoval == 0x04) && bUseDowColor) { use_dow_channel = TRUE; }
+			else if ((infoval == 0x08) && bUseTimeColor) { use_dow_channel = TRUE; }
+			if (use_dow_channel) { SetTextColor(hdcClock_work, RGB(0, 255, 0)); }
+			else { SetTextColor(hdcClock_work, RGB(255, 0, 0)); }
+		}
+		ClockTextOutCompatW(hdcClock_work, x, y, spW, wlen);
+	}
+}
+
 
 COLORREF TextColorFromInfoVal(int infoval)
 {
@@ -4621,7 +4741,7 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
 
 	TEXTMETRIC tm;
 	int hf, y;
-	char s[1024], s_info[1024], *p, *sp, *p_info, *sp_info;
+	WCHAR sW[4096]; char s_info[4096]; WCHAR *pw, *spW; char *p_info, *sp_info;
 	//COLORREF s_col[1024];
 	SIZE sz;
 	int xclock, yclock, wclock, hclock;
@@ -4695,7 +4815,8 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
 		*(s_info + i) = 0x00;
 	}
 
-	MakeFormat(s, s_info, pt, beat100, format);
+	if (!g_formatW) return;
+	MakeFormatW(sW, _countof(sW), s_info, pt, beat100, g_formatW);
 
 	xclock = 0;
 	yclock = 0;
@@ -4854,7 +4975,7 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
 	//w = 0;
 	GetTextMetrics(hdcClock, &tm);
 	hf = tm.tmHeight - tm.tmInternalLeading;
-	p = s;
+	pw = sW;
 	p_info = s_info;
 	y = hf / 4 - tm.tmInternalLeading / 2 + yclock;
 //	SIZE size1, size2, size3;
@@ -4864,30 +4985,30 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
 	int tempXpos;
 	int zonecount = 0;
 
-	while (*p)
+	while (*pw)
 	{
-		sp = p;
+		spW = pw;
 		sp_info = p_info;
 		//xOffset = 0;
 
-		while (*p && *p != 0x0d)	//前者が成立したときに文字列終了でループから抜ける。
+		while (*pw && *pw != L'\r')	//前者が成立したときに文字列終了でループから抜ける。
 		{
-			p++;
+			pw++;
 			p_info++;
 		}
-		if (*p == 0x0d) {
-			*p = 0;
-			p += 2;
+		if (*pw == L'\r') {
+			*pw = L'\0';
+			pw += 2;
 			*p_info = 0;
 			p_info += 2;
 		}		//改行マークを文字列終端マークにいったん置換 -> 最終行以外, pは次行の先頭アドレス
-		if (*p == 0 && sp == s)					//1行フォーマットの場合
+		if (*pw == L'\0' && spW == sW)					//1行フォーマットの場合
 		{
 			y = (hclock - tm.tmHeight) / 2 - tm.tmInternalLeading / 4 + yclock;
 		}
-		if (ClockGetTextExtentCompat(hdcClock, sp, (int)strlen(sp), &sz) == 0)
+		if (ClockGetTextExtentCompatW(hdcClock, spW, (int)wcslen(spW), &sz) == 0)
 		{
-			sz.cx = (LONG)strlen(sp) * tm.tmAveCharWidth;
+			sz.cx = (LONG)wcslen(spW) * tm.tmAveCharWidth;
 			sz.cy = tm.tmHeight;
 		}
 		//if (w < sz.cx) w = sz.cx;
@@ -4918,7 +5039,7 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
 				*sp_info++;
 			}
 
-			ClockGetTextExtentCompat(hdcClock, sp, zonelength, &sz);
+			ClockGetTextExtentCompatW(hdcClock, spW, zonelength, &sz);
 
 			if (nTextPos == 1)
 			{
@@ -4933,7 +5054,7 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
 				tempXpos += sz.cx / 2;
 			}
 
-			Textout_Tclock_Win10_3(tempXpos, y + dvpos, sp, zonelength, currentzoneval);
+			Textout_Tclock_Win10_3W(tempXpos, y + dvpos, spW, zonelength, currentzoneval);
 
 			if (nTextPos == 1)
 			{
@@ -4949,11 +5070,11 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
 			}
 
 
-			sp = s + (sp_info - s_info);
+			spW = sW + (sp_info - s_info);
 
 		}
 
-		y += hf; if (*p) y += 2 + dlineheight;
+		y += hf; if (*pw) y += 2 + dlineheight;
 	}
 
 //	if (b_DebugLog)writeDebugLog_Win10("[tclock.c][drawclocksub] Text out,zonecount =", zonecount);
@@ -6003,7 +6124,7 @@ void CalcMainClockContentSize(void)
 	HDC hdc;
 	HGDIOBJ hOldFont = NULL;
 	TEXTMETRIC tm;
-	char s[1024], s_info[1024], *p, *sp;
+	WCHAR sW[4096]; WCHAR *pw, *spW;
 	SIZE sz;
 	int hf;
 
@@ -6014,19 +6135,23 @@ void CalcMainClockContentSize(void)
 	GetTextMetrics(hdc, &tm);
 
 	GetDisplayTime(&t, nDispBeat ? (&beat100) : NULL);
-	MakeFormat(s, s_info, &t, beat100, format);
+	if (g_formatW) {
+		MakeFormatW(sW, _countof(sW), NULL, &t, beat100, g_formatW);
+	} else {
+		sW[0] = L'\0';
+	}
 
-	p = s; w = 0; h = 0;
+	pw = sW; w = 0; h = 0;
 	hf = tm.tmHeight - tm.tmInternalLeading;
-	while (*p)
+	while (*pw)
 	{
-		sp = p;
-		while (*p && *p != 0x0d) p++;
-		if (*p == 0x0d) { *p = 0; p += 2; }
-		if (ClockGetTextExtentCompat(hdc, sp, (int)strlen(sp), &sz) == 0)
-			sz.cx = (LONG)strlen(sp) * tm.tmAveCharWidth;
+		spW = pw;
+		while (*pw && *pw != L'\r') pw++;
+		if (*pw == L'\r') { *pw = L'\0'; pw += 2; }
+		if (ClockGetTextExtentCompatW(hdc, spW, (int)wcslen(spW), &sz) == 0)
+			sz.cx = (LONG)wcslen(spW) * tm.tmAveCharWidth;
 		if (w < sz.cx) w = sz.cx;
-		h += hf; if (*p) h += 2 + dlineheight;
+		h += hf; if (*pw) h += 2 + dlineheight;
 	}
 
 	if (nAnalogClockUseFlag == ANALOG_CLOCK_USE)

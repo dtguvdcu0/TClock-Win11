@@ -45,11 +45,11 @@ BOOL CALLBACK PageMiscProc(HWND hDlg, UINT message,
 					int r;
 					r = DelRegAll();
 					if (r == 0)
-						MyMessageBox(hDlg,MyString(IDS_DELREGNGINI), "TClock-Win11",MB_OK,MB_ICONEXCLAMATION);
+						MyMessageBoxUTF8(hDlg,MyStringUTF8(IDS_DELREGNGINI), "TClock-Win11",MB_OK,MB_ICONEXCLAMATION);
 					else if (r == 1)
-						MyMessageBox(hDlg,MyString(IDS_DELREGOK), "TClock-Win11",MB_OK,MB_ICONINFORMATION);
+						MyMessageBoxUTF8(hDlg,MyStringUTF8(IDS_DELREGOK), "TClock-Win11",MB_OK,MB_ICONINFORMATION);
 					else
-						MyMessageBox(hDlg,MyString(IDS_DELREGNG),"TClock-Win11",MB_OK,MB_ICONEXCLAMATION);
+						MyMessageBoxUTF8(hDlg,MyStringUTF8(IDS_DELREGNG),"TClock-Win11",MB_OK,MB_ICONEXCLAMATION);
 				}
 				break;
 				//  readme.txtを開く
@@ -107,7 +107,7 @@ void OnStartup(HWND hDlg)
 		;
 	else return;
 
-	if(MyMessageBox(hDlg, MyString(IDS_STARTUPLINK),
+	if(MyMessageBoxUTF8(hDlg, MyStringUTF8(IDS_STARTUPLINK),
 		"TClock-Win11", MB_YESNO, MB_ICONQUESTION) != IDYES) return;
 
 	GetModuleFileName(GetModuleHandle(NULL), myexe, MAX_PATH);

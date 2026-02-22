@@ -152,7 +152,6 @@ static BOOL tc_menu_utf8_or_ansi_to_wide(const char* text, WCHAR* wbuf, int wbuf
 	wbuf[0] = L'\0';
 	if (!text || !text[0]) return TRUE;
 	if (tc_utf8_to_utf16(text, wbuf, wbufCch) > 0) return TRUE;
-	if (MultiByteToWideChar(CP_ACP, 0, text, -1, wbuf, wbufCch) > 0) return TRUE;
 	return FALSE;
 }
 
@@ -162,7 +161,7 @@ static BOOL tc_menu_insert_string(HMENU hMenu, UINT position, UINT flags, UINT_P
 	if (tc_menu_utf8_or_ansi_to_wide(text, wtext, (int)(sizeof(wtext) / sizeof(wtext[0])))) {
 		return InsertMenuW(hMenu, position, flags, id, wtext);
 	}
-	return InsertMenu(hMenu, position, flags, id, text ? text : "");
+	return FALSE;
 }
 
 static BOOL tc_menu_modify_string(HMENU hMenu, UINT item, UINT flags, UINT_PTR id, const char* text)
@@ -171,7 +170,7 @@ static BOOL tc_menu_modify_string(HMENU hMenu, UINT item, UINT flags, UINT_PTR i
 	if (tc_menu_utf8_or_ansi_to_wide(text, wtext, (int)(sizeof(wtext) / sizeof(wtext[0])))) {
 		return ModifyMenuW(hMenu, item, flags, id, wtext);
 	}
-	return ModifyMenu(hMenu, item, flags, id, text ? text : "");
+	return FALSE;
 }
 
 static void tc_menu_dynamic_reset(void)
@@ -332,10 +331,7 @@ static void tc_menu_alarm_notify_finish(TC_MENU_ALARM_ENTRY* e)
 	}
 	if (e->notifyFlags & 2) {
 		if (e->soundFile[0]) {
-			n = MultiByteToWideChar(CP_UTF8, 0, e->soundFile, -1, wPath, MAX_PATH);
-			if (n <= 0) {
-				n = MultiByteToWideChar(CP_ACP, 0, e->soundFile, -1, wPath, MAX_PATH);
-			}
+			n = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, e->soundFile, -1, wPath, MAX_PATH);
 			if (n > 0) {
 				PlaySoundW(wPath, NULL, SND_FILENAME | SND_ASYNC);
 			} else {

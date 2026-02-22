@@ -488,7 +488,7 @@ int RunCaptureMain(int argc, char* argv[]) {
     auto enableDpiAware = []() {
         // Best effort DPI awareness for per-monitor scaling.
         using SetDpiContextFn = BOOL(WINAPI*)(DPI_AWARENESS_CONTEXT);
-        HMODULE user32 = GetModuleHandleA("user32.dll");
+        HMODULE user32 = GetModuleHandleW(L"user32.dll");
         if (user32) {
             auto setCtx = reinterpret_cast<SetDpiContextFn>(
                 GetProcAddress(user32, "SetProcessDpiAwarenessContext"));
@@ -499,7 +499,7 @@ int RunCaptureMain(int argc, char* argv[]) {
             }
         }
         // Fallback for older systems.
-        HMODULE shcore = LoadLibraryA("Shcore.dll");
+        HMODULE shcore = LoadLibraryW(L"Shcore.dll");
         if (shcore) {
             using SetDpiAwarenessFn = HRESULT(WINAPI*)(PROCESS_DPI_AWARENESS);
             auto setAwareness = reinterpret_cast<SetDpiAwarenessFn>(

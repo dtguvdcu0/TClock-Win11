@@ -155,6 +155,7 @@ void CleanSettingFile(void);
 // FORMAT.C
 void InitFormat(SYSTEMTIME* lt);
 void MakeFormat(char* s, char* s_info, SYSTEMTIME* pt, int beat100, char* fmt);
+void MakeFormatW(WCHAR* s, int sCch, char* s_info, SYSTEMTIME* pt, int beat100, const WCHAR* fmt);
 void CustomFormatVarsReadSettings(void);
 void CustomFormatVarsPreloadIfEnabled(void);
 //void MakeFormat_Colored(char* s, COLORREF* s_col,  SYSTEMTIME* pt, int beat100, char* fmt);
@@ -173,6 +174,7 @@ void CustomFormatVarsPreloadIfEnabled(void);
 #define FORMAT_GPU     0x1000
 #define FORMAT_TEMP		0x2000
 DWORD FindFormat(char* fmt);
+DWORD FindFormatW(const WCHAR* fmt);
 
 SYSTEMTIME CalcTimeDifference_Win10(SYSTEMTIME*, int, int, BOOL);
 SYSTEMTIME CalcTimeDifference_US_Win10(SYSTEMTIME*, int, int, BOOL);

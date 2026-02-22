@@ -4891,7 +4891,11 @@ static BOOL tc_makeformatw_native_core(WCHAR* s, int sCch, SYSTEMTIME* pt, int b
 					sp += 5; continue;
 				}
 
-				if (tc_is_alpha_ascii_w(*sp)) return FALSE;
+				if (tc_is_alpha_ascii_w(*sp)) {
+					/* Keep unknown ASCII token chars as literals to avoid unnecessary ANSI fallback. */
+					tc_wappend_char(&dp, &remain, *sp++);
+					continue;
+				}
 				tc_wappend_char(&dp, &remain, *sp++);
 			}
 		}
@@ -4914,18 +4918,23 @@ void MakeFormatW(WCHAR* s, int sCch, char* s_info, SYSTEMTIME* pt, int beat100, 
 	int fmtABytes;
 	int outABytes;
 	BOOL canNative = FALSE;
+	BOOL nativeOutputReady = FALSE;
 
 	if (!s || sCch <= 0) return;
 	s[0] = L'\0';
 	if (!fmt || !pt) return;
 
 	canNative = tc_makeformatw_can_native(fmt);
-	if (canNative && tc_makeformatw_native_core(s, sCch, pt, beat100, fmt)) {
-		if (s_info) s_info[0] = '\0';
-		return;
+	/* Always try native W parser first to preserve non-ACP literals. */
+	if (tc_makeformatw_native_core(s, sCch, pt, beat100, fmt)) {
+		nativeOutputReady = TRUE;
+		if (!s_info) return;
+	}
+	else {
+		s[0] = L'\0';
 	}
 #if TCLOCK_ENABLE_MAKEFORMATW_FALLBACK_LOG
-	if (b_DebugLog) {
+	if (b_DebugLog && !nativeOutputReady) {
 		static DWORD s_lastFallbackLogTick = 0;
 		DWORD now = GetTickCount();
 		if ((now - s_lastFallbackLogTick) >= 5000) {
@@ -4978,12 +4987,23 @@ void MakeFormatW(WCHAR* s, int sCch, char* s_info, SYSTEMTIME* pt, int beat100, 
 	if (infoA) infoA[0] = '\0';
 	MakeFormat(outA, infoA ? infoA : outA, pt, beat100, fmtA);
 
-	if (tc_ansi_to_utf16_compat((UINT)codepage, outA, s, sCch) <= 0) {
-		s[0] = L'\0';
+	if (!nativeOutputReady) {
+		if (tc_ansi_to_utf16_compat((UINT)codepage, outA, s, sCch) <= 0) {
+			s[0] = L'\0';
+		}
 	}
 
 	if (s_info && infoA) {
-		strcpy(s_info, infoA);
+		/* Remap byte-parallel infoA [parallel to ANSI outA] to WCHAR-parallel s_info */
+		int srcByte = 0, dstChar = 0;
+		while (outA[srcByte] && dstChar < sCch - 1) {
+			s_info[dstChar] = infoA[srcByte];
+			{ char* nextA = GetCharNextCompat(outA + srcByte);
+			  if (nextA <= outA + srcByte) break;
+			  srcByte = (int)(nextA - outA); }
+			dstChar++;
+		}
+		s_info[dstChar] = '\0';
 	}
 
 	free(fmtA);

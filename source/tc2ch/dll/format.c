@@ -4906,10 +4906,6 @@ static BOOL tc_makeformatw_native_core(WCHAR* s, int sCch, SYSTEMTIME* pt, int b
 	return TRUE;
 }
 
-#ifndef TCLOCK_ENABLE_MAKEFORMATW_FALLBACK_LOG
-#define TCLOCK_ENABLE_MAKEFORMATW_FALLBACK_LOG 0
-#endif
-
 void MakeFormatW(WCHAR* s, int sCch, char* s_info, SYSTEMTIME* pt, int beat100, const WCHAR* fmt)
 {
 	char* fmtA = NULL;
@@ -4917,14 +4913,12 @@ void MakeFormatW(WCHAR* s, int sCch, char* s_info, SYSTEMTIME* pt, int beat100, 
 	char* infoA = NULL;
 	int fmtABytes;
 	int outABytes;
-	BOOL canNative = FALSE;
 	BOOL nativeOutputReady = FALSE;
 
 	if (!s || sCch <= 0) return;
 	s[0] = L'\0';
 	if (!fmt || !pt) return;
 
-	canNative = tc_makeformatw_can_native(fmt);
 	/* Always try native W parser first to preserve non-ACP literals. */
 	if (tc_makeformatw_native_core(s, sCch, pt, beat100, fmt)) {
 		nativeOutputReady = TRUE;
@@ -4933,32 +4927,6 @@ void MakeFormatW(WCHAR* s, int sCch, char* s_info, SYSTEMTIME* pt, int beat100, 
 	else {
 		s[0] = L'\0';
 	}
-#if TCLOCK_ENABLE_MAKEFORMATW_FALLBACK_LOG
-	if (b_DebugLog && !nativeOutputReady) {
-		static DWORD s_lastFallbackLogTick = 0;
-		DWORD now = GetTickCount();
-		if ((now - s_lastFallbackLogTick) >= 5000) {
-			if (canNative) {
-				writeDebugLog_Win10("[format.c][MakeFormatW] native parse failed, fallback to ANSI bridge.", 999);
-			}
-			else {
-				WCHAR bad = tc_makeformatw_first_unsupported_char(fmt);
-				char msg[160];
-				if (bad && bad < 0x80) {
-					sprintf(msg, "[format.c][MakeFormatW] unsupported token '%c', fallback to ANSI bridge.", (char)bad);
-				}
-				else if (bad) {
-					sprintf(msg, "[format.c][MakeFormatW] unsupported token U+%04X, fallback to ANSI bridge.", (unsigned int)bad);
-				}
-				else {
-					sprintf(msg, "[format.c][MakeFormatW] unsupported token, fallback to ANSI bridge.");
-				}
-				writeDebugLog_Win10(msg, 999);
-			}
-			s_lastFallbackLogTick = now;
-		}
-	}
-#endif
 
 	fmtABytes = WideCharToMultiByte((UINT)codepage, 0, fmt, -1, NULL, 0, NULL, NULL);
 	if (fmtABytes <= 0) return;

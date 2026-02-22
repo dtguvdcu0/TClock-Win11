@@ -2038,17 +2038,7 @@ void OnTClockCommand(HWND hwnd, WORD wID, WORD wCode)
 			return;
 		}
 	}
-    if (b_DebugLog) {
-        char tmp[96];
-        wsprintf(tmp, "[menu.c][OnTClockCommand] Unknown wID=%u", wID);
-        WriteDebug_New2(tmp);
-    }
-    if (b_NormalLog) {
-        char tmp2[96];
-        wsprintf(tmp2, "[Warning] Unknown menu command wID=%u", wID);
-        WriteNormalLog(tmp2);
-    }
-    return;
+	return;
 }
 
 

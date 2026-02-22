@@ -31,19 +31,30 @@ extern BOOL b_DebugLog;
 
 static HFONT hfont_sample;
 
-static void tc_normalize_font_name_for_combo(char* s, int sBytes)
+static void tc_normalize_font_name_for_combo(const char* src, char* dst, int dstBytes)
 {
 	WCHAR wbuf[256];
 	char abuf[256];
 	const unsigned char* p;
-	if (!s || sBytes <= 1 || !s[0]) return;
+	if (!dst || dstBytes <= 1) return;
+	dst[0] = '\0';
+	if (!src || !src[0]) return;
 	/* Limit conversion attempts to non-ASCII payload to avoid unnecessary rewrites. */
-	p = (const unsigned char*)s;
+	p = (const unsigned char*)src;
 	while (*p && *p < 0x80) ++p;
-	if (*p == 0) return;
-	if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, s, -1, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) <= 0) return;
-	if (WideCharToMultiByte(GetACP(), 0, wbuf, -1, abuf, (int)sizeof(abuf), NULL, NULL) <= 0) return;
-	lstrcpyn(s, abuf, sBytes);
+	if (*p == 0) {
+		lstrcpyn(dst, src, dstBytes);
+		return;
+	}
+	if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, src, -1, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) <= 0) {
+		lstrcpyn(dst, src, dstBytes);
+		return;
+	}
+	if (WideCharToMultiByte(GetACP(), 0, wbuf, -1, abuf, (int)sizeof(abuf), NULL, NULL) <= 0) {
+		lstrcpyn(dst, src, dstBytes);
+		return;
+	}
+	lstrcpyn(dst, abuf, dstBytes);
 }
 
 static COMBOCOLOR combocolor[4] = {
@@ -485,7 +496,7 @@ void InitComboFont(HWND hDlg)
 	HDC hdc;
 	LOGFONT lf;
 	HWND hcombo;
-	char s[80], s1[81], s2[81];
+	char s[80], sNorm[80], s1[81], s2[81];
 	int i;
 
 	hdc = GetDC(NULL);
@@ -504,7 +515,8 @@ void InitComboFont(HWND hDlg)
 
 	s[0] = '\0';
 	GetMyRegStr("Color_Font", "Font", s, 80, "");
-	tc_normalize_font_name_for_combo(s, (int)sizeof(s));
+	sNorm[0] = '\0';
+	tc_normalize_font_name_for_combo(s, sNorm, (int)sizeof(sNorm));
 	if(s[0] == 0)
 	{
 		HFONT hfont;
@@ -515,13 +527,16 @@ void InitComboFont(HWND hDlg)
 			strcpy(s, lf.lfFaceName);
 		}
 	}
+	if (sNorm[0] == '\0') {
+		lstrcpyn(sNorm, s, (int)sizeof(sNorm));
+	}
 	//i = CBFindStringExact(hDlg, IDC_FONT, s);
 	//if(i == LB_ERR) i = 0;
 
 	strcpy(s1, "*");
-	strcat(s1, s);
+	strcat(s1, sNorm);
 	strcpy(s2, " ");
-	strcat(s2, s);
+	strcat(s2, sNorm);
 
 	i = CBFindStringExact(hDlg, IDC_FONT, s1);
 	if (i == LB_ERR)

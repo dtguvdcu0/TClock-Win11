@@ -274,6 +274,7 @@ BOOL SetDlgItemTextUTF8(HWND hDlg, int id, const char* text);
 int GetDlgItemTextUTF8(HWND hDlg, int id, char* text, int textBytes);
 int GetClassNameUTF8(HWND hwnd, char* text, int textBytes);
 int GetLocaleInfoCompat(int ilang, LCTYPE LCType, char* dst, int n);
+int GetLocaleInfoUTF8Compat(int ilang, LCTYPE LCType, char* dst, int n);
 DWORDLONG M32x32to64(DWORD a, DWORD b);
 void SetForegroundWindow98(HWND hwnd);
 //void WriteDebug(const char* s);	 //WriteDebug_New2()に移行 by TTTT

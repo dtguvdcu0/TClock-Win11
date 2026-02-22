@@ -9,6 +9,18 @@
 static void OnInit(HWND hDlg, LPARAM lParam);
 static void OnOK(HWND hDlg);
 
+static int ComboAddStringUtf8AsAcp(HWND hDlg, int id, const char* utf8)
+{
+	WCHAR wbuf[256];
+	char abuf[256];
+	if (!utf8) utf8 = "";
+	if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8, -1, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) > 0 &&
+		WideCharToMultiByte(GetACP(), 0, wbuf, -1, abuf, (int)sizeof(abuf), NULL, NULL) > 0) {
+		return CBAddString(hDlg, id, (LPARAM)abuf);
+	}
+	return CBAddString(hDlg, id, (LPARAM)utf8);
+}
+
 extern BOOL b_EnglishMenu;
 extern int Language_Offset;
 
@@ -52,10 +64,10 @@ void OnInit(HWND hDlg, LPARAM lParam)
 	// "AM Symbol" and "PM Symbol"
 	CBResetContent(hDlg, IDC_AMSYMBOL);
 	GetMyRegStr("Format", "AMsymbol", s, 80, "");
-	if(s[0]) CBAddString(hDlg, IDC_AMSYMBOL, (LPARAM)s);
-	GetLocaleInfoCompat(ilang, LOCALE_S1159, s2, 10);
+	if(s[0]) ComboAddStringUtf8AsAcp(hDlg, IDC_AMSYMBOL, s);
+	GetLocaleInfoUTF8Compat(ilang, LOCALE_S1159, s2, 10);
 	if(s2[0] && strcmp(s, s2) != 0)
-		CBAddString(hDlg, IDC_AMSYMBOL, (LPARAM)s2);
+		ComboAddStringUtf8AsAcp(hDlg, IDC_AMSYMBOL, s2);
 	if(strcmp(s, "AM") != 0 && strcmp(s2, "AM") != 0)
 		CBAddString(hDlg, IDC_AMSYMBOL, (LPARAM)"AM");
 	if(strcmp(s, "am") != 0 && strcmp(s2, "am") != 0)
@@ -64,10 +76,10 @@ void OnInit(HWND hDlg, LPARAM lParam)
 
 	CBResetContent(hDlg, IDC_PMSYMBOL);
 	GetMyRegStr("Format", "PMsymbol", s, 80, "");
-	if(s[0]) CBAddString(hDlg, IDC_PMSYMBOL, (LPARAM)s);
-	GetLocaleInfoCompat(ilang, LOCALE_S2359, s2, 10);
+	if(s[0]) ComboAddStringUtf8AsAcp(hDlg, IDC_PMSYMBOL, s);
+	GetLocaleInfoUTF8Compat(ilang, LOCALE_S2359, s2, 10);
 	if(s2[0] && strcmp(s, s2) != 0)
-		CBAddString(hDlg, IDC_PMSYMBOL, (LPARAM)s2);
+		ComboAddStringUtf8AsAcp(hDlg, IDC_PMSYMBOL, s2);
 	if(strcmp(s, "PM") != 0 && strcmp(s2, "PM") != 0)
 		CBAddString(hDlg, IDC_PMSYMBOL, (LPARAM)"PM");
 	if(strcmp(s, "pm") != 0 && strcmp(s2, "pm") != 0)

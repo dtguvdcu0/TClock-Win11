@@ -71,6 +71,18 @@ static void EnsureUnicodeEditControl(HWND hDlg, int id)
 	EnableWindow(hNew, enabled);
 }
 
+static int ComboAddStringUtf8AsAcp(HWND hDlg, int id, const char* utf8)
+{
+	WCHAR wbuf[256];
+	char abuf[256];
+	if (!utf8) utf8 = "";
+	if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8, -1, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) > 0 &&
+		WideCharToMultiByte(GetACP(), 0, wbuf, -1, abuf, (int)sizeof(abuf), NULL, NULL) > 0) {
+		return CBAddString(hDlg, id, (LPARAM)abuf);
+	}
+	return CBAddString(hDlg, id, (LPARAM)utf8);
+}
+
 /*------------------------------------------------
    Dialog Procedure for the "Format" page
 --------------------------------------------------*/
@@ -169,7 +181,7 @@ void InitLocale(HWND hwnd)
 	}
 	GetLocaleInfoCompat(ilang, LOCALE_IDATE, s, 20);
 	idate = atoi(s);
-	GetLocaleInfoCompat(ilang, LOCALE_SABBREVDAYNAME1, sMon, 10);
+	GetLocaleInfoUTF8Compat(ilang, LOCALE_SABBREVDAYNAME1, sMon, 10);
 
 	bDayOfWeekIsLast = FALSE;
 	for(i = 0; aLangDayOfWeekIsLast[i]; i++)
@@ -200,19 +212,19 @@ BOOL CALLBACK EnumLocalesProc(LPTSTR lpLocaleString)
 	x = atox(lpLocaleString);
 	if (b_EnglishMenu)
 	{
-		if (GetLocaleInfoCompat(x, LOCALE_SENGLANGUAGE, s1, 40) > 0)
+		if (GetLocaleInfoUTF8Compat(x, LOCALE_SENGLANGUAGE, s1, 40) > 0)
 		{
-			GetLocaleInfoCompat(x, LOCALE_SENGCOUNTRY, s2, 40);
+			GetLocaleInfoUTF8Compat(x, LOCALE_SENGCOUNTRY, s2, 40);
 			wsprintf(s, "%s (%s)", s1, s2);
-			index = CBAddString(hwndPage, IDC_LOCALE, (LPARAM)s);
+			index = ComboAddStringUtf8AsAcp(hwndPage, IDC_LOCALE, s);
 		}
 		else
 			index = CBAddString(hwndPage, IDC_LOCALE, (LPARAM)lpLocaleString);
 	}
 	else
 	{
-		if (GetLocaleInfoCompat(x, LOCALE_SLANGUAGE, s, 80) > 0)
-			index = CBAddString(hwndPage, IDC_LOCALE, (LPARAM)s);
+		if (GetLocaleInfoUTF8Compat(x, LOCALE_SLANGUAGE, s, 80) > 0)
+			index = ComboAddStringUtf8AsAcp(hwndPage, IDC_LOCALE, s);
 		else
 			index = CBAddString(hwndPage, IDC_LOCALE, (LPARAM)lpLocaleString);
 	}

@@ -647,6 +647,31 @@ int GetLocaleInfoCompat(int ilang, LCTYPE LCType, char* dst, int n)
 	return r;
 }
 
+int GetLocaleInfoUTF8Compat(int ilang, LCTYPE LCType, char* dst, int n)
+{
+	int r;
+	LCID Locale;
+	WCHAR* pw;
+
+	if (!dst || n <= 0) return 0;
+	*dst = 0;
+	Locale = MAKELCID((WORD)ilang, SORT_DEFAULT);
+	pw = (WCHAR*)GlobalAllocPtr(GHND, sizeof(WCHAR) * (n + 1));
+	if (!pw) return 0;
+	r = GetLocaleInfoW(Locale, LCType, pw, n);
+	if (r) {
+		if (tc_utf16_to_utf8(pw, dst, n) <= 0) {
+			*dst = 0;
+			r = 0;
+		}
+		else {
+			r = lstrlen(dst);
+		}
+	}
+	GlobalFreePtr(pw);
+	return r;
+}
+
 /*-------------------------------------------
   32bit x 32bit = 64bit
 ---------------------------------------------*/

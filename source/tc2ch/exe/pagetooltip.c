@@ -77,6 +77,19 @@ __inline void SendPSChanged(HWND hDlg)
 	SendMessage(GetParent(hDlg), PSM_CHANGED, (WPARAM)(hDlg), 0);
 }
 
+static int CBAddStringUtf8AsAcpBoundary(HWND hDlg, int idCombo, const char* utf8)
+{
+	WCHAR wbuf[512];
+	char abuf[512];
+	if (!utf8) utf8 = "";
+	if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8, -1, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) > 0 &&
+		WideCharToMultiByte(CP_ACP, 0, wbuf, -1, abuf, (int)sizeof(abuf), NULL, NULL) > 0) {
+		return CBAddString(hDlg, idCombo, (LPARAM)abuf);
+	}
+	abuf[0] = '\0';
+	return CBAddString(hDlg, idCombo, (LPARAM)abuf);
+}
+
 /*------------------------------------------------
 　「ツールチップ」ページ用ダイアログプロシージャ
 --------------------------------------------------*/
@@ -255,7 +268,7 @@ void OnInit(HWND hDlg)
 
 
 	for(i = IDS_TICONNO; i <= IDS_TICONERR; i++)
-		CBAddString(hDlg, IDC_TICON, (LPARAM)MyString(i));
+		CBAddStringUtf8AsAcpBoundary(hDlg, IDC_TICON, MyStringUTF8(i));
 	CBSetCurSel(hDlg, IDC_TICON,
 		GetMyRegLong("Tooltip", "TipIcon", 0));
 
@@ -303,7 +316,7 @@ void OnInit(HWND hDlg)
 		GetMyRegLong("Tooltip", "TipItalic", FALSE));
 	//for(i = IDS_TIPTYPENORMAL; i <= IDS_TIPTYPEIECOMP; i++)
 	for (i = IDS_TIPTYPENORMAL; i <= IDS_TIPTYPEBALLOON; i++)
-		CBAddString(hDlg, IDC_BALLOONFLG, (LPARAM)MyString(i));
+		CBAddStringUtf8AsAcpBoundary(hDlg, IDC_BALLOONFLG, MyStringUTF8(i));
 	CBSetCurSel(hDlg, IDC_BALLOONFLG,
 		GetMyRegLong("Tooltip", "BalloonFlg", 0));
 	AdjustDlgConboBoxDropDown(hDlg, IDC_BALLOONFLG, 3);

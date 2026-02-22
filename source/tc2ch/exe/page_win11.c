@@ -213,9 +213,9 @@ INT_PTR CALLBACK PageWin11Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
 				WritePolicyDword("Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer", "HideClock", hideClock);
 				CheckDlgButton(hDlg, IDC_ETC_ADJUST_WIN11_SMALLTASKBAR, hideClock ? BST_CHECKED : BST_UNCHECKED);
 				if (!ApplyHideClockActionElevated(hDlg, hideClock)) {
-					MyMessageBox(hDlg,
-						"Failed to run elevated action.\nPlease approve UAC prompt and try again.",
-						"TClock-Win11", MB_OK, MB_ICONEXCLAMATION);
+					MyMessageBoxW(hDlg,
+						L"Failed to run elevated action.\nPlease approve UAC prompt and try again.",
+						L"TClock-Win11", MB_OK, MB_ICONEXCLAMATION);
 				}
 				return TRUE;
 			}
@@ -225,14 +225,14 @@ INT_PTR CALLBACK PageWin11Proc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
 					saved = SendMessage(g_hwndClock, WM_COMMAND, (WPARAM)CLOCKM_SNAPSHOT_AUTOBACK_SAVE, 0);
 				}
 				if (saved) {
-					MyMessageBox(hDlg,
-						"現在の自動取得背景色を保存しました。\n固定値として使うには「背景色をタスクバーに自動一致」をOFFにしてください。\n\nSaved current auto-matched background colors.\nTurn off \"Auto match taskbar background\" to use fixed values.",
-						"TClock-Win11", MB_OK, MB_ICONINFORMATION);
+					MyMessageBoxW(hDlg,
+						L"現在の自動取得背景色を保存しました。\n固定値として使うには「背景色をタスクバーに自動一致」をOFFにしてください。\n\nSaved current auto-matched background colors.\nTurn off \"Auto match taskbar background\" to use fixed values.",
+						L"TClock-Win11", MB_OK, MB_ICONINFORMATION);
 				}
 				else {
-					MyMessageBox(hDlg,
-						"背景色の保存に失敗しました。\nタスクバー色の取得状態を確認して再実行してください。\n\nFailed to save background colors.\nPlease retry after taskbar color sampling is available.",
-						"TClock-Win11", MB_OK, MB_ICONEXCLAMATION);
+					MyMessageBoxW(hDlg,
+						L"背景色の保存に失敗しました。\nタスクバー色の取得状態を確認して再実行してください。\n\nFailed to save background colors.\nPlease retry after taskbar color sampling is available.",
+						L"TClock-Win11", MB_OK, MB_ICONEXCLAMATION);
 				}
 				return TRUE;
 			}

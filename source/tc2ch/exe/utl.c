@@ -644,7 +644,7 @@ int MyMessageBoxW(HWND hwnd, const wchar_t* msg, const wchar_t* title, UINT uTyp
 	return MessageBoxIndirectW(&mbp);
 }
 
-int MyMessageBox(HWND hwnd, char* msg, char* title, UINT uType, UINT uBeep)
+int MyMessageBoxUTF8(HWND hwnd, const char* msg, const char* title, UINT uType, UINT uBeep)
 {
 	wchar_t wMsg[2048];
 	wchar_t wTitle[256];

@@ -38,6 +38,19 @@ __inline void SendPSChanged(HWND hDlg)
 	SendMessage(GetParent(hDlg), PSM_CHANGED, (WPARAM)(hDlg), 0);
 }
 
+static int CBAddStringUtf8AsAcpBoundary(HWND hDlg, int idCombo, const char* utf8)
+{
+	WCHAR wbuf[512];
+	char abuf[512];
+	if (!utf8) utf8 = "";
+	if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8, -1, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) > 0 &&
+		WideCharToMultiByte(CP_ACP, 0, wbuf, -1, abuf, (int)sizeof(abuf), NULL, NULL) > 0) {
+		return CBAddString(hDlg, idCombo, (LPARAM)abuf);
+	}
+	abuf[0] = '\0';
+	return CBAddString(hDlg, idCombo, (LPARAM)abuf);
+}
+
 extern BOOL b_EnglishMenu;
 extern int Language_Offset;
 
@@ -149,7 +162,7 @@ void OnInit(HWND hDlg)
 	}
 
 	for(i = IDS_NONE; i <= IDS_MOVETO; i++)
-		CBAddString(hDlg, IDC_DROPFILES, (LPARAM)MyString(i));
+		CBAddStringUtf8AsAcpBoundary(hDlg, IDC_DROPFILES, MyStringUTF8(i));
 	CBSetCurSel(hDlg, IDC_DROPFILES,
 		GetMyRegLong(reg_section, "DropFiles", 0));
 	GetMyRegStr(reg_section, "DropFilesApp", s, 256, "");
@@ -185,7 +198,7 @@ void OnInit(HWND hDlg)
 
 
 	for(i = IDS_LEFTBUTTON; i <= IDS_SWHEEL2; i++)
-		CBAddString(hDlg, IDC_MOUSEBUTTON, (LPARAM)MyString(i));
+		CBAddStringUtf8AsAcpBoundary(hDlg, IDC_MOUSEBUTTON, MyStringUTF8(i));
 	AdjustDlgConboBoxDropDown(hDlg, IDC_MOUSEBUTTON, 22);
 
 	CheckDlgButton(hDlg, IDC_RCLICKMENU,
@@ -390,7 +403,7 @@ void OnMouseFunc(HWND hDlg)
 
 	if(func == MOUSEFUNC_OPENFILE || func == MOUSEFUNC_FILELIST)
 	{
-		SetDlgItemTextUTF8(hDlg, IDC_LABMOUSEFILE, MyString(IDS_FILE));
+		SetDlgItemTextUTF8(hDlg, IDC_LABMOUSEFILE, MyStringUTF8(IDS_FILE));
 		SetDlgItemTextUTF8(hDlg, IDC_MOUSEFILE, pData[button].fname[click]);
 	}
 
@@ -487,7 +500,7 @@ void InitMouseFuncList(HWND hDlg)
 	for (i = 0; i < cnt; i++)
 	{
 		//リストの各項目を追加
-		index = CBAddString(hDlg, IDC_MOUSEFUNC, (LPARAM)MyString(pmfl[i].idstring));
+		index = CBAddStringUtf8AsAcpBoundary(hDlg, IDC_MOUSEFUNC, MyStringUTF8(pmfl[i].idstring));
 		CBSetItemData(hDlg, IDC_MOUSEFUNC, index, pmfl[i].mousefunc);
 	}
 	//リスト項目の表示数を指定

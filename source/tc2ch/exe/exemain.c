@@ -1288,7 +1288,7 @@ void InitError(int n)
 	char s[160];
 
 	wsprintf(s, "%s: %d", MyStringUTF8(IDS_NOTFOUNDCLOCK), n);
-	MyMessageBox(NULL, s, NULL, MB_OK, MB_ICONEXCLAMATION);
+	MyMessageBoxUTF8(NULL, s, NULL, MB_OK, MB_ICONEXCLAMATION);
 }
 
 /*-------------------------------------------------------
@@ -1455,7 +1455,7 @@ HINSTANCE LoadLanguageDLL(char *langdllname)
 	}
 
 	if(hInst == NULL)
-		MyMessageBox(NULL, "Can't load a language module.",
+		MyMessageBoxW(NULL, L"Can't load a language module.",
 			NULL, MB_OK, MB_ICONEXCLAMATION);
 	else strcpy(langdllname, fname);
 	return hInst;
@@ -1510,10 +1510,14 @@ BOOL CheckDLL(char *fname)
 	if(!br)
 	{
 		char msg[MAX_PATH+30];
+		wchar_t wmsg[MAX_PATH+30];
 
 		strcpy(msg, "Invalid file version: ");
 		get_title(msg + strlen(msg), fname);
-		MyMessageBox(NULL, msg,
+		if (MultiByteToWideChar(CP_ACP, 0, msg, -1, wmsg, MAX_PATH+30) <= 0) {
+			lstrcpynW(wmsg, L"[Message decode error]", MAX_PATH+30);
+		}
+		MyMessageBoxW(NULL, wmsg,
 			NULL, MB_OK, MB_ICONEXCLAMATION);
 	}
 	return br;
@@ -1527,7 +1531,7 @@ void My2chHelp(HWND hwnd)
 	GetMyRegStr("ETC", "2chHelpURL", helpurl, 1024, "");
 	if (helpurl[0] == 0)
 	{
-		strcpy(helpurl, MyString(IDS_HELP2CH));
+		strcpy(helpurl, MyStringUTF8(IDS_HELP2CH));
 		SetMyRegStr("ETC", "2chHelpURL", helpurl);
 	}
 

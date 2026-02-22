@@ -70,6 +70,19 @@ __inline void SendPSChanged(HWND hDlg)
 	SendMessage(GetParent(hDlg), PSM_CHANGED, (WPARAM)(hDlg), 0);
 }
 
+static int CBAddStringUtf8AsAcpBoundary(HWND hDlg, int idCombo, const char* utf8)
+{
+	WCHAR wbuf[512];
+	char abuf[512];
+	if (!utf8) utf8 = "";
+	if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8, -1, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) > 0 &&
+		WideCharToMultiByte(CP_ACP, 0, wbuf, -1, abuf, (int)sizeof(abuf), NULL, NULL) > 0) {
+		return CBAddString(hDlg, idCombo, (LPARAM)abuf);
+	}
+	abuf[0] = '\0';
+	return CBAddString(hDlg, idCombo, (LPARAM)abuf);
+}
+
 static DWORD GetSpinPos(HWND hDlg, int ctrlId)
 {
 	return (DWORD)(UINT_PTR)SendDlgItemMessage(hDlg, ctrlId, UDM_GETPOS, 0, 0);
@@ -231,11 +244,11 @@ void OnInit(HWND hDlg)
 
 
 	//「テキストの位置」の設定
-	index = CBAddString(hDlg, IDC_TEXTPOS, (LPARAM)MyString(IDS_TEXTCENTER));
+	index = CBAddStringUtf8AsAcpBoundary(hDlg, IDC_TEXTPOS, MyStringUTF8(IDS_TEXTCENTER));
 //	CBSetItemData(hDlg, IDC_TEXTPOS, index, 0);
-	index = CBAddString(hDlg, IDC_TEXTPOS, (LPARAM)MyString(IDS_TEXTLEFT));
+	index = CBAddStringUtf8AsAcpBoundary(hDlg, IDC_TEXTPOS, MyStringUTF8(IDS_TEXTLEFT));
 //	CBSetItemData(hDlg, IDC_TEXTPOS, index, 1);
-	index = CBAddString(hDlg, IDC_TEXTPOS, (LPARAM)MyString(IDS_TEXTRIGHT));
+	index = CBAddStringUtf8AsAcpBoundary(hDlg, IDC_TEXTPOS, MyStringUTF8(IDS_TEXTRIGHT));
 //	CBSetItemData(hDlg, IDC_TEXTPOS, index, 2);
 
 

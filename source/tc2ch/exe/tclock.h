@@ -268,7 +268,7 @@ void str0cat(char* dst, const char* src);
 char* MyString(UINT id);
 char* MyStringUTF8(UINT id);
 int MyMessageBoxW(HWND hwnd, const wchar_t* msg, const wchar_t* title, UINT uType, UINT uBeep);
-int MyMessageBox(HWND hwnd, char* msg, char* title, UINT uType, UINT uBeep);
+int MyMessageBoxUTF8(HWND hwnd, const char* msg, const char* title, UINT uType, UINT uBeep);
 HINSTANCE ShellExecuteUtf8Compat(HWND hwnd, const char* op, const char* file, const char* params, const char* dir, int showCmd);
 BOOL SetWindowTextUTF8(HWND hwnd, const char* text);
 int GetWindowTextUTF8(HWND hwnd, char* text, int textBytes);

@@ -47,6 +47,11 @@ extern BOOL bHour12, bHourZero;
 #define TC_CUSTOM_MAX_CHARS_DEFAULT 20
 #define TC_CUSTOM_REFRESH_DEFAULT 60
 #define TC_CUSTOM_PRELOAD_DEFAULT 1
+/* Enable only after CUSTOMn UTF-8 parity checks pass in migration validation. */
+#define TC_CUSTOM_UTF8_CUTOVER_APPROVED 1
+#ifndef TC_CUSTOM_USE_UTF8_VALUE
+#define TC_CUSTOM_USE_UTF8_VALUE 1
+#endif
 
 typedef enum {
 	TC_CUSTOM_WS_TRIM_EDGES = 0,
@@ -72,6 +77,7 @@ typedef struct {
 	int whitespaceMode;
 	char failValue[TC_CUSTOM_FAIL_MAX];
 	char value[TC_CUSTOM_VALUE_MAX];
+	char valueUtf8[TC_CUSTOM_VALUE_MAX];
 	int mode;
 	char jsonPath[TC_CUSTOM_JSON_PATH_MAX];
 	char jsonDefault[TC_CUSTOM_FAIL_MAX];
@@ -946,8 +952,10 @@ static void tc_custom_set_fallback(TC_CUSTOM_VAR_ENTRY* e)
 {
 	if (!e) return;
 	lstrcpyn(e->value, e->failValue, (int)sizeof(e->value));
+	lstrcpyn(e->valueUtf8, e->failValue, (int)sizeof(e->valueUtf8));
 }
 
+static const char* tc_custom_get_emit_value(const TC_CUSTOM_VAR_ENTRY* e);
 static const char* tc_custom_get_value(int index1);
 
 static void tc_custom_refresh_one(int idx, DWORD nowTick, BOOL forceRefresh)
@@ -996,12 +1004,17 @@ static void tc_custom_refresh_one(int idx, DWORD nowTick, BOOL forceRefresh)
 		e->nextRefreshTick = nowTick + (DWORD)(e->refreshSec * 1000);
 		return;
 	}
+	/* CUSTOMn is currently on a char contract; keep this ACP compatibility boundary for now. */
 	if (tc_utf16_to_ansi_compat(0, wbuf, ansi, (int)sizeof(ansi)) <= 0) {
 		tc_custom_set_fallback(e);
 		e->nextRefreshTick = nowTick + (DWORD)(e->refreshSec * 1000);
 		return;
 	}
 	lstrcpyn(e->value, ansi, (int)sizeof(e->value));
+	if (tc_utf16_to_utf8(wbuf, e->valueUtf8, (int)sizeof(e->valueUtf8)) <= 0) {
+		/* Stage-B dual-write safety: keep UTF-8 companion aligned with legacy value. */
+		lstrcpyn(e->valueUtf8, e->value, (int)sizeof(e->valueUtf8));
+	}
 	e->nextRefreshTick = nowTick + (DWORD)(e->refreshSec * 1000);
 }
 
@@ -1080,6 +1093,7 @@ void CustomFormatVarsReadSettings(void)
 		e->jsonStringify = 0;
 		e->jsonNullAsEmpty = 0;
 		e->jsonValueExpr[0] = '\0';
+		e->valueUtf8[0] = '\0';
 		e->jsonValueType = TC_CUSTOM_JSON_TYPE_AUTO;
 
 		if (g_inifile[0]) {
@@ -1137,6 +1151,7 @@ void CustomFormatVarsReadSettings(void)
 			e->configHash = h;
 			e->nextRefreshTick = 0;
 			e->value[0] = '\0';
+			e->valueUtf8[0] = '\0';
 		}
 		if (!e->hasPath) tc_custom_set_fallback(e);
 	}
@@ -1153,6 +1168,16 @@ void CustomFormatVarsPreloadIfEnabled(void)
 	for (i = 0; i < TC_CUSTOM_VAR_MAX; ++i) tc_custom_refresh_one(i, nowTick, TRUE);
 }
 
+static const char* tc_custom_get_emit_value(const TC_CUSTOM_VAR_ENTRY* e)
+{
+	if (!e) return "";
+#if TC_CUSTOM_USE_UTF8_VALUE
+	/* Guarded cutover: prefer UTF-8 companion value when enabled. */
+	if (e->valueUtf8[0]) return e->valueUtf8;
+#endif
+	return e->value;
+}
+
 static const char* tc_custom_get_value(int index1)
 {
 	TC_CUSTOM_VAR_ENTRY* e;
@@ -1162,7 +1187,7 @@ static const char* tc_custom_get_value(int index1)
 	e = &g_customVars[index1 - 1];
 	nowTick = GetTickCount();
 	tc_custom_refresh_one(index1 - 1, nowTick, FALSE);
-	return e->value;
+	return tc_custom_get_emit_value(e);
 }
 
 extern int iFreeRes[3], totalCPUUsage, iBatteryLife, iVolume, totalGPUUsage;
@@ -1376,13 +1401,16 @@ void InitFormat(SYSTEMTIME* lt)
 	ilang = GetMyRegLong("Format", "Locale", (int)GetUserDefaultLangID());
 
 	codepage = 0;
-	if(GetLocaleInfoCompat((WORD)ilang, LOCALE_IDEFAULTANSICODEPAGE,
-		s, 10) > 0)
 	{
-		p = s; codepage = 0;
-		while('0' <= *p && *p <= '9')
-			codepage = codepage * 10 + *p++ - '0';
-		if(!IsValidCodePage(codepage)) codepage = 0;
+		wchar_t wcp[16];
+		/* Default ANSI codepage number is numeric-only, so read it directly via W API. */
+		if (GetLocaleInfoW(MAKELCID((WORD)ilang, SORT_DEFAULT), LOCALE_IDEFAULTANSICODEPAGE, wcp, (int)(sizeof(wcp) / sizeof(wcp[0]))) > 0)
+		{
+			const wchar_t* pcp = wcp;
+			while (L'0' <= *pcp && *pcp <= L'9')
+				codepage = codepage * 10 + (int)(*pcp++ - L'0');
+			if(!IsValidCodePage(codepage)) codepage = 0;
+		}
 	}
 
 	i = lt->wDayOfWeek;
@@ -3605,6 +3633,38 @@ static void tc_wappend_ascii(WCHAR** dp, int* remain, const char* src)
 	}
 }
 
+static BOOL tc_custom_emit_if_token_w(WCHAR** dp, int* remain, const WCHAR** spPtr)
+{
+	const WCHAR* sp;
+	const WCHAR* p;
+	int num = 0;
+	char outUtf8[TC_CUSTOM_VALUE_MAX];
+	if (!dp || !remain || !spPtr || !*spPtr) return FALSE;
+	sp = *spPtr;
+	if (_wcsnicmp(sp, L"CUSTOM", 6) != 0) return FALSE;
+	p = sp + 6;
+	if (!(*p >= L'0' && *p <= L'9')) return FALSE;
+	while (*p >= L'0' && *p <= L'9') {
+		num = (num * 10) + (int)(*p - L'0');
+		if (num > TC_CUSTOM_VAR_MAX) return FALSE;
+		p++;
+	}
+	if (num < 1 || num > TC_CUSTOM_VAR_MAX) return FALSE;
+	if (*p && (((*p >= L'A' && *p <= L'Z') || (*p >= L'a' && *p <= L'z')) || (*p >= L'0' && *p <= L'9') || *p == L'_')) return FALSE;
+	lstrcpyn(outUtf8, tc_custom_get_value(num), (int)sizeof(outUtf8));
+	if (outUtf8[0]) {
+		WCHAR outW[TC_CUSTOM_VALUE_MAX];
+		if (tc_custom_text_to_utf16_compat(outUtf8, outW, (int)(sizeof(outW) / sizeof(outW[0])))) {
+			tc_wappend_text(dp, remain, outW);
+		}
+		else {
+			tc_wappend_ascii(dp, remain, outUtf8);
+		}
+	}
+	*spPtr = p;
+	return TRUE;
+}
+
 static void tc_wappend_uint_fixed(WCHAR** dp, int* remain, int value, int width)
 {
 	WCHAR tmp[16];
@@ -4455,6 +4515,7 @@ static BOOL tc_makeformatw_native_core(WCHAR* s, int sCch, SYSTEMTIME* pt, int b
 					if (*sp == L'\"') sp++;
 					continue;
 				}
+				if (tc_custom_emit_if_token_w(&dp, &remain, &sp)) { continue; }
 				if (*sp == L'/') { tc_wappend_text(&dp, &remain, sdate); sp++; continue; }
 				if (*sp == L':') { tc_wappend_text(&dp, &remain, stime); sp++; continue; }
 				if (*sp == L'\\' && *(sp + 1) == L'n') { tc_wappend_char(&dp, &remain, L'\r'); tc_wappend_char(&dp, &remain, L'\n'); sp += 2; continue; }
@@ -4752,6 +4813,7 @@ static BOOL tc_makeformatw_native_core(WCHAR* s, int sCch, SYSTEMTIME* pt, int b
 			}
 		}
 		else {
+			if (tc_custom_emit_if_token_w(&dp, &remain, &sp)) { continue; }
 			tc_wappend_char(&dp, &remain, *sp++);
 		}
 	}

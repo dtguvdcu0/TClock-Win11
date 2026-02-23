@@ -213,8 +213,12 @@ static BOOL tc_ini_utf8_get_file_stamp(const char* path, FILETIME* ftWrite, DWOR
     HANDLE h;
     DWORD szLow;
     if (!path || !ftWrite || !fileSizeLow) return FALSE;
-    h = CreateFile(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-                   NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    {
+        wchar_t wPath[MAX_PATH];
+        if (tc_utf8_to_utf16(path, wPath, (int)(sizeof(wPath) / sizeof(wPath[0]))) <= 0) return FALSE;
+        h = CreateFileW(wPath, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                        NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    }
     if (h == INVALID_HANDLE_VALUE) return FALSE;
     if (!GetFileTime(h, NULL, NULL, ftWrite)) {
         CloseHandle(h);
@@ -530,7 +534,11 @@ static BOOL tc_file_has_utf8_bom(const char* path, BOOL* hasBom)
     if (hasBom) *hasBom = FALSE;
     if (!path) return FALSE;
 
-    h = CreateFile(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    {
+        wchar_t wPath[MAX_PATH];
+        if (tc_utf8_to_utf16(path, wPath, (int)(sizeof(wPath) / sizeof(wPath[0]))) <= 0) return FALSE;
+        h = CreateFileW(wPath, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    }
     if (h == INVALID_HANDLE_VALUE) return FALSE;
     if (!ReadFile(h, bom, 3, &rd, NULL)) {
         CloseHandle(h);

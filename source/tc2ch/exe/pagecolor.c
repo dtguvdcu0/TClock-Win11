@@ -328,7 +328,7 @@ void OnApply(HWND hDlg)
 				if (s) {
 					CBGetLBText(hDlg, IDC_FONT, sel, s);
 					if (s[0] == '*' || s[0] == ' ') {
-						SetMyRegStr("Color_Font", "Font", s + 1);	//????????????????
+						SetMyRegStr("Color_Font", "Font", s + 1);	// Strip display marker prefix ('*'/space) before saving font name.
 					}
 					else {
 						SetMyRegStr("Color_Font", "Font", s);

@@ -83,7 +83,6 @@ extern HWND hwndTrayMain;
 extern HWND hwndWin11ReBarWin;
 extern HWND hwndWin11ContentBridge;
 extern HWND hwndWin11InnerTrayContentBridge;
-static void DebugLogWin11HandleState(const char* context);
 
 typedef struct _WIN11_FIND_CLASS_CTX {
 	const char* needle;
@@ -118,10 +117,6 @@ static HWND FindDescendantByClassContains_Win11(HWND root, const char* needle)
 
 void RefreshWin11TaskbarHandles(void)
 {
-	HWND prevTray = hwndTrayMain;
-	HWND prevRebar = hwndWin11ReBarWin;
-	HWND prevOuter = hwndWin11ContentBridge;
-	HWND prevInner = hwndWin11InnerTrayContentBridge;
 
 	if (!IsWindow(hwndTaskBarMain)) {
 		hwndTaskBarMain = FindWindow("Shell_TrayWnd", "");
@@ -145,9 +140,6 @@ void RefreshWin11TaskbarHandles(void)
 		}
 	}
 
-	if (b_DebugLog && (prevTray != hwndTrayMain || prevRebar != hwndWin11ReBarWin || prevOuter != hwndWin11ContentBridge || prevInner != hwndWin11InnerTrayContentBridge)) {
-		DebugLogWin11HandleState("RefreshWin11TaskbarHandles updated");
-	}
 }
 void GetMainClock(void);
 void SetMainClockOnTasktray(void);
@@ -1098,67 +1090,6 @@ static BOOL SaveCurrentAutoBackSnapshotToIni(void)
 	return TRUE;
 }
 
-typedef struct _WIN11_CHILD_DUMP_CTX {
-	int count;
-	int limit;
-} WIN11_CHILD_DUMP_CTX;
-
-static BOOL CALLBACK EnumTaskbarChildrenProc_Win11(HWND hwnd, LPARAM lParam)
-{
-	WIN11_CHILD_DUMP_CTX* ctx = (WIN11_CHILD_DUMP_CTX*)lParam;
-	char className[128];
-	char title[128];
-	char strLog[512];
-
-	if (!ctx) return FALSE;
-	if (ctx->count >= ctx->limit) return FALSE;
-
-	className[0] = 0;
-	title[0] = 0;
-	GetClassNameUTF8_DLL(hwnd, className, sizeof(className));
-	GetWindowTextUTF8_DLL(hwnd, title, sizeof(title));
-	wsprintf(strLog, "[tclock.c][Win11HandleDump][%d] class=%s title=%s", ctx->count, className, title);
-	WriteDebugDLL_New(strLog);
-	ctx->count++;
-	return TRUE;
-}
-
-static void DebugLogWin11HandleState(const char* context)
-{
-	char strLog[256];
-
-	if (!b_DebugLog) return;
-
-	wsprintf(strLog, "[tclock.c][Win11HandleState] %s", context);
-	WriteDebugDLL_New(strLog);
-	wsprintf(strLog, "  IsWindow(hwndTaskBarMain)=%d", IsWindow(hwndTaskBarMain));
-	WriteDebugDLL_New(strLog);
-	wsprintf(strLog, "  IsWindow(hwndTrayMain)=%d", IsWindow(hwndTrayMain));
-	WriteDebugDLL_New(strLog);
-	wsprintf(strLog, "  IsWindow(hwndWin11ReBarWin)=%d", IsWindow(hwndWin11ReBarWin));
-	WriteDebugDLL_New(strLog);
-	wsprintf(strLog, "  IsWindow(hwndWin11ContentBridge)=%d", IsWindow(hwndWin11ContentBridge));
-	WriteDebugDLL_New(strLog);
-	wsprintf(strLog, "  IsWindow(hwndWin11InnerTrayContentBridge)=%d", IsWindow(hwndWin11InnerTrayContentBridge));
-	WriteDebugDLL_New(strLog);
-	wsprintf(strLog, "  IsWindow(hwndClockMain)=%d", IsWindow(hwndClockMain));
-	WriteDebugDLL_New(strLog);
-}
-
-static void DumpTaskbarChildrenIfDebug(void)
-{
-	WIN11_CHILD_DUMP_CTX ctx;
-
-	if (!b_DebugLog) return;
-	if (!IsWindow(hwndTaskBarMain)) return;
-
-	ctx.count = 0;
-	ctx.limit = 80;
-	WriteDebugDLL_New("[tclock.c][Win11HandleDump] Begin EnumChildWindows(hwndTaskBarMain)");
-	EnumChildWindows(hwndTaskBarMain, EnumTaskbarChildrenProc_Win11, (LPARAM)&ctx);
-	WriteDebugDLL_New("[tclock.c][Win11HandleDump] End");
-}
-
 
 void GetMainClock(void)
 {
@@ -1186,10 +1117,6 @@ void GetMainClock(void)
 		bMissingWin11Handles = (!IsWindow(hwndTrayMain) || !IsWindow(hwndWin11ReBarWin) || !IsWindow(hwndWin11ContentBridge));
 		if (bMissingWin11Handles) {
 			WriteNormalLog_DLL("[Warning] Win11 taskbar handles are partially missing. Fallback layout mode will be used.");
-		}
-		DebugLogWin11HandleState("after CreateWin11MainClock");
-		if (bMissingWin11Handles) {
-			DumpTaskbarChildrenIfDebug();
 		}
 	}
 }
@@ -1389,7 +1316,7 @@ void InitClock()
 	//タスクバーの更新
 	RedrawMainTaskbar();	//即時反映のために必要。必要があればWindowsのリサイズ処理を通してMainClockの再配置やサイズ更新、hdcClock再作成が実行される。
 
-	//????????
+	// Initialize tooltip after taskbar redraw/setup is complete.
 	TooltipInit(hwndClockMain);
 
 	// Startup can enter sleep-like gating before any user input; force awake immediately.

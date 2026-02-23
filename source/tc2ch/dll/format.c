@@ -264,6 +264,7 @@ static BOOL tc_custom_decode_to_wide(const BYTE* raw, DWORD bytes, wchar_t* outW
 	}
 	n = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, (LPCSTR)raw, (int)bytes, outWide, outCch - 1);
 	if (n > 0) { outWide[n] = L'\0'; return TRUE; }
+	/* Keep Shift-JIS (CP932) read compatibility as an explicit legacy ingress boundary. */
 	n = MultiByteToWideChar(932, 0, (LPCSTR)raw, (int)bytes, outWide, outCch - 1);
 	if (n > 0) { outWide[n] = L'\0'; return TRUE; }
 	return FALSE;
@@ -1373,7 +1374,7 @@ int GetTimeFormatCompat(WORD wLanguageID, DWORD dwFlags, CONST SYSTEMTIME *t,
 			pw1 = (WCHAR*)GlobalAllocPtr(GHND,
 				sizeof(WCHAR)*(strlen(fmt)+1));
 			if(pw1) {
-				/* ??????????????: ?? codepage ? wide ? */
+				/* Legacy format pattern bytes follow selected locale codepage; decode using that boundary. */
 				tc_ansi_to_utf16_compat((UINT)codepage, fmt, pw1, (int)strlen(fmt) + 1);
 			}
 		}

@@ -34,7 +34,7 @@ typedef DWORD (WINAPI *pfnGetIfEntry)(PMIB_IFROW);
 static pfnGetIfTable pGetIfTable;
 static pfnGetIfEntry pGetIfEntry;
 
-extern LONG GetMyRegLong(char* section, char* entry, LONG defval);
+extern LONG GetMyRegLong(const char* section, const char* entry, LONG defval);
 
 //extern BOOL b_UseDataPlanFunction;
 
@@ -274,7 +274,7 @@ void Net_start(void)
 	ifr = NULL;
 	ift = NULL;
 
-	hmodIPHLP = LoadLibrary("iphlpapi.dll");
+	hmodIPHLP = LoadLibraryW(L"iphlpapi.dll");
 	if (hmodIPHLP == NULL) return;
 
 	pGetIfTable = (pfnGetIfTable)GetProcAddress(hmodIPHLP, "GetIfTable");

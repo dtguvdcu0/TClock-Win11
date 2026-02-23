@@ -11,7 +11,7 @@ static void OnTrayGraph(HWND hDlg);
 static void OnGraphMode(HWND hDlg);
 static void InitGraphMode(HWND hDlg);
 static void InitGraphType(HWND hDlg);
-static void SetColorFromBmp(HWND hDlg, int idCombo, char* fname);
+static void SetColorFromBmp(HWND hDlg, int idCombo, const char* fname);
 static void OnUseMeterBarColChanged(HWND hDlg);
 
 extern BOOL b_EnglishMenu;
@@ -473,7 +473,7 @@ void OnGraphMode(HWND hDlg)
 --------------------------------------------------*/
 #define WIDTHBYTES(i) ((i+31)/32*4)
 
-void SetColorFromBmp(HWND hDlg, int idCombo, char* fname)
+void SetColorFromBmp(HWND hDlg, int idCombo, const char* fname)
 {
 	HFILE hf;
 	BITMAPFILEHEADER bmfh;

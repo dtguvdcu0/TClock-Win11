@@ -8,7 +8,7 @@
 
 void Hdd_get(void);
 void GetDiskSpace(int nDrive, ULONGLONG *nFree, ULONGLONG *nAll);
-void GetDiskSpaceFromPath(char *szDrive, ULONGLONG *nFree, ULONGLONG *nAll);
+void GetDiskSpaceFromPath(const char *szDrive, ULONGLONG *nFree, ULONGLONG *nAll);
 double diskFree[72];
 double diskAll[72];
 
@@ -74,7 +74,7 @@ void GetDiskSpace(int nDrive, ULONGLONG *nFree, ULONGLONG *nAll)
 }
 
 
-void GetDiskSpaceFromPath(char *szDrive, ULONGLONG *nFree, ULONGLONG *nAll)
+void GetDiskSpaceFromPath(const char *szDrive, ULONGLONG *nFree, ULONGLONG *nAll)
 {
 	ULARGE_INTEGER useByte, allByte, freeByte;
 

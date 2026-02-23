@@ -154,6 +154,27 @@ int tc_ansi_bytes_to_utf16_compat(UINT preferredCodePage, const char* ansi, int 
     return n;
 }
 
+BOOL tc_path_utf8_or_ansi_to_utf16(const char* path, wchar_t* outWide, int outWideCch)
+{
+    if (!path || !outWide || outWideCch <= 0) return FALSE;
+    outWide[0] = L'\0';
+    if (tc_utf8_to_utf16(path, outWide, outWideCch) > 0) return TRUE;
+    if (tc_ansi_to_utf16_compat(0, path, outWide, outWideCch) > 0) return TRUE;
+    outWide[0] = L'\0';
+    return FALSE;
+}
+
+HANDLE tc_find_first_file_utf8_compat(const char* path, WIN32_FIND_DATAW* findData)
+{
+    WIN32_FIND_DATAW dummy;
+    wchar_t wPath[MAX_PATH];
+    if (!findData) findData = &dummy;
+    if (!tc_path_utf8_or_ansi_to_utf16(path, wPath, (int)(sizeof(wPath) / sizeof(wPath[0])))) {
+        return INVALID_HANDLE_VALUE;
+    }
+    return FindFirstFileW(wPath, findData);
+}
+
 BOOL tc_text_codec_selfcheck(void)
 {
     const char* s = "codec-selfcheck";

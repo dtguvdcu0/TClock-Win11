@@ -41,7 +41,7 @@ BYTE* GetDibBitsAddr(BYTE* pDib)
 　ビットマップの読み込み
 　LoadImageと同じことを自力で行う
 ----------------------------------------------------*/
-HBITMAP ReadBitmap(HWND hwnd, char* fname, BOOL b)
+HBITMAP ReadBitmap(HWND hwnd, const char* fname, BOOL b)
 {
 	BITMAPFILEHEADER bmfh;
 	BYTE* pDib;

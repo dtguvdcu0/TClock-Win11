@@ -620,7 +620,12 @@ static UINT BuildFileDialogFilterSpecs(const wchar_t* wmulti, COMDLG_FILTERSPEC*
 	return n;
 }
 
-static BOOL SelectMyFileUTF8Modern(HWND hDlg, const wchar_t* initdir, const wchar_t* wfilter, DWORD nFilterIndex, char* retfileUtf8, int retfileUtf8Bytes)
+BOOL IsDialogCanceledHr(HRESULT hr)
+{
+	return (hr == HRESULT_FROM_WIN32(ERROR_CANCELLED));
+}
+
+HRESULT SelectPathUTF8Modern(HWND hDlg, BOOL pickFolder, const wchar_t* initdir, const wchar_t* wfilter, DWORD nFilterIndex, char* outUtf8, int outUtf8Bytes)
 {
 	IFileDialog* pfd = NULL;
 	IShellItem* psiResult = NULL;
@@ -629,17 +634,18 @@ static BOOL SelectMyFileUTF8Modern(HWND hDlg, const wchar_t* initdir, const wcha
 	UINT specCount = 0;
 	DWORD opts = 0;
 	HRESULT hr;
-	BOOL ok = FALSE;
 
 	hr = CoCreateInstance(&CLSID_FileOpenDialog, NULL, CLSCTX_INPROC_SERVER, &IID_IFileDialog, (void**)&pfd);
-	if (FAILED(hr) || !pfd) return FALSE;
+	if (FAILED(hr) || !pfd) return hr;
 
 	if (SUCCEEDED(pfd->lpVtbl->GetOptions(pfd, &opts))) {
-		opts |= (FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST | FOS_FILEMUSTEXIST);
+		opts |= (FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST);
+		if (pickFolder) opts |= FOS_PICKFOLDERS;
+		else opts |= FOS_FILEMUSTEXIST;
 		pfd->lpVtbl->SetOptions(pfd, opts);
 	}
 	UNREFERENCED_PARAMETER(initdir);
-	if (wfilter && wfilter[0]) {
+	if (!pickFolder && wfilter && wfilter[0]) {
 		specCount = BuildFileDialogFilterSpecs(wfilter, specs, (UINT)(sizeof(specs) / sizeof(specs[0])));
 		if (specCount > 0) {
 			pfd->lpVtbl->SetFileTypes(pfd, specCount, specs);
@@ -652,13 +658,14 @@ static BOOL SelectMyFileUTF8Modern(HWND hDlg, const wchar_t* initdir, const wcha
 	if (FAILED(hr) || !psiResult) goto done;
 	hr = psiResult->lpVtbl->GetDisplayName(psiResult, SIGDN_FILESYSPATH, &pwszPath);
 	if (FAILED(hr) || !pwszPath) goto done;
-	if (tc_utf16_to_utf8(pwszPath, retfileUtf8, retfileUtf8Bytes) > 0) ok = TRUE;
+	if (tc_utf16_to_utf8(pwszPath, outUtf8, outUtf8Bytes) <= 0) hr = E_FAIL;
+	else hr = S_OK;
 
 done:
 	if (pwszPath) CoTaskMemFree(pwszPath);
 	if (psiResult) psiResult->lpVtbl->Release(psiResult);
 	if (pfd) pfd->lpVtbl->Release(pfd);
-	return ok;
+	return hr;
 }
 
 BOOL SelectMyFileUTF8(HWND hDlg, const char *filterUtf8, DWORD nFilterIndex,
@@ -667,6 +674,7 @@ BOOL SelectMyFileUTF8(HWND hDlg, const char *filterUtf8, DWORD nFilterIndex,
 	OPENFILENAMEW ofn;
 	wchar_t fname[MAX_PATH], ftitle[MAX_PATH], initdir[MAX_PATH], wfilter[1024], wdeffile[MAX_PATH];
 	BOOL r;
+	HRESULT hrModern;
 
 	if (!retfileUtf8 || retfileUtf8Bytes <= 0) return FALSE;
 	retfileUtf8[0] = '\0';
@@ -710,7 +718,9 @@ BOOL SelectMyFileUTF8(HWND hDlg, const char *filterUtf8, DWORD nFilterIndex,
 	ofn.lpstrInitialDir = initdir;
 	ofn.Flags = OFN_HIDEREADONLY | OFN_EXPLORER;
 
-	if (SelectMyFileUTF8Modern(hDlg, initdir, wfilter, nFilterIndex, retfileUtf8, retfileUtf8Bytes)) return TRUE;
+	hrModern = SelectPathUTF8Modern(hDlg, FALSE, initdir, wfilter, nFilterIndex, retfileUtf8, retfileUtf8Bytes);
+	if (SUCCEEDED(hrModern)) return TRUE;
+	if (IsDialogCanceledHr(hrModern)) return FALSE;
 	r = GetOpenFileNameW(&ofn);
 	if (!r) return FALSE;
 	if (tc_utf16_to_utf8(ofn.lpstrFile, retfileUtf8, retfileUtf8Bytes) <= 0) {

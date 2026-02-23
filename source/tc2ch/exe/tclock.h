@@ -233,6 +233,8 @@ extern BOOL g_bApplyLangDLL;
 void MyPropertyDialog(void);
 BOOL SelectMyFileUTF8(HWND hDlg, const char *filterUtf8, DWORD nFilterIndex,
 	const char *deffileUtf8, char *retfileUtf8, int retfileUtf8Bytes);
+BOOL IsDialogCanceledHr(HRESULT hr);
+HRESULT SelectPathUTF8Modern(HWND hDlg, BOOL pickFolder, const wchar_t* initdir, const wchar_t* wfilter, DWORD nFilterIndex, char* outUtf8, int outUtf8Bytes);
 
 // pageformat.c
 void InitFormat(void);

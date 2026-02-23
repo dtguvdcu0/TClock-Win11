@@ -33,3 +33,6 @@ source/tcal/CMakeCache.txt
 source/tcal/cmake_install.cmake
 # tcal runtime data artifacts
 source/tcal/data/*.db
+# tcal local WebView2 binary artifacts (bundle locally, do not track in git)
+source/tcal/third_party/webview2/bin/x64/*.dll
+source/tcal/third_party/webview2/lib/x64/*.lib

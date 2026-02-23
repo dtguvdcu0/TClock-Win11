@@ -61,7 +61,7 @@ void TempMoni_start(void)
 	if(hQueryTemp)PerMoni_end();
 
 	if (!hmodPDH) {
-		hmodPDH = LoadLibrary("pdh.dll");
+		hmodPDH = LoadLibraryW(L"pdh.dll");
 		if (hmodPDH == NULL) return;
 
 		pPdhOpenQueryW = (pfnPdhOpenQueryW)GetProcAddress(hmodPDH, "PdhOpenQueryW");

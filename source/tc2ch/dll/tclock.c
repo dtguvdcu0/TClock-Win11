@@ -73,7 +73,7 @@ void SetTClockFont(void);
 void GetTaskbarSize(void);
 void RestartOnRefresh(void);
 static void NormalizeUtf8InPlaceNoWriteback(char* value, int valueBytes);
-static void RefreshAutoBackColors(BOOL force, char* reason);
+static void RefreshAutoBackColors(BOOL force, const char* reason);
 static void RefreshClockWorkFont(void);
 static void StartupAutoAdjustPass(void);
 
@@ -149,7 +149,7 @@ void DrawBarMeter(HWND hwnd, HDC hdc, int wclock, int hclock, int bar_right, int
 	int bar_bottom, int bar_top, int value, COLORREF color, BOOL b_Horizontal, BOOL b_ToLeft);
 void DrawBarMeter2(HWND hwnd, HDC hdc, int wclock, int hclock, int bar_right, int bar_left,
 	int bar_bottom, int bar_top, int value, COLORREF color, BOOL b_Horizontal);
-void Textout_Tclock_Win10_3(int x, int y, char* sp, int len, int infoval);
+void Textout_Tclock_Win10_3(int x, int y, const char* sp, int len, int infoval);
 
 COLORREF TextColorFromInfoVal(int infoval);
 void ClearGraphData(void);
@@ -885,7 +885,7 @@ static BOOL SampleTaskbarColorsAtX(int posX, COLORREF* outMain, COLORREF* outEdg
 	return ((*outMain != CLR_INVALID) && (*outEdge != CLR_INVALID));
 }
 
-static void RefreshAutoBackColors(BOOL force, char* reason)
+static void RefreshAutoBackColors(BOOL force, const char* reason)
 {
 	DWORD nowTick;
 	DWORD intervalMs;
@@ -1011,7 +1011,7 @@ static void RefreshAutoBackColors(BOOL force, char* reason)
 
 	if (b_DebugLog && reason) {
 		writeDebugLog_Win10("[tclock.c][AutoBack] refreshed reason=", 999);
-		writeDebugLog_Win10(reason, 999);
+		writeDebugLog_Win10((LPSTR)reason, 999);
 		writeDebugLog_Win10("[tclock.c][AutoBack] themeColor=", (int)themeColor);
 		writeDebugLog_Win10("[tclock.c][AutoBack] sampleMain=", (int)sampleMain);
 		writeDebugLog_Win10("[tclock.c][AutoBack] sampleEdge=", (int)sampleEdge);
@@ -1078,7 +1078,7 @@ void GetMainClock(void)
 --------------------------------------------------*/
 void InitClock()
 {
-	WIN32_FIND_DATA fd;
+	WIN32_FIND_DATAW fd;
 	HANDLE hfind;
 	char fname[MAX_PATH];
 	BOOL b;
@@ -1101,7 +1101,7 @@ void InitClock()
 
 	del_title(fname);
 	add_title(fname, "tclock-win11.ini");
-	hfind = FindFirstFile(fname, &fd);
+	hfind = tc_find_first_file_utf8_compat(fname, &fd);
 	if(hfind != INVALID_HANDLE_VALUE)
 	{
 		g_bIniSetting = TRUE;
@@ -4409,7 +4409,7 @@ static void DrawClockFocusRect(HDC hdc)
 
 
 
-void Textout_Tclock_Win10_3(int x, int y, char* sp, int len, int infoval)
+void Textout_Tclock_Win10_3(int x, int y, const char* sp, int len, int infoval)
 {
 	COLORREF textshadow, textcol_dow, textcol_temp;
 

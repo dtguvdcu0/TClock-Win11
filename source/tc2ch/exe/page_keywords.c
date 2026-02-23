@@ -89,7 +89,7 @@ static void LoadRegUtf8AndSetStrict(HWND hDlg, int id, const char* section, cons
 	char before[32];
 	WCHAR wbuf[64];
 
-	GetMyRegStr((char*)section, (char*)entry, str, (int)sizeof(str), (char*)defval);
+	GetMyRegStr(section, entry, str, (int)sizeof(str), defval);
 	lstrcpyn(before, str, (int)sizeof(before));
 	if (tc_utf8_to_utf16(str, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) <= 0) {
 		return;

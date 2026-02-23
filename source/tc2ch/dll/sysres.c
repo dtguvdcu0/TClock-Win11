@@ -92,7 +92,7 @@ void EndSysres(void)
 void InitBatteryLife(void)
 {
 	if(hmodKERNEL32 == NULL)
-		hmodKERNEL32 = LoadLibrary("KERNEL32.dll");
+		hmodKERNEL32 = LoadLibraryW(L"KERNEL32.dll");
 	if(hmodKERNEL32 == NULL) return;
 
 	pGetSystemPowerStatus = (pfnGetSystemPowerStatus)
@@ -183,7 +183,7 @@ void InitCpuClock(void)
 
 
 	if(hmodPowrprof == NULL)
-		hmodPowrprof = LoadLibrary("Powrprof.dll");
+		hmodPowrprof = LoadLibraryW(L"Powrprof.dll");
 	if (hmodPowrprof == NULL) {
 		if (b_DebugLog) writeDebugLog_Win10("[sysres.c][InitCpuClock()] Loading Powrprof.dll Failed.", 999);
 		return;

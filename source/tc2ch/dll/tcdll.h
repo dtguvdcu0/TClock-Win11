@@ -126,17 +126,17 @@ extern BOOL g_bIniSetting;
 extern char g_inifile[];
 int _strncmp(const char* d, const char* s, size_t n);
 
-HFONT CreateMyFont(char* fontname, int fontsize,
+HFONT CreateMyFont(const char* fontname, int fontsize,
 	LONG weight, LONG italic);
 
-int ext_cmp(char *fname, char *ext);
-//void add_title(char *path, char *title);
+int ext_cmp(const char *fname, const char *ext);
+//void add_title(char *path, const char *title);
 void del_title(char *path);
 
-void parse(char *dst, char *src, int n);
+void parse(char *dst, const char *src, int n);
 
-BOOL DelMyReg_DLL(char* section, char* entry);
-BOOL DelMyRegKey_DLL(char* section);
+BOOL DelMyReg_DLL(const char* section, const char* entry);
+BOOL DelMyRegKey_DLL(const char* section);
 int GetWindowTextUTF8_DLL(HWND hwnd, char* text, int textBytes);
 int GetClassNameUTF8_DLL(HWND hwnd, char* text, int textBytes);
 #ifdef __cplusplus
@@ -237,7 +237,7 @@ void ClearSpecificSubClock(int i);
 //void EndTrayNotify(void);
 
 // BMP.C
-HBITMAP ReadBitmap(HWND hwnd, char* fname, BOOL b);
+HBITMAP ReadBitmap(HWND hwnd, const char* fname, BOOL b);
 
 // newapi.c
 void EndNewAPI(HWND hwnd);
@@ -372,9 +372,9 @@ extern "C" {
 	void RestartTClockFromDLL(void);
 
 
-	int GetMyRegStr(char* section, char* entry, char* val, int cbData,
-		char* defval);
-	BOOL SetMyRegStr(char* subkey, char* entry, char* val);
+	int GetMyRegStr(const char* section, const char* entry, char* val, int cbData,
+		const char* defval);
+	BOOL SetMyRegStr(const char* subkey, const char* entry, const char* val);
 
 
 	void WriteNormalLog_DLL(const char* s);
@@ -385,9 +385,9 @@ extern "C" {
 	void WriteDebugDLL_New(LPSTR s);	//Adde by TTTT
 
 	//Following lines have been moved from above lines for call from cpp codes.
-	void add_title(char *path, char *title);
-	LONG GetMyRegLong(char* section, char* entry, LONG defval);
-	BOOL SetMyRegLong(char* subkey, char* entry, DWORD val);
+	void add_title(char *path, const char *title);
+	LONG GetMyRegLong(const char* section, const char* entry, LONG defval);
+	BOOL SetMyRegLong(const char* subkey, const char* entry, DWORD val);
 	//void WriteDebug(LPSTR s); // WriteDebugDLL_New()に移行 by TTTT
 	void get_title(char* dst, const char *path);	//	copied from utl.c in tclock by TTTT
 

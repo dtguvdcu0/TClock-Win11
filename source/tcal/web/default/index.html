@@ -16,18 +16,58 @@
 
     <section class="gridWrap">
       <div id="monthGrid" class="monthGrid"></div>
+      <div id="calendarHeightSplitter" class="calendarHeightSplitter" role="separator" aria-orientation="horizontal" aria-label="Resize calendar height"></div>
     </section>
 
+    <div id="layoutSplitter" class="layoutSplitter" role="separator" aria-orientation="vertical" aria-label="Resize panels"></div>
+
     <section class="dayPanel">
+      <div class="viewControls" id="viewControls">
+        <label>
+          <span>Mode</span>
+          <select id="viewModeSelect">
+            <option value="list">Task List</option>
+            <option value="timeline">Timeline</option>
+          </select>
+        </label>
+        <label>
+          <span>Range</span>
+          <select id="rangePresetSelect">
+            <option value="1">Today</option>
+            <option value="7">7 days</option>
+            <option value="14">14 days</option>
+            <option value="30">30 days</option>
+            <option value="custom">Custom</option>
+          </select>
+        </label>
+        <label id="customRangeWrap" class="isHidden">
+          <span>Days</span>
+          <input id="customRangeDays" type="number" min="1" max="365" value="7" />
+        </label>
+        <label id="timelineLayoutWrap" class="isHidden">
+          <span>Timeline</span>
+          <select id="timelineLayoutSelect">
+            <option value="shared">Shared</option>
+            <option value="per_task">Per Task</option>
+          </select>
+        </label>
+        <label id="timelineHourStartWrap" class="isHidden">
+          <span>Hour Start</span>
+          <input id="timelineHourStartInput" type="number" min="0" max="23" value="0" />
+        </label>
+      </div>
+
       <h2 id="dayTitle">Tasks</h2>
-      <ul id="taskList"></ul>
+
       <form id="taskForm">
         <input id="taskTitle" type="text" placeholder="Task title" maxlength="120" />
         <button type="submit">Add</button>
       </form>
+
+      <ul id="taskList"></ul>
+      <div id="timelineView" class="timelineView isHidden"></div>
     </section>
   </main>
   <script src="./app.js"></script>
 </body>
 </html>
-

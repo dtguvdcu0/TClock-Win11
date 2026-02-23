@@ -12,9 +12,15 @@
 
 namespace {
 
+constexpr const wchar_t* kTCalendarWindowClassName = L"TCalendarStandaloneWindowClass";
+constexpr const wchar_t* kTCalendarSingleInstanceMutexName = L"Local\\TCalendar.Win10mod.SingleInstance";
+constexpr const wchar_t* kTCalendarIniFileName = L"tcalendar.ini";
+
 struct WindowContext {
     tcalendar::TCalendarHost* host = nullptr;
     std::wstring initial_uri;
+    std::wstring webview_user_data_dir;
+    std::wstring ini_file_path;
     Microsoft::WRL::ComPtr<ICoreWebView2Environment> environment;
     Microsoft::WRL::ComPtr<ICoreWebView2Controller> controller;
     Microsoft::WRL::ComPtr<ICoreWebView2> webview;
@@ -48,6 +54,147 @@ std::filesystem::path GetExecutableDirectory() {
     return std::filesystem::path(module_path).parent_path();
 }
 
+std::filesystem::path ResolvePathFromExe(const std::filesystem::path& exe_dir, const std::wstring& raw_path) {
+    if (raw_path.empty()) {
+        return std::filesystem::path();
+    }
+    const std::filesystem::path p(raw_path);
+    if (p.is_absolute()) {
+        return p;
+    }
+    return exe_dir / p;
+}
+
+void EnsureTCalendarIni(const std::filesystem::path& exe_dir) {
+    const std::filesystem::path ini_path = exe_dir / kTCalendarIniFileName;
+    if (std::filesystem::exists(ini_path)) {
+        return;
+    }
+
+    WritePrivateProfileStringW(L"TCalendar", L"Skin", L"default", ini_path.wstring().c_str());
+    WritePrivateProfileStringW(L"TCalendar", L"TemplateDefault", L"tcalendar\\template\\default\\index.html", ini_path.wstring().c_str());
+    WritePrivateProfileStringW(L"TCalendar", L"TemplateUser", L"tcalendar\\template\\user\\index.html", ini_path.wstring().c_str());
+    WritePrivateProfileStringW(L"TCalendar", L"StorageDbPath", L"tcalendar\\data\\tasks.db", ini_path.wstring().c_str());
+    WritePrivateProfileStringW(L"TCalendar", L"WindowWidth", L"960", ini_path.wstring().c_str());
+    WritePrivateProfileStringW(L"TCalendar", L"WindowHeight", L"640", ini_path.wstring().c_str());
+    WritePrivateProfileStringW(L"TCalendar", L"BlockExternalNavigation", L"1", ini_path.wstring().c_str());
+    WritePrivateProfileStringW(L"TCalendar", L"EnableWebView2Bootstrap", L"1", ini_path.wstring().c_str());
+    WritePrivateProfileStringW(L"TCalendar", L"DefaultViewMode", L"list", ini_path.wstring().c_str());
+    WritePrivateProfileStringW(L"TCalendar", L"DefaultRangePresetDays", L"1", ini_path.wstring().c_str());
+    WritePrivateProfileStringW(L"TCalendar", L"DefaultCustomRangeDays", L"7", ini_path.wstring().c_str());
+    WritePrivateProfileStringW(L"TCalendar", L"DefaultUseCustomRange", L"0", ini_path.wstring().c_str());
+}
+
+void LoadHostConfigFromIni(const std::filesystem::path& exe_dir, bool smoke_mode, bool smoke_storage_error_mode, tcalendar::HostConfig& out_config) {
+    EnsureTCalendarIni(exe_dir);
+
+    const std::filesystem::path runtime_root = exe_dir / L"tcalendar";
+    std::error_code ec;
+    std::filesystem::create_directories(runtime_root / L"data", ec);
+    std::filesystem::create_directories(runtime_root / L"template" / L"default", ec);
+    std::filesystem::create_directories(runtime_root / L"template" / L"user", ec);
+
+    const std::filesystem::path ini_path = exe_dir / kTCalendarIniFileName;
+    const std::wstring ini_file = ini_path.wstring();
+    out_config.ini_file_path = ini_file;
+    auto ensure_ini_key = [&](const wchar_t* key, const wchar_t* value) {
+        wchar_t current[MAX_PATH] = {0};
+        GetPrivateProfileStringW(L"TCalendar", key, L"", current, MAX_PATH, ini_file.c_str());
+        if (current[0] == L'\0') {
+            WritePrivateProfileStringW(L"TCalendar", key, value, ini_file.c_str());
+        }
+    };
+    ensure_ini_key(L"Skin", L"default");
+    ensure_ini_key(L"WindowWidth", L"960");
+    ensure_ini_key(L"WindowHeight", L"640");
+    ensure_ini_key(L"DefaultViewMode", L"list");
+    ensure_ini_key(L"DefaultRangePresetDays", L"1");
+    ensure_ini_key(L"DefaultCustomRangeDays", L"7");
+    ensure_ini_key(L"DefaultUseCustomRange", L"0");
+
+    wchar_t buf[MAX_PATH] = {0};
+    wchar_t skin[MAX_PATH] = {0};
+    GetPrivateProfileStringW(L"TCalendar", L"Skin", L"default", skin, MAX_PATH, ini_file.c_str());
+
+    GetPrivateProfileStringW(L"TCalendar", L"TemplateDefault", L"", buf, MAX_PATH, ini_file.c_str());
+    if (buf[0] == L'\0') {
+        std::wstring skin_name = skin[0] ? skin : L"default";
+        const std::wstring default_template = std::wstring(L"tcalendar\\template\\") + skin_name + L"\\index.html";
+        out_config.default_template_path = ResolvePathFromExe(exe_dir, default_template).wstring();
+    } else {
+        out_config.default_template_path = ResolvePathFromExe(exe_dir, buf).wstring();
+    }
+
+    GetPrivateProfileStringW(L"TCalendar", L"TemplateUser", L"tcalendar\\template\\user\\index.html", buf, MAX_PATH, ini_file.c_str());
+    out_config.user_template_path = ResolvePathFromExe(exe_dir, buf).wstring();
+
+    GetPrivateProfileStringW(L"TCalendar", L"StorageDbPath", L"tcalendar\\data\\tasks.db", buf, MAX_PATH, ini_file.c_str());
+    std::filesystem::path db_path = ResolvePathFromExe(exe_dir, buf);
+    if (smoke_mode) {
+        db_path = runtime_root / L"data" / L"tasks-smoke.db";
+    }
+    out_config.storage_db_path = db_path.wstring();
+
+    out_config.block_external_navigation = GetPrivateProfileIntW(L"TCalendar", L"BlockExternalNavigation", 1, ini_file.c_str()) != 0;
+    out_config.enable_webview2_bootstrap = GetPrivateProfileIntW(L"TCalendar", L"EnableWebView2Bootstrap", 1, ini_file.c_str()) != 0;
+    out_config.test_force_storage_write_failure = smoke_storage_error_mode;
+
+    GetPrivateProfileStringW(L"TCalendar", L"DefaultViewMode", L"list", buf, MAX_PATH, ini_file.c_str());
+    std::wstring view_mode = buf;
+    if (view_mode != L"list" && view_mode != L"timeline") {
+        view_mode = L"list";
+    }
+    out_config.default_view_mode = view_mode;
+
+    int preset_days = GetPrivateProfileIntW(L"TCalendar", L"DefaultRangePresetDays", 1, ini_file.c_str());
+    if (preset_days != 1 && preset_days != 7 && preset_days != 14 && preset_days != 30) {
+        preset_days = 1;
+    }
+    out_config.default_range_preset_days = preset_days;
+
+    int custom_days = GetPrivateProfileIntW(L"TCalendar", L"DefaultCustomRangeDays", 7, ini_file.c_str());
+    if (custom_days < 1) custom_days = 1;
+    if (custom_days > 365) custom_days = 365;
+    out_config.default_custom_range_days = custom_days;
+    out_config.default_use_custom_range = GetPrivateProfileIntW(L"TCalendar", L"DefaultUseCustomRange", 0, ini_file.c_str()) != 0;
+}
+
+void LoadWindowSizeFromIni(const std::wstring& ini_file, int& width, int& height) {
+    int w = GetPrivateProfileIntW(L"TCalendar", L"WindowWidth", width, ini_file.c_str());
+    int h = GetPrivateProfileIntW(L"TCalendar", L"WindowHeight", height, ini_file.c_str());
+    if (w >= 320 && w <= 3840) {
+        width = w;
+    }
+    if (h >= 240 && h <= 2160) {
+        height = h;
+    }
+}
+
+void SaveWindowSizeToIni(HWND hwnd, const std::wstring& ini_file) {
+    if (!hwnd || ini_file.empty() || IsZoomed(hwnd) || IsIconic(hwnd)) {
+        return;
+    }
+
+    RECT r{};
+    if (!GetWindowRect(hwnd, &r)) {
+        return;
+    }
+
+    const int width = r.right - r.left;
+    const int height = r.bottom - r.top;
+    if (width < 320 || height < 240) {
+        return;
+    }
+
+    wchar_t wbuf[16] = {0};
+    wchar_t hbuf[16] = {0};
+    _snwprintf_s(wbuf, _countof(wbuf), _TRUNCATE, L"%d", width);
+    _snwprintf_s(hbuf, _countof(hbuf), _TRUNCATE, L"%d", height);
+
+    WritePrivateProfileStringW(L"TCalendar", L"WindowWidth", wbuf, ini_file.c_str());
+    WritePrivateProfileStringW(L"TCalendar", L"WindowHeight", hbuf, ini_file.c_str());
+}
+
 void ResizeWebViewToClient(WindowContext* context, HWND hwnd) {
     if (!context || !context->controller) return;
 
@@ -61,7 +208,7 @@ bool StartWebView2ForWindow(WindowContext* context, HWND hwnd) {
 
     const HRESULT hr = CreateCoreWebView2EnvironmentWithOptions(
         nullptr,
-        nullptr,
+        context->webview_user_data_dir.empty() ? nullptr : context->webview_user_data_dir.c_str(),
         nullptr,
         Microsoft::WRL::Callback<ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler>(
             [context, hwnd](HRESULT result, ICoreWebView2Environment* environment) -> HRESULT {
@@ -126,6 +273,20 @@ bool StartWebView2ForWindow(WindowContext* context, HWND hwnd) {
     return SUCCEEDED(hr);
 }
 
+void ActivateExistingTCalendarWindow() {
+    HWND hwnd = FindWindowW(kTCalendarWindowClassName, nullptr);
+    if (!hwnd) {
+        return;
+    }
+
+    if (IsIconic(hwnd)) {
+        ShowWindow(hwnd, SW_RESTORE);
+    } else {
+        ShowWindow(hwnd, SW_SHOWNORMAL);
+    }
+    SetForegroundWindow(hwnd);
+}
+
 LRESULT CALLBACK TCalendarWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
     if (msg == WM_NCCREATE) {
         auto* cs = reinterpret_cast<CREATESTRUCTW*>(lparam);
@@ -140,7 +301,22 @@ LRESULT CALLBACK TCalendarWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpa
             ResizeWebViewToClient(context, hwnd);
             return 0;
 
+        case WM_EXITSIZEMOVE:
+            if (context) {
+                SaveWindowSizeToIni(hwnd, context->ini_file_path);
+            }
+            return 0;
+
+        case WM_SYSCOMMAND:
+            if ((wparam & 0xFFF0) == SC_MAXIMIZE) {
+                return 0;
+            }
+            return DefWindowProcW(hwnd, msg, wparam, lparam);
+
         case WM_DESTROY:
+            if (context) {
+                SaveWindowSizeToIni(hwnd, context->ini_file_path);
+            }
             PostQuitMessage(0);
             return 0;
 
@@ -150,8 +326,6 @@ LRESULT CALLBACK TCalendarWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpa
 }
 
 int RunSmokeMode(tcalendar::TCalendarHost& host, bool force_storage_error_test, bool strict_assert) {
-    std::wcout << L"bootstrapReady=" << (host.IsWebView2BootstrapReady() ? L"true" : L"false") << std::endl;
-
     std::wstring response;
 
     host.HandleWebMessage(LR"({"apiVersion":"1.0","requestId":"smoke-1","method":"system.getVersion","params":{}})", response);
@@ -204,16 +378,14 @@ int RunSmokeMode(tcalendar::TCalendarHost& host, bool force_storage_error_test, 
     return 0;
 }
 
-int RunStandaloneWindowMode(tcalendar::TCalendarHost& host, const tcalendar::HostConfig& config, HINSTANCE instance) {
-    const wchar_t* kClassName = L"TCalendarStandaloneWindowClass";
-
+int RunStandaloneWindowMode(tcalendar::TCalendarHost& host, const tcalendar::HostConfig& config, const std::filesystem::path& exe_dir, HINSTANCE instance) {
     WNDCLASSEXW wc{};
     wc.cbSize = sizeof(wc);
     wc.lpfnWndProc = TCalendarWndProc;
     wc.hInstance = instance;
     wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
     wc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
-    wc.lpszClassName = kClassName;
+    wc.lpszClassName = kTCalendarWindowClassName;
 
     if (!RegisterClassExW(&wc)) {
         return 2;
@@ -222,34 +394,38 @@ int RunStandaloneWindowMode(tcalendar::TCalendarHost& host, const tcalendar::Hos
     WindowContext context{};
     context.host = &host;
     context.initial_uri = BuildFileUriFromPath(std::filesystem::absolute(config.default_template_path).wstring());
+    context.webview_user_data_dir = (std::filesystem::absolute(config.storage_db_path).parent_path() / L"webview2").wstring();
+    context.ini_file_path = (exe_dir / kTCalendarIniFileName).wstring();
+
+    int window_width = 960;
+    int window_height = 640;
+    LoadWindowSizeFromIni(context.ini_file_path, window_width, window_height);
 
     HWND hwnd = CreateWindowExW(
         0,
-        kClassName,
+        kTCalendarWindowClassName,
         L"TCalendar",
-        WS_OVERLAPPEDWINDOW,
+        WS_OVERLAPPEDWINDOW & ~WS_MAXIMIZEBOX,
         CW_USEDEFAULT,
         CW_USEDEFAULT,
-        960,
-        640,
+        window_width,
+        window_height,
         nullptr,
         nullptr,
         instance,
         &context);
 
     if (!hwnd) {
-        UnregisterClassW(kClassName, instance);
+        UnregisterClassW(kTCalendarWindowClassName, instance);
         return 3;
     }
 
     ShowWindow(hwnd, SW_SHOWDEFAULT);
     UpdateWindow(hwnd);
 
-    std::wcout << L"bootstrapReady=" << (host.IsWebView2BootstrapReady() ? L"true" : L"false") << std::endl;
-
     if (!StartWebView2ForWindow(&context, hwnd)) {
         DestroyWindow(hwnd);
-        UnregisterClassW(kClassName, instance);
+        UnregisterClassW(kTCalendarWindowClassName, instance);
         return 4;
     }
 
@@ -263,7 +439,7 @@ int RunStandaloneWindowMode(tcalendar::TCalendarHost& host, const tcalendar::Hos
     context.controller.Reset();
     context.environment.Reset();
 
-    UnregisterClassW(kClassName, instance);
+    UnregisterClassW(kTCalendarWindowClassName, instance);
     return static_cast<int>(msg.wParam);
 }
 
@@ -286,17 +462,26 @@ int wmain(int argc, wchar_t** argv) {
         }
     }
 
+    HANDLE single_instance_mutex = nullptr;
+    if (!smoke_mode) {
+        HWND console = GetConsoleWindow();
+        if (console) {
+            ShowWindow(console, SW_HIDE);
+        }
+        single_instance_mutex = CreateMutexW(nullptr, FALSE, kTCalendarSingleInstanceMutexName);
+        if (single_instance_mutex && GetLastError() == ERROR_ALREADY_EXISTS) {
+            ActivateExistingTCalendarWindow();
+            CloseHandle(single_instance_mutex);
+            return 0;
+        }
+    }
+
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
 
     const std::filesystem::path exe_dir = GetExecutableDirectory();
 
     tcalendar::HostConfig config{};
-    config.default_template_path = (exe_dir / "web" / "default" / "index.html").wstring();
-    config.user_template_path = (exe_dir / "web" / "user" / "index.html").wstring();
-    config.block_external_navigation = true;
-    config.enable_webview2_bootstrap = true;
-    config.storage_db_path = (exe_dir / "data" / (smoke_mode ? "tasks-smoke.db" : "tasks.db")).wstring();
-    config.test_force_storage_write_failure = smoke_storage_error_mode;
+    LoadHostConfigFromIni(exe_dir, smoke_mode, smoke_storage_error_mode, config);
 
     if (smoke_mode) {
         std::error_code ec;
@@ -313,6 +498,9 @@ int wmain(int argc, wchar_t** argv) {
             MessageBoxW(nullptr, text.c_str(), L"TCalendar", MB_OK | MB_ICONERROR);
         }
         CoUninitialize();
+        if (single_instance_mutex) {
+            CloseHandle(single_instance_mutex);
+        }
         return 1;
     }
 
@@ -320,10 +508,13 @@ int wmain(int argc, wchar_t** argv) {
     if (smoke_mode) {
         rc = RunSmokeMode(host, smoke_storage_error_mode, smoke_strict_mode);
     } else {
-        rc = RunStandaloneWindowMode(host, config, GetModuleHandleW(nullptr));
+        rc = RunStandaloneWindowMode(host, config, exe_dir, GetModuleHandleW(nullptr));
     }
 
     host.Shutdown();
     CoUninitialize();
+    if (single_instance_mutex) {
+        CloseHandle(single_instance_mutex);
+    }
     return rc;
 }

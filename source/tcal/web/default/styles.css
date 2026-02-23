@@ -23,18 +23,74 @@ body {
 }
 
 .app {
-  max-width: 980px;
-  margin: 20px auto;
-  padding: 16px;
+  width: calc(100vw - 24px);
+  max-width: 1400px;
+  margin: 12px auto;
+  padding: 12px;
   display: grid;
+  grid-template-columns: minmax(0, 1fr) 8px minmax(340px, 460px);
+  grid-template-areas:
+    "topbar topbar topbar"
+    "grid splitter panel";
+  align-items: start;
   gap: 12px;
 }
 
 .topbar {
+  grid-area: topbar;
   display: grid;
   grid-template-columns: 42px 1fr 42px;
   align-items: center;
   gap: 8px;
+}
+
+.monthTitleText {
+  display: inline-block;
+  cursor: text;
+  padding-inline: 2px;
+}
+
+.gridWrap {
+  grid-area: grid;
+  min-width: 0;
+  display: grid;
+  grid-template-rows: auto 8px;
+  gap: 8px;
+}
+
+.calendarHeightSplitter {
+  cursor: row-resize;
+  border-radius: 6px;
+  background: linear-gradient(90deg, #e7ecf3, #d8dee8);
+  border: 1px solid #cfd7e3;
+}
+
+.calendarHeightSplitter:hover {
+  background: linear-gradient(90deg, #dbe7f8, #c8d8f1);
+}
+
+.layoutSplitter {
+  grid-area: splitter;
+  align-self: start;
+  cursor: col-resize;
+  border-radius: 6px;
+  background: linear-gradient(180deg, #e7ecf3, #d8dee8);
+  border: 1px solid #cfd7e3;
+  min-height: 260px;
+}
+
+.layoutSplitter:hover {
+  background: linear-gradient(180deg, #dbe7f8, #c8d8f1);
+}
+
+body.isResizingPanels {
+  cursor: col-resize;
+  user-select: none;
+}
+
+body.isResizingCalendarHeight {
+  cursor: row-resize;
+  user-select: none;
 }
 
 .topbar button {
@@ -45,24 +101,58 @@ body {
 }
 
 .monthGrid {
-  min-height: 280px;
+  min-height: 320px;
+  height: clamp(320px, calc(100vh - 210px), 840px);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+}
+
+.dayPanel {
+  grid-area: panel;
+  min-width: 0;
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--panel);
   padding: 12px;
 }
 
-.dayPanel {
+.viewControls {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.viewControls label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: #4f5966;
+}
+
+.viewControls select,
+.viewControls input {
+  height: 30px;
   border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--panel);
-  padding: 12px;
+  border-radius: 6px;
+  background: #fff;
+  padding: 0 8px;
+  font: inherit;
+}
+
+.isHidden {
+  display: none !important;
 }
 
 #taskForm {
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 8px;
+  margin-bottom: 8px;
 }
 
 #taskForm input,
@@ -89,7 +179,9 @@ body {
 .daysGrid {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-rows: repeat(6, minmax(44px, 1fr));
   gap: 6px;
+  flex: 1;
 }
 
 .dayCell {
@@ -117,6 +209,22 @@ body {
   font-weight: 600;
 }
 
+.dayCell .dateLabel.isSunday {
+  color: #c45a5a;
+}
+
+.dayCell .dateLabel.isSaturday {
+  color: #4f77bf;
+}
+
+.dayCell.isOutside .dateLabel.isSunday {
+  color: #d6a2a2;
+}
+
+.dayCell.isOutside .dateLabel.isSaturday {
+  color: #9fb3d9;
+}
+
 
 taskList,
 #taskList {
@@ -138,6 +246,38 @@ taskList,
 }
 
 
+.taskTitle {
+  display: inline-grid;
+  grid-template-columns: auto auto 5ch 1ch minmax(0, 1fr);
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+}
+
+.taskMetaDate,
+.taskMetaTime,
+.taskMetaSep {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.taskMetaTime {
+  display: inline-block;
+  width: 5ch;
+}
+
+.taskMetaGap {
+  display: inline-block;
+  width: 1ch;
+}
+
+.taskMetaMain {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .taskDelete {
   margin-left: auto;
   border: 1px solid var(--border);
@@ -147,6 +287,16 @@ taskList,
   padding: 0 8px;
   font-size: 12px;
   cursor: pointer;
+}
+
+.taskActionGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.taskActionGroup .taskDelete {
+  margin-left: 0;
 }
 
 .taskEmpty {
@@ -164,4 +314,280 @@ taskList,
   padding: 0 8px;
   font-size: 12px;
   cursor: pointer;
+}
+
+.taskModalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.taskModal {
+  width: min(520px, calc(100vw - 24px));
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+  display: grid;
+  gap: 8px;
+}
+
+.taskModal h3 {
+  margin: 0 0 4px;
+  font-size: 16px;
+}
+
+.taskModal label {
+  font-size: 12px;
+  color: #4f5966;
+}
+
+.taskModal input,
+.taskModal textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font: inherit;
+}
+
+.taskModal textarea {
+  min-height: 120px;
+  resize: vertical;
+}
+
+.taskModalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.taskModalActions button {
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  padding: 0 12px;
+}
+
+
+@media (max-width: 900px) {
+  .app {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "topbar"
+      "grid"
+      "panel";
+  }
+
+  .layoutSplitter {
+    display: none;
+  }
+
+  .calendarHeightSplitter {
+    display: none;
+  }
+}
+
+
+.timelineView {
+  display: grid;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.timelineDay {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px;
+  background: #fff;
+}
+
+.timelineDayHeader {
+  font-size: 12px;
+  font-weight: 600;
+  color: #44505d;
+  margin-bottom: 6px;
+}
+
+.timelineTrack {
+  position: relative;
+  height: 34px;
+  border: 1px solid #e4e8ee;
+  border-radius: 6px;
+  background:
+    repeating-linear-gradient(
+      to right,
+      #f5f7fa 0,
+      #f5f7fa calc(100% / 24 - 1px),
+      #e8edf4 calc(100% / 24 - 1px),
+      #e8edf4 calc(100% / 24)
+    );
+}
+
+.timelineHourAxis {
+  display: grid;
+  grid-template-columns: repeat(13, minmax(0, 1fr));
+  font-size: 10px;
+  color: #6c7682;
+  margin-bottom: 4px;
+}
+
+.timelineHourAxis span {
+  text-align: left;
+}
+
+.timelineBars {
+  position: absolute;
+  inset: 0;
+}
+
+.timelineBar {
+  position: absolute;
+  top: 6px;
+  height: 20px;
+  border-radius: 5px;
+  background: rgba(10, 101, 204, 0.82);
+  color: #fff;
+  font-size: 11px;
+  line-height: 20px;
+  padding: 0 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.timelinePoint {
+  position: absolute;
+  top: 7px;
+  transform: translateX(-50%);
+  font-size: 11px;
+  color: #163b66;
+  white-space: nowrap;
+}
+
+.timelinePoint::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #0a65cc;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+
+.timelineUntimed {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #2d3742;
+}
+
+.timelineUntimedItem {
+  margin-top: 2px;
+}
+
+.timelineTaskList {
+  margin-top: 8px;
+  display: grid;
+  gap: 6px;
+}
+
+.timelineTaskRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.timelineTaskLabel {
+  display: inline-grid;
+  grid-template-columns: 5ch 1ch minmax(0, 1fr);
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+}
+
+.timelineTaskTime {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.timelineTaskGap {
+  width: 1ch;
+}
+
+.timelineTaskTitle {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timelinePerTaskList {
+  margin-top: 8px;
+  display: grid;
+  gap: 8px;
+}
+
+.timelinePerTaskItem {
+  border: 1px solid #e4e8ee;
+  border-radius: 6px;
+  padding: 6px;
+  background: #fbfcfe;
+  display: grid;
+  gap: 6px;
+}
+
+.timelinePerTaskTop {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.timelinePerTaskTop .timelineTaskLabel {
+  flex: 1;
+}
+
+.timelinePerTaskTrack {
+  position: relative;
+  height: 26px;
+  border: 1px solid #e4e8ee;
+  border-radius: 6px;
+  background:
+    repeating-linear-gradient(
+      to right,
+      #f6f8fb 0,
+      #f6f8fb calc(100% / 24 - 1px),
+      #e8edf4 calc(100% / 24 - 1px),
+      #e8edf4 calc(100% / 24)
+    );
+}
+
+.timelinePerTaskTrack .timelineBars {
+  position: absolute;
+  inset: 0;
+}
+
+.timelinePerTaskTrack .timelineBar {
+  top: 3px;
+  height: 18px;
+  line-height: 18px;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
+  z-index: 2;
+}
+
+.timelinePerTaskTrack .timelinePoint {
+  top: 4px;
+}
+
+@media (max-width: 1200px) {
+  .viewControls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }

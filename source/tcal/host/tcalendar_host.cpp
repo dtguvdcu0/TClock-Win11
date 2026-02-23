@@ -63,6 +63,53 @@ std::wstring EscapeJsonString(const std::wstring& value) {
     return out;
 }
 
+bool ParseTimeToMinutes(const std::wstring& value, int& out_minutes) {
+    if (value.empty()) return false;
+    if (value.size() != 5 || value[2] != L':') return false;
+    if (value[0] < L'0' || value[0] > L'9' || value[1] < L'0' || value[1] > L'9' ||
+        value[3] < L'0' || value[3] > L'9' || value[4] < L'0' || value[4] > L'9') {
+        return false;
+    }
+    const int hh = (value[0] - L'0') * 10 + (value[1] - L'0');
+    const int mm = (value[3] - L'0') * 10 + (value[4] - L'0');
+    if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return false;
+    out_minutes = hh * 60 + mm;
+    return true;
+}
+
+bool ValidateTaskTimes(const std::wstring& start_time, const std::wstring& end_time, std::wstring& out_message) {
+    out_message.clear();
+    if (start_time.empty() && end_time.empty()) return true;
+    if (!start_time.empty() && end_time.empty()) {
+        int dummy = 0;
+        if (!ParseTimeToMinutes(start_time, dummy)) {
+            out_message = L"Invalid startTime format";
+            return false;
+        }
+        return true;
+    }
+    if (start_time.empty() && !end_time.empty()) {
+        out_message = L"endTime requires startTime";
+        return false;
+    }
+
+    int start_minutes = 0;
+    int end_minutes = 0;
+    if (!ParseTimeToMinutes(start_time, start_minutes)) {
+        out_message = L"Invalid startTime format";
+        return false;
+    }
+    if (!ParseTimeToMinutes(end_time, end_minutes)) {
+        out_message = L"Invalid endTime format";
+        return false;
+    }
+    if (end_minutes < start_minutes) {
+        out_message = L"endTime must be after startTime";
+        return false;
+    }
+    return true;
+}
+
 } // namespace
 
 TCalendarHost::TCalendarHost(const HostConfig& config) : config_(config) {}
@@ -195,22 +242,106 @@ bool TCalendarHost::HandleWebMessage(const std::wstring& request_json, std::wstr
         return true;
     }
 
+    if (req.method == L"system.getViewConfig") {
+        const std::wstring data =
+            std::wstring(L"{\"defaultViewMode\":\"") + EscapeJsonString(config_.default_view_mode) +
+            L"\",\"defaultRangePresetDays\":" + std::to_wstring(config_.default_range_preset_days) +
+            L",\"defaultCustomRangeDays\":" + std::to_wstring(config_.default_custom_range_days) +
+            L",\"defaultUseCustomRange\":" + (config_.default_use_custom_range ? L"true" : L"false") + L"}";
+        response_json = BuildResponse(true, L"OK", L"", req.request_id, data.c_str());
+        return true;
+    }
+
     const JsonObject* params = nullptr;
     if (!GetObjectField(req.root, L"params", params)) {
         response_json = BuildResponse(false, L"VALIDATION_ERROR", L"Missing or invalid params object", req.request_id, L"null");
         return true;
     }
 
+    if (req.method == L"system.setViewConfig") {
+        std::wstring view_mode;
+        std::wstring range_preset;
+        std::wstring custom_days_raw;
+        if (!GetStringField(*params, L"defaultViewMode", view_mode) ||
+            !GetStringField(*params, L"rangePreset", range_preset)) {
+            response_json = BuildResponse(false, L"VALIDATION_ERROR", L"Missing defaultViewMode/rangePreset in params", req.request_id, L"null");
+            return true;
+        }
+
+        if (view_mode != L"list" && view_mode != L"timeline") {
+            response_json = BuildResponse(false, L"VALIDATION_ERROR", L"Invalid defaultViewMode", req.request_id, L"null");
+            return true;
+        }
+
+        bool use_custom_range = false;
+        int preset_days = 1;
+        if (range_preset == L"custom") {
+            use_custom_range = true;
+        } else {
+            const int candidate = _wtoi(range_preset.c_str());
+            if (candidate != 1 && candidate != 7 && candidate != 14 && candidate != 30) {
+                response_json = BuildResponse(false, L"VALIDATION_ERROR", L"Invalid rangePreset", req.request_id, L"null");
+                return true;
+            }
+            preset_days = candidate;
+        }
+
+        int custom_days = config_.default_custom_range_days;
+        if (GetStringField(*params, L"customRangeDays", custom_days_raw)) {
+            const int parsed_custom_days = _wtoi(custom_days_raw.c_str());
+            if (parsed_custom_days >= 1 && parsed_custom_days <= 365) {
+                custom_days = parsed_custom_days;
+            }
+        }
+
+        config_.default_view_mode = view_mode;
+        config_.default_range_preset_days = preset_days;
+        config_.default_use_custom_range = use_custom_range;
+        config_.default_custom_range_days = custom_days;
+
+        if (!config_.ini_file_path.empty()) {
+            wchar_t preset_buf[16] = {0};
+            wchar_t custom_buf[16] = {0};
+            _snwprintf_s(preset_buf, _countof(preset_buf), _TRUNCATE, L"%d", config_.default_range_preset_days);
+            _snwprintf_s(custom_buf, _countof(custom_buf), _TRUNCATE, L"%d", config_.default_custom_range_days);
+
+            const wchar_t* use_custom = config_.default_use_custom_range ? L"1" : L"0";
+            bool write_ok = true;
+            write_ok = write_ok && (WritePrivateProfileStringW(L"TCalendar", L"DefaultViewMode", config_.default_view_mode.c_str(), config_.ini_file_path.c_str()) != FALSE);
+            write_ok = write_ok && (WritePrivateProfileStringW(L"TCalendar", L"DefaultRangePresetDays", preset_buf, config_.ini_file_path.c_str()) != FALSE);
+            write_ok = write_ok && (WritePrivateProfileStringW(L"TCalendar", L"DefaultCustomRangeDays", custom_buf, config_.ini_file_path.c_str()) != FALSE);
+            write_ok = write_ok && (WritePrivateProfileStringW(L"TCalendar", L"DefaultUseCustomRange", use_custom, config_.ini_file_path.c_str()) != FALSE);
+            if (!write_ok) {
+                response_json = BuildResponse(false, L"STORAGE_ERROR", L"Failed to write view config to ini", req.request_id, L"null");
+                return true;
+            }
+        }
+
+        response_json = BuildResponse(true, L"OK", L"", req.request_id, L"{\"saved\":true}");
+        return true;
+    }
+
     if (req.method == L"task.create") {
         std::wstring date;
         std::wstring title;
+        std::wstring detail;
+        std::wstring start_time;
+        std::wstring end_time;
         TaskItem t{};
         if (!GetStringField(*params, L"date", date) ||
             !GetStringField(*params, L"title", title)) {
             response_json = BuildResponse(false, L"VALIDATION_ERROR", L"Missing date/title in params", req.request_id, L"null");
             return true;
         }
-        if (!store_.CreateTask(date, title, t)) {
+        GetStringField(*params, L"detail", detail);
+        GetStringField(*params, L"startTime", start_time);
+        GetStringField(*params, L"endTime", end_time);
+        std::wstring time_error;
+        if (!ValidateTaskTimes(start_time, end_time, time_error)) {
+            response_json = BuildResponse(false, L"VALIDATION_ERROR", time_error.c_str(), req.request_id, L"null");
+            return true;
+        }
+        if (!store_.CreateTask(date, title, detail, start_time, end_time, t)) {
             const std::wstring store_error = store_.GetLastError();
             if (store_error == L"invalid task payload") {
                 response_json = BuildResponse(false, L"VALIDATION_ERROR", L"Invalid task payload", req.request_id, L"null");
@@ -223,6 +354,9 @@ bool TCalendarHost::HandleWebMessage(const std::wstring& request_json, std::wstr
         std::wstring data = std::wstring(L"{\"id\":\"") + EscapeJsonString(t.id) +
                             L"\",\"date\":\"" + EscapeJsonString(t.date) +
                             L"\",\"title\":\"" + EscapeJsonString(t.title) +
+                            L"\",\"detail\":\"" + EscapeJsonString(t.detail) +
+                            L"\",\"startTime\":\"" + EscapeJsonString(t.start_time) +
+                            L"\",\"endTime\":\"" + EscapeJsonString(t.end_time) +
                             L"\",\"done\":false}";
         response_json = BuildResponse(true, L"OK", L"", req.request_id, data.c_str());
         return true;
@@ -270,6 +404,41 @@ bool TCalendarHost::HandleWebMessage(const std::wstring& request_json, std::wstr
         return true;
     }
 
+    if (req.method == L"task.update") {
+        std::wstring id;
+        std::wstring title;
+        std::wstring detail;
+        std::wstring start_time;
+        std::wstring end_time;
+        if (!GetStringField(*params, L"id", id) ||
+            !GetStringField(*params, L"title", title)) {
+            response_json = BuildResponse(false, L"VALIDATION_ERROR", L"Missing id/title in params", req.request_id, L"null");
+            return true;
+        }
+        GetStringField(*params, L"detail", detail);
+        GetStringField(*params, L"startTime", start_time);
+        GetStringField(*params, L"endTime", end_time);
+        std::wstring time_error;
+        if (!ValidateTaskTimes(start_time, end_time, time_error)) {
+            response_json = BuildResponse(false, L"VALIDATION_ERROR", time_error.c_str(), req.request_id, L"null");
+            return true;
+        }
+        if (!store_.UpdateTask(id, title, detail, start_time, end_time)) {
+            const std::wstring store_error = store_.GetLastError();
+            if (store_error == L"task not found") {
+                response_json = BuildResponse(false, L"NOT_FOUND", L"Task not found", req.request_id, L"null");
+            } else if (store_error == L"invalid task payload") {
+                response_json = BuildResponse(false, L"VALIDATION_ERROR", L"Invalid task payload", req.request_id, L"null");
+            } else {
+                const std::wstring message = store_error.empty() ? L"Task store error" : store_error;
+                response_json = BuildResponse(false, L"STORAGE_ERROR", message.c_str(), req.request_id, L"null");
+            }
+            return true;
+        }
+        response_json = BuildResponse(true, L"OK", L"", req.request_id, L"{\"id\":\"updated\"}");
+        return true;
+    }
+
     if (req.method == L"task.updateTitle") {
         std::wstring id;
         std::wstring title;
@@ -305,7 +474,35 @@ bool TCalendarHost::HandleWebMessage(const std::wstring& request_json, std::wstr
         for (size_t i = 0; i < tasks.size(); ++i) {
             if (i) data += L",";
             data += std::wstring(L"{\"id\":\"") + EscapeJsonString(tasks[i].id) + L"\",\"date\":\"" + EscapeJsonString(tasks[i].date) +
-                    L"\",\"title\":\"" + EscapeJsonString(tasks[i].title) + L"\",\"done\":" + (tasks[i].done ? L"true" : L"false") + L"}";
+                    L"\",\"title\":\"" + EscapeJsonString(tasks[i].title) +
+                    L"\",\"detail\":\"" + EscapeJsonString(tasks[i].detail) +
+                    L"\",\"startTime\":\"" + EscapeJsonString(tasks[i].start_time) +
+                    L"\",\"endTime\":\"" + EscapeJsonString(tasks[i].end_time) +
+                    L"\",\"done\":" + (tasks[i].done ? L"true" : L"false") + L"}";
+        }
+        data += L"]}";
+        response_json = BuildResponse(true, L"OK", L"", req.request_id, data.c_str());
+        return true;
+    }
+
+    if (req.method == L"calendar.getRangeTasks") {
+        std::wstring date_from;
+        std::wstring date_to;
+        if (!GetStringField(*params, L"dateFrom", date_from) ||
+            !GetStringField(*params, L"dateTo", date_to)) {
+            response_json = BuildResponse(false, L"VALIDATION_ERROR", L"Missing dateFrom/dateTo in params", req.request_id, L"null");
+            return true;
+        }
+        const auto tasks = store_.GetTasksInRange(date_from, date_to);
+        std::wstring data = L"{\"items\":[";
+        for (size_t i = 0; i < tasks.size(); ++i) {
+            if (i) data += L",";
+            data += std::wstring(L"{\"id\":\"") + EscapeJsonString(tasks[i].id) + L"\",\"date\":\"" + EscapeJsonString(tasks[i].date) +
+                    L"\",\"title\":\"" + EscapeJsonString(tasks[i].title) +
+                    L"\",\"detail\":\"" + EscapeJsonString(tasks[i].detail) +
+                    L"\",\"startTime\":\"" + EscapeJsonString(tasks[i].start_time) +
+                    L"\",\"endTime\":\"" + EscapeJsonString(tasks[i].end_time) +
+                    L"\",\"done\":" + (tasks[i].done ? L"true" : L"false") + L"}";
         }
         data += L"]}";
         response_json = BuildResponse(true, L"OK", L"", req.request_id, data.c_str());

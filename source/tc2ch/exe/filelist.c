@@ -67,7 +67,7 @@ char *Unicode2Ansi(LPCWSTR psUnicode)
 	return psAnsi;
 }
 
-BOOL AddMenuItem(HMENU hMenu, UINT itemId, UINT uType, char *sDisplayName, HMENU hSubMenu)
+BOOL AddMenuItem(HMENU hMenu, UINT itemId, UINT uType, const char *sDisplayName, HMENU hSubMenu)
 {
 	MENUITEMINFO tMenuItemInfo;
 
@@ -77,7 +77,7 @@ BOOL AddMenuItem(HMENU hMenu, UINT itemId, UINT uType, char *sDisplayName, HMENU
 	tMenuItemInfo.fType = uType;
 	tMenuItemInfo.wID = itemId;
 	tMenuItemInfo.hSubMenu = hSubMenu;
-	tMenuItemInfo.dwTypeData = sDisplayName;
+	tMenuItemInfo.dwTypeData = (LPSTR)sDisplayName;
 
 	return InsertMenuItem(hMenu, itemId, FALSE, &tMenuItemInfo);
 }

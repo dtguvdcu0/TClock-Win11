@@ -47,7 +47,7 @@ void GPUMoni_start(void)
 	if (hQueryGPU)GPUMoni_end();
 
 	if (!hmodPDH) {
-		hmodPDH = LoadLibrary("pdh.dll");
+		hmodPDH = LoadLibraryW(L"pdh.dll");
 		if (hmodPDH == NULL) return;
 
 		pPdhOpenQueryW = (pfnPdhOpenQueryW)GetProcAddress(hmodPDH, "PdhOpenQueryW");

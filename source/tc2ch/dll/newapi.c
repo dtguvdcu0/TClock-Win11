@@ -168,7 +168,7 @@ void InitGradientFill(void)
 {
 	if(bInitGradientFill) return;
 
-	hmodMSIMG32 = LoadLibrary("msimg32.dll");
+	hmodMSIMG32 = LoadLibraryW(L"msimg32.dll");
 	if(hmodMSIMG32 != NULL)
 	{
 		pGradientFill = (pfnGradientFill)GetProcAddress(hmodMSIMG32, "GradientFill");
@@ -184,7 +184,7 @@ void InitAlphaBlend(void)
 {
 	if(bInitAlphaBlend) return;
 
-	hmodMSIMG32 = LoadLibrary("msimg32.dll");
+	hmodMSIMG32 = LoadLibraryW(L"msimg32.dll");
 	if(hmodMSIMG32 != NULL)
 	{
 		pAlphaBlend = (pfnAlphaBlend)GetProcAddress(hmodMSIMG32, "AlphaBlend");
@@ -200,7 +200,7 @@ void InitTransparentBlt(void)
 {
 	if(bInitTransparentBlt) return;
 
-	hmodMSIMG32 = LoadLibrary("msimg32.dll");
+	hmodMSIMG32 = LoadLibraryW(L"msimg32.dll");
 	if(hmodMSIMG32 != NULL)
 	{
 		pTransparentBlt = (pfnTransparentBlt)GetProcAddress(hmodMSIMG32, "TransparentBlt");
@@ -216,7 +216,7 @@ void InitLayeredWindow(void)
 {
 	if(bInitLayeredWindow) return;
 
-	hmodUSER32 = LoadLibrary("user32.dll");
+	hmodUSER32 = LoadLibraryW(L"user32.dll");
 	if(hmodUSER32 != NULL)
 	{
 		pSetLayeredWindowAttributes = (pfnSetLayeredWindowAttributes)
@@ -234,7 +234,7 @@ void InitDrawTheme(void)
 {
 	if (bInitDrawTheme) return;
 
-	hmodUXTHEME = LoadLibrary("uxtheme.dll");
+	hmodUXTHEME = LoadLibraryW(L"uxtheme.dll");
 	if (hmodUXTHEME != NULL)
 	{
 		pDrawThemeParentBackground = (pfnDrawThemeParentBackground)
@@ -281,7 +281,7 @@ void InitDrawTheme(void)
 //{
 //	if(bInitDrawTheme) return;
 //
-//	hmodUXTHEME = LoadLibrary("uxtheme.dll");
+//	hmodUXTHEME = LoadLibraryW(L"uxtheme.dll");
 //	if(hmodUXTHEME != NULL)
 //	{
 //		pDrawThemeParentBackground = (pfnDrawThemeParentBackground)

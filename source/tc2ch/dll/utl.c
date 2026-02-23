@@ -225,7 +225,7 @@ int _strncmp(const char* d, const char* s, size_t n)
 /*-------------------------------------------
 　パス名にファイル名をつける
 ---------------------------------------------*/
-void add_title(char *path, char *title)
+void add_title(char *path, const char *title)
 {
 	char *p;
 
@@ -304,7 +304,7 @@ void get_title(char* dst, const char *path)
 /*------------------------------------------------
 	カンマで区切られた文字列を取り出す
 --------------------------------------------------*/
-void parse(char *dst, char *src, int n)
+void parse(char *dst, const char *src, int n)
 {
 	char *dp;
 	int i;
@@ -341,8 +341,8 @@ char mykey[] = "Software\\Kazubon\\TClock";
 /*------------------------------------------------
 　自分のレジストリから文字列を得る
 --------------------------------------------------*/
-int GetMyRegStr(char* section, char* entry, char* val, int cbData,
-	char* defval)
+int GetMyRegStr(const char* section, const char* entry, char* val, int cbData,
+	const char* defval)
 {
 	char key[80];
 	int r = 0;
@@ -460,7 +460,7 @@ getmyregstr_done:
 /*------------------------------------------------
 　自分のレジストリからLONG値を得る
 --------------------------------------------------*/
-LONG GetMyRegLong(char* section, char* entry, LONG defval)
+LONG GetMyRegLong(const char* section, const char* entry, LONG defval)
 {
 	char key[80];
 	LONG r = 0;
@@ -502,10 +502,12 @@ LONG GetMyRegLong(char* section, char* entry, LONG defval)
 			}
 			}
 			else {
+				/* Compatibility boundary: keep Win32 profile fallback for legacy non-UTF8 INI. */
 				r = GetPrivateProfileInt(key, entry, defval, g_inifile);
 			}
 		}
 		else {
+			/* Compatibility boundary: keep Win32 profile fallback for legacy non-UTF8 INI. */
 			r = GetPrivateProfileInt(key, entry, defval, g_inifile);
 		}
 	}
@@ -529,7 +531,7 @@ LONG GetMyRegLong(char* section, char* entry, LONG defval)
 /*-------------------------------------------
 　レジストリに文字列を書き込む
 ---------------------------------------------*/
-BOOL SetMyRegStr(char* section, char* entry, char* val)
+BOOL SetMyRegStr(const char* section, const char* entry, const char* val)
 {
 	BOOL r;
 	char key[80];
@@ -549,7 +551,7 @@ BOOL SetMyRegStr(char* section, char* entry, char* val)
 		lstrcpyn(key, "Main", (int)sizeof(key));
 	}
 
-		char *chk_val;
+		const char *chk_val;
 		BOOL b_chkflg = FALSE;
 		char saveval[1024];
 
@@ -604,6 +606,7 @@ BOOL SetMyRegStr(char* section, char* entry, char* val)
 				r = tc_ini_utf8_write_string(g_inifile, key, entry, saveval) ? TRUE : FALSE;
 			}
 		}
+		/* Compatibility boundary: keep Win32 profile write fallback for legacy non-UTF8 INI. */
 		else if (WritePrivateProfileString(key, entry, saveval, g_inifile)) {
 			r = TRUE;
 		}
@@ -622,7 +625,7 @@ BOOL SetMyRegStr(char* section, char* entry, char* val)
 /*-------------------------------------------
 　レジストリにDWORD値を書き込む
 ---------------------------------------------*/
-BOOL SetMyRegLong(char* section, char* entry, DWORD val)
+BOOL SetMyRegLong(const char* section, const char* entry, DWORD val)
 {
 	BOOL r;
 	char key[80];
@@ -651,6 +654,7 @@ BOOL SetMyRegLong(char* section, char* entry, DWORD val)
 				r = TRUE;
 			}
 		}
+		/* Compatibility boundary: keep Win32 profile write fallback for legacy non-UTF8 INI. */
 		else if (WritePrivateProfileString(key, entry, s, g_inifile)) {
 			r = TRUE;
 		}
@@ -875,7 +879,7 @@ HINSTANCE ShellExecuteUtf8Strict_DLL(HWND hwnd, const char* op, const char* file
 	return ShellExecuteW(hwnd, pOp, pFile, pParams, pDir, showCmd);
 }
 
-BOOL DelMyReg_DLL(char* section, char* entry)
+BOOL DelMyReg_DLL(const char* section, const char* entry)
 {
 	BOOL r = FALSE;
 	char key[80];
@@ -906,7 +910,7 @@ BOOL DelMyReg_DLL(char* section, char* entry)
 /*-------------------------------------------
 　レジストリのキーを削除
  ---------------------------------------------*/
-BOOL DelMyRegKey_DLL(char* section)
+BOOL DelMyRegKey_DLL(const char* section)
 {
 	BOOL r = FALSE;
 	char key[80];

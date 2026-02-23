@@ -99,7 +99,7 @@ void PerMoni_start(void)
 	if(hQuery)PerMoni_end();
 
 	if (!hmodPDH) {
-		hmodPDH = LoadLibrary("pdh.dll");
+		hmodPDH = LoadLibraryW(L"pdh.dll");
 		if (hmodPDH == NULL) return;
 
 		pPdhOpenQueryW = (pfnPdhOpenQueryW)GetProcAddress(hmodPDH, "PdhOpenQueryW");

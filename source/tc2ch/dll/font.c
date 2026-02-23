@@ -80,7 +80,7 @@ BOOL CALLBACK EnumFontFamExProc(ENUMLOGFONTEX* pelf,
 /*------------------------------------------------
    create a font of the clock
 --------------------------------------------------*/
-HFONT CreateMyFont(char* fontname, int fontsize,
+HFONT CreateMyFont(const char* fontname, int fontsize,
 	LONG weight, LONG italic)
 {
 	LOGFONT lf;
@@ -105,7 +105,9 @@ HFONT CreateMyFont(char* fontname, int fontsize,
 		InterlockedDecrement(&g_depth_CreateMyFont);
 		return (HFONT)GetStockObject(DEFAULT_GUI_FONT);
 	}
-	if (!fontname) fontname = "";
+	if (!fontname) {
+		fontname = "";
+	}
 	lstrcpyn(fontnameLocal, fontname, LF_FACESIZE);
 	requestMsGothic = IsMsGothicRequest(fontnameLocal);
 	fnlen = lstrlen(fontnameLocal);

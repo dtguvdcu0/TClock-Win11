@@ -1,4 +1,5 @@
 #include "text_file_utf8.h"
+#include "text_codec.h"
 
 static BOOL tc_is_valid_utf8_bytes(const unsigned char* data, DWORD len)
 {
@@ -21,7 +22,11 @@ BOOL tc_read_text_file_utf8(const char* path, char** outText, DWORD* outSize, BO
     *outSize = 0;
     if (outHadBom) *outHadBom = FALSE;
 
-    h = CreateFile(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    {
+        wchar_t wPath[MAX_PATH];
+        if (tc_utf8_to_utf16(path, wPath, (int)(sizeof(wPath) / sizeof(wPath[0]))) <= 0) return FALSE;
+        h = CreateFileW(wPath, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    }
     if (h == INVALID_HANDLE_VALUE) return FALSE;
 
     sz = GetFileSize(h, NULL);
@@ -74,7 +79,11 @@ BOOL tc_write_text_file_utf8(const char* path, const char* text, DWORD size, BOO
     if (!path) return FALSE;
     if (!text && size > 0) return FALSE;
 
-    h = CreateFile(path, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    {
+        wchar_t wPath[MAX_PATH];
+        if (tc_utf8_to_utf16(path, wPath, (int)(sizeof(wPath) / sizeof(wPath[0]))) <= 0) return FALSE;
+        h = CreateFileW(wPath, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    }
     if (h == INVALID_HANDLE_VALUE) return FALSE;
 
     if (writeBom) {

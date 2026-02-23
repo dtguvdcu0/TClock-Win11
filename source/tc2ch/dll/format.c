@@ -151,13 +151,13 @@ static int tc_custom_parse_json_type(const char* s)
 static void tc_custom_try_init_inifile(void)
 {
 	char* full;
-	WIN32_FIND_DATA fd;
+	WIN32_FIND_DATAW fd;
 	HANDLE hfind;
 	if (g_inifile[0]) return;
 	if (!hmod) return;
 	full = CreateFullPathName((HINSTANCE)hmod, "tclock-win11.ini");
 	if (!full) return;
-	hfind = FindFirstFile(full, &fd);
+	hfind = tc_find_first_file_utf8_compat(full, &fd);
 	if (hfind != INVALID_HANDLE_VALUE) {
 		lstrcpyn(g_inifile, full, MAX_PATH);
 		FindClose(hfind);
@@ -1290,6 +1290,8 @@ extern BOOL b_TempAvailable;
 
 static char* GetCharNextCompat(char* p)
 {
+	/* Compatibility boundary: keep char*-based traversal to match legacy
+	   ANSI-byte stepping semantics used by existing format parsing code. */
 	if(!g_bCharNextExCompatInit)
 	{
 		HMODULE hUser32 = GetModuleHandle(TEXT("user32.dll"));
@@ -1299,7 +1301,7 @@ static char* GetCharNextCompat(char* p)
 	}
 	if(g_pCharNextExCompat)
 		return g_pCharNextExCompat((WORD)codepage, p, 0);
-	return CharNext(p);
+	return CharNext(p);	/* Keep ANSI fallback behavior for legacy format path. */
 }
 
 /*------------------------------------------------

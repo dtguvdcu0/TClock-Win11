@@ -208,7 +208,7 @@ extern BOOL      g_bIniSetting;
 extern char      g_inifile[];
 MOUSE_FUNC_INFO *GetMouseFuncList(void);
 int GetMouseFuncCount(void);
-HINSTANCE LoadLanguageDLL(char *fname); // load language dll
+HINSTANCE LoadLanguageDLL(char *fname); // load language dll (compat: writable output buffer)
 HINSTANCE GetLangModule(void);      // instance handle of language dll
 
 void My2chHelp(HWND hDlg);  // show 2ch help
@@ -218,8 +218,8 @@ void CreateTClockTrayIcon(BOOL bCreate);	//20220323 Ver4.12, by MMM
 
 
 // alarm.c -> exemain.c
-void GetFileAndOption(const char* command, char* fname, char* opt);
-BOOL ExecFile(HWND hwnd, char* command);
+void GetFileAndOption(const char* command, char* fname, int fnameBytes, char* opt, int optBytes);
+BOOL ExecFile(HWND hwnd, const char* command);
 
 
 // pagebarmeter.c
@@ -260,12 +260,12 @@ void PushKeybd(LPKEYEVENT lpkey);
 
 // utl.c
 int atox(const char *p);
-void add_title(char *path, char* titile);
+void add_title(char *path, const char* titile);
 void del_title(char *path);
 void get_title(char* dst, const char *path);
 int ext_cmp(const char *fname, const char *ext);
-void parse(char *dst, char *src, int n);
-void parsechar(char *dst, char *src, char ch, int n);
+void parse(char *dst, const char *src, int n);
+void parsechar(char *dst, const char *src, char ch, int n);
 void str0cat(char* dst, const char* src);
 const wchar_t* MyStringW(UINT id);
 char* MyStringUTF8(UINT id);
@@ -288,13 +288,13 @@ void SetForegroundWindow98(HWND hwnd);
 void WriteDebug_New2(const char* s);		//Added by TTTT
 void WriteNormalLog(const char* s);		//Added by TTTT
 void CheckNormalLog(void);		//Added by TTTT
-int GetMyRegStr(char* section, char* entry, char* val, int cbData,
-	char* defval);
-LONG GetMyRegLong(char* section, char* entry, LONG defval);
-BOOL SetMyRegStr(char* subkey, char* entry, char* val);
-BOOL SetMyRegLong(char* subkey, char* entry, DWORD val);
-BOOL DelMyReg(char* subkey, char* entry);
-BOOL DelMyRegKey(char* subkey);
+int GetMyRegStr(const char* section, const char* entry, char* val, int cbData,
+	const char* defval);
+LONG GetMyRegLong(const char* section, const char* entry, LONG defval);
+BOOL SetMyRegStr(const char* subkey, const char* entry, const char* val);
+BOOL SetMyRegLong(const char* subkey, const char* entry, DWORD val);
+BOOL DelMyReg(const char* subkey, const char* entry);
+BOOL DelMyRegKey(const char* subkey);
 int DelRegAll(void);
 HWND FindVistaCalenderWindow(void);	//originally in calendar.c
 void AdjustConboBoxDropDown(HWND hComboBox, int nDropDownCount);

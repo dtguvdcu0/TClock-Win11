@@ -1,0 +1,35 @@
+backups/
+source/tc2ch/language/x64/Release/
+source/x64/Release/
+source/tc2ch/dll/x64/
+source/tc2ch/exe/x64/
+# Work-only folders (not part of public source)
+tasks/
+tools/
+crashdumps/
+AGENTS.md
+CLAUDE.md
+source/scripts/
+source/ENCODING_POLICY.md
+*.old
+*.png
+bfg.jar
+.serena/
+# tcap local build artifacts
+source/tcap/build*/
+source/tcap/*.sln
+source/tcap/*.vcxproj
+source/tcap/*.vcxproj.filters
+source/tcap/CMakeFiles/
+source/tcap/CMakeCache.txt
+source/tcap/cmake_install.cmake
+# tcal local build artifacts
+source/tcal/build*/
+source/tcal/*.sln
+source/tcal/*.vcxproj
+source/tcal/*.vcxproj.filters
+source/tcal/CMakeFiles/
+source/tcal/CMakeCache.txt
+source/tcal/cmake_install.cmake
+# tcal runtime data artifacts
+source/tcal/data/*.db

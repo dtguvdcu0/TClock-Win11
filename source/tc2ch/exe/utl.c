@@ -114,6 +114,7 @@ static BOOL tc_decode_utf8_hex_to_ansi(const char* hex, char* outAnsi, int outAn
 	u8[n / 2] = '\0';
 
 	if (tc_utf8_to_utf16(u8, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) <= 0) return FALSE;
+	/* Keep compatibility with legacy setting keys: convert UTF-8 hex restore result to ACP. */
 	if (tc_utf16_to_ansi_compat(0, wbuf, outAnsi, outAnsiBytes) <= 0) return FALSE;
 	return TRUE;
 }
@@ -611,6 +612,7 @@ int CBAddStringUTF8Compat(HWND hDlg, int idCombo, const char* utf8)
 		}
 	}
 	if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8, -1, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) > 0 &&
+		/* Compatibility boundary for legacy combo path: downgrade to ACP only if W send fails. */
 		tc_utf16_to_ansi_compat(0, wbuf, abuf, (int)sizeof(abuf)) > 0) {
 		return CBAddString(hDlg, idCombo, (LPARAM)abuf);
 	}
@@ -634,6 +636,7 @@ void NormalizeUtf8ForAcpCombo(const char* src, char* dst, int dstBytes)
 		lstrcpyn(dst, src, dstBytes);
 		return;
 	}
+	/* Compatibility conversion for ACP combo display; preserve original text on UTF-8 decode failure. */
 	if (tc_utf16_to_ansi_compat(0, wbuf, dst, dstBytes) <= 0) {
 		lstrcpyn(dst, src, dstBytes);
 		return;
@@ -703,7 +706,7 @@ DWORD GetModuleFileNameUTF8(HMODULE hmod, char* outUtf8, DWORD outBytes)
 	outUtf8[0] = '\0';
 	wlen = GetModuleFileNameW(hmod, wPath, (DWORD)(sizeof(wPath) / sizeof(wPath[0])));
 	if (wlen == 0 || wlen >= (DWORD)(sizeof(wPath) / sizeof(wPath[0]))) return 0;
-	if (tc_utf16_to_ansi_compat(CP_UTF8, wPath, outUtf8, (int)outBytes) <= 0) return 0;
+	if (tc_utf16_to_utf8( wPath, outUtf8, (int)outBytes) <= 0) return 0;
 	return (DWORD)strlen(outUtf8);
 }
 
@@ -725,6 +728,7 @@ int GetLocaleInfoCompat(int ilang, LCTYPE LCType, char* dst, int n)
 		if(!pw) return 0;
 		r = GetLocaleInfoW(Locale, LCType, pw, n);
 		if(r)
+			/* Convert to ACP to keep existing API contract (ANSI return). */
 			tc_utf16_to_ansi_compat(0, pw, dst, n);
 		GlobalFreePtr(pw);
 	}
@@ -988,6 +992,7 @@ int GetMyRegStr(char* section, char* entry, char* val, int cbData,
 							WCHAR wbuf[4096];
 							char abuf[4096];
 							if (tc_utf8_to_utf16(val, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) > 0 &&
+								/* Keep existing char setting contract: normalize UTF-8 value to ACP. */
 								tc_utf16_to_ansi_compat(0, wbuf, abuf, (int)sizeof(abuf)) > 0) {
 								lstrcpyn(val, abuf, cbData);
 								r = lstrlen(val);
@@ -1025,6 +1030,7 @@ int GetMyRegStr(char* section, char* entry, char* val, int cbData,
 		WCHAR wbuf[4096];
 		char abuf[4096];
 		if (tc_utf8_to_utf16(val, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) > 0 &&
+			/* After UTF-8 INI read, convert to ACP for legacy char-based consumers. */
 			tc_utf16_to_ansi_compat(0, wbuf, abuf, (int)sizeof(abuf)) > 0) {
 			lstrcpyn(val, abuf, cbData);
 			r = lstrlen(val);

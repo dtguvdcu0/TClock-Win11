@@ -123,11 +123,6 @@ void MyPropertyDialog(void)
 	}
 
 	if(g_hwndPropDlg && IsWindow(g_hwndPropDlg)) {
-		if (b_NormalLog) {
-			char msg2[96];
-			wsprintf(msg2, "[propdlg] root unicode=%d", IsWindowUnicode(g_hwndPropDlg));
-			WriteNormalLog(msg2);
-		}
 		ShowWindow(g_hwndPropDlg, SW_SHOW);
 		UpdateWindow(g_hwndPropDlg);
 		SetForegroundWindow98(g_hwndPropDlg);
@@ -316,8 +311,7 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 			{
 			LONG notifyDepth = InterlockedIncrement(&g_propdlgNotifyDepth);
 			if (notifyDepth > 64) {
-				if (b_NormalLog) WriteNormalLog("[guard] Property WM_NOTIFY recursion blocked");
-				InterlockedDecrement(&g_propdlgNotifyDepth);
+								InterlockedDecrement(&g_propdlgNotifyDepth);
 				break;
 			}
 			pNMTV = (NM_TREEVIEW *)lParam;
@@ -430,16 +424,14 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 			{
 				LONG cmdDepth = InterlockedIncrement(&g_propdlgCommandDepth);
 				if (cmdDepth > 64) {
-					if (b_NormalLog) WriteNormalLog("[guard] Property WM_COMMAND recursion blocked");
-					InterlockedDecrement(&g_propdlgCommandDepth);
+										InterlockedDecrement(&g_propdlgCommandDepth);
 					break;
 				}
 			// apply settings
 			if(LOWORD(wParam) == IDOK || LOWORD(wParam) == ID_APPLY)
 			{
 				if (InterlockedCompareExchange(&g_inApplyDispatch, 1, 0) != 0) {
-					if (b_NormalLog) WriteNormalLog("[guard] Property apply reentry skipped");
-					InterlockedDecrement(&g_propdlgCommandDepth);
+										InterlockedDecrement(&g_propdlgCommandDepth);
 					break;
 				}
 				{
@@ -572,7 +564,8 @@ void SetMyDialgPos(HWND hwnd)
 /*------------------------------------------------
    select file (UTF-8 contract)
 --------------------------------------------------*/
-static int DecodeUtf8OrLegacyForDialog(const char* src, wchar_t* dst, int dstCch)
+/* Dialog input is handled as UTF-8 and converted to UTF-16. */
+static int DecodeUtf8ForDialog(const char* src, wchar_t* dst, int dstCch)
 {
 	int r;
 	if (!src || !dst || dstCch <= 0) return 0;
@@ -618,11 +611,11 @@ BOOL SelectMyFileUTF8(HWND hDlg, const char *filterUtf8, DWORD nFilterIndex,
 	retfileUtf8[0] = '\0';
 	memset(&ofn, '\0', sizeof(OPENFILENAMEW));
 
-	if (DecodeUtf8OrLegacyForDialog(g_mydir, initdir, (int)(sizeof(initdir) / sizeof(initdir[0]))) <= 0) {
+	if (DecodeUtf8ForDialog(g_mydir, initdir, (int)(sizeof(initdir) / sizeof(initdir[0]))) <= 0) {
 		initdir[0] = L'\0';
 	}
 	if (deffileUtf8 && deffileUtf8[0] &&
-		DecodeUtf8OrLegacyForDialog(deffileUtf8, wdeffile, (int)(sizeof(wdeffile) / sizeof(wdeffile[0]))) > 0)
+		DecodeUtf8ForDialog(deffileUtf8, wdeffile, (int)(sizeof(wdeffile) / sizeof(wdeffile[0]))) > 0)
 	{
 		WIN32_FIND_DATAW fd;
 		HANDLE hfind = FindFirstFileW(wdeffile, &fd);

@@ -171,7 +171,10 @@ void InitLocale(HWND hwnd)
 	{
 		ilang = GetMyRegLong("Format", "Locale", (int)GetUserDefaultLangID());
 	}
-	GetLocaleInfoCompat(ilang, LOCALE_IDATE, s, 20);
+	if (GetLocaleInfoUTF8Compat(ilang, LOCALE_IDATE, s, 20) <= 0) {
+		/* Compatibility fallback: use legacy API only on failure. */
+		GetLocaleInfoCompat(ilang, LOCALE_IDATE, s, 20);
+	}
 	idate = atoi(s);
 	GetLocaleInfoUTF8Compat(ilang, LOCALE_SABBREVDAYNAME1, sMon, 10);
 

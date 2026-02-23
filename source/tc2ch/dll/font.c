@@ -26,8 +26,6 @@ struct {
 	{ 0, 0}
 };
 
-int GetLocaleInfoCompat(WORD wLanguageID, LCTYPE LCType, char* dst, int n);
-
 static BOOL DecodeToWideBestEffort(const char* src, wchar_t* dst, int dstCount)
 {
 	if (!src || !dst || dstCount <= 0) return FALSE;
@@ -90,7 +88,7 @@ HFONT CreateMyFont(char* fontname, int fontsize,
 	HDC hdc;
 	HFONT hOut = NULL;
 	WORD langid;
-	char s[11];
+	wchar_t wcp[11];
 	char fontnameLocal[LF_FACESIZE];
 	int cp;
 	BYTE charset;
@@ -122,11 +120,12 @@ HFONT CreateMyFont(char* fontname, int fontsize,
 
 	langid = (WORD)GetMyRegLong("Format", "Locale", (int)GetUserDefaultLangID());
 	cp = tc_current_ansi_codepage();
-	if(GetLocaleInfoCompat(langid, LOCALE_IDEFAULTANSICODEPAGE, s, 10) > 0)
+	/* Default ANSI codepage here is numeric-only, so read it directly via W API. */
+	if (GetLocaleInfoW(MAKELCID(langid, SORT_DEFAULT), LOCALE_IDEFAULTANSICODEPAGE, wcp, (int)(sizeof(wcp) / sizeof(wcp[0]))) > 0)
 	{
-		char *p;
-		p = s; cp = 0;
-		while('0' <= *p && *p <= '9') cp = cp * 10 + *p++ - '0';
+		const wchar_t* pcp = wcp;
+		cp = 0;
+		while (L'0' <= *pcp && *pcp <= L'9') cp = cp * 10 + (int)(*pcp++ - L'0');
 		if(!IsValidCodePage(cp)) cp = tc_current_ansi_codepage();
 	}
 

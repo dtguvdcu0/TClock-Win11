@@ -1207,14 +1207,8 @@ static void tc_menu_section_cache_get_str(const TC_MENU_SECTION_CACHE* cache, co
 	s = tc_menu_section_cache_find(cache, key);
 	if (s) {
 		lstrcpyn(out, s, outBytes);
-		if (cache && cache->isUtf8 && out[0] && !tc_menu_should_keep_utf8_value(key)) {
-			WCHAR wbuf[4096];
-			char abuf[4096];
-			if (tc_utf8_to_utf16(out, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) > 0 &&
-				tc_utf16_to_ansi_compat(0, wbuf, abuf, (int)sizeof(abuf)) > 0) {
-				lstrcpyn(out, abuf, outBytes);
-			}
-		}
+		/* Keep UTF-8 bytes from UTF-8 cache as-is; textual fields already use UTF-8-safe consumers,
+		 * and non-text control keys are ASCII-token contracts. */
 	} else {
 		lstrcpyn(out, defval ? defval : "", outBytes);
 	}

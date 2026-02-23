@@ -62,7 +62,7 @@ char *Unicode2Ansi(LPCWSTR psUnicode)
 
 	if(psAnsi != NULL){
 		ZeroMemory(psAnsi, iLengthW * 2 + 1);
-		tc_utf16_to_ansi_compat(CP_UTF8, psUnicode, psAnsi, iLengthW * 2 + 1);
+		tc_utf16_to_utf8( psUnicode, psAnsi, iLengthW * 2 + 1);
 	}
 	return psAnsi;
 }

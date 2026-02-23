@@ -123,6 +123,7 @@ static BOOL tc_decode_utf8_hex_to_ansi(const char* hex, char* outAnsi, int outAn
 	u8[n / 2] = '\0';
 
 	if (tc_utf8_to_utf16(u8, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) <= 0) return FALSE;
+	/* Keep compatibility with legacy setting keys: convert UTF-8 hex restore result to ACP. */
 	if (tc_utf16_to_ansi_compat(0, wbuf, outAnsi, outAnsiBytes) <= 0) return FALSE;
 	return TRUE;
 }
@@ -384,6 +385,7 @@ int GetMyRegStr(char* section, char* entry, char* val, int cbData,
 							WCHAR wbuf[4096];
 							char abuf[4096];
 							if (tc_utf8_to_utf16(val, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) > 0 &&
+								/* Keep existing char setting contract: normalize UTF-8 value to ACP. */
 								tc_utf16_to_ansi_compat(0, wbuf, abuf, (int)sizeof(abuf)) > 0) {
 								lstrcpyn(val, abuf, cbData);
 								r = lstrlen(val);
@@ -423,6 +425,7 @@ int GetMyRegStr(char* section, char* entry, char* val, int cbData,
 		WCHAR wbuf[4096];
 		char abuf[4096];
 		if (tc_utf8_to_utf16(val, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) > 0 &&
+			/* After UTF-8 INI read, convert to ACP for legacy char-based consumers. */
 			tc_utf16_to_ansi_compat(0, wbuf, abuf, (int)sizeof(abuf)) > 0) {
 			lstrcpyn(val, abuf, cbData);
 			r = lstrlen(val);

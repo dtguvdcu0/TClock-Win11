@@ -759,7 +759,7 @@ static void TooltipUpdateText(void)
 		titleTooltipW[0] = L'\0';
 		lstrcpynW(formatTooltipW, s_w, (int)(sizeof(formatTooltipW) / sizeof(formatTooltipW[0])));
 	}
-	TooltipSyncAnsiMirrorFromWide();
+	/* ANSI mirror is generated lazily only for TTN_NEEDTEXT fallback. */
 }
 
 

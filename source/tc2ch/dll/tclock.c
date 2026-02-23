@@ -389,12 +389,6 @@ extern int codepage;
 static int ConvertClockTextToWide(const char* sp, int len, WCHAR* wbuf, int cchWide)
 {
 	int wlen;
-	DWORD lastErr;
-	static DWORD s_lastFailLogTick = 0;
-	static int s_failCount = 0;
-	static int s_lastCodePage = 0;
-	static int s_lastErrCode = 0;
-	static int s_lastLen = 0;
 
 	if(!sp || !wbuf || cchWide <= 1) return 0;
 	if(len < 0) len = (int)strlen(sp);
@@ -402,22 +396,6 @@ static int ConvertClockTextToWide(const char* sp, int len, WCHAR* wbuf, int cchW
 
 	wlen = tc_ansi_bytes_to_utf16_compat((UINT)codepage, sp, len, wbuf, cchWide);
 	if(wlen <= 0) {
-		lastErr = GetLastError();
-		if (b_DebugLog) {
-			DWORD now = GetTickCount();
-			s_failCount++;
-			s_lastCodePage = codepage;
-			s_lastErrCode = (int)lastErr;
-			s_lastLen = len;
-			if ((now - s_lastFailLogTick) >= 5000) {
-				writeDebugLog_Win10("[tclock.c][TextConv] MultiByteToWideChar failed; recent count=", s_failCount);
-				writeDebugLog_Win10("[tclock.c][TextConv] codepage=", s_lastCodePage);
-				writeDebugLog_Win10("[tclock.c][TextConv] GetLastError=", s_lastErrCode);
-				writeDebugLog_Win10("[tclock.c][TextConv] textLen=", s_lastLen);
-				s_failCount = 0;
-				s_lastFailLogTick = now;
-			}
-		}
 		return 0;
 	}
 	wbuf[wlen] = L'\0';
@@ -434,15 +412,6 @@ static BOOL ClockGetTextExtentCompat(HDC hdc, const char* sp, int len, SIZE* psz
 		ok = GetTextExtentPoint32W(hdc, wbuf, wlen, psz);
 	if(!ok)
 		ok = GetTextExtentPoint32(hdc, sp, len, psz);
-	if(!ok && b_DebugLog) {
-		static DWORD s_lastLogTick = 0;
-		DWORD now = GetTickCount();
-		if ((now - s_lastLogTick) >= 2000) {
-			writeDebugLog_Win10("[tclock.c][TextMeasure] GetTextExtent failed", 999);
-			writeDebugLog_Win10("[tclock.c][TextMeasure] GetLastError=", (int)GetLastError());
-			s_lastLogTick = now;
-		}
-	}
 	return ok;
 }
 
@@ -456,15 +425,6 @@ static void ClockTextOutCompat(HDC hdc, int x, int y, const char* sp, int len)
 		ok = TextOutW(hdc, x, y, wbuf, wlen);
 	if(!ok)
 		ok = TextOut(hdc, x, y, sp, len);
-	if(!ok && b_DebugLog) {
-		static DWORD s_lastLogTick = 0;
-		DWORD now = GetTickCount();
-		if ((now - s_lastLogTick) >= 2000) {
-			writeDebugLog_Win10("[tclock.c][TextDraw] TextOut failed", 999);
-			writeDebugLog_Win10("[tclock.c][TextDraw] GetLastError=", (int)GetLastError());
-			s_lastLogTick = now;
-		}
-	}
 }
 
 static BOOL ClockGetTextExtentCompatW(HDC hdc, const WCHAR* sp, int wlen, SIZE* psz)
@@ -478,14 +438,6 @@ static void ClockTextOutCompatW(HDC hdc, int x, int y, const WCHAR* sp, int wlen
 	BOOL ok = FALSE;
 	if (sp && wlen > 0)
 		ok = TextOutW(hdc, x, y, sp, wlen);
-	if (!ok && b_DebugLog) {
-		static DWORD s_lastLogTickW = 0;
-		DWORD now = GetTickCount();
-		if ((now - s_lastLogTickW) >= 2000) {
-			writeDebugLog_Win10("[tclock.c][TextDrawW] TextOutW failed", 999);
-			s_lastLogTickW = now;
-		}
-	}
 }
 
 // XButton Messages
@@ -2034,8 +1986,7 @@ void RestartOnRefresh(void)
 {
 	if (InterlockedCompareExchange(&g_refresh_in_progress, 1, 0) != 0) {
 		InterlockedExchange(&g_refresh_pending, 1);
-		if (b_NormalLog) WriteNormalLog_DLL("[guard] RestartOnRefresh reentry queued");
-		return;
+				return;
 	}
 
 	if (b_DebugLog)writeDebugLog_Win10("[tclock.c] RestartOnRefresh called. bWin11Main =", bWin11Main);
@@ -2211,8 +2162,7 @@ void ReadData()
 	readDepth = InterlockedIncrement(&g_depth_ReadData);
 	if (readDepth > 1)
 	{
-		if (b_NormalLog) WriteNormalLog_DLL("[guard] ReadData reentry skipped");
-		InterlockedDecrement(&g_depth_ReadData);
+				InterlockedDecrement(&g_depth_ReadData);
 		return;
 	}
 

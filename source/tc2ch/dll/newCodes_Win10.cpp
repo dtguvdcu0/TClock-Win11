@@ -692,7 +692,7 @@ extern "C" void identifyInternetConnectProfNum_Win10()
 						SetMyRegLong("Status_DoNotEdit", "PreviousLTEProfNumber", i);
 
 						char strTemp[256];
-						tc_utf16_to_ansi_compat(CP_UTF8, connectProfName[i]->Data(), strTemp, 250);
+						tc_utf16_to_utf8( connectProfName[i]->Data(), strTemp, 250);
 						SetMyRegStr("Status_DoNotEdit", "PreviousLTEProfName", strTemp);
 
 						b_LTEProfNum_Confirmed = TRUE;
@@ -808,7 +808,7 @@ extern "C" BOOL updateConnectProfsInfo_Win10(BOOL b_Detail)	// return value: 1 =
 						currentLTEProfNum = i;
 
 						char strTemp[256];
-						tc_utf16_to_ansi_compat(CP_UTF8, connectProfName[i]->Data(), strTemp, 250);
+						tc_utf16_to_utf8( connectProfName[i]->Data(), strTemp, 250);
 						
 						if (!strcmp(strTemp, previousLTEProfName)) b_LTEProfNameMatched = TRUE;
 					}
@@ -862,7 +862,7 @@ extern "C" BOOL updateConnectProfsInfo_Win10(BOOL b_Detail)	// return value: 1 =
 								SetMyRegLong("Status_DoNotEdit", "PreviousLTEProfNumber", connectedLTEProfNum);
 
 								char strTemp[256];
-								tc_utf16_to_ansi_compat(CP_UTF8, connectProfName[connectedLTEProfNum]->Data(), strTemp, 250);
+								tc_utf16_to_utf8( connectProfName[connectedLTEProfNum]->Data(), strTemp, 250);
 								SetMyRegStr("Status_DoNotEdit", "PreviousLTEProfName", strTemp);
 							}
 						}
@@ -889,12 +889,12 @@ extern "C" BOOL updateConnectProfsInfo_Win10(BOOL b_Detail)	// return value: 1 =
 		}
 
 		if (connectedWiFiProfNum != -1)
-			tc_utf16_to_ansi_compat(CP_UTF8, ssidOrApName[connectedWiFiProfNum]->Data(), activeSSID, 64);
+			tc_utf16_to_utf8( ssidOrApName[connectedWiFiProfNum]->Data(), activeSSID, 64);
 		else
 			strcpy(activeSSID, "SSID:N/A");
 
 		if (connectedLTEProfNum != -1)
-			tc_utf16_to_ansi_compat(CP_UTF8, ssidOrApName[connectedLTEProfNum]->Data(), activeAPName, 64);
+			tc_utf16_to_utf8( ssidOrApName[connectedLTEProfNum]->Data(), activeAPName, 64);
 		else
 			strcpy(activeAPName, "APN: N/A");
 
@@ -982,7 +982,7 @@ extern "C" void chkInternetConnectionProfile_Win10()
 				auto ssid_temp = internetConnectProf->WwanConnectionProfileDetails->AccessPointName;
 				const wchar_t* wide_chars = ssid_temp->Data();
 
-				tc_utf16_to_ansi_compat(CP_UTF8, wide_chars, icp_SSID_APName, 32);
+				tc_utf16_to_utf8( wide_chars, icp_SSID_APName, 32);
 
 				if (b_ExistLTEProfile == FALSE)
 				{
@@ -1029,7 +1029,7 @@ extern "C" void chkInternetConnectionProfile_Win10()
 					auto ssid_temp = internetConnectProf->WlanConnectionProfileDetails->GetConnectedSsid();
 					const wchar_t* wide_chars = ssid_temp->Data();
 
-					tc_utf16_to_ansi_compat(CP_UTF8, wide_chars, icp_SSID_APName, 32);
+					tc_utf16_to_utf8( wide_chars, icp_SSID_APName, 32);
 				}
 
 			}
@@ -1298,7 +1298,7 @@ extern "C" void saveAndOpenProfTable(BOOL b_Open)
 
 
 
-			tc_utf16_to_ansi_compat(CP_UTF8, connectProfName[i]->Data(), strTemp2, 250);
+			tc_utf16_to_utf8( connectProfName[i]->Data(), strTemp2, 250);
 			wsprintf(strTemp, "Profile Name: %s\r\n", strTemp2);
 			WriteFile(hFile, strTemp, lstrlen(strTemp), &dwWriteSize, NULL);
 
@@ -1350,7 +1350,7 @@ extern "C" void saveAndOpenProfTable(BOOL b_Open)
 
 			if (b_WiFiProf[i] || b_LTEProf[i])
 			{
-				tc_utf16_to_ansi_compat(CP_UTF8, ssidOrApName[i]->Data(), strTemp2, 250);
+				tc_utf16_to_utf8( ssidOrApName[i]->Data(), strTemp2, 250);
 				if (!strlen(strTemp2)) strcpy(strTemp2, "N/A");
 
 				if (b_WiFiProf[i])

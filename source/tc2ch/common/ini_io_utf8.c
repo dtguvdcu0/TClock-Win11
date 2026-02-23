@@ -60,8 +60,15 @@ static void tc_trim_lr(const char* s, int n, int* l, int* r)
 {
     int a = 0;
     int b = n;
-    while (a < b && (s[a] == ' ' || s[a] == '\t')) a++;
-    while (b > a && (s[b - 1] == ' ' || s[b - 1] == '\t')) b--;
+    while (a < b && (s[a] == ' ' || s[a] == '	')) a++;
+    /* Tolerate accidental UTF-8 BOM prefix at line start to avoid duplicate section creation. */
+    if (a + 2 < b &&
+        (unsigned char)s[a] == 0xEF &&
+        (unsigned char)s[a + 1] == 0xBB &&
+        (unsigned char)s[a + 2] == 0xBF) {
+        a += 3;
+    }
+    while (b > a && (s[b - 1] == ' ' || s[b - 1] == '	')) b--;
     *l = a;
     *r = b;
 }
@@ -164,6 +171,35 @@ static void tc_copy_str(char* dst, int dstSize, const char* src)
     dst[i] = '\0';
 }
 
+static void tc_normalize_ini_name(const char* src, const char* fallback, char* out, int outBytes)
+{
+    const char* p;
+    const char* e;
+    int n = 0;
+
+    if (!out || outBytes <= 0) return;
+    out[0] = '\0';
+
+    if (!src || !src[0]) {
+        if (fallback) tc_copy_str(out, outBytes, fallback);
+        return;
+    }
+
+    p = src;
+    while (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n') p++;
+    e = p + lstrlen(p);
+    while (e > p && (e[-1] == ' ' || e[-1] == '\t' || e[-1] == '\r' || e[-1] == '\n')) e--;
+
+    while (p < e && n < outBytes - 1) {
+        unsigned char c = (unsigned char)*p++;
+        if (c < 0x20) continue;
+        out[n++] = (char)c;
+    }
+    out[n] = '\0';
+
+    if (n == 0 && fallback) tc_copy_str(out, outBytes, fallback);
+}
+
 static void tc_buf_free(tc_dynbuf_t* b)
 {
     if (b->p) HeapFree(GetProcessHeap(), 0, b->p);
@@ -215,7 +251,9 @@ static BOOL tc_ini_utf8_get_file_stamp(const char* path, FILETIME* ftWrite, DWOR
     if (!path || !ftWrite || !fileSizeLow) return FALSE;
     {
         wchar_t wPath[MAX_PATH];
-        if (tc_utf8_to_utf16(path, wPath, (int)(sizeof(wPath) / sizeof(wPath[0]))) <= 0) return FALSE;
+        if (tc_utf8_to_utf16(path, wPath, (int)(sizeof(wPath) / sizeof(wPath[0]))) <= 0) {
+            if (tc_ansi_to_utf16_compat(0, path, wPath, (int)(sizeof(wPath) / sizeof(wPath[0]))) <= 0) return FALSE;
+        }
         h = CreateFileW(wPath, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
                         NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     }
@@ -312,7 +350,10 @@ static BOOL tc_ini_utf8_rewrite_key(const char* iniPath, const char* text, DWORD
     BOOL inTarget = FALSE;
     BOOL sectionSeen = FALSE;
     BOOL keyDone = FALSE;
-    const char* sec = tc_section_or_main(section);
+    char secNorm[128];
+    const char* sec;
+    tc_normalize_ini_name(section, "Main", secNorm, (int)sizeof(secNorm));
+    sec = secNorm;
     const char* eol = "\r\n";
     tc_dynbuf_t out;
     UNREFERENCED_PARAMETER(iniPath);
@@ -449,7 +490,10 @@ static BOOL tc_ini_utf8_rewrite_delete(const char* text, DWORD size,
 {
     DWORD i = 0;
     BOOL inTarget = FALSE;
-    const char* sec = tc_section_or_main(section);
+    char secNorm[128];
+    const char* sec;
+    tc_normalize_ini_name(section, "Main", secNorm, (int)sizeof(secNorm));
+    sec = secNorm;
     tc_dynbuf_t out;
 
     if (!tc_buf_init(&out)) return FALSE;
@@ -536,7 +580,9 @@ static BOOL tc_file_has_utf8_bom(const char* path, BOOL* hasBom)
 
     {
         wchar_t wPath[MAX_PATH];
-        if (tc_utf8_to_utf16(path, wPath, (int)(sizeof(wPath) / sizeof(wPath[0]))) <= 0) return FALSE;
+        if (tc_utf8_to_utf16(path, wPath, (int)(sizeof(wPath) / sizeof(wPath[0]))) <= 0) {
+            if (tc_ansi_to_utf16_compat(0, path, wPath, (int)(sizeof(wPath) / sizeof(wPath[0]))) <= 0) return FALSE;
+        }
         h = CreateFileW(wPath, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     }
     if (h == INVALID_HANDLE_VALUE) return FALSE;
@@ -588,7 +634,10 @@ static BOOL tc_ini_utf8_find_value(const char* text, DWORD size,
 {
     DWORD i = 0;
     BOOL inTarget = FALSE;
-    const char* sec = tc_section_or_main(section);
+    char secNorm[128];
+    const char* sec;
+    tc_normalize_ini_name(section, "Main", secNorm, (int)sizeof(secNorm));
+    sec = secNorm;
 
     if (!text || !key || !key[0] || !outUtf8 || outUtf8Bytes <= 0) return FALSE;
     outUtf8[0] = '\0';
@@ -656,8 +705,13 @@ int tc_ini_utf8_read_string(const char* iniPath, const char* section, const char
     DWORD size = 0;
     BOOL hadBom = FALSE;
     int r = 0;
+    char secNorm[128];
+    char keyNorm[128];
 
     if (!iniPath || !key || !outVal || outSize <= 0) return 0;
+    tc_normalize_ini_name(section, "Main", secNorm, (int)sizeof(secNorm));
+    tc_normalize_ini_name(key, NULL, keyNorm, (int)sizeof(keyNorm));
+    if (!keyNorm[0]) return 0;
     outVal[0] = '\0';
 
     hLock = tc_ini_lock_enter(iniPath);
@@ -669,7 +723,7 @@ int tc_ini_utf8_read_string(const char* iniPath, const char* section, const char
         goto fallback_locked;
     }
 
-    if (tc_ini_utf8_find_value(text, size, section, key, outVal, outSize)) {
+    if (tc_ini_utf8_find_value(text, size, secNorm, keyNorm, outVal, outSize)) {
         r = lstrlen(outVal);
         goto cleanup;
     }
@@ -699,8 +753,11 @@ int tc_ini_utf8_read_section_multisz(const char* iniPath, const char* section,
     char* text = NULL;
     DWORD size = 0;
     BOOL hadBom = FALSE;
-    const char* sec = tc_section_or_main(section);
+    char secNorm[128];
+    const char* sec;
     DWORD i = 0;
+    tc_normalize_ini_name(section, "Main", secNorm, (int)sizeof(secNorm));
+    sec = secNorm;
     int pos = 0;
     int count = 0;
 
@@ -829,7 +886,12 @@ BOOL tc_ini_utf8_write_string(const char* iniPath, const char* section, const ch
     BOOL hadBom = TRUE;
     char utf8Val[4096];
     BOOL ok = FALSE;
+    char secNorm[128];
+    char keyNorm[128];
     if (!iniPath || !key || !key[0]) return FALSE;
+    tc_normalize_ini_name(section, "Main", secNorm, (int)sizeof(secNorm));
+    tc_normalize_ini_name(key, NULL, keyNorm, (int)sizeof(keyNorm));
+    if (!keyNorm[0]) return FALSE;
     if (!val) val = "";
     hLock = tc_ini_lock_enter(iniPath);
     if (!hLock) {
@@ -847,7 +909,7 @@ BOOL tc_ini_utf8_write_string(const char* iniPath, const char* section, const ch
         tc_copy_str(utf8Val, (int)sizeof(utf8Val), val);
     }
 
-    if (!tc_ini_utf8_rewrite_key(iniPath, text, size, section, key, utf8Val, &outText, &outSize)) {
+    if (!tc_ini_utf8_rewrite_key(iniPath, text, size, secNorm, keyNorm, utf8Val, &outText, &outSize)) {
         goto cleanup;
     }
 
@@ -878,14 +940,19 @@ BOOL tc_ini_utf8_delete_key(const char* iniPath, const char* section, const char
     DWORD outSize = 0;
     BOOL hadBom = TRUE;
     BOOL ok = FALSE;
+    char secNorm[128];
+    char keyNorm[128];
 
     if (!iniPath || !key || !key[0]) return FALSE;
+    tc_normalize_ini_name(section, "Main", secNorm, (int)sizeof(secNorm));
+    tc_normalize_ini_name(key, NULL, keyNorm, (int)sizeof(keyNorm));
+    if (!keyNorm[0]) return FALSE;
 
     hLock = tc_ini_lock_enter(iniPath);
     if (!hLock) return FALSE;
 
     if (!tc_read_text_file_utf8(iniPath, &text, &size, &hadBom)) goto cleanup;
-    if (!tc_ini_utf8_rewrite_delete(text, size, section, key, FALSE, &outText, &outSize)) goto cleanup;
+    if (!tc_ini_utf8_rewrite_delete(text, size, secNorm, keyNorm, FALSE, &outText, &outSize)) goto cleanup;
     if (!tc_write_text_file_utf8(iniPath, outText, outSize, hadBom ? TRUE : FALSE)) goto cleanup;
     ok = TRUE;
     tc_ini_utf8_cache_clear();
@@ -982,6 +1049,20 @@ BOOL tc_ini_utf8_selfcheck(void)
         if (tc_count_literal(outText, "[Misc]") != 0) goto cleanup;
         if (tc_count_literal(outText, "[Color_Font]") != 1) goto cleanup;
         if (tc_count_literal(outText, "[Main]") != 1) goto cleanup;
+        tc_free_text_buffer(outText);
+        outText = NULL;
+        outSize = 0;
+        if (!tc_ini_utf8_write_string(tmpFile, " \tMain\r\n", "\tDebugLog\r\n", "1")) goto cleanup;
+        if (!tc_read_text_file_utf8(tmpFile, &outText, &outSize, &hadBom)) goto cleanup;
+        if (tc_count_literal(outText, "[Main]") != 1) goto cleanup;
+        if (tc_count_literal(outText, "DebugLog=1") != 1) goto cleanup;
+        tc_free_text_buffer(outText);
+        outText = NULL;
+        outSize = 0;
+        if (!tc_ini_utf8_write_string(tmpFile, "\tMisc\r\n", "\tA\r\n", "3")) goto cleanup;
+        if (!tc_read_text_file_utf8(tmpFile, &outText, &outSize, &hadBom)) goto cleanup;
+        if (tc_count_literal(outText, "[Misc]") != 1) goto cleanup;
+        if (tc_count_literal(outText, "A=3") != 1) goto cleanup;
         tc_free_text_buffer(outText);
         outText = NULL;
         outSize = 0;

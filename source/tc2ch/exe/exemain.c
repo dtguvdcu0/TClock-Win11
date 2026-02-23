@@ -70,7 +70,7 @@ static BOOL CheckDLL(char *fname);
 static void CheckRegistry(void);
 static BOOL IsWow64(void);
 static BOOL CheckRegistry_Win10(void); //Added by TTTT
-static void CreateDefaultIniFile_Win10(char *fname); //Added by TTTT
+static void CreateDefaultIniFile_Win10(const wchar_t* fnameW); //Added by TTTT
 void getExeVersion(char *fname); //Added by TTTT
 void SetIdlePriority(void);		//Added by TTTT
 
@@ -1468,27 +1468,44 @@ HINSTANCE LoadLanguageDLL(char *langdllname)
 	if (b_DebugLog) WriteDebug_New2("[exemain.c][LoadLanguageDLL] LoadLanguageDLL() called");
 	HINSTANCE hInst = NULL;
 	char fname[MAX_PATH];
-	WIN32_FIND_DATA fd;
+	wchar_t wPath[MAX_PATH];
+	wchar_t wDir[MAX_PATH];
+	WIN32_FIND_DATAW fd;
 	HANDLE hfind = INVALID_HANDLE_VALUE;
+	int i;
 
 	if(hfind == INVALID_HANDLE_VALUE)
 	{
-		GetModuleFileNameUTF8(g_hInst, fname, MAX_PATH);
-		del_title(fname);
-
-		add_title(fname, "tclang-win11.dll");
-		hfind = FindFirstFile(fname, &fd);
+		wPath[0] = L'\0';
+		wDir[0] = L'\0';
+		if (GetModuleFileNameW(g_hInst, wPath, (DWORD)(sizeof(wPath) / sizeof(wPath[0]))) <= 0) {
+			return NULL;
+		}
+		lstrcpynW(wDir, wPath, (int)(sizeof(wDir) / sizeof(wDir[0])));
+		for (i = lstrlenW(wDir) - 1; i >= 0; --i) {
+			if (wDir[i] == L'\\' || wDir[i] == L'/') {
+				wDir[i + 1] = L'\0';
+				break;
+			}
+		}
+		lstrcpynW(wPath, wDir, (int)(sizeof(wPath) / sizeof(wPath[0])));
+		lstrcatW(wPath, L"tclang-win11.dll");
+		hfind = FindFirstFileW(wPath, &fd);
 		if(hfind != INVALID_HANDLE_VALUE)
 		{
 			FindClose(hfind);
-			del_title(fname); add_title(fname, fd.cFileName);
+			lstrcpynW(wPath, wDir, (int)(sizeof(wPath) / sizeof(wPath[0])));
+			lstrcatW(wPath, fd.cFileName);
+			if (tc_utf16_to_utf8(wPath, fname, (int)sizeof(fname)) <= 0) {
+				fname[0] = '\0';
+			}
 		}
 	}
 
 	if(hfind != INVALID_HANDLE_VALUE)
 	{
 		if(!CheckDLL(fname)) return NULL;
-		hInst = LoadLibrary(fname);
+		hInst = LoadLibraryW(wPath);
 	}
 
 	if(hInst == NULL)
@@ -1522,18 +1539,23 @@ BOOL CheckDLL(char *fname)
 {
 	if (b_DebugLog) WriteDebug_New2("[exemain.c][CheckDLL] CheckDLL() called");
 	DWORD size;
-	char *pBlock;
+	BYTE *pBlock;
 	VS_FIXEDFILEINFO *pffi;
 	BOOL br = FALSE;
+	wchar_t wFile[MAX_PATH];
 
-	size = GetFileVersionInfoSize(fname, 0);
+	if (tc_utf8_to_utf16(fname, wFile, (int)(sizeof(wFile) / sizeof(wFile[0]))) <= 0) {
+		wFile[0] = L'\0';
+	}
+
+	size = (wFile[0] != L'\0') ? GetFileVersionInfoSizeW(wFile, 0) : 0;
 	if(size > 0)
 	{
-		pBlock = malloc(size);
-		if(GetFileVersionInfo(fname, 0, size, pBlock))
+		pBlock = (BYTE*)malloc(size);
+		if(pBlock && GetFileVersionInfoW(wFile, 0, size, pBlock))
 		{
 			UINT tmp;
-			if(VerQueryValue(pBlock, "\\", &pffi, &tmp))
+			if(VerQueryValueW(pBlock, L"\\", (LPVOID*)&pffi, &tmp))
 			{
 				if(pffi->dwFileVersionMS == exeVersionM &&
 					HIWORD(pffi->dwFileVersionLS) == HIWORD(exeVersionL))
@@ -1542,7 +1564,7 @@ BOOL CheckDLL(char *fname)
 				}
 			}
 		}
-		free(pBlock);
+		if (pBlock) free(pBlock);
 	}
 	if(!br)
 	{
@@ -1592,17 +1614,49 @@ void My2chHelp(HWND hwnd)
 
 
 
+static BOOL SetIniPathFromWide(const wchar_t* inifileW)
+{
+	if (!inifileW || !inifileW[0]) return FALSE;
+	if (tc_utf16_to_utf8(inifileW, g_inifile, MAX_PATH) <= 0) {
+		g_inifile[0] = '\0';
+		return FALSE;
+	}
+	return TRUE;
+}
+
+static BOOL BuildDefaultIniPathW(wchar_t* outPath, int outCch)
+{
+	DWORD n;
+	int i;
+	const wchar_t* iniName = L"tclock-win11.ini";
+	if (!outPath || outCch <= 0) return FALSE;
+	outPath[0] = L'\0';
+	n = GetModuleFileNameW(g_hInst, outPath, (DWORD)outCch);
+	if (n == 0 || n >= (DWORD)outCch) return FALSE;
+	for (i = (int)n - 1; i >= 0; --i) {
+		if (outPath[i] == L'\\' || outPath[i] == L'/') {
+			outPath[i + 1] = L'\0';
+			break;
+		}
+	}
+	if (i < 0) return FALSE;
+	if ((int)lstrlenW(outPath) + (int)lstrlenW(iniName) + 1 > outCch) return FALSE;
+	lstrcatW(outPath, iniName);
+	return TRUE;
+}
+
 /*------------------------------------------------
 Create Default Setting File		//Added by TTTT
 --------------------------------------------------*/
-void CreateDefaultIniFile_Win10(char *fname)
+void CreateDefaultIniFile_Win10(const wchar_t* fnameW)
 {
 	HANDLE hCreate;
 	DWORD written = 0;
 	const BYTE utf8Bom[3] = { 0xEF, 0xBB, 0xBF };
 
+	if (!fnameW || !fnameW[0]) return;
 
-	hCreate = CreateFile(fname, GENERIC_WRITE, 0, NULL,
+	hCreate = CreateFileW(fnameW, GENERIC_WRITE, 0, NULL,
 		CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
 	if (hCreate != INVALID_HANDLE_VALUE) {
 		/* Seed UTF-8 BOM so utf8 INI path is used from first SetMyReg*. */
@@ -1610,7 +1664,7 @@ void CreateDefaultIniFile_Win10(char *fname)
 		CloseHandle(hCreate);
 
 		//g_bIniSetting = TRUE;
-		strcpy(g_inifile, fname);
+		if (!SetIniPathFromWide(fnameW)) return;
 		SetMyRegLong(NULL, "DebugLog", 1);
 		SetMyRegLong(NULL, "NormalLog", 1);
 		SetMyRegLong(NULL, "AutoClearLogFile", 1);
@@ -1901,27 +1955,28 @@ initialize the registy	//Added by TTTT
 --------------------------------------------------*/
 BOOL CheckRegistry_Win10(void)
 {
-	WIN32_FIND_DATA fd;
+	WIN32_FIND_DATAW fd;
 	HANDLE hfind;
-	char fname[MAX_PATH];
+	wchar_t fnameW[MAX_PATH];
 	char s[80];
 	BOOL br = FALSE;
 
-	strcpy(fname, g_mydir);
-	add_title(fname, "tclock-win11.ini");
-	hfind = FindFirstFile(fname, &fd);
+	if (!BuildDefaultIniPathW(fnameW, (int)(sizeof(fnameW) / sizeof(fnameW[0])))) {
+		return FALSE;
+	}
+	hfind = FindFirstFileW(fnameW, &fd);
 
 	if (hfind == INVALID_HANDLE_VALUE)
 	{
-		CreateDefaultIniFile_Win10(fname);
-		hfind = FindFirstFile(fname, &fd);
+		CreateDefaultIniFile_Win10(fnameW);
+		hfind = FindFirstFileW(fnameW, &fd);
 	}
 
 	if (hfind != INVALID_HANDLE_VALUE)
 	{
 		FindClose(hfind);
 		//g_bIniSetting = TRUE;
-		strcpy(g_inifile, fname);
+		if (!SetIniPathFromWide(fnameW)) return FALSE;
 
 		br = TRUE;
 
@@ -2052,18 +2107,22 @@ getExeVersion added by TTTT
 void getExeVersion(char *fname)
 {
 	DWORD size;
-	char *pBlock;
+	BYTE *pBlock;
 	VS_FIXEDFILEINFO *pffi;
+	wchar_t wFile[MAX_PATH];
 
+	if (tc_utf8_to_utf16(fname, wFile, (int)(sizeof(wFile) / sizeof(wFile[0]))) <= 0) {
+		wFile[0] = L'\0';
+	}
 
-	size = GetFileVersionInfoSize(fname, 0);
+	size = (wFile[0] != L'\0') ? GetFileVersionInfoSizeW(wFile, 0) : 0;
 	if (size > 0)
 	{
-		pBlock = malloc(size);
-		if (GetFileVersionInfo(fname, 0, size, pBlock))
+		pBlock = (BYTE*)malloc(size);
+		if (pBlock && GetFileVersionInfoW(wFile, 0, size, pBlock))
 		{
 			UINT tmp;
-			if (VerQueryValue(pBlock, "\\", &pffi, &tmp))
+			if (VerQueryValueW(pBlock, L"\\", (LPVOID*)&pffi, &tmp))
 			{
 				exeVersionM = pffi->dwFileVersionMS;
 				exeVersionL = pffi->dwFileVersionLS;
@@ -2072,7 +2131,7 @@ void getExeVersion(char *fname)
 					, (int)HIWORD(exeVersionL), (int)LOWORD(exeVersionL));
 			}
 		}
-		free(pBlock);
+		if (pBlock) free(pBlock);
 	}
 
 }

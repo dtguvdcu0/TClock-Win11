@@ -3848,7 +3848,8 @@ static HBITMAP ReadBitmapFile(HDC hDC, LPTSTR lpszFileName, SIZE *psize)
 	if (*lpszFileName == '\0') {
 		return NULL;
 	}
-	hFile = CreateFile(
+#ifdef UNICODE
+	hFile = CreateFileW(
 		lpszFileName,			// lpszName
 		GENERIC_READ,			// fdwAccess
 		FILE_SHARE_READ,		// fdwShareMode
@@ -3857,6 +3858,23 @@ static HBITMAP ReadBitmapFile(HDC hDC, LPTSTR lpszFileName, SIZE *psize)
 		FILE_ATTRIBUTE_NORMAL,	// fdwAttrsAndFlags
 		NULL					// hTemplateFile
 	);
+#else
+	{
+		wchar_t wPath[MAX_PATH];
+		if (tc_utf8_to_utf16(lpszFileName, wPath, (int)(sizeof(wPath) / sizeof(wPath[0]))) <= 0) {
+			if (tc_ansi_to_utf16_compat(0, lpszFileName, wPath, (int)(sizeof(wPath) / sizeof(wPath[0]))) <= 0) return NULL;
+		}
+		hFile = CreateFileW(
+			wPath,			// lpszName
+			GENERIC_READ,			// fdwAccess
+			FILE_SHARE_READ,		// fdwShareMode
+			NULL,					// lpsa
+			OPEN_EXISTING,			// fdwCreate
+			FILE_ATTRIBUTE_NORMAL,	// fdwAttrsAndFlags
+			NULL					// hTemplateFile
+		);
+	}
+#endif
 	if (hFile == INVALID_HANDLE_VALUE) {
 		return NULL;
 	}

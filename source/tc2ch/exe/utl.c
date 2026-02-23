@@ -856,9 +856,15 @@ void WriteDebug_New2(const char* s)
 	strcpy(fname, g_mydir);
 	add_title(fname, "TCLOCK-WIN11-DEBUG.LOG");
 
-	hFile = CreateFile(
-		fname, FILE_APPEND_DATA, FILE_SHARE_READ, NULL,
-		OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	{
+		wchar_t wPath[MAX_PATH];
+		if (tc_utf8_to_utf16(fname, wPath, (int)(sizeof(wPath) / sizeof(wPath[0]))) <= 0) {
+			if (tc_ansi_to_utf16_compat(0, fname, wPath, (int)(sizeof(wPath) / sizeof(wPath[0]))) <= 0) return;
+		}
+		hFile = CreateFileW(wPath,
+			FILE_APPEND_DATA, FILE_SHARE_READ, NULL,
+			OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	}
 	if (hFile != INVALID_HANDLE_VALUE) {
 		//WriteFile(hFile, "[TClock main] ", lstrlen("[TClock main] "), &dwWriteSize, NULL);
 		//WriteFile(hFile, s, lstrlen(s), &dwWriteSize, NULL);
@@ -901,9 +907,15 @@ void WriteNormalLog(const char* s)
 	strcpy(fname, g_mydir);
 	add_title(fname, "TClock-Win11.log");
 
-	hFile = CreateFile(
-		fname, FILE_APPEND_DATA, FILE_SHARE_READ, NULL,
-		OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	{
+		wchar_t wPath[MAX_PATH];
+		if (tc_utf8_to_utf16(fname, wPath, (int)(sizeof(wPath) / sizeof(wPath[0]))) <= 0) {
+			if (tc_ansi_to_utf16_compat(0, fname, wPath, (int)(sizeof(wPath) / sizeof(wPath[0]))) <= 0) return;
+		}
+		hFile = CreateFileW(wPath,
+			FILE_APPEND_DATA, FILE_SHARE_READ, NULL,
+			OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	}
 
 	if (hFile != INVALID_HANDLE_VALUE) {
 
@@ -930,14 +942,20 @@ void CheckNormalLog(void)
 	strcpy(fname, g_mydir);
 	add_title(fname, "TClock-Win11.log");
 
-	hFile = CreateFile(
-		fname, FILE_APPEND_DATA, FILE_SHARE_READ, NULL,
-		OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	{
+		wchar_t wPath[MAX_PATH];
+		if (tc_utf8_to_utf16(fname, wPath, (int)(sizeof(wPath) / sizeof(wPath[0]))) <= 0) {
+			if (tc_ansi_to_utf16_compat(0, fname, wPath, (int)(sizeof(wPath) / sizeof(wPath[0]))) <= 0) return;
+		}
+		hFile = CreateFileW(wPath,
+			FILE_APPEND_DATA, FILE_SHARE_READ, NULL,
+			OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 
-	if (hFile != INVALID_HANDLE_VALUE) {
-		tempFileSize = GetFileSize(hFile, NULL);
-		CloseHandle(hFile);
-		if (tempFileSize > 10240) DeleteFile(fname);
+		if (hFile != INVALID_HANDLE_VALUE) {
+			tempFileSize = GetFileSize(hFile, NULL);
+			CloseHandle(hFile);
+			if (tempFileSize > 10240) DeleteFileW(wPath);
+		}
 	}
 }
 

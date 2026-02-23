@@ -689,9 +689,15 @@ void WriteDebugDLL_New(LPSTR s)
 
 	if (b_AutoClearLogFile && (LogLineCount > AutoClearLogLines))
 	{
-		hFile = CreateFile(
-			fname, FILE_APPEND_DATA, FILE_SHARE_READ, NULL,
-			CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+		{
+			wchar_t wPath[MAX_PATH];
+			if (tc_utf8_to_utf16(fname, wPath, (int)(sizeof(wPath) / sizeof(wPath[0]))) <= 0) {
+				if (tc_ansi_to_utf16_compat(0, fname, wPath, (int)(sizeof(wPath) / sizeof(wPath[0]))) <= 0) return;
+			}
+			hFile = CreateFileW(
+				wPath, FILE_APPEND_DATA, FILE_SHARE_READ, NULL,
+				CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+		}
 		if (hFile != INVALID_HANDLE_VALUE)
 		{
 			LogLineCount = 0;
@@ -699,9 +705,15 @@ void WriteDebugDLL_New(LPSTR s)
 	}
 	else
 	{
-		hFile = CreateFile(
-			fname, FILE_APPEND_DATA, FILE_SHARE_READ, NULL,
-			OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+		{
+			wchar_t wPath[MAX_PATH];
+			if (tc_utf8_to_utf16(fname, wPath, (int)(sizeof(wPath) / sizeof(wPath[0]))) <= 0) {
+				if (tc_ansi_to_utf16_compat(0, fname, wPath, (int)(sizeof(wPath) / sizeof(wPath[0]))) <= 0) return;
+			}
+			hFile = CreateFileW(
+				wPath, FILE_APPEND_DATA, FILE_SHARE_READ, NULL,
+				OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+		}
 	}
 
 	if (hFile != INVALID_HANDLE_VALUE)
@@ -797,9 +809,15 @@ void WriteNormalLog_DLL(const char* s)
 	strcpy(fname, g_mydir_dll);
 	add_title(fname, "TClock-Win11.log");
 
-	hFile = CreateFile(
-		fname, FILE_APPEND_DATA, FILE_SHARE_READ, NULL,
-		OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	{
+			wchar_t wPath[MAX_PATH];
+			if (tc_utf8_to_utf16(fname, wPath, (int)(sizeof(wPath) / sizeof(wPath[0]))) <= 0) {
+				if (tc_ansi_to_utf16_compat(0, fname, wPath, (int)(sizeof(wPath) / sizeof(wPath[0]))) <= 0) return;
+			}
+			hFile = CreateFileW(
+				wPath, FILE_APPEND_DATA, FILE_SHARE_READ, NULL,
+				OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+		}
 
 	if (hFile != INVALID_HANDLE_VALUE) {
 

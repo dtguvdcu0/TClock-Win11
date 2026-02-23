@@ -449,13 +449,19 @@ static BOOL GetTooltipText(PSTR pszText)
 		return TRUE;
 	}
 
-	hFile = CreateFile(szFilePath,
-					   GENERIC_READ,
-					   FILE_SHARE_READ,
-					   NULL,
-					   OPEN_EXISTING,
-					   FILE_ATTRIBUTE_NORMAL,
-					   NULL);
+	{
+		wchar_t wPath[MAX_PATH];
+		if (tc_utf8_to_utf16(szFilePath, wPath, (int)(sizeof(wPath) / sizeof(wPath[0]))) <= 0) {
+			if (tc_ansi_to_utf16_compat(0, szFilePath, wPath, (int)(sizeof(wPath) / sizeof(wPath[0]))) <= 0) return FALSE;
+		}
+		hFile = CreateFileW(wPath,
+					    GENERIC_READ,
+					    FILE_SHARE_READ,
+					    NULL,
+					    OPEN_EXISTING,
+					    FILE_ATTRIBUTE_NORMAL,
+					    NULL);
+	}
 	if(hFile == INVALID_HANDLE_VALUE)
 	{
 		return FALSE;

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TCalendar</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <main class="app">
+    <header class="topbar">
+      <button id="prevMonth" type="button">◀</button>
+      <h1 id="monthTitle">TCalendar</h1>
+      <button id="nextMonth" type="button">▶</button>
+    </header>
+
+    <section class="gridWrap">
+      <div id="monthGrid" class="monthGrid"></div>
+    </section>
+
+    <section class="dayPanel">
+      <h2 id="dayTitle">Tasks</h2>
+      <ul id="taskList"></ul>
+      <form id="taskForm">
+        <input id="taskTitle" type="text" placeholder="Task title" maxlength="120" />
+        <button type="submit">Add</button>
+      </form>
+    </section>
+  </main>
+  <script src="./app.js"></script>
+</body>
+</html>
+

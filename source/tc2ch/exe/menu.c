@@ -58,6 +58,7 @@ extern BOOL b_SkipHideClockRestore;
 #define TC_MENU_SECTION_CACHE_BYTES 65536
 #define IDC_TCAP_SETTINGS 45990
 #define IDC_TCAP_CAPTURE 45989
+#define IDC_TCAL_OPEN 45991
 
 typedef struct {
 	UINT id;
@@ -563,6 +564,16 @@ static LONG tc_menu_get_tcapture_enable(void)
 	return (v != 0) ? 1 : 0;
 }
 
+static LONG tc_menu_get_tcalendar_enable(void)
+{
+	LONG v = GetMyRegLong("TCalendar", "Enable", -1);
+	if (v == -1) {
+		SetMyRegLong("TCalendar", "Enable", 0);
+		return 0;
+	}
+	return (v != 0) ? 1 : 0;
+}
+
 static void tc_menu_normalize_setting_utf8_in_place(char* value, int valueBytes)
 {
 	WCHAR wbuf[MAX_PATH];
@@ -608,6 +619,22 @@ static void tc_menu_get_tcapture_path(char* outPath, int outPathLen)
 	lstrcpyn(outPath, legacy, outPathLen);
 	SetMyRegStr("TCapture", "Path", outPath);
 	DelMyReg("ETC", "TCapturePath");
+}
+
+static void tc_menu_get_tcalendar_path(char* outPath, int outPathLen)
+{
+	char before[MAX_PATH];
+	BOOL wasMissing = FALSE;
+	if (!outPath || outPathLen <= 0) return;
+	outPath[0] = '\0';
+	GetMyRegStr("TCalendar", "Path", outPath, outPathLen, "");
+	if (outPath[0] == '\0') {
+		strcpy(outPath, "TCalendar.exe");
+		wasMissing = TRUE;
+	}
+	lstrcpyn(before, outPath, (int)sizeof(before));
+	tc_menu_normalize_setting_utf8_in_place(outPath, outPathLen);
+	if (wasMissing || lstrcmp(before, outPath) != 0) SetMyRegStr("TCalendar", "Path", outPath);
 }
 
 typedef struct {
@@ -674,7 +701,7 @@ static void tc_menu_launch_with_delay(const char* file, const char* args, const 
 
 static BOOL tc_menu_is_fixed_id(UINT id)
 {
-	return id == IDC_SHOWPROP || id == IDC_SHOWDIR || id == IDC_RESTART || id == IDC_EXIT || id == IDC_TCAP_SETTINGS || id == IDC_TCAP_CAPTURE;
+	return id == IDC_SHOWPROP || id == IDC_SHOWDIR || id == IDC_RESTART || id == IDC_EXIT || id == IDC_TCAP_SETTINGS || id == IDC_TCAP_CAPTURE || id == IDC_TCAL_OPEN;
 }
 
 static int tc_menu_find_position_by_id(HMENU hMenu, UINT id)
@@ -1694,26 +1721,44 @@ void OnContextMenu(HWND hwnd, HWND hwndClicked, int xPos, int yPos)
 		tc_menu_ensure_ini_defaults();
 		tc_menu_apply_custom_from_ini(hPopupMenu);
 	}
-	if (tc_menu_get_tcapture_enable()) {
-		int propPos = tc_menu_find_position_by_id(hPopupMenu, IDC_SHOWPROP);
-		if (propPos >= 0) {
-			int insertPos = propPos;
-			MENUITEMINFO prevMii;
-			if (propPos > 0) {
-				ZeroMemory(&prevMii, sizeof(prevMii));
-				prevMii.cbSize = sizeof(prevMii);
-				prevMii.fMask = MIIM_FTYPE;
-				if (GetMenuItemInfo(hPopupMenu, propPos - 1, TRUE, &prevMii) && (prevMii.fType & MFT_SEPARATOR)) {
-					insertPos = propPos - 1;
+	{
+		LONG tcalendarEnabled = tc_menu_get_tcalendar_enable();
+		LONG tcaptureEnabled = tc_menu_get_tcapture_enable();
+		if (tcalendarEnabled || tcaptureEnabled) {
+			int propPos = tc_menu_find_position_by_id(hPopupMenu, IDC_SHOWPROP);
+			if (propPos >= 0) {
+				int insertPos = propPos;
+				int itemPos;
+				MENUITEMINFO prevMii;
+				if (propPos > 0) {
+					ZeroMemory(&prevMii, sizeof(prevMii));
+					prevMii.cbSize = sizeof(prevMii);
+					prevMii.fMask = MIIM_FTYPE;
+					if (GetMenuItemInfo(hPopupMenu, propPos - 1, TRUE, &prevMii) && (prevMii.fType & MFT_SEPARATOR)) {
+						insertPos = propPos - 1;
+					}
+				}
+				/* Keep legacy TCapture behavior: always insert one separator here.
+				   If a separator already exists before Property, this yields a trailing
+				   separator after inserted launcher items. */
+				InsertMenu(hPopupMenu, insertPos, MF_BYPOSITION | MF_SEPARATOR, 0, NULL);
+				itemPos = insertPos + 1;
+				if (tcalendarEnabled) {
+					char tcalendarLabel[128];
+					lstrcpyn(tcalendarLabel, MyStringUTF8(IDS_TCAL_OPEN), (int)sizeof(tcalendarLabel));
+					tc_menu_insert_string_utf8(hPopupMenu, itemPos, MF_BYPOSITION | MF_STRING, IDC_TCAL_OPEN, tcalendarLabel);
+					itemPos++;
+				}
+				if (tcaptureEnabled) {
+					char tcapCaptureLabel[128];
+					char tcapSettingsLabel[128];
+					lstrcpyn(tcapCaptureLabel, MyStringUTF8(IDS_TCAP_CAPTURE), (int)sizeof(tcapCaptureLabel));
+					lstrcpyn(tcapSettingsLabel, MyStringUTF8(IDS_TCAP_SETTING), (int)sizeof(tcapSettingsLabel));
+					tc_menu_insert_string_utf8(hPopupMenu, itemPos, MF_BYPOSITION | MF_STRING, IDC_TCAP_CAPTURE, tcapCaptureLabel);
+					itemPos++;
+					tc_menu_insert_string_utf8(hPopupMenu, itemPos, MF_BYPOSITION | MF_STRING, IDC_TCAP_SETTINGS, tcapSettingsLabel);
 				}
 			}
-			char tcapCaptureLabel[128];
-			char tcapSettingsLabel[128];
-			lstrcpyn(tcapCaptureLabel, MyStringUTF8(IDS_TCAP_CAPTURE), (int)sizeof(tcapCaptureLabel));
-			lstrcpyn(tcapSettingsLabel, MyStringUTF8(IDS_TCAP_SETTING), (int)sizeof(tcapSettingsLabel));
-			InsertMenu(hPopupMenu, insertPos, MF_BYPOSITION | MF_SEPARATOR, 0, NULL);
-			tc_menu_insert_string_utf8(hPopupMenu, insertPos + 1, MF_BYPOSITION | MF_STRING, IDC_TCAP_CAPTURE, tcapCaptureLabel);
-			tc_menu_insert_string_utf8(hPopupMenu, insertPos + 2, MF_BYPOSITION | MF_STRING, IDC_TCAP_SETTINGS, tcapSettingsLabel);
 		}
 	}
 
@@ -1988,6 +2033,25 @@ void OnTClockCommand(HWND hwnd, WORD wID, WORD wCode)
 			if (b_DebugLog) WriteDebug_New2("[menu.c][OnTClockCommand] IDC_SHOWDIR received");
 			ShellExecuteUtf8Strict(g_hwndMain, NULL, g_mydir, NULL, NULL, SW_SHOWNORMAL);
 			break;
+		case IDC_TCAL_OPEN: // TCalendar open
+		{
+			char tcalPathCfg[MAX_PATH];
+			char tcalPath[MAX_PATH];
+			if (b_DebugLog) WriteDebug_New2("[menu.c][OnTClockCommand] IDC_TCAL_OPEN received");
+			tc_menu_get_tcalendar_path(tcalPathCfg, MAX_PATH);
+			if (tcalPathCfg[0] == 0) strcpy(tcalPathCfg, "TCalendar.exe");
+			if ((tcalPathCfg[1] == ':') || (tcalPathCfg[0] == '\\') || (tcalPathCfg[0] == '/')) {
+				strcpy(tcalPath, tcalPathCfg);
+			}
+			else {
+				strcpy(tcalPath, g_mydir);
+				add_title(tcalPath, tcalPathCfg);
+			}
+			if (PathFileExists(tcalPath)) {
+				tc_menu_launch_with_delay(tcalPath, NULL, g_mydir, SW_SHOWNORMAL);
+			}
+			return;
+		}
 		case IDC_TCAP_CAPTURE: // TCapture capture default profile
 		{
 			char tcapPathCfg[MAX_PATH];
@@ -2276,10 +2340,13 @@ void InitializeMenuItems(void)
 	tc_menu_modify_string_utf8(hPopupMenu, IDC_REMOVE_DRIVE0, MF_BYCOMMAND, IDC_REMOVE_DRIVE0, MyStringUTF8(IDS_ABOUTRMVDRV));
 	tc_menu_modify_string_utf8(hPopupMenu, IDC_SHOWDIR, MF_BYCOMMAND, IDC_SHOWDIR, MyStringUTF8(IDS_OPENTCFOLDER));
 	{
+		char tcalendarLabel[128];
 		char tcapCaptureLabel[128];
 		char tcapSettingsLabel[128];
+		lstrcpyn(tcalendarLabel, MyStringUTF8(IDS_TCAL_OPEN), (int)sizeof(tcalendarLabel));
 		lstrcpyn(tcapCaptureLabel, MyStringUTF8(IDS_TCAP_CAPTURE), (int)sizeof(tcapCaptureLabel));
 		lstrcpyn(tcapSettingsLabel, MyStringUTF8(IDS_TCAP_SETTING), (int)sizeof(tcapSettingsLabel));
+		tc_menu_modify_string_utf8(hPopupMenu, IDC_TCAL_OPEN, MF_BYCOMMAND, IDC_TCAL_OPEN, tcalendarLabel);
 		tc_menu_modify_string_utf8(hPopupMenu, IDC_TCAP_CAPTURE, MF_BYCOMMAND, IDC_TCAP_CAPTURE, tcapCaptureLabel);
 		tc_menu_modify_string_utf8(hPopupMenu, IDC_TCAP_SETTINGS, MF_BYCOMMAND, IDC_TCAP_SETTINGS, tcapSettingsLabel);
 	}

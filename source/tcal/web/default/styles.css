@@ -1,0 +1,167 @@
+:root {
+  --font-family: "Segoe UI", system-ui, sans-serif;
+  --font-size: 14px;
+  --line-height: 1.4;
+  --surface: #f5f6f8;
+  --panel: #ffffff;
+  --text: #1b1f24;
+  --accent: #0a65cc;
+  --border: #d9dde3;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-family);
+  font-size: var(--font-size);
+  line-height: var(--line-height);
+  color: var(--text);
+  background: linear-gradient(180deg, #eef2f7, var(--surface));
+}
+
+.app {
+  max-width: 980px;
+  margin: 20px auto;
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+}
+
+.topbar {
+  display: grid;
+  grid-template-columns: 42px 1fr 42px;
+  align-items: center;
+  gap: 8px;
+}
+
+.topbar button {
+  border: 1px solid var(--border);
+  background: var(--panel);
+  border-radius: 8px;
+  height: 36px;
+}
+
+.monthGrid {
+  min-height: 280px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+  padding: 12px;
+}
+
+.dayPanel {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+  padding: 12px;
+}
+
+#taskForm {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
+#taskForm input,
+#taskForm button {
+  height: 36px;
+}
+
+
+
+.weekdayRow {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.weekdayCell {
+  text-align: center;
+  color: #66707c;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.daysGrid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.dayCell {
+  border: 1px solid var(--border);
+  background: #fff;
+  border-radius: 8px;
+  min-height: 44px;
+  text-align: left;
+  padding: 6px 8px;
+  cursor: pointer;
+}
+
+.dayCell.isOutside {
+  color: #95a0ad;
+  background: #f8fafc;
+}
+
+.dayCell.isSelected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(10, 101, 204, 0.15);
+}
+
+.dayCell .dateLabel {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+
+taskList,
+#taskList {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 10px;
+}
+
+.taskRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+}
+
+.taskTitle.isDone {
+  color: #6c7682;
+  text-decoration: line-through;
+}
+
+
+.taskDelete {
+  margin-left: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+  height: 24px;
+  padding: 0 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.taskEmpty {
+  color: #6c7682;
+  font-size: 12px;
+  padding: 4px 0;
+}
+
+
+.taskEdit {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+  height: 24px;
+  padding: 0 8px;
+  font-size: 12px;
+  cursor: pointer;
+}

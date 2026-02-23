@@ -455,25 +455,15 @@ void OnSansho(HWND hDlg, WORD id)
 		n = CBGetCurSel(hDlg, IDC_DROPFILES);
 		if(n >= 3)
 		{
-			char initdir[MAX_PATH];
-			GetDlgItemTextUTF8(hDlg, id - 1, initdir, MAX_PATH);
-			hrModern = SelectPathUTF8Modern(hDlg, TRUE, NULL, NULL, 0, fname, (int)sizeof(fname));
-			if (SUCCEEDED(hrModern)) {
-				/* selected in modern dialog */
+			char initdirUtf8[MAX_PATH];
+			wchar_t initdirW[MAX_PATH];
+			const wchar_t* initdirArg = NULL;
+			GetDlgItemTextUTF8(hDlg, id - 1, initdirUtf8, MAX_PATH);
+			if (initdirUtf8[0] && tc_utf8_to_utf16(initdirUtf8, initdirW, (int)(sizeof(initdirW) / sizeof(initdirW[0]))) > 0) {
+				initdirArg = initdirW;
 			}
-			else if (IsDialogCanceledHr(hrModern)) {
-				return;
-			}
-			else {
-				BROWSEINFO bi;
-				LPITEMIDLIST pidl;
-				memset(&bi, 0, sizeof(BROWSEINFO));
-				bi.hwndOwner = hDlg;
-				bi.ulFlags = BIF_RETURNONLYFSDIRS;
-				pidl = SHBrowseForFolder(&bi);
-				if(!pidl) return;
-				SHGetPathFromIDList(pidl, fname);
-			}
+			hrModern = SelectPathUTF8Modern(hDlg, TRUE, initdirArg, NULL, 0, fname, (int)sizeof(fname));
+			if (FAILED(hrModern)) return;
 			NormalizeUtf8InPlaceNoWriteback(fname, (int)sizeof(fname));
 			SetDlgItemTextUTF8Strict(hDlg, id - 1, fname);
 			PostMessage(hDlg, WM_NEXTDLGCTL, 1, FALSE);

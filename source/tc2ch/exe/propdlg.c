@@ -620,6 +620,38 @@ static UINT BuildFileDialogFilterSpecs(const wchar_t* wmulti, COMDLG_FILTERSPEC*
 	return n;
 }
 
+static void TrySetDialogFolderFromPath(IFileDialog* pfd, const wchar_t* initpath, BOOL pickFolder)
+{
+	typedef HRESULT(WINAPI* PFN_SHCreateItemFromParsingName)(PCWSTR, IBindCtx*, REFIID, void**);
+	PFN_SHCreateItemFromParsingName pfnCreateItem = NULL;
+	wchar_t folder[MAX_PATH];
+	int i, lastSep = -1;
+	IShellItem* psiFolder = NULL;
+	HRESULT hr;
+
+	if (!pfd || !initpath || !initpath[0]) return;
+
+	lstrcpynW(folder, initpath, (int)(sizeof(folder) / sizeof(folder[0])));
+	if (!pickFolder) {
+		for (i = 0; folder[i] != L'\0'; ++i) {
+			if (folder[i] == L'\\' || folder[i] == L'/') lastSep = i;
+		}
+		if (lastSep < 0) return;
+		folder[lastSep] = L'\0';
+		if (!folder[0]) return;
+	}
+
+	pfnCreateItem = (PFN_SHCreateItemFromParsingName)GetProcAddress(GetModuleHandleW(L"shell32.dll"), "SHCreateItemFromParsingName");
+	if (!pfnCreateItem) return;
+
+	hr = pfnCreateItem(folder, NULL, &IID_IShellItem, (void**)&psiFolder);
+	if (FAILED(hr) || !psiFolder) return;
+
+	pfd->lpVtbl->SetDefaultFolder(pfd, psiFolder);
+	pfd->lpVtbl->SetFolder(pfd, psiFolder);
+	psiFolder->lpVtbl->Release(psiFolder);
+}
+
 BOOL IsDialogCanceledHr(HRESULT hr)
 {
 	return (hr == HRESULT_FROM_WIN32(ERROR_CANCELLED));
@@ -644,7 +676,10 @@ HRESULT SelectPathUTF8Modern(HWND hDlg, BOOL pickFolder, const wchar_t* initdir,
 		else opts |= FOS_FILEMUSTEXIST;
 		pfd->lpVtbl->SetOptions(pfd, opts);
 	}
-	UNREFERENCED_PARAMETER(initdir);
+	TrySetDialogFolderFromPath(pfd, initdir, pickFolder);
+	if (!pickFolder && initdir && initdir[0]) {
+		pfd->lpVtbl->SetFileName(pfd, initdir);
+	}
 	if (!pickFolder && wfilter && wfilter[0]) {
 		specCount = BuildFileDialogFilterSpecs(wfilter, specs, (UINT)(sizeof(specs) / sizeof(specs[0])));
 		if (specCount > 0) {
@@ -671,14 +706,12 @@ done:
 BOOL SelectMyFileUTF8(HWND hDlg, const char *filterUtf8, DWORD nFilterIndex,
 	const char *deffileUtf8, char *retfileUtf8, int retfileUtf8Bytes)
 {
-	OPENFILENAMEW ofn;
-	wchar_t fname[MAX_PATH], ftitle[MAX_PATH], initdir[MAX_PATH], wfilter[1024], wdeffile[MAX_PATH];
-	BOOL r;
+	wchar_t initdir[MAX_PATH], wfilter[1024], wdeffile[MAX_PATH];
+	const wchar_t* initForDialog = NULL;
 	HRESULT hrModern;
 
 	if (!retfileUtf8 || retfileUtf8Bytes <= 0) return FALSE;
 	retfileUtf8[0] = '\0';
-	memset(&ofn, '\0', sizeof(OPENFILENAMEW));
 
 	if (DecodeUtf8ForDialog(g_mydir, initdir, (int)(sizeof(initdir) / sizeof(initdir[0]))) <= 0) {
 		initdir[0] = L'\0';
@@ -699,35 +732,17 @@ BOOL SelectMyFileUTF8(HWND hDlg, const char *filterUtf8, DWORD nFilterIndex,
 			}
 			if (lastSep >= 0) initdir[lastSep] = L'\0';
 		}
+		initForDialog = wdeffile;
 	}
+	if (!initForDialog && initdir[0]) initForDialog = initdir;
 
 	if (!Utf8MultiSzToWide(filterUtf8 ? filterUtf8 : "", wfilter, (int)(sizeof(wfilter) / sizeof(wfilter[0])))) {
 		return FALSE;
 	}
 
-	fname[0] = L'\0';
-	ofn.lStructSize = sizeof(OPENFILENAMEW);
-	ofn.hwndOwner = hDlg;
-	ofn.hInstance = g_hInst;
-	ofn.lpstrFilter = wfilter;
-	ofn.nFilterIndex = nFilterIndex;
-	ofn.lpstrFile = fname;
-	ofn.nMaxFile = MAX_PATH;
-	ofn.lpstrFileTitle = ftitle;
-	ofn.nMaxFileTitle = MAX_PATH;
-	ofn.lpstrInitialDir = initdir;
-	ofn.Flags = OFN_HIDEREADONLY | OFN_EXPLORER;
-
-	hrModern = SelectPathUTF8Modern(hDlg, FALSE, initdir, wfilter, nFilterIndex, retfileUtf8, retfileUtf8Bytes);
+	hrModern = SelectPathUTF8Modern(hDlg, FALSE, initForDialog, wfilter, nFilterIndex, retfileUtf8, retfileUtf8Bytes);
 	if (SUCCEEDED(hrModern)) return TRUE;
-	if (IsDialogCanceledHr(hrModern)) return FALSE;
-	r = GetOpenFileNameW(&ofn);
-	if (!r) return FALSE;
-	if (tc_utf16_to_utf8(ofn.lpstrFile, retfileUtf8, retfileUtf8Bytes) <= 0) {
-		retfileUtf8[0] = '\0';
-		return FALSE;
-	}
-	return TRUE;
+	return FALSE;
 }
 
 

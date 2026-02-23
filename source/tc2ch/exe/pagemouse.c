@@ -5,6 +5,7 @@
 ---------------------------------------------*/
 
 #include "tclock.h"
+#include <shobjidl.h>
 
 #include "..\\common\\text_codec.h"
 
@@ -443,6 +444,40 @@ void OnMouseFileChange(HWND hDlg)
 /*------------------------------------------------
 　「...」　ファイルの参照
 --------------------------------------------------*/
+
+static BOOL SelectFolderUTF8Modern(HWND hDlg, const char* initUtf8, char* outUtf8, int outBytes)
+{
+	IFileDialog* pfd = NULL;
+	IShellItem* psiResult = NULL;
+	PWSTR pwszPath = NULL;
+	DWORD opts = 0;
+	HRESULT hr;
+	BOOL ok = FALSE;
+
+	if (!outUtf8 || outBytes <= 0) return FALSE;
+	outUtf8[0] = '\0';
+	hr = CoCreateInstance(&CLSID_FileOpenDialog, NULL, CLSCTX_INPROC_SERVER, &IID_IFileDialog, (void**)&pfd);
+	if (FAILED(hr) || !pfd) return FALSE;
+	if (SUCCEEDED(pfd->lpVtbl->GetOptions(pfd, &opts))) {
+		opts |= (FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST);
+		pfd->lpVtbl->SetOptions(pfd, opts);
+	}
+	UNREFERENCED_PARAMETER(initUtf8);
+	hr = pfd->lpVtbl->Show(pfd, hDlg);
+	if (FAILED(hr)) goto done;
+	hr = pfd->lpVtbl->GetResult(pfd, &psiResult);
+	if (FAILED(hr) || !psiResult) goto done;
+	hr = psiResult->lpVtbl->GetDisplayName(psiResult, SIGDN_FILESYSPATH, &pwszPath);
+	if (FAILED(hr) || !pwszPath) goto done;
+	if (tc_utf16_to_utf8(pwszPath, outUtf8, outBytes) > 0) ok = TRUE;
+
+done:
+	if (pwszPath) CoTaskMemFree(pwszPath);
+	if (psiResult) psiResult->lpVtbl->Release(psiResult);
+	if (pfd) pfd->lpVtbl->Release(pfd);
+	return ok;
+}
+
 void OnSansho(HWND hDlg, WORD id)
 {
 	int n;
@@ -453,20 +488,22 @@ void OnSansho(HWND hDlg, WORD id)
 		n = CBGetCurSel(hDlg, IDC_DROPFILES);
 		if(n >= 3)
 		{
-			BROWSEINFO bi;
-			LPITEMIDLIST pidl;
-			memset(&bi, 0, sizeof(BROWSEINFO));
-			bi.hwndOwner = hDlg;
-			bi.ulFlags = BIF_RETURNONLYFSDIRS;
-			pidl = SHBrowseForFolder(&bi);
-			if(pidl)
-			{
+			char initdir[MAX_PATH];
+			GetDlgItemTextUTF8(hDlg, id - 1, initdir, MAX_PATH);
+			if (!SelectFolderUTF8Modern(hDlg, initdir, fname, (int)sizeof(fname))) {
+				BROWSEINFO bi;
+				LPITEMIDLIST pidl;
+				memset(&bi, 0, sizeof(BROWSEINFO));
+				bi.hwndOwner = hDlg;
+				bi.ulFlags = BIF_RETURNONLYFSDIRS;
+				pidl = SHBrowseForFolder(&bi);
+				if(!pidl) return;
 				SHGetPathFromIDList(pidl, fname);
-				NormalizeUtf8InPlaceNoWriteback(fname, (int)sizeof(fname));
-				SetDlgItemTextUTF8Strict(hDlg, id - 1, fname);
-				PostMessage(hDlg, WM_NEXTDLGCTL, 1, FALSE);
-				SendPSChanged(hDlg);
 			}
+			NormalizeUtf8InPlaceNoWriteback(fname, (int)sizeof(fname));
+			SetDlgItemTextUTF8Strict(hDlg, id - 1, fname);
+			PostMessage(hDlg, WM_NEXTDLGCTL, 1, FALSE);
+			SendPSChanged(hDlg);
 			return;
 		}
 	}

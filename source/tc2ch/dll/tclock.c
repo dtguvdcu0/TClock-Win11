@@ -1271,7 +1271,7 @@ void InitClock()
 	// Initialize tooltip after taskbar redraw/setup is complete.
 	TooltipInit(hwndClockMain);
 
-	// Startup can enter sleep-like gating before any user input; force awake immediately.
+	//ツールチップ作成
 	b_Sleeping = FALSE;
 	PostMessage(hwndClockMain, CLOCKM_SLEEP_AWAKE, 0, 0);
 
@@ -6580,7 +6580,7 @@ BOOL IsVertTaskbar(HWND temphwndTaskBarMain)
  --------------------------------------------------*/
 void CheckSafeMode_Win10(void)
 {
-	// hwnd unused
+	//hwnd使われていない
 
 	if (GetMyRegLong("Status_DoNotEdit", "LastExitUser", 0)) {
 		SetMyRegLong("Status_DoNotEdit", "LastExitUser", 0);

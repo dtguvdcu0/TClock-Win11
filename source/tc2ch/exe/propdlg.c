@@ -6,6 +6,7 @@
 //#define NONAMELESSUNION
 #include "tclock.h"
 #include "..\common\text_codec.h"
+#include <shobjidl.h>
 
 #define MAX_PAGE  20
 #define WM_TCLOCK_APPLY_REFRESH (WM_APP + 101)
@@ -600,6 +601,66 @@ static BOOL Utf8MultiSzToWide(const char* src, wchar_t* dst, int dstCch)
 	return TRUE;
 }
 
+
+static UINT BuildFileDialogFilterSpecs(const wchar_t* wmulti, COMDLG_FILTERSPEC* specs, UINT maxSpecs)
+{
+	const wchar_t* p;
+	UINT n = 0;
+	if (!wmulti || !specs || maxSpecs == 0) return 0;
+	p = wmulti;
+	while (*p && n < maxSpecs) {
+		const wchar_t* name = p;
+		p += lstrlenW(p) + 1;
+		if (!*p) break;
+		specs[n].pszName = name;
+		specs[n].pszSpec = p;
+		n++;
+		p += lstrlenW(p) + 1;
+	}
+	return n;
+}
+
+static BOOL SelectMyFileUTF8Modern(HWND hDlg, const wchar_t* initdir, const wchar_t* wfilter, DWORD nFilterIndex, char* retfileUtf8, int retfileUtf8Bytes)
+{
+	IFileDialog* pfd = NULL;
+	IShellItem* psiResult = NULL;
+	PWSTR pwszPath = NULL;
+	COMDLG_FILTERSPEC specs[16];
+	UINT specCount = 0;
+	DWORD opts = 0;
+	HRESULT hr;
+	BOOL ok = FALSE;
+
+	hr = CoCreateInstance(&CLSID_FileOpenDialog, NULL, CLSCTX_INPROC_SERVER, &IID_IFileDialog, (void**)&pfd);
+	if (FAILED(hr) || !pfd) return FALSE;
+
+	if (SUCCEEDED(pfd->lpVtbl->GetOptions(pfd, &opts))) {
+		opts |= (FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST | FOS_FILEMUSTEXIST);
+		pfd->lpVtbl->SetOptions(pfd, opts);
+	}
+	UNREFERENCED_PARAMETER(initdir);
+	if (wfilter && wfilter[0]) {
+		specCount = BuildFileDialogFilterSpecs(wfilter, specs, (UINT)(sizeof(specs) / sizeof(specs[0])));
+		if (specCount > 0) {
+			pfd->lpVtbl->SetFileTypes(pfd, specCount, specs);
+			pfd->lpVtbl->SetFileTypeIndex(pfd, nFilterIndex ? nFilterIndex : 1);
+		}
+	}
+	hr = pfd->lpVtbl->Show(pfd, hDlg);
+	if (FAILED(hr)) goto done;
+	hr = pfd->lpVtbl->GetResult(pfd, &psiResult);
+	if (FAILED(hr) || !psiResult) goto done;
+	hr = psiResult->lpVtbl->GetDisplayName(psiResult, SIGDN_FILESYSPATH, &pwszPath);
+	if (FAILED(hr) || !pwszPath) goto done;
+	if (tc_utf16_to_utf8(pwszPath, retfileUtf8, retfileUtf8Bytes) > 0) ok = TRUE;
+
+done:
+	if (pwszPath) CoTaskMemFree(pwszPath);
+	if (psiResult) psiResult->lpVtbl->Release(psiResult);
+	if (pfd) pfd->lpVtbl->Release(pfd);
+	return ok;
+}
+
 BOOL SelectMyFileUTF8(HWND hDlg, const char *filterUtf8, DWORD nFilterIndex,
 	const char *deffileUtf8, char *retfileUtf8, int retfileUtf8Bytes)
 {
@@ -649,6 +710,7 @@ BOOL SelectMyFileUTF8(HWND hDlg, const char *filterUtf8, DWORD nFilterIndex,
 	ofn.lpstrInitialDir = initdir;
 	ofn.Flags = OFN_HIDEREADONLY | OFN_EXPLORER;
 
+	if (SelectMyFileUTF8Modern(hDlg, initdir, wfilter, nFilterIndex, retfileUtf8, retfileUtf8Bytes)) return TRUE;
 	r = GetOpenFileNameW(&ofn);
 	if (!r) return FALSE;
 	if (tc_utf16_to_utf8(ofn.lpstrFile, retfileUtf8, retfileUtf8Bytes) <= 0) {

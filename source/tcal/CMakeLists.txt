@@ -50,11 +50,11 @@ add_custom_command(TARGET TCalendar POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy_if_different
           "${WEBVIEW2_LOADER_DLL}"
           "$<TARGET_FILE_DIR:TCalendar>/WebView2Loader.dll"
-  COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:TCalendar>/web"
+  COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:TCalendar>/tcalendar/template"
   COMMAND ${CMAKE_COMMAND} -E copy_directory
           "${WEB_ASSETS_DIR}"
-          "$<TARGET_FILE_DIR:TCalendar>/web"
-  COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:TCalendar>/data"
+          "$<TARGET_FILE_DIR:TCalendar>/tcalendar/template"
+  COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:TCalendar>/tcalendar/data"
 )
 
 if (MSVC)

@@ -1753,7 +1753,7 @@ BEGIN
     IDS_TCLOCKMENU_ENG      "TClock Menu"
     IDS_TCAP_CAPTURE_ENG    "TCapture Capture (Default)"
     IDS_TCAP_SETTING_ENG    "TCapture Settings"
-    IDS_TCAL_OPEN_ENG       "TCalendar"
+    IDS_TCAL_OPEN_ENG       "TCalendar(β)"
 END
 
 STRINGTABLE
@@ -1761,7 +1761,7 @@ BEGIN
     IDS_TCLOCKMENU          "TClockメニュー"
     IDS_TCAP_CAPTURE        "TCapture キャプチャー（既定）"
     IDS_TCAP_SETTING        "TCapture 設定"
-    IDS_TCAL_OPEN           "TCalendar"
+    IDS_TCAL_OPEN           "TCalendar(β)"
 END
 
 #endif    // 日本語 (日本) resources

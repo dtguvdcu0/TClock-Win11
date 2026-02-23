@@ -7,12 +7,17 @@
 namespace tcalendar {
 
 struct HostConfig {
+    std::wstring ini_file_path;
     std::wstring default_template_path;
     std::wstring user_template_path;
     bool block_external_navigation = true;
     bool enable_webview2_bootstrap = true;
     std::wstring storage_db_path;
     bool test_force_storage_write_failure = false;
+    std::wstring default_view_mode = L"list"; // "list" or "timeline"
+    int default_range_preset_days = 1;        // 1/7/14/30
+    int default_custom_range_days = 7;        // for custom mode
+    bool default_use_custom_range = false;
 };
 
 class TCalendarHost {

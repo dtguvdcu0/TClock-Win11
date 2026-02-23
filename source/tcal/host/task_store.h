@@ -12,6 +12,9 @@ struct TaskItem {
     std::wstring id;
     std::wstring date;      // YYYY-MM-DD (UI-facing key)
     std::wstring title;
+    std::wstring detail;
+    std::wstring start_time; // HH:MM or empty
+    std::wstring end_time;   // HH:MM or empty
     bool done = false;
     std::wstring updated_at_utc;
 };
@@ -21,11 +24,17 @@ public:
     bool Initialize(const std::wstring& db_path);
     void Shutdown();
 
-    bool CreateTask(const std::wstring& date, const std::wstring& title, TaskItem& out_task);
+    bool CreateTask(const std::wstring& date, const std::wstring& title,
+                    const std::wstring& detail, const std::wstring& start_time,
+                    const std::wstring& end_time, TaskItem& out_task);
     bool ToggleDone(const std::wstring& id, bool done);
     bool UpdateTitle(const std::wstring& id, const std::wstring& title);
+    bool UpdateTask(const std::wstring& id, const std::wstring& title,
+                    const std::wstring& detail, const std::wstring& start_time,
+                    const std::wstring& end_time);
     bool DeleteTask(const std::wstring& id);
     std::vector<TaskItem> GetDayTasks(const std::wstring& date) const;
+    std::vector<TaskItem> GetTasksInRange(const std::wstring& date_from, const std::wstring& date_to) const;
     const std::wstring& GetLastError() const;
     void SetTestForceWriteFailure(bool enabled);
 

@@ -1300,8 +1300,12 @@ static BOOL tc_menu_has_section_header(const char* section)
 	DWORD i = 0;
 	if (!section || !section[0] || !g_inifile[0]) return FALSE;
 	sectionLen = lstrlen(section);
-	hFile = CreateFile(g_inifile, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
-		OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	{
+		wchar_t wIniPath[MAX_PATH];
+		if (tc_utf8_to_utf16(g_inifile, wIniPath, (int)(sizeof(wIniPath) / sizeof(wIniPath[0]))) <= 0) return FALSE;
+		hFile = CreateFileW(wIniPath, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
+			OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	}
 	if (hFile == INVALID_HANDLE_VALUE) return FALSE;
 	fileSize = GetFileSize(hFile, NULL);
 	if (fileSize == INVALID_FILE_SIZE || fileSize == 0) {
@@ -1885,9 +1889,9 @@ void OnContextMenu(HWND hwnd, HWND hwndClicked, int xPos, int yPos)
 
 				if (tempDriveType == DRIVE_FIXED)
 				{
-					char fname[16];
-					wsprintf(fname, "\\\\.\\%c:", 'A' + nDrive);
-					HANDLE hDevice = CreateFile(fname, 0,
+					wchar_t fnameW[16];
+					wsprintfW(fnameW, L"\\\\.\\%c:", L'A' + nDrive);
+					HANDLE hDevice = CreateFileW(fnameW, 0,
 						FILE_SHARE_READ | FILE_SHARE_WRITE,
 						NULL, OPEN_EXISTING, 0, NULL);
 

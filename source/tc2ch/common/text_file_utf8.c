@@ -24,7 +24,9 @@ BOOL tc_read_text_file_utf8(const char* path, char** outText, DWORD* outSize, BO
 
     {
         wchar_t wPath[MAX_PATH];
-        if (tc_utf8_to_utf16(path, wPath, (int)(sizeof(wPath) / sizeof(wPath[0]))) <= 0) return FALSE;
+        if (tc_utf8_to_utf16(path, wPath, (int)(sizeof(wPath) / sizeof(wPath[0]))) <= 0) {
+            if (tc_ansi_to_utf16_compat(0, path, wPath, (int)(sizeof(wPath) / sizeof(wPath[0]))) <= 0) return FALSE;
+        }
         h = CreateFileW(wPath, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     }
     if (h == INVALID_HANDLE_VALUE) return FALSE;
@@ -81,7 +83,9 @@ BOOL tc_write_text_file_utf8(const char* path, const char* text, DWORD size, BOO
 
     {
         wchar_t wPath[MAX_PATH];
-        if (tc_utf8_to_utf16(path, wPath, (int)(sizeof(wPath) / sizeof(wPath[0]))) <= 0) return FALSE;
+        if (tc_utf8_to_utf16(path, wPath, (int)(sizeof(wPath) / sizeof(wPath[0]))) <= 0) {
+            if (tc_ansi_to_utf16_compat(0, path, wPath, (int)(sizeof(wPath) / sizeof(wPath[0]))) <= 0) return FALSE;
+        }
         h = CreateFileW(wPath, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
     }
     if (h == INVALID_HANDLE_VALUE) return FALSE;

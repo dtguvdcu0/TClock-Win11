@@ -66,12 +66,12 @@ void CheckCommandLine(HWND hwnd);
 static void OnTimerMain(HWND hwnd);
 static void InitError(int n);
 static BOOL CheckTCDLL(void);
-static BOOL CheckDLL(char *fname);
+static BOOL CheckDLL(const char *fname);
 static void CheckRegistry(void);
 static BOOL IsWow64(void);
 static BOOL CheckRegistry_Win10(void); //Added by TTTT
 static void CreateDefaultIniFile_Win10(const wchar_t* fnameW); //Added by TTTT
-void getExeVersion(char *fname); //Added by TTTT
+void getExeVersion(const char *fname); //Added by TTTT
 void SetIdlePriority(void);		//Added by TTTT
 
 //void OnTimerZombieCheck(HWND hwnd); //Added by TTTT
@@ -1465,6 +1465,8 @@ void OnTimerZombieCheck2(HWND hwnd)
 ---------------------------------------------*/
 HINSTANCE LoadLanguageDLL(char *langdllname)
 {
+	/* Compatibility boundary: output buffer contract is intentional.
+	   langdllname is caller-owned writable storage, so this API stays char*. */
 	if (b_DebugLog) WriteDebug_New2("[exemain.c][LoadLanguageDLL] LoadLanguageDLL() called");
 	HINSTANCE hInst = NULL;
 	char fname[MAX_PATH];
@@ -1511,7 +1513,7 @@ HINSTANCE LoadLanguageDLL(char *langdllname)
 	if(hInst == NULL)
 		MyMessageBoxW(NULL, L"Can't load a language module.",
 			NULL, MB_OK, MB_ICONEXCLAMATION);
-	else strcpy(langdllname, fname);
+	else strcpy(langdllname, fname);	/* Keep writable output contract for compatibility. */
 	return hInst;
 }
 
@@ -1535,7 +1537,7 @@ BOOL CheckTCDLL(void)
 /*-------------------------------------------
   Check version of dll
 ---------------------------------------------*/
-BOOL CheckDLL(char *fname)
+BOOL CheckDLL(const char *fname)
 {
 	if (b_DebugLog) WriteDebug_New2("[exemain.c][CheckDLL] CheckDLL() called");
 	DWORD size;
@@ -2104,7 +2106,7 @@ static BOOL AddMessageFilters(void)
 /*-------------------------------------------
 getExeVersion added by TTTT
 ---------------------------------------------*/
-void getExeVersion(char *fname)
+void getExeVersion(const char *fname)
 {
 	DWORD size;
 	BYTE *pBlock;
@@ -2169,17 +2171,19 @@ int WINAPI WinMain(HINSTANCE hinst,HINSTANCE hinstPrev,LPSTR lpszCmdLine, int nS
 /*------------------------------------------------
 Open a file copied from alarm.c
 --------------------------------------------------*/
-BOOL ExecFile(HWND hwnd, char* command)
+BOOL ExecFile(HWND hwnd, const char* command)
 {
 	char fname[MAX_PATH], fpath[MAX_PATH], *opt;
 	SHELLEXECUTEINFO sei;
+	size_t commandLen;
 
 	UNREFERENCED_PARAMETER(hwnd);
-	if (*command == 0) return FALSE;
+	if (!command || *command == 0) return FALSE;
 
-	opt = malloc(strlen(command));
+	commandLen = strlen(command);
+	opt = malloc(commandLen + 1);
 	if (opt == NULL) return FALSE;
-	GetFileAndOption(command, fname, opt);
+	GetFileAndOption(command, fname, (int)sizeof(fname), opt, (int)(commandLen + 1));
 	strcpy(fpath, fname);
 	del_title(fpath);
 	memset(&sei, 0, sizeof(sei));
@@ -2199,44 +2203,64 @@ BOOL ExecFile(HWND hwnd, char* command)
 Retrieve a file name and option from a command string
 copied from alarm.c
 ----------------------------------------------------------*/
-void GetFileAndOption(const char* command, char* fname, char* opt)
+void GetFileAndOption(const char* command, char* fname, int fnameBytes, char* opt, int optBytes)
 {
-	const char *p, *pe;
-	char *pd;
-	WIN32_FIND_DATA fd;
+	const char* p;
+	const char* pe;
+	const char* pscan;
+	char probe[MAX_PATH];
+	WIN32_FIND_DATAW fd;
 	HANDLE hfind;
+	int i;
+	int n;
 
-	p = command; pd = fname;
+	if (!fname || fnameBytes <= 0 || !opt || optBytes <= 0) return;
+	fname[0] = '\0';
+	opt[0] = '\0';
+	if (!command || !*command) return;
+
 	pe = NULL;
-	for (; ;)
+	pscan = command;
+	for (;;)
 	{
-		if (*p == ' ' || *p == 0)
+		if (*pscan == ' ' || *pscan == 0)
 		{
-			*pd = 0;
-			hfind = FindFirstFile(fname, &fd);
-			if (hfind != INVALID_HANDLE_VALUE)
+			n = (int)(pscan - command);
+			if (n > 0)
 			{
-				FindClose(hfind);
-				pe = p;
-				break;
+				if (n >= (int)sizeof(probe)) n = (int)sizeof(probe) - 1;
+				for (i = 0; i < n; ++i) probe[i] = command[i];
+				probe[n] = '\0';
+				hfind = tc_find_first_file_utf8_compat(probe, &fd);
+				if (hfind != INVALID_HANDLE_VALUE)
+				{
+					FindClose(hfind);
+					pe = pscan;
+					break;
+				}
 			}
-			if (*p == 0) break;
+			if (*pscan == 0) break;
 		}
-		*pd++ = *p++;
+		++pscan;
 	}
-	if (pe == NULL) pe = p;
+	if (pe == NULL) pe = pscan;
 
-	p = command; pd = fname;
-	for (; p != pe; )
+	p = command;
+	n = 0;
+	while (p != pe && n < fnameBytes - 1)
 	{
-		*pd++ = *p++;
+		fname[n++] = *p++;
 	}
-	*pd = 0;
-	if (*p == ' ') p++;
+	fname[n] = '\0';
 
-	pd = opt;
-	for (; *p; ) *pd++ = *p++;
-	*pd = 0;
+	p = pe;
+	if (*p == ' ') ++p;
+	n = 0;
+	while (*p && n < optBytes - 1)
+	{
+		opt[n++] = *p++;
+	}
+	opt[n] = '\0';
 }
 
 

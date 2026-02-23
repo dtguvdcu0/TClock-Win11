@@ -103,6 +103,7 @@ static LONG GetTCaptureEnableConfig(void);
 static void GetTCapturePathConfig(char* outPath, int outPathLen);
 static void SyncTCaptureIntegrationIniPath(const char* tcapExePath);
 static void LaunchTCaptureAgentIfEnabled(void);
+static void EnsureTCalendarConfigDefaults(void);
 
 static UINT s_uTaskbarRestart = 0;
 static BOOL bcontractTimer = FALSE;
@@ -393,6 +394,20 @@ static void SyncTCaptureIntegrationIniPath(const char* tcapExePath)
 
     if (!tc_ini_utf8_write_string(tcapIniPath, "Integration", "TClockIniPath", g_inifile)) {
         if (b_DebugLog) WriteDebug_New2("[exemain.c] Failed to sync Integration.TClockIniPath in TCapture.ini");
+    }
+}
+
+static void EnsureTCalendarConfigDefaults(void)
+{
+    char tcalPath[MAX_PATH];
+    LONG enable = GetMyRegLong("TCalendar", "Enable", -1);
+    if (enable == -1) {
+        SetMyRegLong("TCalendar", "Enable", 0);
+    }
+
+    GetMyRegStr("TCalendar", "Path", tcalPath, MAX_PATH, "");
+    if (tcalPath[0] == '\0') {
+        SetMyRegStr("TCalendar", "Path", "TCalendar.exe");
     }
 }
 
@@ -931,6 +946,7 @@ LRESULT CALLBACK WndProc(HWND hwnd,	UINT message, WPARAM wParam, LPARAM lParam)	
 				if(bcontractTimer) KillTimer(hwnd, wParam);		//タイマー停止
 				bcontractTimer = FALSE;							//起動タイマー動作中フラグFALSE
 				HookStart(hwnd);				// install a hook	dllmain.cの中にある。重要。タスクトレイのメッセージをフック。コア機能の起動
+				EnsureTCalendarConfigDefaults();	// seed TCalendar config keys for existing INI
 				LaunchTCaptureAgentIfEnabled();	// launch TCapture agent when enabled
 
 				SetTimer(hwnd, IDTIMER_ZOMBIECHECK, zombieCheckInterval * 1000, NULL);	//
@@ -1846,6 +1862,8 @@ void CreateDefaultIniFile_Win10(char *fname)
 		SetMyRegLong("ETC", "UseHideClockPolicyFlow", 1);
 		SetMyRegLong("TCapture", "Enable", 0);
 		SetMyRegStr("TCapture", "Path", "TCapture.exe");
+		SetMyRegLong("TCalendar", "Enable", 0);
+		SetMyRegStr("TCalendar", "Path", "TCalendar.exe");
 		SetMyRegLong("Chime", "EnableChime", 0);
 		SetMyRegLong("Chime", "OffsetChimeSec", 0);
 		SetMyRegLong("Chime", "ChimeHourStart", 0);

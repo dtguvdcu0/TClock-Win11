@@ -694,6 +694,21 @@ LRESULT CALLBACK TCalendarWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpa
     auto* context = reinterpret_cast<WindowContext*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
 
     switch (msg) {
+        case WM_ERASEBKGND:
+            return 1;
+
+        case WM_PAINT:
+            if (context && !context->webview_ready) {
+                PAINTSTRUCT ps{};
+                HDC hdc = BeginPaint(hwnd, &ps);
+                RECT rc{};
+                GetClientRect(hwnd, &rc);
+                FillRect(hdc, &rc, static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH)));
+                EndPaint(hwnd, &ps);
+                return 0;
+            }
+            break;
+
         case WM_SIZE:
             ResizeWebViewToClient(context, hwnd);
             return 0;
@@ -787,7 +802,7 @@ int RunStandaloneWindowMode(tcalendar::TCalendarHost& host, const tcalendar::Hos
     if (!wc.hIcon) wc.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
     if (!wc.hIconSm) wc.hIconSm = wc.hIcon;
     wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
-    wc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
+    wc.hbrBackground = nullptr;
     wc.lpszClassName = kTCalendarWindowClassName;
 
     if (!RegisterClassExW(&wc)) {

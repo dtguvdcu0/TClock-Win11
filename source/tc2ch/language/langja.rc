@@ -1025,6 +1025,10 @@ BEGIN
     LTEXT           "*機種によっては固定値しか取得できません。",-1,62,100,142,11
     CONTROL         "タスクトレイにTClock-Win11のアイコンを表示する",IDC_ETC_SHOWTRAYICON,
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,9,41,182,11
+    CONTROL         "TCalendarの連携を有効化",IDC_ETC_TCALENDAR_INTEGRATION,
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,9,165,182,11
+    CONTROL         "TCaptureの連携を有効化",IDC_ETC_TCAPTURE_INTEGRATION,
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,9,180,182,11
 END
 
 IDD_PAGE_ETC_ENG DIALOGEX 0, 0, 210, 200
@@ -1042,6 +1046,10 @@ BEGIN
     LTEXT           "*Availability is device-dependent.",-1,70,84,134,11
     CONTROL         "Show TClock-WIn10 TaskTray Icon",IDC_ETC_SHOWTRAYICON,
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,8,28,182,11
+    CONTROL         "Enable TCalendar integration",IDC_ETC_TCALENDAR_INTEGRATION,
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,8,165,182,11
+    CONTROL         "Enable TCapture integration",IDC_ETC_TCAPTURE_INTEGRATION,
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,8,180,182,11
 END
 
 

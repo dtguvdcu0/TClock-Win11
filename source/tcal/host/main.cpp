@@ -192,6 +192,19 @@ std::wstring BuildNotifyKey(const tcalendar::TaskItem& task) {
     key += task.start_time;
     return key;
 }
+void ShowAlertDialogWithAppIcon(const std::wstring& body) {
+    MSGBOXPARAMSW params{};
+    params.cbSize = sizeof(params);
+    params.hwndOwner = nullptr;
+    params.hInstance = GetModuleHandleW(nullptr);
+    params.lpszText = body.c_str();
+    params.lpszCaption = L"TClock-Win11";
+    params.dwStyle = MB_OK | MB_SETFOREGROUND | MB_USERICON;
+    params.lpszIcon = MAKEINTRESOURCEW(IDI_APPICON);
+    if (MessageBoxIndirectW(&params) == 0) {
+        MessageBoxW(nullptr, body.c_str(), L"TClock-Win11", MB_OK | MB_SETFOREGROUND | MB_ICONINFORMATION);
+    }
+}
 
 int RunAlertMode(const tcalendar::HostConfig& config) {
     tcalendar::TaskStore store;
@@ -302,7 +315,7 @@ int RunAlertMode(const tcalendar::HostConfig& config) {
                     : config.alert_sound_path.c_str();
                 PlaySoundW(sound_path, nullptr, SND_FILENAME | SND_ASYNC | SND_NODEFAULT);
             }
-            MessageBoxW(nullptr, body.c_str(), L"TClock-Win11", MB_OK | MB_SETFOREGROUND | MB_ICONINFORMATION);
+            ShowAlertDialogWithAppIcon(body);
             delivered.insert(key);
         }
 

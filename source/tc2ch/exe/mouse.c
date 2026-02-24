@@ -78,15 +78,15 @@ static BOOL ResolveTCaptureExePathMouse(char* outPath, int outPathLen)
 	outPath[0] = '\0';
 	GetTCapturePathConfigMouse(cfgPath, MAX_PATH);
 	if (cfgPath[0] == 0) strcpy(cfgPath, "TCapture.exe");
-	if (PathFileExists(cfgPath)) {
+	if (PathFileExistsUtf8Strict(cfgPath)) {
 		lstrcpyn(outPath, cfgPath, outPathLen);
 		return TRUE;
 	}
 	lstrcpyn(outPath, g_mydir, outPathLen);
 	add_title(outPath, cfgPath);
-	if (PathFileExists(outPath)) return TRUE;
+	if (PathFileExistsUtf8Strict(outPath)) return TRUE;
 	lstrcpyn(outPath, cfgPath, outPathLen);
-	return PathFileExists(outPath);
+	return PathFileExistsUtf8Strict(outPath);
 }
 
 static BOOL ParseTCaptureHotkey(const char* text, UINT* modifiers, UINT* vk)

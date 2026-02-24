@@ -2051,7 +2051,7 @@ void OnTClockCommand(HWND hwnd, WORD wID, WORD wCode)
 				strcpy(tcalPath, g_mydir);
 				add_title(tcalPath, tcalPathCfg);
 			}
-			if (PathFileExists(tcalPath)) {
+			if (PathFileExistsUtf8Strict(tcalPath)) {
 				tc_menu_launch_with_delay(tcalPath, NULL, g_mydir, SW_SHOWNORMAL);
 			}
 			return;
@@ -2070,7 +2070,7 @@ void OnTClockCommand(HWND hwnd, WORD wID, WORD wCode)
 				strcpy(tcapPath, g_mydir);
 				add_title(tcapPath, tcapPathCfg);
 			}
-			if (PathFileExists(tcapPath)) {
+			if (PathFileExistsUtf8Strict(tcapPath)) {
 				tc_menu_launch_with_delay(tcapPath, "--capture --profile Default", g_mydir, SW_SHOWNORMAL);
 			}
 			return;
@@ -2089,7 +2089,7 @@ void OnTClockCommand(HWND hwnd, WORD wID, WORD wCode)
 				strcpy(tcapPath, g_mydir);
 				add_title(tcapPath, tcapPathCfg);
 			}
-			if (PathFileExists(tcapPath)) {
+			if (PathFileExistsUtf8Strict(tcapPath)) {
 				const char* tcapSettingsParams = b_EnglishMenu ? "--settings --lang en" : "--settings --lang ja";
 				ShellExecuteUtf8Strict(g_hwndMain, "open", tcapPath, tcapSettingsParams, g_mydir, SW_SHOWNORMAL);
 			}

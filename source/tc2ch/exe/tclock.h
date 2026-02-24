@@ -272,6 +272,7 @@ char* MyStringUTF8(UINT id);
 int MyMessageBoxW(HWND hwnd, const wchar_t* msg, const wchar_t* title, UINT uType, UINT uBeep);
 HINSTANCE ShellExecuteUtf8Strict(HWND hwnd, const char* op, const char* file, const char* params, const char* dir, int showCmd);
 DWORD GetModuleFileNameUTF8(HMODULE hmod, char* outUtf8, DWORD outBytes);
+BOOL PathFileExistsUtf8Strict(const char* path);
 BOOL SetWindowTextUTF8Strict(HWND hwnd, const char* text);
 int GetWindowTextUTF8(HWND hwnd, char* text, int textBytes);
 BOOL SetDlgItemTextUTF8Strict(HWND hDlg, int id, const char* text);

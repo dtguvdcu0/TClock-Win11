@@ -698,6 +698,16 @@ HINSTANCE ShellExecuteUtf8Strict(HWND hwnd, const char* op, const char* file, co
 	return ShellExecuteW(hwnd, pOp, pFile, pParams, pDir, showCmd);
 }
 
+BOOL PathFileExistsUtf8Strict(const char* path)
+{
+	DWORD attr;
+	wchar_t wPath[MAX_PATH];
+	if (!path || !path[0]) return FALSE;
+	if (DecodeUtf8Strict(path, wPath, (int)(sizeof(wPath) / sizeof(wPath[0]))) <= 0) return FALSE;
+	attr = GetFileAttributesW(wPath);
+	return (attr != INVALID_FILE_ATTRIBUTES) ? TRUE : FALSE;
+}
+
 DWORD GetModuleFileNameUTF8(HMODULE hmod, char* outUtf8, DWORD outBytes)
 {
 	wchar_t wPath[MAX_PATH];

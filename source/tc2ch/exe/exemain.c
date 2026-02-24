@@ -103,6 +103,9 @@ static LONG GetTCaptureEnableConfig(void);
 static void GetTCapturePathConfig(char* outPath, int outPathLen);
 static void SyncTCaptureIntegrationIniPath(const char* tcapExePath);
 static void LaunchTCaptureAgentIfEnabled(void);
+static LONG GetTCalendarAlertEnableConfig(void);
+static void GetTCalendarPathConfig(char* outPath, int outPathLen);
+static void LaunchTCalendarAlertIfEnabled(void);
 static void EnsureTCalendarConfigDefaults(void);
 
 static UINT s_uTaskbarRestart = 0;
@@ -401,8 +404,13 @@ static void EnsureTCalendarConfigDefaults(void)
 {
     char tcalPath[MAX_PATH];
     LONG enable = GetMyRegLong("TCalendar", "Enable", -1);
+    LONG alart = GetMyRegLong("TCalendar", "Alart", -1);
     if (enable == -1) {
         SetMyRegLong("TCalendar", "Enable", 0);
+		SetMyRegLong("TCalendar", "Alart", 0);
+    }
+    if (alart == -1) {
+        SetMyRegLong("TCalendar", "Alart", 0);
     }
 
     GetMyRegStr("TCalendar", "Path", tcalPath, MAX_PATH, "");
@@ -430,7 +438,7 @@ static void LaunchTCaptureAgentIfEnabled(void)
         add_title(exePath, tcapPathCfg);
     }
 
-    if (!PathFileExists(exePath)) {
+    if (!PathFileExistsUtf8Strict(exePath)) {
         if (b_DebugLog) WriteDebug_New2("[exemain.c] TCaptureEnable=1 but TCapture target was not found");
         return;
     }
@@ -442,6 +450,96 @@ static void LaunchTCaptureAgentIfEnabled(void)
     if ((INT_PTR)launchResult <= 32 && b_DebugLog) {
         WriteDebug_New2("[exemain.c] Failed to launch TCapture agent");
     }
+}
+
+static LONG GetTCalendarAlertEnableConfig(void)
+{
+    LONG enable = GetMyRegLong("TCalendar", "Enable", -1);
+    LONG alart = GetMyRegLong("TCalendar", "Alart", -1);
+
+    if (enable == -1) {
+        enable = 0;
+        SetMyRegLong("TCalendar", "Enable", 0);
+		SetMyRegLong("TCalendar", "Alart", 0);
+    }
+    if (alart == -1) {
+        alart = 0;
+        SetMyRegLong("TCalendar", "Alart", 0);
+    }
+
+    if (enable == 0) return 0;
+    return (alart != 0) ? 1 : 0;
+}
+
+static void GetTCalendarPathConfig(char* outPath, int outPathLen)
+{
+    char before[MAX_PATH];
+    if (!outPath || outPathLen <= 0) return;
+    outPath[0] = '\0';
+
+    GetMyRegStr("TCalendar", "Path", outPath, outPathLen, "");
+    if (outPath[0] == '\0') {
+        strcpy(outPath, "TCalendar.exe");
+    }
+
+    lstrcpyn(before, outPath, (int)sizeof(before));
+    NormalizeSettingUtf8InPlace(outPath, outPathLen);
+    if (lstrcmp(before, outPath) != 0) {
+        SetMyRegStr("TCalendar", "Path", outPath);
+    }
+}
+
+static void LaunchTCalendarAlertIfEnabled(void)
+{
+    char tcalPathCfg[MAX_PATH];
+    char exePath[MAX_PATH];
+    wchar_t wExePath[MAX_PATH];
+    wchar_t wWorkDir[MAX_PATH];
+    wchar_t cmdLine[MAX_PATH * 2];
+    STARTUPINFOW si;
+    PROCESS_INFORMATION pi;
+
+    if (!GetTCalendarAlertEnableConfig()) return;
+
+    GetTCalendarPathConfig(tcalPathCfg, MAX_PATH);
+    if (tcalPathCfg[0] == 0) strcpy(tcalPathCfg, "TCalendar.exe");
+
+    if ((tcalPathCfg[1] == ':') || (tcalPathCfg[0] == '\\\\') || (tcalPathCfg[0] == '/')) {
+        strcpy(exePath, tcalPathCfg);
+    }
+    else {
+        strcpy(exePath, g_mydir);
+        add_title(exePath, tcalPathCfg);
+    }
+
+    if (!PathFileExistsUtf8Strict(exePath)) {
+        if (b_DebugLog) WriteDebug_New2("[exemain.c] TCalendar alert enabled but target was not found");
+        return;
+    }
+
+    if (DecodeDialogUtf8StrictToWide(exePath, wExePath, _countof(wExePath)) <= 0) {
+        if (b_DebugLog) WriteDebug_New2("[exemain.c] Failed to decode TCalendar path for --alert");
+        return;
+    }
+    if (DecodeDialogUtf8StrictToWide(g_mydir, wWorkDir, _countof(wWorkDir)) <= 0) {
+        wWorkDir[0] = L'\0';
+    }
+
+    wsprintfW(cmdLine, L"\"%s\" --alert", wExePath);
+    ZeroMemory(&si, sizeof(si));
+    ZeroMemory(&pi, sizeof(pi));
+    si.cb = sizeof(si);
+    si.dwFlags = STARTF_USESHOWWINDOW;
+    si.wShowWindow = SW_HIDE;
+
+    if (!CreateProcessW(wExePath, cmdLine, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL,
+                        wWorkDir[0] ? wWorkDir : NULL, &si, &pi)) {
+        if (b_DebugLog) WriteDebug_New2("[exemain.c] Failed to launch TCalendar --alert");
+        return;
+    }
+
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
 }
 
 
@@ -478,7 +576,7 @@ void CheckUnplugDrive(void)
 
 	//b_UnplugDriveAvailable = TRUE;
 
-	b_UnplugDriveAvailable = PathFileExists(fname);
+	b_UnplugDriveAvailable = PathFileExistsUtf8Strict(fname);
 
 }
 
@@ -948,6 +1046,7 @@ LRESULT CALLBACK WndProc(HWND hwnd,	UINT message, WPARAM wParam, LPARAM lParam)	
 				HookStart(hwnd);				// install a hook	dllmain.cの中にある。重要。タスクトレイのメッセージをフック。コア機能の起動
 				EnsureTCalendarConfigDefaults();	// seed TCalendar config keys for existing INI
 				LaunchTCaptureAgentIfEnabled();	// launch TCapture agent when enabled
+				LaunchTCalendarAlertIfEnabled();	// launch TCalendar alert runtime when enabled
 
 				SetTimer(hwnd, IDTIMER_ZOMBIECHECK, zombieCheckInterval * 1000, NULL);	//
 
@@ -1919,6 +2018,7 @@ void CreateDefaultIniFile_Win10(const wchar_t* fnameW)
 		SetMyRegLong("TCapture", "Enable", 0);
 		SetMyRegStr("TCapture", "Path", "TCapture.exe");
 		SetMyRegLong("TCalendar", "Enable", 0);
+		SetMyRegLong("TCalendar", "Alart", 0);
 		SetMyRegStr("TCalendar", "Path", "TCalendar.exe");
 		SetMyRegLong("Chime", "EnableChime", 0);
 		SetMyRegLong("Chime", "OffsetChimeSec", 0);

@@ -728,7 +728,7 @@ bool hasAnyAutoCaptureEnabled(const AppState& app) {
 static bool hasAnyAutoCaptureEnabledInIni(const AppState& app)
 {
     if (app.iniPath.empty()) return false;
-    auto profiles = loadSettingsProfiles(app.iniPath.string());
+    auto profiles = loadSettingsProfiles(app.iniPath);
     for (const auto& p : profiles) {
         if (p.settings.autoCapture && p.settings.autoSeconds > 0) {
             return true;
@@ -758,12 +758,12 @@ bool loadProfilesWithFallback(AppState& app, const std::string& preferredLanguag
     if (!fs::exists(primary) && !fs::exists(cwdIni)) {
         writeDefaultSettingsIni(primary);
     }
-    auto profiles = loadSettingsProfiles(primary.string());
-    std::string globalLang = readGlobalLanguage(primary.string());
+    auto profiles = loadSettingsProfiles(primary);
+    std::string globalLang = readGlobalLanguage(primary);
     app.iniPath = primary;
     if (profiles.empty()) {
-        profiles = loadSettingsProfiles(cwdIni.string());
-        globalLang = readGlobalLanguage(cwdIni.string());
+        profiles = loadSettingsProfiles(cwdIni);
+        globalLang = readGlobalLanguage(cwdIni);
         if (!profiles.empty()) {
             app.iniPath = cwdIni;
         }
@@ -1649,7 +1649,7 @@ bool namesEqual(const std::string& a, const std::string& b) {
 
 std::vector<ProfileSettings> mergeProfilesForSave(SettingsDialog* dlg, const ProfileSettings& activeProfile) {
     std::vector<ProfileSettings> merged;
-    auto diskProfiles = loadSettingsProfiles(dlg->app->iniPath.string());
+    auto diskProfiles = loadSettingsProfiles(dlg->app->iniPath);
     if (!diskProfiles.empty()) {
         for (const auto& p : diskProfiles) {
             if (namesEqual(p.name, activeProfile.name)) {

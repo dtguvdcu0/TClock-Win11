@@ -16,6 +16,7 @@ struct TaskItem {
     std::wstring start_time; // HH:MM or empty
     std::wstring end_time;   // HH:MM or empty
     bool done = false;
+    bool alert_enabled = false;
     std::wstring updated_at_utc;
 };
 
@@ -26,15 +27,16 @@ public:
 
     bool CreateTask(const std::wstring& date, const std::wstring& title,
                     const std::wstring& detail, const std::wstring& start_time,
-                    const std::wstring& end_time, TaskItem& out_task);
+                    const std::wstring& end_time, bool alert_enabled, TaskItem& out_task);
     bool ToggleDone(const std::wstring& id, bool done);
     bool UpdateTitle(const std::wstring& id, const std::wstring& title);
     bool UpdateTask(const std::wstring& id, const std::wstring& title,
                     const std::wstring& detail, const std::wstring& start_time,
-                    const std::wstring& end_time);
+                    const std::wstring& end_time, bool alert_enabled);
     bool DeleteTask(const std::wstring& id);
     std::vector<TaskItem> GetDayTasks(const std::wstring& date) const;
     std::vector<TaskItem> GetTasksInRange(const std::wstring& date_from, const std::wstring& date_to) const;
+    bool ReloadFromDb();
     const std::wstring& GetLastError() const;
     void SetTestForceWriteFailure(bool enabled);
 

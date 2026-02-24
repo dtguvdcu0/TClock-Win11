@@ -255,6 +255,9 @@ bool TCalendarHost::HandleWebMessage(const std::wstring& request_json, std::wstr
             L",\"uiPanelRightWidth\":" + std::to_wstring(config_.ui_panel_right_width) +
             L",\"uiCalendarHeight\":" + std::to_wstring(config_.ui_calendar_height) +
             L",\"uiShowTaskPanel\":" + (config_.ui_show_task_panel ? L"true" : L"false") +
+            L",\"tclockAlertEnabled\":" + (config_.tclock_alert_enabled ? L"true" : L"false") +
+            L",\"alertSoundEnabled\":" + (config_.alert_sound_enabled ? L"true" : L"false") +
+            L",\"alertSoundPath\":\"" + EscapeJsonString(config_.alert_sound_path) + L"\"" +
             L"}";
         response_json = BuildResponse(true, L"OK", L"", req.request_id, data.c_str());
         return true;
@@ -277,6 +280,9 @@ bool TCalendarHost::HandleWebMessage(const std::wstring& request_json, std::wstr
         std::wstring ui_panel_right_width_raw;
         std::wstring ui_calendar_height_raw;
         std::wstring ui_show_task_panel_raw;
+        std::wstring tclock_alert_enabled_raw;
+        std::wstring alert_sound_enabled_raw;
+        std::wstring alert_sound_path_raw;
         if (!GetStringField(*params, L"defaultViewMode", view_mode) ||
             !GetStringField(*params, L"rangePreset", range_preset)) {
             response_json = BuildResponse(false, L"VALIDATION_ERROR", L"Missing defaultViewMode/rangePreset in params", req.request_id, L"null");
@@ -350,6 +356,17 @@ bool TCalendarHost::HandleWebMessage(const std::wstring& request_json, std::wstr
         if (GetStringField(*params, L"uiShowTaskPanel", ui_show_task_panel_raw)) {
             config_.ui_show_task_panel = (ui_show_task_panel_raw != L"0" && ui_show_task_panel_raw != L"false");
         }
+        if (GetStringField(*params, L"tclockAlertEnabled", tclock_alert_enabled_raw)) {
+            config_.tclock_alert_enabled = (tclock_alert_enabled_raw != L"0" && tclock_alert_enabled_raw != L"false");
+        }
+        if (GetStringField(*params, L"alertSoundEnabled", alert_sound_enabled_raw)) {
+            config_.alert_sound_enabled = (alert_sound_enabled_raw != L"0" && alert_sound_enabled_raw != L"false");
+        }
+        if (GetStringField(*params, L"alertSoundPath", alert_sound_path_raw)) {
+            config_.alert_sound_path = alert_sound_path_raw.empty()
+                ? L"C:\\Windows\\Media\\notify.wav"
+                : alert_sound_path_raw;
+        }
 
         if (!config_.ini_file_path.empty()) {
             wchar_t preset_buf[16] = {0};
@@ -369,6 +386,7 @@ bool TCalendarHost::HandleWebMessage(const std::wstring& request_json, std::wstr
 
             const wchar_t* use_custom = config_.default_use_custom_range ? L"1" : L"0";
             const wchar_t* show_task_panel = config_.ui_show_task_panel ? L"1" : L"0";
+            const wchar_t* alert_sound_enabled = config_.alert_sound_enabled ? L"1" : L"0";
             bool write_ok = true;
             write_ok = write_ok && (WritePrivateProfileStringW(L"TCalendar", L"DefaultViewMode", config_.default_view_mode.c_str(), config_.ini_file_path.c_str()) != FALSE);
             write_ok = write_ok && (WritePrivateProfileStringW(L"TCalendar", L"DefaultRangePresetDays", preset_buf, config_.ini_file_path.c_str()) != FALSE);
@@ -381,6 +399,13 @@ bool TCalendarHost::HandleWebMessage(const std::wstring& request_json, std::wstr
             write_ok = write_ok && (WritePrivateProfileStringW(L"TCalendar", L"UiPanelRightWidth", panel_right_buf, config_.ini_file_path.c_str()) != FALSE);
             write_ok = write_ok && (WritePrivateProfileStringW(L"TCalendar", L"UiCalendarHeight", calendar_height_buf, config_.ini_file_path.c_str()) != FALSE);
             write_ok = write_ok && (WritePrivateProfileStringW(L"TCalendar", L"UiShowTaskPanel", show_task_panel, config_.ini_file_path.c_str()) != FALSE);
+            write_ok = write_ok && (WritePrivateProfileStringW(L"TCalendar", L"AlertSoundEnabled", alert_sound_enabled, config_.ini_file_path.c_str()) != FALSE);
+            write_ok = write_ok && (WritePrivateProfileStringW(L"TCalendar", L"AlertSoundPath", config_.alert_sound_path.c_str(), config_.ini_file_path.c_str()) != FALSE);
+            if (!config_.tclock_ini_file_path.empty()) {
+                const wchar_t* tclock_alert = config_.tclock_alert_enabled ? L"1" : L"0";
+                // Persist alert startup toggle to tclock-win11.ini [TCalendar].
+                write_ok = write_ok && (WritePrivateProfileStringW(L"TCalendar", L"Alart", tclock_alert, config_.tclock_ini_file_path.c_str()) != FALSE);
+            }
             if (!write_ok) {
                 response_json = BuildResponse(false, L"STORAGE_ERROR", L"Failed to write view config to ini", req.request_id, L"null");
                 return true;
@@ -397,6 +422,7 @@ bool TCalendarHost::HandleWebMessage(const std::wstring& request_json, std::wstr
         std::wstring detail;
         std::wstring start_time;
         std::wstring end_time;
+        bool alert_enabled = false;
         TaskItem t{};
         if (!GetStringField(*params, L"date", date) ||
             !GetStringField(*params, L"title", title)) {
@@ -406,12 +432,13 @@ bool TCalendarHost::HandleWebMessage(const std::wstring& request_json, std::wstr
         GetStringField(*params, L"detail", detail);
         GetStringField(*params, L"startTime", start_time);
         GetStringField(*params, L"endTime", end_time);
+        GetBoolField(*params, L"alertEnabled", alert_enabled);
         std::wstring time_error;
         if (!ValidateTaskTimes(start_time, end_time, time_error)) {
             response_json = BuildResponse(false, L"VALIDATION_ERROR", time_error.c_str(), req.request_id, L"null");
             return true;
         }
-        if (!store_.CreateTask(date, title, detail, start_time, end_time, t)) {
+        if (!store_.CreateTask(date, title, detail, start_time, end_time, alert_enabled, t)) {
             const std::wstring store_error = store_.GetLastError();
             if (store_error == L"invalid task payload") {
                 response_json = BuildResponse(false, L"VALIDATION_ERROR", L"Invalid task payload", req.request_id, L"null");
@@ -427,7 +454,8 @@ bool TCalendarHost::HandleWebMessage(const std::wstring& request_json, std::wstr
                             L"\",\"detail\":\"" + EscapeJsonString(t.detail) +
                             L"\",\"startTime\":\"" + EscapeJsonString(t.start_time) +
                             L"\",\"endTime\":\"" + EscapeJsonString(t.end_time) +
-                            L"\",\"done\":false}";
+                            L"\",\"done\":false" +
+                            L",\"alertEnabled\":" + (t.alert_enabled ? L"true" : L"false") + L"}";
         response_json = BuildResponse(true, L"OK", L"", req.request_id, data.c_str());
         return true;
     }
@@ -480,6 +508,7 @@ bool TCalendarHost::HandleWebMessage(const std::wstring& request_json, std::wstr
         std::wstring detail;
         std::wstring start_time;
         std::wstring end_time;
+        bool alert_enabled = false;
         if (!GetStringField(*params, L"id", id) ||
             !GetStringField(*params, L"title", title)) {
             response_json = BuildResponse(false, L"VALIDATION_ERROR", L"Missing id/title in params", req.request_id, L"null");
@@ -488,12 +517,13 @@ bool TCalendarHost::HandleWebMessage(const std::wstring& request_json, std::wstr
         GetStringField(*params, L"detail", detail);
         GetStringField(*params, L"startTime", start_time);
         GetStringField(*params, L"endTime", end_time);
+        GetBoolField(*params, L"alertEnabled", alert_enabled);
         std::wstring time_error;
         if (!ValidateTaskTimes(start_time, end_time, time_error)) {
             response_json = BuildResponse(false, L"VALIDATION_ERROR", time_error.c_str(), req.request_id, L"null");
             return true;
         }
-        if (!store_.UpdateTask(id, title, detail, start_time, end_time)) {
+        if (!store_.UpdateTask(id, title, detail, start_time, end_time, alert_enabled)) {
             const std::wstring store_error = store_.GetLastError();
             if (store_error == L"task not found") {
                 response_json = BuildResponse(false, L"NOT_FOUND", L"Task not found", req.request_id, L"null");
@@ -548,7 +578,8 @@ bool TCalendarHost::HandleWebMessage(const std::wstring& request_json, std::wstr
                     L"\",\"detail\":\"" + EscapeJsonString(tasks[i].detail) +
                     L"\",\"startTime\":\"" + EscapeJsonString(tasks[i].start_time) +
                     L"\",\"endTime\":\"" + EscapeJsonString(tasks[i].end_time) +
-                    L"\",\"done\":" + (tasks[i].done ? L"true" : L"false") + L"}";
+                    L"\",\"done\":" + (tasks[i].done ? L"true" : L"false") +
+                    L",\"alertEnabled\":" + (tasks[i].alert_enabled ? L"true" : L"false") + L"}";
         }
         data += L"]}";
         response_json = BuildResponse(true, L"OK", L"", req.request_id, data.c_str());
@@ -572,7 +603,8 @@ bool TCalendarHost::HandleWebMessage(const std::wstring& request_json, std::wstr
                     L"\",\"detail\":\"" + EscapeJsonString(tasks[i].detail) +
                     L"\",\"startTime\":\"" + EscapeJsonString(tasks[i].start_time) +
                     L"\",\"endTime\":\"" + EscapeJsonString(tasks[i].end_time) +
-                    L"\",\"done\":" + (tasks[i].done ? L"true" : L"false") + L"}";
+                    L"\",\"done\":" + (tasks[i].done ? L"true" : L"false") +
+                    L",\"alertEnabled\":" + (tasks[i].alert_enabled ? L"true" : L"false") + L"}";
         }
         data += L"]}";
         response_json = BuildResponse(true, L"OK", L"", req.request_id, data.c_str());

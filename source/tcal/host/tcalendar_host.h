@@ -1,11 +1,7 @@
 #pragma once
-
 #include <string>
-
 #include "task_store.h"
-
 namespace tcalendar {
-
 struct HostConfig {
     std::wstring ini_file_path;
     std::wstring default_template_path;
@@ -25,36 +21,38 @@ struct HostConfig {
     int ui_panel_right_width = 420;
     int ui_calendar_height = 420;
     bool ui_show_task_panel = true;
+    // TClock-owned alert toggle storage
+    std::wstring tclock_ini_file_path;
+    bool tclock_alert_enabled = false;
+    // Alert runtime settings
+    bool enable_task_start_notify = false;
+    bool alert_sound_enabled = true;
+    std::wstring alert_sound_path = L"C:\\Windows\\Media\\notify.wav";
+    int alert_scan_window_minutes = 120;
+    int alert_dispatch_tick_seconds = 60;
+    int alert_refresh_minutes = 10;
+    int alert_grace_minutes = 1;
 };
-
 class TCalendarHost {
 public:
     explicit TCalendarHost(const HostConfig& config);
     ~TCalendarHost();
-
     bool Initialize();
     void Shutdown();
-
     // Phase 1: wire this to WebView2 message bridge.
     bool HandleWebMessage(const std::wstring& request_json, std::wstring& response_json);
-
     bool IsWebView2BootstrapReady() const;
     const std::wstring& GetLastInitializeError() const;
-
 private:
     HostConfig config_;
     bool initialized_ = false;
     TaskStore store_;
-
     void* webview2_loader_module_ = nullptr;
     bool webview2_bootstrap_ready_ = false;
     std::wstring last_initialize_error_;
-
     bool InitializeWebView2Bootstrap();
     void ShutdownWebView2Bootstrap();
-
     static std::wstring BuildResponse(bool ok, const wchar_t* code, const wchar_t* message,
                                       const std::wstring& request_id, const wchar_t* data_json);
 };
-
 } // namespace tcalendar

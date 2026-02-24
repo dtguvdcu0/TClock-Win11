@@ -167,6 +167,7 @@ bool TaskStore::EnsureSchema() {
             "start_time TEXT NOT NULL DEFAULT '',"
             "end_time TEXT NOT NULL DEFAULT '',"
             "done INTEGER NOT NULL,"
+            "alert_enabled INTEGER NOT NULL DEFAULT 0,"
             "updated_at_utc TEXT NOT NULL"
             ");",
             schema_error)) {
@@ -177,7 +178,8 @@ bool TaskStore::EnsureSchema() {
 
     if (!EnsureColumnExists(db_, "tasks", "detail", "TEXT NOT NULL DEFAULT ''", schema_error) ||
         !EnsureColumnExists(db_, "tasks", "start_time", "TEXT NOT NULL DEFAULT ''", schema_error) ||
-        !EnsureColumnExists(db_, "tasks", "end_time", "TEXT NOT NULL DEFAULT ''", schema_error)) {
+        !EnsureColumnExists(db_, "tasks", "end_time", "TEXT NOT NULL DEFAULT ''", schema_error) ||
+        !EnsureColumnExists(db_, "tasks", "alert_enabled", "INTEGER NOT NULL DEFAULT 0", schema_error)) {
         SetLastError(L"failed to migrate schema" +
                      (schema_error.empty() ? std::wstring() : (L": " + schema_error)));
         return false;
@@ -193,7 +195,7 @@ bool TaskStore::LoadAllTasks() {
     seq_ = 0;
 
     sqlite3_stmt* stmt = nullptr;
-    const char* sql = "SELECT id, date, title, detail, start_time, end_time, done, updated_at_utc FROM tasks";
+    const char* sql = "SELECT id, date, title, detail, start_time, end_time, done, alert_enabled, updated_at_utc FROM tasks";
     if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
         SetLastError(L"failed to prepare task load query" +
                      std::wstring(L": ") + Utf8ToWide(sqlite3_errmsg(db_)));
@@ -210,7 +212,8 @@ bool TaskStore::LoadAllTasks() {
         t.start_time = Utf8ToWide(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4)));
         t.end_time = Utf8ToWide(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5)));
         t.done = sqlite3_column_int(stmt, 6) != 0;
-        t.updated_at_utc = Utf8ToWide(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 7)));
+        t.alert_enabled = sqlite3_column_int(stmt, 7) != 0;
+        t.updated_at_utc = Utf8ToWide(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 8)));
 
         if (t.id.empty() || t.date.empty() || t.title.empty()) {
             SetLastError(L"loaded task row has empty required fields");
@@ -273,7 +276,7 @@ bool TaskStore::SaveTaskInsert(const TaskItem& task) {
     }
 
     sqlite3_stmt* stmt = nullptr;
-    const char* sql = "INSERT INTO tasks(id, date, title, detail, start_time, end_time, done, updated_at_utc) VALUES(?, ?, ?, ?, ?, ?, ?, ?)";
+    const char* sql = "INSERT INTO tasks(id, date, title, detail, start_time, end_time, done, alert_enabled, updated_at_utc) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)";
     if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
         SetLastError(L"failed to prepare insert statement: " + Utf8ToWide(sqlite3_errmsg(db_)));
         return false;
@@ -294,7 +297,8 @@ bool TaskStore::SaveTaskInsert(const TaskItem& task) {
     sqlite3_bind_text(stmt, 5, start_time.c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(stmt, 6, end_time.c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_int(stmt, 7, task.done ? 1 : 0);
-    sqlite3_bind_text(stmt, 8, updated.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt, 8, task.alert_enabled ? 1 : 0);
+    sqlite3_bind_text(stmt, 9, updated.c_str(), -1, SQLITE_TRANSIENT);
 
     const bool ok = (sqlite3_step(stmt) == SQLITE_DONE);
     if (!ok) {
@@ -306,7 +310,7 @@ bool TaskStore::SaveTaskInsert(const TaskItem& task) {
 
 bool TaskStore::CreateTask(const std::wstring& date, const std::wstring& title,
                            const std::wstring& detail, const std::wstring& start_time,
-                           const std::wstring& end_time, TaskItem& out_task) {
+                           const std::wstring& end_time, bool alert_enabled, TaskItem& out_task) {
     if (date.empty() || title.empty()) {
         SetLastError(L"invalid task payload");
         return false;
@@ -324,6 +328,7 @@ bool TaskStore::CreateTask(const std::wstring& date, const std::wstring& title,
     t.start_time = start_time;
     t.end_time = end_time;
     t.done = false;
+    t.alert_enabled = alert_enabled;
     t.updated_at_utc = NowUtcIso8601();
 
     if (!SaveTaskInsert(t)) return false;
@@ -380,7 +385,7 @@ bool TaskStore::ToggleDone(const std::wstring& id, bool done) {
 
 bool TaskStore::UpdateTask(const std::wstring& id, const std::wstring& title,
                            const std::wstring& detail, const std::wstring& start_time,
-                           const std::wstring& end_time) {
+                           const std::wstring& end_time, bool alert_enabled) {
     if (title.empty()) {
         SetLastError(L"invalid task payload");
         return false;
@@ -404,7 +409,7 @@ bool TaskStore::UpdateTask(const std::wstring& id, const std::wstring& title,
     }
 
     sqlite3_stmt* stmt = nullptr;
-    const char* sql = "UPDATE tasks SET title=?, detail=?, start_time=?, end_time=?, updated_at_utc=? WHERE id=?";
+    const char* sql = "UPDATE tasks SET title=?, detail=?, start_time=?, end_time=?, alert_enabled=?, updated_at_utc=? WHERE id=?";
     if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
         SetLastError(L"failed to prepare task update statement: " + Utf8ToWide(sqlite3_errmsg(db_)));
         return false;
@@ -421,8 +426,9 @@ bool TaskStore::UpdateTask(const std::wstring& id, const std::wstring& title,
     sqlite3_bind_text(stmt, 2, detail_utf8.c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(stmt, 3, start_time_utf8.c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(stmt, 4, end_time_utf8.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(stmt, 5, updated.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(stmt, 6, id_utf8.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt, 5, alert_enabled ? 1 : 0);
+    sqlite3_bind_text(stmt, 6, updated.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 7, id_utf8.c_str(), -1, SQLITE_TRANSIENT);
 
     const bool ok = (sqlite3_step(stmt) == SQLITE_DONE) && (sqlite3_changes(db_) > 0);
     if (!ok) {
@@ -435,6 +441,7 @@ bool TaskStore::UpdateTask(const std::wstring& id, const std::wstring& title,
     it->second.detail = detail;
     it->second.start_time = start_time;
     it->second.end_time = end_time;
+    it->second.alert_enabled = alert_enabled;
     it->second.updated_at_utc = updated_at;
     return true;
 }
@@ -525,6 +532,14 @@ bool TaskStore::DeleteTask(const std::wstring& id) {
 
     by_id_.erase(it);
     return true;
+}
+
+bool TaskStore::ReloadFromDb() {
+    if (!db_) {
+        SetLastError(L"database not initialized");
+        return false;
+    }
+    return LoadAllTasks();
 }
 
 std::vector<TaskItem> TaskStore::GetDayTasks(const std::wstring& date) const {

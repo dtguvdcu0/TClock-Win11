@@ -3,17 +3,29 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <objbase.h>
+#include <mmsystem.h>
+#pragma comment(lib, "winmm.lib")
 #include "WebView2.h"
 #include <wrl.h>
 
 #include <iostream>
 #include <string>
 #include <filesystem>
+#include <chrono>
+#include <thread>
+#include <unordered_set>
+#include <vector>
+#include <algorithm>
+#include <cwchar>
+#include <cwctype>
+
+#include "task_store.h"
 
 namespace {
 
 constexpr const wchar_t* kTCalendarWindowClassName = L"TCalendarStandaloneWindowClass";
-constexpr const wchar_t* kTCalendarSingleInstanceMutexName = L"Local\\TCalendar.Win10mod.SingleInstance";
+constexpr const wchar_t* kTCalendarUiMutexName = L"Local\\TCalendar.Win10mod.UIInstance";
+constexpr const wchar_t* kTCalendarAlertMutexName = L"Local\\TCalendar.Win10mod.AlertInstance";
 constexpr const wchar_t* kTCalendarIniFileName = L"tcalendar.ini";
 
 struct WindowContext {
@@ -27,6 +39,275 @@ struct WindowContext {
     bool webview_ready = false;
     HRESULT init_hr = E_PENDING;
 };
+
+enum class RuntimeMode {
+    Ui,
+    Alert,
+    Smoke,
+};
+
+struct RuntimeArgs {
+    RuntimeMode mode = RuntimeMode::Ui;
+    bool smoke_storage_error_mode = false;
+    bool smoke_strict_mode = false;
+};
+
+bool ParseDate(const std::wstring& value, int& y, int& m, int& d) {
+    if (value.size() != 10 || value[4] != L'-' || value[7] != L'-') return false;
+    if (!iswdigit(value[0]) || !iswdigit(value[1]) || !iswdigit(value[2]) || !iswdigit(value[3]) ||
+        !iswdigit(value[5]) || !iswdigit(value[6]) || !iswdigit(value[8]) || !iswdigit(value[9])) {
+        return false;
+    }
+    y = (value[0] - L'0') * 1000 + (value[1] - L'0') * 100 + (value[2] - L'0') * 10 + (value[3] - L'0');
+    m = (value[5] - L'0') * 10 + (value[6] - L'0');
+    d = (value[8] - L'0') * 10 + (value[9] - L'0');
+    if (m < 1 || m > 12 || d < 1 || d > 31) return false;
+    return true;
+}
+
+bool ParseTimeHM(const std::wstring& value, int& hh, int& mm) {
+    if (value.size() != 5 || value[2] != L':') return false;
+    if (!iswdigit(value[0]) || !iswdigit(value[1]) || !iswdigit(value[3]) || !iswdigit(value[4])) return false;
+    hh = (value[0] - L'0') * 10 + (value[1] - L'0');
+    mm = (value[3] - L'0') * 10 + (value[4] - L'0');
+    if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return false;
+    return true;
+}
+
+time_t FloorToMinute(time_t t) {
+    std::tm local_tm{};
+    localtime_s(&local_tm, &t);
+    local_tm.tm_sec = 0;
+    return mktime(&local_tm);
+}
+
+bool BuildTaskStartLocalMinute(const tcalendar::TaskItem& task, time_t& out_local_minute) {
+    int y = 0, m = 0, d = 0;
+    int hh = 0, mm = 0;
+    if (!ParseDate(task.date, y, m, d)) return false;
+    if (!ParseTimeHM(task.start_time, hh, mm)) return false;
+
+    std::tm tm_local{};
+    tm_local.tm_year = y - 1900;
+    tm_local.tm_mon = m - 1;
+    tm_local.tm_mday = d;
+    tm_local.tm_hour = hh;
+    tm_local.tm_min = mm;
+    tm_local.tm_sec = 0;
+    tm_local.tm_isdst = -1;
+
+    const time_t t = mktime(&tm_local);
+    if (t == static_cast<time_t>(-1)) return false;
+    out_local_minute = t;
+    return true;
+}
+
+bool IsTaskDateToday(const tcalendar::TaskItem& task, const std::tm& now_tm) {
+    int y = 0, m = 0, d = 0;
+    if (!ParseDate(task.date, y, m, d)) return false;
+    return (y == now_tm.tm_year + 1900) && (m == now_tm.tm_mon + 1) && (d == now_tm.tm_mday);
+}
+
+bool ParseRuntimeArgs(int argc, wchar_t** argv, RuntimeArgs& out, std::wstring& out_error) {
+    out = RuntimeArgs{};
+    out_error.clear();
+
+    bool saw_ui = false;
+    bool saw_alert = false;
+
+    for (int i = 1; i < argc; ++i) {
+        const std::wstring arg = argv[i] ? argv[i] : L"";
+        if (arg == L"--smoke") {
+            out.mode = RuntimeMode::Smoke;
+            continue;
+        }
+        if (arg == L"--smoke-storage-error") {
+            out.mode = RuntimeMode::Smoke;
+            out.smoke_storage_error_mode = true;
+            continue;
+        }
+        if (arg == L"--smoke-storage-error-strict") {
+            out.mode = RuntimeMode::Smoke;
+            out.smoke_storage_error_mode = true;
+            out.smoke_strict_mode = true;
+            continue;
+        }
+        if (arg == L"--ui") {
+            saw_ui = true;
+            continue;
+        }
+        if (arg == L"--alert") {
+            saw_alert = true;
+            continue;
+        }
+        out_error = L"Unknown option: " + arg;
+        return false;
+    }
+
+    if (out.mode == RuntimeMode::Smoke) {
+        if (saw_ui || saw_alert) {
+            out_error = L"Smoke mode cannot be combined with --ui/--alert";
+            return false;
+        }
+        return true;
+    }
+
+    if (saw_ui && saw_alert) {
+        out_error = L"--ui and --alert cannot be combined";
+        return false;
+    }
+    if (saw_alert) {
+        out.mode = RuntimeMode::Alert;
+    } else {
+        out.mode = RuntimeMode::Ui;
+    }
+    return true;
+}
+
+std::wstring BuildNotifyBody(const tcalendar::TaskItem& task) {
+    std::wstring body;
+    body.reserve(512);
+    body += task.date;
+    if (!task.start_time.empty()) {
+        body += L" ";
+        body += task.start_time;
+    }
+    body += L"\n";
+    body += task.title;
+    if (!task.detail.empty()) {
+        body += L"\n";
+        body += task.detail;
+    }
+    return body;
+}
+
+std::wstring BuildNotifyKey(const tcalendar::TaskItem& task) {
+    std::wstring key;
+    key.reserve(task.id.size() + task.date.size() + task.start_time.size() + 3);
+    key += task.id;
+    key += L"|";
+    key += task.date;
+    key += L"|";
+    key += task.start_time;
+    return key;
+}
+
+int RunAlertMode(const tcalendar::HostConfig& config) {
+    tcalendar::TaskStore store;
+    if (!store.Initialize(config.storage_db_path)) {
+        std::wstring text = L"TCalendar alert storage init failed.\n\n" + store.GetLastError();
+        MessageBoxW(nullptr, text.c_str(), L"TCalendar", MB_OK | MB_ICONERROR);
+        return 1;
+    }
+
+    int window_minutes = config.alert_scan_window_minutes;
+    if (window_minutes < 30) window_minutes = 30;
+
+    int tick_seconds = config.alert_dispatch_tick_seconds;
+    if (tick_seconds < 30) tick_seconds = 30;
+
+    int refresh_minutes = config.alert_refresh_minutes;
+    if (refresh_minutes < 1) refresh_minutes = 1;
+
+    int grace_minutes = config.alert_grace_minutes;
+    if (grace_minutes < 0) grace_minutes = 0;
+    if (grace_minutes > 5) grace_minutes = 5;
+
+    std::unordered_set<std::wstring> delivered;
+    std::vector<tcalendar::TaskItem> due_queue;
+
+    auto refresh_due_queue = [&]() {
+        if (!store.ReloadFromDb()) {
+            return;
+        }
+
+        const time_t now = time(nullptr);
+        const time_t now_minute = FloorToMinute(now);
+        const time_t to_time = now_minute + static_cast<time_t>(window_minutes) * 60;
+
+        std::tm from_tm{};
+        localtime_s(&from_tm, &now_minute);
+        wchar_t from_buf[16] = {0};
+        wcsftime(from_buf, _countof(from_buf), L"%Y-%m-%d", &from_tm);
+
+        std::tm to_tm{};
+        localtime_s(&to_tm, &to_time);
+        wchar_t to_buf[16] = {0};
+        wcsftime(to_buf, _countof(to_buf), L"%Y-%m-%d", &to_tm);
+
+        due_queue.clear();
+        const auto all = store.GetTasksInRange(from_buf, to_buf);
+        due_queue.reserve(all.size());
+        for (const auto& t : all) {
+            if (t.done) continue;
+            if (!t.alert_enabled) continue;
+            due_queue.push_back(t);
+        }
+    };
+
+    std::filesystem::file_time_type last_write = (std::filesystem::file_time_type::min)();
+    std::error_code ec;
+    if (std::filesystem::exists(config.storage_db_path, ec)) {
+        last_write = std::filesystem::last_write_time(config.storage_db_path, ec);
+    }
+
+    auto last_full_refresh = std::chrono::steady_clock::now() - std::chrono::minutes(refresh_minutes);
+    refresh_due_queue();
+
+    while (true) {
+        const auto now_steady = std::chrono::steady_clock::now();
+        bool need_refresh = false;
+
+        if (now_steady - last_full_refresh >= std::chrono::minutes(refresh_minutes)) {
+            need_refresh = true;
+            last_full_refresh = now_steady;
+        }
+
+        ec.clear();
+        if (std::filesystem::exists(config.storage_db_path, ec)) {
+            const auto current_write = std::filesystem::last_write_time(config.storage_db_path, ec);
+            if (!ec && current_write != last_write) {
+                last_write = current_write;
+                need_refresh = true;
+            }
+        }
+
+        if (need_refresh) {
+            refresh_due_queue();
+        }
+
+        const time_t now = time(nullptr);
+        const time_t now_minute = FloorToMinute(now);
+        const time_t floor_min = now_minute - static_cast<time_t>(grace_minutes) * 60;
+        std::tm now_tm{};
+        localtime_s(&now_tm, &now);
+
+        for (const auto& task : due_queue) {
+            const std::wstring key = BuildNotifyKey(task);
+            if (delivered.find(key) != delivered.end()) continue;
+
+            if (task.start_time.empty()) {
+                if (!IsTaskDateToday(task, now_tm)) continue;
+            } else {
+                time_t task_minute = 0;
+                if (!BuildTaskStartLocalMinute(task, task_minute)) continue;
+                if (task_minute < floor_min || task_minute > now_minute) continue;
+            }
+
+            const std::wstring body = BuildNotifyBody(task);
+            if (config.alert_sound_enabled) {
+                const wchar_t* sound_path = config.alert_sound_path.empty()
+                    ? L"C:\\Windows\\Media\\notify.wav"
+                    : config.alert_sound_path.c_str();
+                PlaySoundW(sound_path, nullptr, SND_FILENAME | SND_ASYNC | SND_NODEFAULT);
+            }
+            MessageBoxW(nullptr, body.c_str(), L"TClock-Win11", MB_OK | MB_SETFOREGROUND | MB_ICONINFORMATION);
+            delivered.insert(key);
+        }
+
+        std::this_thread::sleep_for(std::chrono::seconds(tick_seconds));
+    }
+}
 
 std::wstring BuildFileUriFromPath(const std::wstring& path) {
     std::wstring uri = L"file:///";
@@ -90,6 +371,12 @@ void EnsureTCalendarIni(const std::filesystem::path& exe_dir) {
     WritePrivateProfileStringW(L"TCalendar", L"UiPanelRightWidth", L"420", ini_path.wstring().c_str());
     WritePrivateProfileStringW(L"TCalendar", L"UiCalendarHeight", L"420", ini_path.wstring().c_str());
     WritePrivateProfileStringW(L"TCalendar", L"UiShowTaskPanel", L"1", ini_path.wstring().c_str());
+    WritePrivateProfileStringW(L"TCalendar", L"AlertScanWindowMinutes", L"120", ini_path.wstring().c_str());
+    WritePrivateProfileStringW(L"TCalendar", L"AlertDispatchTickSeconds", L"60", ini_path.wstring().c_str());
+    WritePrivateProfileStringW(L"TCalendar", L"AlertRefreshMinutes", L"10", ini_path.wstring().c_str());
+    WritePrivateProfileStringW(L"TCalendar", L"AlertGraceMinutes", L"1", ini_path.wstring().c_str());
+    WritePrivateProfileStringW(L"TCalendar", L"AlertSoundEnabled", L"1", ini_path.wstring().c_str());
+    WritePrivateProfileStringW(L"TCalendar", L"AlertSoundPath", L"C:\\Windows\\Media\\notify.wav", ini_path.wstring().c_str());
 }
 
 void LoadHostConfigFromIni(const std::filesystem::path& exe_dir, bool smoke_mode, bool smoke_storage_error_mode, tcalendar::HostConfig& out_config) {
@@ -104,6 +391,10 @@ void LoadHostConfigFromIni(const std::filesystem::path& exe_dir, bool smoke_mode
     const std::filesystem::path ini_path = exe_dir / kTCalendarIniFileName;
     const std::wstring ini_file = ini_path.wstring();
     out_config.ini_file_path = ini_file;
+
+    // Migration cleanup: alert startup ownership moved to tclock-win11.ini [TCalendar].
+    WritePrivateProfileStringW(L"TCalendar", L"Enable", nullptr, ini_file.c_str());
+    WritePrivateProfileStringW(L"TCalendar", L"Alart", nullptr, ini_file.c_str());
     auto ensure_ini_key = [&](const wchar_t* key, const wchar_t* value) {
         wchar_t current[MAX_PATH] = {0};
         GetPrivateProfileStringW(L"TCalendar", key, L"", current, MAX_PATH, ini_file.c_str());
@@ -125,6 +416,12 @@ void LoadHostConfigFromIni(const std::filesystem::path& exe_dir, bool smoke_mode
     ensure_ini_key(L"UiPanelRightWidth", L"420");
     ensure_ini_key(L"UiCalendarHeight", L"420");
     ensure_ini_key(L"UiShowTaskPanel", L"1");
+    ensure_ini_key(L"AlertScanWindowMinutes", L"120");
+    ensure_ini_key(L"AlertDispatchTickSeconds", L"60");
+    ensure_ini_key(L"AlertRefreshMinutes", L"10");
+    ensure_ini_key(L"AlertGraceMinutes", L"1");
+    ensure_ini_key(L"AlertSoundEnabled", L"1");
+    ensure_ini_key(L"AlertSoundPath", L"C:\\Windows\\Media\\notify.wav");
 
     wchar_t buf[MAX_PATH] = {0};
     wchar_t skin[MAX_PATH] = {0};
@@ -204,6 +501,43 @@ void LoadHostConfigFromIni(const std::filesystem::path& exe_dir, bool smoke_mode
     if (ui_calendar_height > 1200) ui_calendar_height = 1200;
     out_config.ui_calendar_height = ui_calendar_height;
     out_config.ui_show_task_panel = GetPrivateProfileIntW(L"TCalendar", L"UiShowTaskPanel", 1, ini_file.c_str()) != 0;
+
+    // Ownership note: Alart toggle is stored in tclock-win11.ini [TCalendar], not in tcalendar.ini.
+    const std::filesystem::path tclock_ini_path = exe_dir / L"tclock-win11.ini";
+    out_config.tclock_ini_file_path = tclock_ini_path.wstring();
+    out_config.tclock_alert_enabled =
+        GetPrivateProfileIntW(L"TCalendar", L"Alart", 0, out_config.tclock_ini_file_path.c_str()) != 0;
+
+    out_config.enable_task_start_notify = out_config.tclock_alert_enabled;
+
+    out_config.alert_sound_enabled =
+        GetPrivateProfileIntW(L"TCalendar", L"AlertSoundEnabled", 1, ini_file.c_str()) != 0;
+    GetPrivateProfileStringW(L"TCalendar", L"AlertSoundPath", L"C:\\Windows\\Media\\notify.wav", buf, MAX_PATH, ini_file.c_str());
+    if (buf[0] == L'\0') {
+        out_config.alert_sound_path = L"C:\\Windows\\Media\\notify.wav";
+    } else {
+        out_config.alert_sound_path = buf;
+    }
+
+    int alert_scan_window_minutes = GetPrivateProfileIntW(L"TCalendar", L"AlertScanWindowMinutes", 120, ini_file.c_str());
+    if (alert_scan_window_minutes < 30) alert_scan_window_minutes = 30;
+    if (alert_scan_window_minutes > 1440) alert_scan_window_minutes = 1440;
+    out_config.alert_scan_window_minutes = alert_scan_window_minutes;
+
+    int alert_dispatch_tick_seconds = GetPrivateProfileIntW(L"TCalendar", L"AlertDispatchTickSeconds", 60, ini_file.c_str());
+    if (alert_dispatch_tick_seconds < 30) alert_dispatch_tick_seconds = 30;
+    if (alert_dispatch_tick_seconds > 3600) alert_dispatch_tick_seconds = 3600;
+    out_config.alert_dispatch_tick_seconds = alert_dispatch_tick_seconds;
+
+    int alert_refresh_minutes = GetPrivateProfileIntW(L"TCalendar", L"AlertRefreshMinutes", 10, ini_file.c_str());
+    if (alert_refresh_minutes < 1) alert_refresh_minutes = 1;
+    if (alert_refresh_minutes > 1440) alert_refresh_minutes = 1440;
+    out_config.alert_refresh_minutes = alert_refresh_minutes;
+
+    int alert_grace_minutes = GetPrivateProfileIntW(L"TCalendar", L"AlertGraceMinutes", 1, ini_file.c_str());
+    if (alert_grace_minutes < 0) alert_grace_minutes = 0;
+    if (alert_grace_minutes > 5) alert_grace_minutes = 5;
+    out_config.alert_grace_minutes = alert_grace_minutes;
 }
 
 void LoadWindowSizeFromIni(const std::wstring& ini_file, int& width, int& height) {
@@ -493,42 +827,52 @@ int RunStandaloneWindowMode(tcalendar::TCalendarHost& host, const tcalendar::Hos
 } // namespace
 
 int wmain(int argc, wchar_t** argv) {
-    bool smoke_mode = false;
-    bool smoke_storage_error_mode = false;
-    bool smoke_strict_mode = false;
-    for (int i = 1; i < argc; ++i) {
-        if (std::wstring(argv[i]) == L"--smoke") {
-            smoke_mode = true;
-        } else if (std::wstring(argv[i]) == L"--smoke-storage-error") {
-            smoke_mode = true;
-            smoke_storage_error_mode = true;
-        } else if (std::wstring(argv[i]) == L"--smoke-storage-error-strict") {
-            smoke_mode = true;
-            smoke_storage_error_mode = true;
-            smoke_strict_mode = true;
-        }
+    RuntimeArgs args{};
+    std::wstring arg_error;
+    if (!ParseRuntimeArgs(argc, argv, args, arg_error)) {
+        MessageBoxW(nullptr, arg_error.c_str(), L"TCalendar", MB_OK | MB_ICONERROR);
+        return 2;
     }
 
     HANDLE single_instance_mutex = nullptr;
-    if (!smoke_mode) {
+    if (args.mode != RuntimeMode::Smoke) {
         HWND console = GetConsoleWindow();
         if (console) {
             ShowWindow(console, SW_HIDE);
         }
-        single_instance_mutex = CreateMutexW(nullptr, FALSE, kTCalendarSingleInstanceMutexName);
+        // UI/alert both run without visible console in production launch.
+        FreeConsole();
+
+        const wchar_t* mutex_name = (args.mode == RuntimeMode::Alert)
+            ? kTCalendarAlertMutexName
+            : kTCalendarUiMutexName;
+
+        single_instance_mutex = CreateMutexW(nullptr, FALSE, mutex_name);
         if (single_instance_mutex && GetLastError() == ERROR_ALREADY_EXISTS) {
-            ActivateExistingTCalendarWindow();
+            if (args.mode == RuntimeMode::Ui) {
+                ActivateExistingTCalendarWindow();
+            }
             CloseHandle(single_instance_mutex);
             return 0;
         }
     }
 
-    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    const bool smoke_mode = (args.mode == RuntimeMode::Smoke);
 
     const std::filesystem::path exe_dir = GetExecutableDirectory();
-
     tcalendar::HostConfig config{};
-    LoadHostConfigFromIni(exe_dir, smoke_mode, smoke_storage_error_mode, config);
+    LoadHostConfigFromIni(exe_dir, smoke_mode, args.smoke_storage_error_mode, config);
+
+    int rc = 0;
+    if (args.mode == RuntimeMode::Alert) {
+        rc = RunAlertMode(config);
+        if (single_instance_mutex) {
+            CloseHandle(single_instance_mutex);
+        }
+        return rc;
+    }
+
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
 
     if (smoke_mode) {
         std::error_code ec;
@@ -551,9 +895,8 @@ int wmain(int argc, wchar_t** argv) {
         return 1;
     }
 
-    int rc = 0;
     if (smoke_mode) {
-        rc = RunSmokeMode(host, smoke_storage_error_mode, smoke_strict_mode);
+        rc = RunSmokeMode(host, args.smoke_storage_error_mode, args.smoke_strict_mode);
     } else {
         rc = RunStandaloneWindowMode(host, config, exe_dir, GetModuleHandleW(nullptr));
     }

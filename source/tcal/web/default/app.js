@@ -51,12 +51,18 @@
   let currentTimelineLayout = "shared";
   let currentTimelineHourStart = 0;
   let currentLoadedTasks = [];
+  let currentMonthTaskDateSet = new Set();
+  let monthMarkerLoadSeq = 0;
   let currentUiFontFamily = "Segoe UI";
   let currentUiBaseFontSize = 14;
   let currentUiCalendarDateFontSize = 13;
   let currentUiTaskFontSize = 14;
   let currentUiShowTaskPanel = true;
+  let currentTclockAlertEnabled = false;
+  let currentAlertSoundEnabled = true;
+  let currentAlertSoundPath = "C:\\Windows\\Media\\notify.wav";
 
+  const DEFAULT_ALERT_SOUND_PATH = "C:\\Windows\\Media\\notify.wav";
   const weekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
   const PANEL_RIGHT_MIN = 320;
@@ -124,6 +130,11 @@
   function normalizeUiFontFamily(value) {
     const s = String(value || "").trim();
     return s || "Segoe UI";
+  }
+
+  function normalizeAlertSoundPath(value) {
+    const s = String(value || "").trim();
+    return s || DEFAULT_ALERT_SOUND_PATH;
   }
 
   function applyUiStyleConfig() {
@@ -383,7 +394,8 @@
       detail: raw?.detail || "",
       startTime: raw?.startTime || "",
       endTime: raw?.endTime || "",
-      done: !!raw?.done
+      done: !!raw?.done,
+      alertEnabled: !!raw?.alertEnabled
     };
   }
 
@@ -416,13 +428,18 @@
     return (a.title || "").localeCompare(b.title || "");
   }
 
+  function formatTaskDisplayTitle(task) {
+    const base = task.title || "(untitled)";
+    return task.alertEnabled ? `\uD83D\uDD14 ${base}` : base;
+  }
+
   function renderTaskRowLabel(target, task) {
     const fullDateText = task.date || keyOf(selectedDate);
     const dateText = /^\d{4}-\d{2}-\d{2}$/.test(fullDateText)
       ? fullDateText.slice(5)
       : fullDateText;
     const startText = task.startTime || "";
-    const titleText = task.title || "(untitled)";
+    const titleText = formatTaskDisplayTitle(task);
 
     target.textContent = "";
 
@@ -489,6 +506,18 @@
       fromKey,
       toKey: keyOf(toDate),
       days
+    };
+  }
+
+  function buildMonthRange() {
+    const y = cursor.getFullYear();
+    const m = cursor.getMonth();
+    const fromDate = new Date(y, m, 1);
+    const toDate = new Date(y, m + 1, 0);
+    return {
+      fromKey: keyOf(fromDate),
+      toKey: keyOf(toDate),
+      days: toDate.getDate()
     };
   }
 
@@ -573,6 +602,15 @@
       const detailInput = document.createElement("textarea");
       detailInput.rows = 6;
       detailInput.value = initialTask?.detail || "";
+      const alertRow = document.createElement("label");
+      alertRow.className = "taskModalInlineCheck";
+      const alertInput = document.createElement("input");
+      alertInput.type = "checkbox";
+      alertInput.checked = !!initialTask?.alertEnabled;
+      const alertText = document.createElement("span");
+      alertText.textContent = "Enable alert";
+      alertRow.appendChild(alertInput);
+      alertRow.appendChild(alertText);
 
       const actions = document.createElement("div");
       actions.className = "taskModalActions";
@@ -591,6 +629,7 @@
       modal.appendChild(startInput);
       modal.appendChild(endLabel);
       modal.appendChild(endInput);
+      modal.appendChild(alertRow);
       modal.appendChild(detailLabel);
       modal.appendChild(detailInput);
       modal.appendChild(actions);
@@ -610,12 +649,13 @@
         const startTime = startInput.value.trim();
         const endTime = endInput.value.trim();
         const detail = detailInput.value.trim();
+        const alertEnabled = !!alertInput.checked;
         const timeCheck = validateTimeRange(startTime, endTime);
         if (!timeCheck.ok) {
           window.alert(timeCheck.message);
           return;
         }
-        close({ detail, startTime, endTime });
+        close({ detail, startTime, endTime, alertEnabled });
       });
     });
   }
@@ -761,13 +801,15 @@
             title: t.title,
             detail: edited.detail,
             startTime: edited.startTime,
-            endTime: edited.endTime
+            endTime: edited.endTime,
+            alertEnabled: !!edited.alertEnabled
           });
         } else {
           updateInMemoryTaskById(t.id, (target) => {
             target.detail = edited.detail;
             target.startTime = edited.startTime;
             target.endTime = edited.endTime;
+            target.alertEnabled = !!edited.alertEnabled;
           });
         }
         await loadTasksForCurrentRange();
@@ -798,7 +840,7 @@
 
   function renderTimelineTaskLabel(target, task) {
     const timeText = task.startTime || "";
-    const titleText = task.title || "(untitled)";
+    const titleText = formatTaskDisplayTitle(task);
 
     target.textContent = "";
 
@@ -878,13 +920,15 @@
               title: t.title,
               detail: edited.detail,
               startTime: edited.startTime,
-              endTime: edited.endTime
+              endTime: edited.endTime,
+              alertEnabled: !!edited.alertEnabled
             });
           } else {
             updateInMemoryTaskById(t.id, (target) => {
               target.detail = edited.detail;
               target.startTime = edited.startTime;
               target.endTime = edited.endTime;
+              target.alertEnabled = !!edited.alertEnabled;
             });
           }
           await loadTasksForCurrentRange();
@@ -961,7 +1005,7 @@
         bar.style.width = `${widthPct}%`;
         bar.title = tooltipText || "";
         if (!compactTrack) {
-          bar.textContent = task.title || "(untitled)";
+          bar.textContent = formatTaskDisplayTitle(task);
         }
         bars.appendChild(bar);
       } else {
@@ -972,7 +1016,7 @@
         bar1.style.width = `${firstWidth}%`;
         bar1.title = tooltipText || "";
         if (!compactTrack) {
-          bar1.textContent = task.title || "(untitled)";
+          bar1.textContent = formatTaskDisplayTitle(task);
         }
         bars.appendChild(bar1);
 
@@ -991,7 +1035,7 @@
     point.className = "timelinePoint";
     point.style.left = `${minuteToAxisPercent(startMin, startHour)}%`;
     point.title = tooltipText || "";
-    point.textContent = task.title || "(untitled)";
+    point.textContent = formatTaskDisplayTitle(task);
     bars.appendChild(point);
   }
 
@@ -1218,8 +1262,9 @@
     }
 
     const out = [];
+    const base = dateFromKey(range.fromKey);
     for (let i = 0; i < range.days; i += 1) {
-      const dateKey = keyOf(addDays(selectedDate, i));
+      const dateKey = keyOf(addDays(base, i));
       const items = inMemoryTasks.get(dateKey) || [];
       for (const item of items) {
         out.push({ ...item, date: item.date || dateKey });
@@ -1239,6 +1284,22 @@
     renderCurrentView(range);
   }
 
+  async function loadMonthTaskDateSet() {
+    const currentSeq = ++monthMarkerLoadSeq;
+    const range = buildMonthRange();
+    const items = await fetchTasksForRange(range);
+    if (currentSeq !== monthMarkerLoadSeq) return;
+
+    const markerSet = new Set();
+    for (const raw of items) {
+      const t = normalizeTask(raw);
+      if (t.date) {
+        markerSet.add(t.date);
+      }
+    }
+    currentMonthTaskDateSet = markerSet;
+  }
+
   function createDayCell(date, inCurrentMonth) {
     const button = document.createElement("button");
     button.type = "button";
@@ -1255,6 +1316,12 @@
       dateLabel.classList.add("isSaturday");
     }
     dateLabel.textContent = String(date.getDate());
+    if (currentMonthTaskDateSet.has(keyOf(date))) {
+      const marker = document.createElement("span");
+      marker.className = "dateTaskMarker";
+      marker.textContent = "\u2022";
+      dateLabel.appendChild(marker);
+    }
     button.appendChild(dateLabel);
 
     button.addEventListener("click", () => {
@@ -1319,7 +1386,10 @@
         uiBaseFontSize: currentUiBaseFontSize,
         uiCalendarDateFontSize: currentUiCalendarDateFontSize,
         uiTaskFontSize: currentUiTaskFontSize,
-        uiShowTaskPanel: currentUiShowTaskPanel
+        uiShowTaskPanel: currentUiShowTaskPanel,
+        tclockAlertEnabled: currentTclockAlertEnabled,
+        alertSoundEnabled: currentAlertSoundEnabled,
+        alertSoundPath: currentAlertSoundPath
       };
 
       const overlay = document.createElement("div");
@@ -1400,6 +1470,33 @@
       showTaskPanelWrap.appendChild(showTaskPanelText);
       showTaskPanelWrap.appendChild(showTaskPanelInput);
 
+      const tclockAlertInput = document.createElement("input");
+      tclockAlertInput.type = "checkbox";
+      tclockAlertInput.checked = currentTclockAlertEnabled;
+      const tclockAlertWrap = document.createElement("span");
+      tclockAlertWrap.className = "settingsCheckboxWrap";
+      const tclockAlertText = document.createElement("span");
+      tclockAlertText.textContent = "Enable TCalendar alert startup";
+      tclockAlertWrap.appendChild(tclockAlertText);
+      tclockAlertWrap.appendChild(tclockAlertInput);
+
+
+
+      const alertSoundEnabledInput = document.createElement("input");
+      alertSoundEnabledInput.type = "checkbox";
+      alertSoundEnabledInput.checked = !!currentAlertSoundEnabled;
+      const alertSoundEnabledWrap = document.createElement("span");
+      alertSoundEnabledWrap.className = "settingsCheckboxWrap";
+      const alertSoundEnabledText = document.createElement("span");
+      alertSoundEnabledText.textContent = "Enable alert sound";
+      alertSoundEnabledWrap.appendChild(alertSoundEnabledText);
+      alertSoundEnabledWrap.appendChild(alertSoundEnabledInput);
+      const alertSoundPathInput = document.createElement("input");
+      alertSoundPathInput.type = "text";
+      alertSoundPathInput.value = normalizeAlertSoundPath(currentAlertSoundPath);
+
+
+
       const typography = createSection("Typography");
       typography.appendChild(createRow("Font family", fontFamilyInput, "Example: Segoe UI, Yu Gothic UI"));
       typography.appendChild(createRow("Base text size", baseFontInput, "Applied to the overall UI"));
@@ -1411,9 +1508,19 @@
       taskPanelRow.className = "settingsRow settingsRowSingle";
       taskPanelRow.appendChild(showTaskPanelWrap);
       layout.appendChild(taskPanelRow);
+      const alertRow = document.createElement("label");
+      alertRow.className = "settingsRow settingsRowSingle";
+      alertRow.appendChild(tclockAlertWrap);
+      layout.appendChild(alertRow);
+      const alertSettings = createSection("Alert");
+      alertSettings.appendChild(createRow("Sound", alertSoundEnabledWrap, ""));
+      alertSettings.appendChild(createRow("Sound file", alertSoundPathInput, "Default: C:\\Windows\\Media\\notify.wav"));
+
+
 
       body.appendChild(typography);
       body.appendChild(layout);
+      body.appendChild(alertSettings);
 
       const actions = document.createElement("div");
       actions.className = "taskModalActions settingsActions";
@@ -1438,7 +1545,10 @@
         uiBaseFontSize: normalizeUiFontSize(baseFontInput.value, currentUiBaseFontSize),
         uiCalendarDateFontSize: normalizeUiFontSize(calendarDateFontInput.value, currentUiCalendarDateFontSize),
         uiTaskFontSize: normalizeUiFontSize(taskFontInput.value, currentUiTaskFontSize),
-        uiShowTaskPanel: !!showTaskPanelInput.checked
+        uiShowTaskPanel: !!showTaskPanelInput.checked,
+        tclockAlertEnabled: !!tclockAlertInput.checked,
+        alertSoundEnabled: !!alertSoundEnabledInput.checked,
+        alertSoundPath: normalizeAlertSoundPath(alertSoundPathInput.value)
       });
 
       const applyDraft = (draft) => {
@@ -1447,6 +1557,9 @@
         currentUiCalendarDateFontSize = normalizeUiFontSize(draft.uiCalendarDateFontSize, currentUiCalendarDateFontSize);
         currentUiTaskFontSize = normalizeUiFontSize(draft.uiTaskFontSize, currentUiTaskFontSize);
         currentUiShowTaskPanel = !!draft.uiShowTaskPanel;
+        currentTclockAlertEnabled = !!draft.tclockAlertEnabled;
+        currentAlertSoundEnabled = !!draft.alertSoundEnabled;
+        currentAlertSoundPath = normalizeAlertSoundPath(draft.alertSoundPath);
         applyUiStyleConfig();
         applyTaskPanelVisibility();
       };
@@ -1464,6 +1577,9 @@
         el.addEventListener("input", () => applyDraft(collectDraft()));
       });
       showTaskPanelInput.addEventListener("change", () => applyDraft(collectDraft()));
+      tclockAlertInput.addEventListener("change", () => applyDraft(collectDraft()));
+      alertSoundEnabledInput.addEventListener("change", () => applyDraft(collectDraft()));
+      alertSoundPathInput.addEventListener("input", () => applyDraft(collectDraft()));
 
       cancelButton.addEventListener("click", () => {
         restoreSnapshot();
@@ -1608,6 +1724,9 @@
       currentUiTaskFontSize = normalizeUiFontSize(data.uiTaskFontSize, 14);
       applyUiStyleConfig();
       currentUiShowTaskPanel = !!data.uiShowTaskPanel;
+      currentTclockAlertEnabled = !!data.tclockAlertEnabled;
+      currentAlertSoundEnabled = data.alertSoundEnabled !== false;
+      currentAlertSoundPath = normalizeAlertSoundPath(data.alertSoundPath);
       applyTaskPanelVisibility();
 
       const iniPanelRightWidth = Number(data.uiPanelRightWidth || 0);
@@ -1636,7 +1755,10 @@
         uiTaskFontSize: String(currentUiTaskFontSize),
         uiPanelRightWidth: String(panelRightWidthForConfig()),
         uiCalendarHeight: String(clampCalendarHeight(readCurrentCalendarHeight())),
-        uiShowTaskPanel: currentUiShowTaskPanel ? "1" : "0"
+        uiShowTaskPanel: currentUiShowTaskPanel ? "1" : "0",
+        tclockAlertEnabled: currentTclockAlertEnabled ? "1" : "0",
+        alertSoundEnabled: currentAlertSoundEnabled ? "1" : "0",
+        alertSoundPath: currentAlertSoundPath
       });
     } catch (_) {
     }
@@ -1644,6 +1766,7 @@
 
   async function renderMonth() {
     renderMonthTitle();
+    await loadMonthTaskDateSet();
     renderMonthGrid();
     await loadTasksForCurrentRange();
   }
@@ -1672,7 +1795,8 @@
           title,
           detail,
           startTime,
-          endTime
+          endTime,
+          alertEnabled: false
         });
       } else {
         const tasks = inMemoryTasks.get(dateKey) || [];
@@ -1683,7 +1807,8 @@
           detail,
           startTime,
           endTime,
-          done: false
+          done: false,
+          alertEnabled: false
         });
         inMemoryTasks.set(dateKey, tasks);
       }

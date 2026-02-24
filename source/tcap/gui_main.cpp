@@ -46,6 +46,7 @@ constexpr UINT WM_TRAYICON = WM_APP + 1;
 constexpr UINT WM_APP_CAPTURE_REQUEST = WM_APP + 2;
 constexpr UINT WM_APP_SHOW_SETTINGS = WM_APP + 3;
 constexpr UINT WM_APP_CAPTURE_FINISHED = WM_APP + 4;
+constexpr UINT WM_APP_SET_LANGUAGE = WM_APP + 5;
 constexpr UINT ID_TRAY_SETTINGS = 2001;
 constexpr UINT ID_TRAY_OPEN_OUTPUT = 2003;
 constexpr UINT ID_TRAY_EXIT = 2004;
@@ -2442,6 +2443,17 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
     case WM_APP_SHOW_SETTINGS:
         showSettingsWindow(*app);
         return 0;
+    case WM_APP_SET_LANGUAGE: {
+        const char* lang = (wParam == 1) ? "ja" : "en";
+        const std::string prev = toLower(app->language);
+        setLanguage(*app, lang);
+        if (app->settingsWindow && prev != toLower(app->language)) {
+            DestroyWindow(app->settingsWindow);
+            app->settingsWindow = nullptr;
+            showSettingsWindow(*app);
+        }
+        return 0;
+    }
     case WM_APP_CAPTURE_FINISHED:
         maybeStopAgentIfIdle(*app);
         return 0;
@@ -2553,6 +2565,9 @@ int APIENTRY wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int) {
         if (mode == LaunchMode::Settings) {
             HWND existing = FindWindowW(kAgentMainWindowClass, nullptr);
             if (existing) {
+                if (preferredLanguage == "ja" || preferredLanguage == "en") {
+                    PostMessageW(existing, WM_APP_SET_LANGUAGE, (preferredLanguage == "ja") ? 1 : 0, 0);
+                }
                 PostMessageW(existing, WM_APP_SHOW_SETTINGS, 0, 0);
                 SetForegroundWindow(existing);
             }

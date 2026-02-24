@@ -690,6 +690,8 @@
 #define IDC_STARTUP                     1619
 #define IDC_DELREG                      1620
 #define IDC_README1                     1621
+#define IDC_ETC_TCALENDAR_INTEGRATION   1622
+#define IDC_ETC_TCAPTURE_INTEGRATION    1623
 #define IDC_ABOUTICON                   1701
 #define IDC_EDITINI                     1702
 #define IDC_README2                     1703

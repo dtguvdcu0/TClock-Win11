@@ -37,6 +37,10 @@ set "ERR=%ERRORLEVEL%"
 if not "%ERR%"=="0" goto BUILD_FAIL
 
 echo TClock build succeeded.
+set "REL_DIR=%~dp0x64\Release"
+if exist "%REL_DIR%\*.exp" del /q "%REL_DIR%\*.exp" >nul 2>&1
+if exist "%REL_DIR%\*.lib" del /q "%REL_DIR%\*.lib" >nul 2>&1
+echo Cleanup done: removed *.exp and *.lib from %REL_DIR%
 exit /b 0
 
 :NO_VSWHERE

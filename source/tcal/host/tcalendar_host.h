@@ -18,6 +18,13 @@ struct HostConfig {
     int default_range_preset_days = 1;        // 1/7/14/30
     int default_custom_range_days = 7;        // for custom mode
     bool default_use_custom_range = false;
+    std::wstring ui_font_family = L"Segoe UI";
+    int ui_base_font_size = 14;
+    int ui_calendar_date_font_size = 13;
+    int ui_task_font_size = 14;
+    int ui_panel_right_width = 420;
+    int ui_calendar_height = 420;
+    bool ui_show_task_panel = true;
 };
 
 class TCalendarHost {

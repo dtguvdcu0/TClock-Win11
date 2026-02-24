@@ -247,7 +247,15 @@ bool TCalendarHost::HandleWebMessage(const std::wstring& request_json, std::wstr
             std::wstring(L"{\"defaultViewMode\":\"") + EscapeJsonString(config_.default_view_mode) +
             L"\",\"defaultRangePresetDays\":" + std::to_wstring(config_.default_range_preset_days) +
             L",\"defaultCustomRangeDays\":" + std::to_wstring(config_.default_custom_range_days) +
-            L",\"defaultUseCustomRange\":" + (config_.default_use_custom_range ? L"true" : L"false") + L"}";
+            L",\"defaultUseCustomRange\":" + (config_.default_use_custom_range ? L"true" : L"false") +
+            L",\"uiFontFamily\":\"" + EscapeJsonString(config_.ui_font_family) +
+            L"\",\"uiBaseFontSize\":" + std::to_wstring(config_.ui_base_font_size) +
+            L",\"uiCalendarDateFontSize\":" + std::to_wstring(config_.ui_calendar_date_font_size) +
+            L",\"uiTaskFontSize\":" + std::to_wstring(config_.ui_task_font_size) +
+            L",\"uiPanelRightWidth\":" + std::to_wstring(config_.ui_panel_right_width) +
+            L",\"uiCalendarHeight\":" + std::to_wstring(config_.ui_calendar_height) +
+            L",\"uiShowTaskPanel\":" + (config_.ui_show_task_panel ? L"true" : L"false") +
+            L"}";
         response_json = BuildResponse(true, L"OK", L"", req.request_id, data.c_str());
         return true;
     }
@@ -262,6 +270,13 @@ bool TCalendarHost::HandleWebMessage(const std::wstring& request_json, std::wstr
         std::wstring view_mode;
         std::wstring range_preset;
         std::wstring custom_days_raw;
+        std::wstring ui_font_family;
+        std::wstring ui_base_font_size_raw;
+        std::wstring ui_calendar_date_font_size_raw;
+        std::wstring ui_task_font_size_raw;
+        std::wstring ui_panel_right_width_raw;
+        std::wstring ui_calendar_height_raw;
+        std::wstring ui_show_task_panel_raw;
         if (!GetStringField(*params, L"defaultViewMode", view_mode) ||
             !GetStringField(*params, L"rangePreset", range_preset)) {
             response_json = BuildResponse(false, L"VALIDATION_ERROR", L"Missing defaultViewMode/rangePreset in params", req.request_id, L"null");
@@ -299,18 +314,73 @@ bool TCalendarHost::HandleWebMessage(const std::wstring& request_json, std::wstr
         config_.default_use_custom_range = use_custom_range;
         config_.default_custom_range_days = custom_days;
 
+        if (GetStringField(*params, L"uiFontFamily", ui_font_family) && !ui_font_family.empty()) {
+            config_.ui_font_family = ui_font_family;
+        }
+        if (GetStringField(*params, L"uiBaseFontSize", ui_base_font_size_raw)) {
+            int n = _wtoi(ui_base_font_size_raw.c_str());
+            if (n < 9) n = 9;
+            if (n > 28) n = 28;
+            if (n > 0) config_.ui_base_font_size = n;
+        }
+        if (GetStringField(*params, L"uiCalendarDateFontSize", ui_calendar_date_font_size_raw)) {
+            int n = _wtoi(ui_calendar_date_font_size_raw.c_str());
+            if (n < 9) n = 9;
+            if (n > 28) n = 28;
+            if (n > 0) config_.ui_calendar_date_font_size = n;
+        }
+        if (GetStringField(*params, L"uiTaskFontSize", ui_task_font_size_raw)) {
+            int n = _wtoi(ui_task_font_size_raw.c_str());
+            if (n < 9) n = 9;
+            if (n > 28) n = 28;
+            if (n > 0) config_.ui_task_font_size = n;
+        }
+        if (GetStringField(*params, L"uiPanelRightWidth", ui_panel_right_width_raw)) {
+            int n = _wtoi(ui_panel_right_width_raw.c_str());
+            if (n < 320) n = 320;
+            if (n > 1600) n = 1600;
+            if (n > 0) config_.ui_panel_right_width = n;
+        }
+        if (GetStringField(*params, L"uiCalendarHeight", ui_calendar_height_raw)) {
+            int n = _wtoi(ui_calendar_height_raw.c_str());
+            if (n < 280) n = 280;
+            if (n > 1200) n = 1200;
+            if (n > 0) config_.ui_calendar_height = n;
+        }
+        if (GetStringField(*params, L"uiShowTaskPanel", ui_show_task_panel_raw)) {
+            config_.ui_show_task_panel = (ui_show_task_panel_raw != L"0" && ui_show_task_panel_raw != L"false");
+        }
+
         if (!config_.ini_file_path.empty()) {
             wchar_t preset_buf[16] = {0};
             wchar_t custom_buf[16] = {0};
+            wchar_t base_font_buf[16] = {0};
+            wchar_t calendar_font_buf[16] = {0};
+            wchar_t task_font_buf[16] = {0};
+            wchar_t panel_right_buf[16] = {0};
+            wchar_t calendar_height_buf[16] = {0};
             _snwprintf_s(preset_buf, _countof(preset_buf), _TRUNCATE, L"%d", config_.default_range_preset_days);
             _snwprintf_s(custom_buf, _countof(custom_buf), _TRUNCATE, L"%d", config_.default_custom_range_days);
+            _snwprintf_s(base_font_buf, _countof(base_font_buf), _TRUNCATE, L"%d", config_.ui_base_font_size);
+            _snwprintf_s(calendar_font_buf, _countof(calendar_font_buf), _TRUNCATE, L"%d", config_.ui_calendar_date_font_size);
+            _snwprintf_s(task_font_buf, _countof(task_font_buf), _TRUNCATE, L"%d", config_.ui_task_font_size);
+            _snwprintf_s(panel_right_buf, _countof(panel_right_buf), _TRUNCATE, L"%d", config_.ui_panel_right_width);
+            _snwprintf_s(calendar_height_buf, _countof(calendar_height_buf), _TRUNCATE, L"%d", config_.ui_calendar_height);
 
             const wchar_t* use_custom = config_.default_use_custom_range ? L"1" : L"0";
+            const wchar_t* show_task_panel = config_.ui_show_task_panel ? L"1" : L"0";
             bool write_ok = true;
             write_ok = write_ok && (WritePrivateProfileStringW(L"TCalendar", L"DefaultViewMode", config_.default_view_mode.c_str(), config_.ini_file_path.c_str()) != FALSE);
             write_ok = write_ok && (WritePrivateProfileStringW(L"TCalendar", L"DefaultRangePresetDays", preset_buf, config_.ini_file_path.c_str()) != FALSE);
             write_ok = write_ok && (WritePrivateProfileStringW(L"TCalendar", L"DefaultCustomRangeDays", custom_buf, config_.ini_file_path.c_str()) != FALSE);
             write_ok = write_ok && (WritePrivateProfileStringW(L"TCalendar", L"DefaultUseCustomRange", use_custom, config_.ini_file_path.c_str()) != FALSE);
+            write_ok = write_ok && (WritePrivateProfileStringW(L"TCalendar", L"UiFontFamily", config_.ui_font_family.c_str(), config_.ini_file_path.c_str()) != FALSE);
+            write_ok = write_ok && (WritePrivateProfileStringW(L"TCalendar", L"UiBaseFontSize", base_font_buf, config_.ini_file_path.c_str()) != FALSE);
+            write_ok = write_ok && (WritePrivateProfileStringW(L"TCalendar", L"UiCalendarDateFontSize", calendar_font_buf, config_.ini_file_path.c_str()) != FALSE);
+            write_ok = write_ok && (WritePrivateProfileStringW(L"TCalendar", L"UiTaskFontSize", task_font_buf, config_.ini_file_path.c_str()) != FALSE);
+            write_ok = write_ok && (WritePrivateProfileStringW(L"TCalendar", L"UiPanelRightWidth", panel_right_buf, config_.ini_file_path.c_str()) != FALSE);
+            write_ok = write_ok && (WritePrivateProfileStringW(L"TCalendar", L"UiCalendarHeight", calendar_height_buf, config_.ini_file_path.c_str()) != FALSE);
+            write_ok = write_ok && (WritePrivateProfileStringW(L"TCalendar", L"UiShowTaskPanel", show_task_panel, config_.ini_file_path.c_str()) != FALSE);
             if (!write_ok) {
                 response_json = BuildResponse(false, L"STORAGE_ERROR", L"Failed to write view config to ini", req.request_id, L"null");
                 return true;

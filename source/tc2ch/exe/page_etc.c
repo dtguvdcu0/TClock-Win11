@@ -102,6 +102,8 @@ static void OnInit(HWND hDlg)
 	CheckDlgButton(hDlg, IDC_USE_SUBCLKS, GetMyRegLong(NULL, "EnableOnSubDisplay", TRUE));
 
 	CheckDlgButton(hDlg, IDC_ETC_SHOWTRAYICON, GetMyRegLong(NULL, "ShowTrayIcon", TRUE));
+	CheckDlgButton(hDlg, IDC_ETC_TCALENDAR_INTEGRATION, GetMyRegLong("TCalendar", "Enable", 0));
+	CheckDlgButton(hDlg, IDC_ETC_TCAPTURE_INTEGRATION, GetMyRegLong("TCapture", "Enable", 0));
 	//CheckDlgButton(hDlg, IDC_ETC_SHOWTRAYICON, TRUE);
 	//EnableDlgItem(hDlg, IDC_ETC_SHOWTRAYICON, FALSE);
 
@@ -210,6 +212,9 @@ static void OnApply(HWND hDlg)
 	bTemp = IsDlgButtonChecked(hDlg, IDC_ETC_SHOWTRAYICON);
 	SetMyRegLong(NULL, "ShowTrayIcon", bTemp);
 	CreateTClockTrayIcon(bTemp);
+
+	SetMyRegLong("TCalendar", "Enable", IsDlgButtonChecked(hDlg, IDC_ETC_TCALENDAR_INTEGRATION));
+	SetMyRegLong("TCapture", "Enable", IsDlgButtonChecked(hDlg, IDC_ETC_TCAPTURE_INTEGRATION));
 
 	SetMyRegLong("ETC", "SelectedThermalZone", selectedThermalZone);
 

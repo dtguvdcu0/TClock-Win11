@@ -64,8 +64,9 @@ if exist "%SCRIPT_DIR%TCapture.ini" (
     copy /y "%SCRIPT_DIR%TCapture.ini" "%DEPLOY_DIR%\TCapture.ini" >nul
 )
 if exist "%SCRIPT_DIR%lang" (
-    if not exist "%DEPLOY_DIR%\lang" mkdir "%DEPLOY_DIR%\lang"
-    xcopy /e /i /y "%SCRIPT_DIR%lang" "%DEPLOY_DIR%\lang" >nul
+    if not exist "%DEPLOY_DIR%\tcapture" mkdir "%DEPLOY_DIR%\tcapture"
+    if not exist "%DEPLOY_DIR%\tcapture\lang" mkdir "%DEPLOY_DIR%\tcapture\lang"
+    xcopy /e /i /y "%SCRIPT_DIR%lang" "%DEPLOY_DIR%\tcapture\lang" >nul
 )
 
 

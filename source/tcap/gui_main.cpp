@@ -96,6 +96,8 @@ void setLanguage(AppState& app, const std::string& langCode);
 void applyLanguageToProfiles(AppState& app);
 HWND showSettingsWindow(AppState& app);
 std::vector<std::string> listAvailableLanguages(const fs::path& root);
+
+static fs::path getLanguageRoot(const fs::path& exeDir);
 std::wstring languageLabel(const std::string& code);
 void updateStatusBrush(struct SettingsDialog* dlg);
 LRESULT CALLBACK LowLevelKeyboardProc(int code, WPARAM wParam, LPARAM lParam);
@@ -789,7 +791,7 @@ bool loadProfilesWithFallback(AppState& app, const std::string& preferredLanguag
             app.language = "en";
         }
     }
-    app.availableLanguages = listAvailableLanguages(app.exeDir / "lang");
+    app.availableLanguages = listAvailableLanguages(getLanguageRoot(app.exeDir));
     loadLanguage(app, app.language);
     applyLanguageToProfiles(app);
     app.hotkeyIds.assign(app.profiles.size(), 0);
@@ -847,10 +849,10 @@ bool loadLanguage(AppState& app, const std::string& code) {
     if (lang != "en" && lang != "ja") lang = "en";
     app.translations.clear();
     app.language = lang;
-    app.availableLanguages = listAvailableLanguages(app.exeDir / "lang");
+    app.availableLanguages = listAvailableLanguages(getLanguageRoot(app.exeDir));
 
     auto loadFile = [&](const std::string& langCode) -> bool {
-        fs::path path = app.exeDir / "lang" / langCode / "strings.ini";
+        fs::path path = getLanguageRoot(app.exeDir) / langCode / "strings.ini";
         std::ifstream in(path);
         if (!in.is_open()) return false;
         std::string line;
@@ -886,6 +888,12 @@ void setLanguage(AppState& app, const std::string& langCode) {
     loadLanguage(app, app.language);
 }
 
+static fs::path getLanguageRoot(const fs::path& exeDir) {
+    fs::path modern = exeDir / "tcapture" / "lang";
+    if (fs::exists(modern) && fs::is_directory(modern)) return modern;
+    return exeDir / "lang"; // legacy fallback
+}
+
 std::vector<std::string> listAvailableLanguages(const fs::path& root) {
     std::vector<std::string> codes;
     if (!fs::exists(root) || !fs::is_directory(root)) return codes;
@@ -908,7 +916,7 @@ std::wstring languageLabel(const std::string& code) {
     std::string lc = toLower(code);
     // Try loading display name from the language file.
     fs::path exeDir = getExecutableDir();
-    fs::path ini = exeDir / "lang" / lc / "strings.ini";
+    fs::path ini = getLanguageRoot(exeDir) / lc / "strings.ini";
     if (fs::exists(ini)) {
         std::ifstream in(ini);
         std::string line;

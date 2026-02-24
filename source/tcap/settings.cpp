@@ -37,7 +37,7 @@ std::string trim(const std::string& s) {
     return s.substr(start, end - start + 1);
 }
 
-std::string readGlobalLanguage(const std::string& path) {
+std::string readGlobalLanguage(const fs::path& path) {
     std::ifstream in(path);
     if (!in.is_open()) return "";
     std::string line;
@@ -302,7 +302,7 @@ static std::vector<ProfileSettings> parseIniProfiles(std::ifstream& in) {
     return profiles;
 }
 
-std::vector<ProfileSettings> loadSettingsProfiles(const std::string& path) {
+std::vector<ProfileSettings> loadSettingsProfiles(const fs::path& path) {
     std::ifstream in(path);
     if (!in.is_open()) {
         return {};
@@ -361,7 +361,7 @@ bool saveSettingsProfiles(const std::vector<ProfileSettings>& profiles, const fs
     return true;
 }
 
-bool loadSettings(AppSettings& settings, const std::string& path, const std::string& profile) {
+bool loadSettings(AppSettings& settings, const fs::path& path, const std::string& profile) {
     auto profiles = loadSettingsProfiles(path);
     std::string target = toLower(profile.empty() ? "default" : profile);
     if (profiles.empty()) return false;

@@ -83,6 +83,13 @@ void EnsureTCalendarIni(const std::filesystem::path& exe_dir) {
     WritePrivateProfileStringW(L"TCalendar", L"DefaultRangePresetDays", L"1", ini_path.wstring().c_str());
     WritePrivateProfileStringW(L"TCalendar", L"DefaultCustomRangeDays", L"7", ini_path.wstring().c_str());
     WritePrivateProfileStringW(L"TCalendar", L"DefaultUseCustomRange", L"0", ini_path.wstring().c_str());
+    WritePrivateProfileStringW(L"TCalendar", L"UiFontFamily", L"Segoe UI", ini_path.wstring().c_str());
+    WritePrivateProfileStringW(L"TCalendar", L"UiBaseFontSize", L"14", ini_path.wstring().c_str());
+    WritePrivateProfileStringW(L"TCalendar", L"UiCalendarDateFontSize", L"13", ini_path.wstring().c_str());
+    WritePrivateProfileStringW(L"TCalendar", L"UiTaskFontSize", L"14", ini_path.wstring().c_str());
+    WritePrivateProfileStringW(L"TCalendar", L"UiPanelRightWidth", L"420", ini_path.wstring().c_str());
+    WritePrivateProfileStringW(L"TCalendar", L"UiCalendarHeight", L"420", ini_path.wstring().c_str());
+    WritePrivateProfileStringW(L"TCalendar", L"UiShowTaskPanel", L"1", ini_path.wstring().c_str());
 }
 
 void LoadHostConfigFromIni(const std::filesystem::path& exe_dir, bool smoke_mode, bool smoke_storage_error_mode, tcalendar::HostConfig& out_config) {
@@ -111,6 +118,13 @@ void LoadHostConfigFromIni(const std::filesystem::path& exe_dir, bool smoke_mode
     ensure_ini_key(L"DefaultRangePresetDays", L"1");
     ensure_ini_key(L"DefaultCustomRangeDays", L"7");
     ensure_ini_key(L"DefaultUseCustomRange", L"0");
+    ensure_ini_key(L"UiFontFamily", L"Segoe UI");
+    ensure_ini_key(L"UiBaseFontSize", L"14");
+    ensure_ini_key(L"UiCalendarDateFontSize", L"13");
+    ensure_ini_key(L"UiTaskFontSize", L"14");
+    ensure_ini_key(L"UiPanelRightWidth", L"420");
+    ensure_ini_key(L"UiCalendarHeight", L"420");
+    ensure_ini_key(L"UiShowTaskPanel", L"1");
 
     wchar_t buf[MAX_PATH] = {0};
     wchar_t skin[MAX_PATH] = {0};
@@ -157,6 +171,39 @@ void LoadHostConfigFromIni(const std::filesystem::path& exe_dir, bool smoke_mode
     if (custom_days > 365) custom_days = 365;
     out_config.default_custom_range_days = custom_days;
     out_config.default_use_custom_range = GetPrivateProfileIntW(L"TCalendar", L"DefaultUseCustomRange", 0, ini_file.c_str()) != 0;
+
+    GetPrivateProfileStringW(L"TCalendar", L"UiFontFamily", L"Segoe UI", buf, MAX_PATH, ini_file.c_str());
+    if (buf[0] == L'\0') {
+        out_config.ui_font_family = L"Segoe UI";
+    } else {
+        out_config.ui_font_family = buf;
+    }
+
+    int ui_base_font_size = GetPrivateProfileIntW(L"TCalendar", L"UiBaseFontSize", 14, ini_file.c_str());
+    if (ui_base_font_size < 9) ui_base_font_size = 9;
+    if (ui_base_font_size > 28) ui_base_font_size = 28;
+    out_config.ui_base_font_size = ui_base_font_size;
+
+    int ui_calendar_date_font_size = GetPrivateProfileIntW(L"TCalendar", L"UiCalendarDateFontSize", 13, ini_file.c_str());
+    if (ui_calendar_date_font_size < 9) ui_calendar_date_font_size = 9;
+    if (ui_calendar_date_font_size > 28) ui_calendar_date_font_size = 28;
+    out_config.ui_calendar_date_font_size = ui_calendar_date_font_size;
+
+    int ui_task_font_size = GetPrivateProfileIntW(L"TCalendar", L"UiTaskFontSize", 14, ini_file.c_str());
+    if (ui_task_font_size < 9) ui_task_font_size = 9;
+    if (ui_task_font_size > 28) ui_task_font_size = 28;
+    out_config.ui_task_font_size = ui_task_font_size;
+
+    int ui_panel_right_width = GetPrivateProfileIntW(L"TCalendar", L"UiPanelRightWidth", 420, ini_file.c_str());
+    if (ui_panel_right_width < 320) ui_panel_right_width = 320;
+    if (ui_panel_right_width > 1600) ui_panel_right_width = 1600;
+    out_config.ui_panel_right_width = ui_panel_right_width;
+
+    int ui_calendar_height = GetPrivateProfileIntW(L"TCalendar", L"UiCalendarHeight", 420, ini_file.c_str());
+    if (ui_calendar_height < 280) ui_calendar_height = 280;
+    if (ui_calendar_height > 1200) ui_calendar_height = 1200;
+    out_config.ui_calendar_height = ui_calendar_height;
+    out_config.ui_show_task_panel = GetPrivateProfileIntW(L"TCalendar", L"UiShowTaskPanel", 1, ini_file.c_str()) != 0;
 }
 
 void LoadWindowSizeFromIni(const std::wstring& ini_file, int& width, int& height) {

@@ -21,8 +21,29 @@ if not exist "%TCAL_EXE%" (
     exit /b 1
 )
 
-copy /y "%TCAL_EXE%" "%TCAL_DST%" >nul
-if errorlevel 1 (
+set "_copy_ok=0"
+for /l %%I in (1,1,3) do (
+    copy /y "%TCAL_EXE%" "%TCAL_DST%" >nul
+    if not errorlevel 1 (
+        set "_copy_ok=1"
+        goto :copy_done
+    )
+
+    if %%I==1 (
+        tasklist /fi "imagename eq TCalendar.exe" | find /i "TCalendar.exe" >nul
+        if not errorlevel 1 (
+            echo INFO: TCalendar.exe is running. Close it and rerun if copy keeps failing.
+        )
+    )
+
+    if %%I lss 3 (
+        echo WARN: Copy retry %%I/3 failed. Retrying...
+        timeout /t 1 /nobreak >nul
+    )
+)
+
+:copy_done
+if not "%_copy_ok%"=="1" (
     echo ERROR: Failed to copy TCalendar artifact to %TCAL_DST%
     exit /b 1
 )

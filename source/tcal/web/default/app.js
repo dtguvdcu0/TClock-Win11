@@ -19,6 +19,7 @@
   const timelineLayoutSelect = document.getElementById("timelineLayoutSelect");
   const timelineHourStartWrap = document.getElementById("timelineHourStartWrap");
   const timelineHourStartInput = document.getElementById("timelineHourStartInput");
+  const settingsButton = document.getElementById("settingsButton");
 
   let cursor = new Date();
   let selectedDate = new Date();
@@ -50,6 +51,11 @@
   let currentTimelineLayout = "shared";
   let currentTimelineHourStart = 0;
   let currentLoadedTasks = [];
+  let currentUiFontFamily = "Segoe UI";
+  let currentUiBaseFontSize = 14;
+  let currentUiCalendarDateFontSize = 13;
+  let currentUiTaskFontSize = 14;
+  let currentUiShowTaskPanel = true;
 
   const weekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -104,6 +110,46 @@
     if (i < 0) return 0;
     if (i > 23) return 23;
     return i;
+  }
+
+  function normalizeUiFontSize(value, fallback) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return fallback;
+    const i = Math.floor(n);
+    if (i < 9) return 9;
+    if (i > 28) return 28;
+    return i;
+  }
+
+  function normalizeUiFontFamily(value) {
+    const s = String(value || "").trim();
+    return s || "Segoe UI";
+  }
+
+  function applyUiStyleConfig() {
+    const rootStyle = document.documentElement.style;
+    rootStyle.setProperty("--font-family", currentUiFontFamily);
+    rootStyle.setProperty("--font-size", `${currentUiBaseFontSize}px`);
+    rootStyle.setProperty("--calendar-date-font-size", `${currentUiCalendarDateFontSize}px`);
+    rootStyle.setProperty("--task-font-size", `${currentUiTaskFontSize}px`);
+  }
+
+  function applyTaskPanelVisibility() {
+    if (!appRoot) return;
+    document.body.classList.toggle("hideTaskPanel", !currentUiShowTaskPanel);
+    if (currentUiShowTaskPanel) {
+      applyPanelRightWidth(readSavedPanelRightWidth() ?? 420, false);
+      syncLayoutSplitterHeight();
+    } else {
+      appRoot.style.removeProperty("grid-template-columns");
+    }
+  }
+
+  function panelRightWidthForConfig() {
+    if (!currentUiShowTaskPanel) {
+      return clampPanelRightWidth(readSavedPanelRightWidth() ?? 420);
+    }
+    return clampPanelRightWidth(readCurrentPanelRightWidth());
   }
 
   function readSavedTimelineLayout() {
@@ -225,6 +271,7 @@
       calendarHeightResizeState.active = false;
       document.body.classList.remove("isResizingCalendarHeight");
       applyCalendarHeight(readCurrentCalendarHeight(), true);
+      void saveViewConfigToIni();
     };
 
     calendarHeightSplitter.addEventListener("mousedown", (e) => {
@@ -287,6 +334,7 @@
       const current = clampPanelRightWidth(readCurrentPanelRightWidth());
       applyPanelRightWidth(current, true);
       syncLayoutSplitterHeight();
+      void saveViewConfigToIni();
     };
 
     layoutSplitter.addEventListener("mousedown", (e) => {
@@ -624,7 +672,7 @@
   }
 
   function refreshBusyUiState() {
-    const controls = [taskTitle, viewModeSelect, rangePresetSelect, customRangeDaysInput, timelineLayoutSelect, timelineHourStartInput];
+    const controls = [taskTitle, viewModeSelect, rangePresetSelect, customRangeDaysInput, timelineLayoutSelect, timelineHourStartInput, settingsButton];
     controls.forEach((el) => { if (el) el.disabled = mutationInFlight; });
 
     const submitButton = taskForm.querySelector('button[type="submit"]');
@@ -1018,6 +1066,32 @@
     const timed = dayTasks.filter((t) => !!t.startTime);
     const untimed = dayTasks.filter((t) => !t.startTime);
 
+    if (untimed.length) {
+      const untimedWrap = document.createElement("div");
+      untimedWrap.className = "timelineUntimed";
+
+      for (const t of untimed) {
+        const row = document.createElement("div");
+        row.className = "timelineTaskRow";
+
+        const taskLabel = document.createElement("span");
+        taskLabel.className = "timelineTaskLabel";
+        renderTimelineTaskLabel(taskLabel, t);
+
+        const tooltipText = formatTaskTooltip(t);
+        if (tooltipText) {
+          taskLabel.title = tooltipText;
+          row.title = tooltipText;
+        }
+
+        row.appendChild(taskLabel);
+        row.appendChild(createTaskActionButtons(t));
+        untimedWrap.appendChild(row);
+      }
+
+      dayBox.appendChild(untimedWrap);
+    }
+
     if (timed.length) {
       dayBox.appendChild(buildTimelineHourAxis(currentTimelineHourStart));
 
@@ -1058,36 +1132,6 @@
       }
 
       dayBox.appendChild(perTaskList);
-    }
-
-    if (untimed.length) {
-      const untimedWrap = document.createElement("div");
-      untimedWrap.className = "timelineUntimed";
-
-      const label = document.createElement("div");
-      label.textContent = "Untimed";
-      untimedWrap.appendChild(label);
-
-      for (const t of untimed) {
-        const row = document.createElement("div");
-        row.className = "timelineTaskRow";
-
-        const taskLabel = document.createElement("span");
-        taskLabel.className = "timelineTaskLabel";
-        renderTimelineTaskLabel(taskLabel, t);
-
-        const tooltipText = formatTaskTooltip(t);
-        if (tooltipText) {
-          taskLabel.title = tooltipText;
-          row.title = tooltipText;
-        }
-
-        row.appendChild(taskLabel);
-        row.appendChild(createTaskActionButtons(t));
-        untimedWrap.appendChild(row);
-      }
-
-      dayBox.appendChild(untimedWrap);
     }
   }
 
@@ -1268,6 +1312,187 @@
     monthTitle.appendChild(label);
   }
 
+  async function openSettingsDialog() {
+    return new Promise((resolve) => {
+      const snapshot = {
+        uiFontFamily: currentUiFontFamily,
+        uiBaseFontSize: currentUiBaseFontSize,
+        uiCalendarDateFontSize: currentUiCalendarDateFontSize,
+        uiTaskFontSize: currentUiTaskFontSize,
+        uiShowTaskPanel: currentUiShowTaskPanel
+      };
+
+      const overlay = document.createElement("div");
+      overlay.className = "taskModalOverlay";
+
+      const modal = document.createElement("div");
+      modal.className = "taskModal settingsModal";
+
+      const header = document.createElement("div");
+      header.className = "settingsHeader";
+      const title = document.createElement("h3");
+      title.textContent = "Settings";
+      const intro = document.createElement("p");
+      intro.className = "settingsIntro";
+      intro.textContent = "Preview is applied immediately. Apply saves to INI. Cancel restores previous values.";
+      header.appendChild(title);
+      header.appendChild(intro);
+
+      const body = document.createElement("div");
+      body.className = "settingsBody";
+
+      const createNumberInput = (value, min, max) => {
+        const input = document.createElement("input");
+        input.type = "number";
+        input.min = String(min);
+        input.max = String(max);
+        input.value = String(value);
+        return input;
+      };
+
+      const createSection = (sectionTitle) => {
+        const section = document.createElement("section");
+        section.className = "settingsSection";
+        const h = document.createElement("h4");
+        h.textContent = sectionTitle;
+        section.appendChild(h);
+        return section;
+      };
+
+      const createRow = (labelText, controlEl, hintText) => {
+        const row = document.createElement("label");
+        row.className = "settingsRow";
+
+        const label = document.createElement("span");
+        label.className = "settingsLabel";
+        label.textContent = labelText;
+
+        const valueWrap = document.createElement("span");
+        valueWrap.className = "settingsValue";
+        valueWrap.appendChild(controlEl);
+        if (hintText) {
+          const hint = document.createElement("small");
+          hint.className = "settingsHint";
+          hint.textContent = hintText;
+          valueWrap.appendChild(hint);
+        }
+
+        row.appendChild(label);
+        row.appendChild(valueWrap);
+        return row;
+      };
+
+      const fontFamilyInput = document.createElement("input");
+      fontFamilyInput.type = "text";
+      fontFamilyInput.value = currentUiFontFamily;
+
+      const baseFontInput = createNumberInput(currentUiBaseFontSize, 9, 28);
+      const calendarDateFontInput = createNumberInput(currentUiCalendarDateFontSize, 9, 28);
+      const taskFontInput = createNumberInput(currentUiTaskFontSize, 9, 28);
+
+      const showTaskPanelInput = document.createElement("input");
+      showTaskPanelInput.type = "checkbox";
+      showTaskPanelInput.checked = currentUiShowTaskPanel;
+      const showTaskPanelWrap = document.createElement("span");
+      showTaskPanelWrap.className = "settingsCheckboxWrap";
+      const showTaskPanelText = document.createElement("span");
+      showTaskPanelText.textContent = "Show right-side task panel";
+      showTaskPanelWrap.appendChild(showTaskPanelText);
+      showTaskPanelWrap.appendChild(showTaskPanelInput);
+
+      const typography = createSection("Typography");
+      typography.appendChild(createRow("Font family", fontFamilyInput, "Example: Segoe UI, Yu Gothic UI"));
+      typography.appendChild(createRow("Base text size", baseFontInput, "Applied to the overall UI"));
+      typography.appendChild(createRow("Calendar date size", calendarDateFontInput, "Day number text in calendar cells"));
+      typography.appendChild(createRow("Task list size", taskFontInput, "Task row text size"));
+
+      const layout = createSection("Layout");
+      const taskPanelRow = document.createElement("label");
+      taskPanelRow.className = "settingsRow settingsRowSingle";
+      taskPanelRow.appendChild(showTaskPanelWrap);
+      layout.appendChild(taskPanelRow);
+
+      body.appendChild(typography);
+      body.appendChild(layout);
+
+      const actions = document.createElement("div");
+      actions.className = "taskModalActions settingsActions";
+      const cancelButton = document.createElement("button");
+      cancelButton.type = "button";
+      cancelButton.textContent = "Cancel";
+      const applyButton = document.createElement("button");
+      applyButton.type = "button";
+      applyButton.className = "primary";
+      applyButton.textContent = "Apply";
+      actions.appendChild(cancelButton);
+      actions.appendChild(applyButton);
+
+      modal.appendChild(header);
+      modal.appendChild(body);
+      modal.appendChild(actions);
+      overlay.appendChild(modal);
+      document.body.appendChild(overlay);
+
+      const collectDraft = () => ({
+        uiFontFamily: normalizeUiFontFamily(fontFamilyInput.value),
+        uiBaseFontSize: normalizeUiFontSize(baseFontInput.value, currentUiBaseFontSize),
+        uiCalendarDateFontSize: normalizeUiFontSize(calendarDateFontInput.value, currentUiCalendarDateFontSize),
+        uiTaskFontSize: normalizeUiFontSize(taskFontInput.value, currentUiTaskFontSize),
+        uiShowTaskPanel: !!showTaskPanelInput.checked
+      });
+
+      const applyDraft = (draft) => {
+        currentUiFontFamily = normalizeUiFontFamily(draft.uiFontFamily);
+        currentUiBaseFontSize = normalizeUiFontSize(draft.uiBaseFontSize, currentUiBaseFontSize);
+        currentUiCalendarDateFontSize = normalizeUiFontSize(draft.uiCalendarDateFontSize, currentUiCalendarDateFontSize);
+        currentUiTaskFontSize = normalizeUiFontSize(draft.uiTaskFontSize, currentUiTaskFontSize);
+        currentUiShowTaskPanel = !!draft.uiShowTaskPanel;
+        applyUiStyleConfig();
+        applyTaskPanelVisibility();
+      };
+
+      const restoreSnapshot = () => {
+        applyDraft(snapshot);
+      };
+
+      const close = (value) => {
+        overlay.remove();
+        resolve(value);
+      };
+
+      [fontFamilyInput, baseFontInput, calendarDateFontInput, taskFontInput].forEach((el) => {
+        el.addEventListener("input", () => applyDraft(collectDraft()));
+      });
+      showTaskPanelInput.addEventListener("change", () => applyDraft(collectDraft()));
+
+      cancelButton.addEventListener("click", () => {
+        restoreSnapshot();
+        close(null);
+      });
+      overlay.addEventListener("click", (e) => {
+        if (e.target === overlay) {
+          restoreSnapshot();
+          close(null);
+        }
+      });
+      overlay.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+          restoreSnapshot();
+          close(null);
+        }
+      });
+      applyButton.addEventListener("click", () => {
+        const draft = collectDraft();
+        applyDraft(draft);
+        close(draft);
+      });
+
+      modal.tabIndex = -1;
+      modal.focus();
+    });
+  }
+
+
   function parseYearMonthInput(raw) {
     const value = (raw || "").trim();
     if (!value) return null;
@@ -1376,6 +1601,24 @@
       if (data.defaultUseCustomRange) {
         setRangePreset("custom");
       }
+
+      currentUiFontFamily = normalizeUiFontFamily(data.uiFontFamily);
+      currentUiBaseFontSize = normalizeUiFontSize(data.uiBaseFontSize, 14);
+      currentUiCalendarDateFontSize = normalizeUiFontSize(data.uiCalendarDateFontSize, 13);
+      currentUiTaskFontSize = normalizeUiFontSize(data.uiTaskFontSize, 14);
+      applyUiStyleConfig();
+      currentUiShowTaskPanel = !!data.uiShowTaskPanel;
+      applyTaskPanelVisibility();
+
+      const iniPanelRightWidth = Number(data.uiPanelRightWidth || 0);
+      if (currentUiShowTaskPanel && Number.isFinite(iniPanelRightWidth) && iniPanelRightWidth > 0) {
+        applyPanelRightWidth(iniPanelRightWidth, false);
+      }
+
+      const iniCalendarHeight = Number(data.uiCalendarHeight || 0);
+      if (Number.isFinite(iniCalendarHeight) && iniCalendarHeight > 0) {
+        applyCalendarHeight(iniCalendarHeight, false);
+      }
     } catch (_) {
     }
   }
@@ -1386,7 +1629,14 @@
       await hostCall("system.setViewConfig", {
         defaultViewMode: currentViewMode,
         rangePreset: currentRangePreset,
-        customRangeDays: String(currentCustomRangeDays)
+        customRangeDays: String(currentCustomRangeDays),
+        uiFontFamily: currentUiFontFamily,
+        uiBaseFontSize: String(currentUiBaseFontSize),
+        uiCalendarDateFontSize: String(currentUiCalendarDateFontSize),
+        uiTaskFontSize: String(currentUiTaskFontSize),
+        uiPanelRightWidth: String(panelRightWidthForConfig()),
+        uiCalendarHeight: String(clampCalendarHeight(readCurrentCalendarHeight())),
+        uiShowTaskPanel: currentUiShowTaskPanel ? "1" : "0"
       });
     } catch (_) {
     }
@@ -1495,6 +1745,14 @@
     renderMonth();
   });
 
+  settingsButton.addEventListener("click", async () => {
+    const next = await openSettingsDialog();
+    if (!next) return;
+    void saveViewConfigToIni();
+  });
+
+  applyUiStyleConfig();
+  applyTaskPanelVisibility();
   setViewMode("list");
   setRangePreset("1");
   setCustomRangeDays(7);

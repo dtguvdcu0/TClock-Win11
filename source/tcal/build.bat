@@ -22,9 +22,11 @@ if "%GENERATOR%"=="" (
     echo No supported Visual Studio generator found. Set GENERATOR_OVERRIDE to override.
     exit /b 1
 )
+
 set ARCH=x64
 set "SCRIPT_DIR=%~dp0"
 set "WV2_ROOT=%SCRIPT_DIR%third_party\webview2"
+set "DEPLOY_DIR=%SCRIPT_DIR%..\x64\%CONFIG%"
 
 if not exist "%WV2_ROOT%\include\WebView2.h" (
     echo ERROR: Bundled WebView2 header missing: %WV2_ROOT%\include\WebView2.h
@@ -57,6 +59,43 @@ if errorlevel 1 (
     exit /b 1
 )
 
-echo Build succeeded. Artifact is under %BUILD_DIR%\%CONFIG%\TCalendar.exe.
+set "TCAL_BUILD_OUT=%BUILD_DIR%\%CONFIG%"
+set "TCAL_EXE=%TCAL_BUILD_OUT%\TCalendar.exe"
+
+if not exist "%TCAL_EXE%" (
+    echo ERROR: TCalendar artifact not found: %TCAL_EXE%
+    popd
+    exit /b 1
+)
+
+if not exist "%DEPLOY_DIR%" mkdir "%DEPLOY_DIR%"
+copy /y "%TCAL_EXE%" "%DEPLOY_DIR%\TCalendar.exe" >nul
+if errorlevel 1 (
+    echo ERROR: Failed to copy TCalendar.exe to %DEPLOY_DIR%
+    popd
+    exit /b 1
+)
+
+copy /y "%TCAL_BUILD_OUT%\WebView2Loader.dll" "%DEPLOY_DIR%\WebView2Loader.dll" >nul
+if errorlevel 1 (
+    echo ERROR: Failed to copy WebView2Loader.dll to %DEPLOY_DIR%
+    popd
+    exit /b 1
+)
+
+if not exist "%DEPLOY_DIR%\tcalendar\template" mkdir "%DEPLOY_DIR%\tcalendar\template"
+if not exist "%DEPLOY_DIR%\tcalendar\data" mkdir "%DEPLOY_DIR%\tcalendar\data"
+
+xcopy /e /i /y "%TCAL_BUILD_OUT%\tcalendar\template" "%DEPLOY_DIR%\tcalendar\template" >nul
+if errorlevel 1 (
+    echo ERROR: Failed to copy template assets to %DEPLOY_DIR%\tcalendar\template
+    popd
+    exit /b 1
+)
+
+if exist "%DEPLOY_DIR%\*.exp" del /q "%DEPLOY_DIR%\*.exp" >nul 2>&1
+if exist "%DEPLOY_DIR%\*.lib" del /q "%DEPLOY_DIR%\*.lib" >nul 2>&1
+
+echo Build succeeded. Deployed artifact: %DEPLOY_DIR%\TCalendar.exe.
 popd
 exit /b 0

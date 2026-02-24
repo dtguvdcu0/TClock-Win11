@@ -32,15 +32,26 @@ if not exist "%MSBUILD%" goto NO_MSBUILD
 echo Using MSBuild: %MSBUILD%
 echo Building TClock: %SLN%
 
+set "REL_DIR=%~dp0x64\Release"
+set "DLL_PROJ=%~dp0tc2ch\dll\dll.vcxproj"
+set "LANG_PROJ=%~dp0tc2ch\language\language.vcxproj"
+set "REPAIR_MISSING_LIBS="
+if not exist "%REL_DIR%\tcdll-win11.lib" set "REPAIR_MISSING_LIBS=1"
+if not exist "%REL_DIR%\tclang-win11.lib" set "REPAIR_MISSING_LIBS=1"
+
+if defined REPAIR_MISSING_LIBS (
+    echo INFO: Required import libs are missing. Rebuilding language/dll projects...
+    "%MSBUILD%" "%LANG_PROJ%" /m /t:Rebuild /p:Configuration=Release;Platform=x64
+    if errorlevel 1 goto BUILD_FAIL
+    "%MSBUILD%" "%DLL_PROJ%" /m /t:Rebuild /p:Configuration=Release;Platform=x64
+    if errorlevel 1 goto BUILD_FAIL
+)
+
 "%MSBUILD%" "%SLN%" /m /t:Build /p:Configuration=Release;Platform=x64
 set "ERR=%ERRORLEVEL%"
 if not "%ERR%"=="0" goto BUILD_FAIL
 
 echo TClock build succeeded.
-set "REL_DIR=%~dp0x64\Release"
-if exist "%REL_DIR%\*.exp" del /q "%REL_DIR%\*.exp" >nul 2>&1
-if exist "%REL_DIR%\*.lib" del /q "%REL_DIR%\*.lib" >nul 2>&1
-echo Cleanup done: removed *.exp and *.lib from %REL_DIR%
 exit /b 0
 
 :NO_VSWHERE

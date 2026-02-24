@@ -199,10 +199,10 @@ void ShowAlertDialogWithAppIcon(const std::wstring& body) {
     params.hInstance = GetModuleHandleW(nullptr);
     params.lpszText = body.c_str();
     params.lpszCaption = L"TClock-Win11";
-    params.dwStyle = MB_OK | MB_SETFOREGROUND | MB_USERICON;
+    params.dwStyle = MB_OK | MB_SETFOREGROUND | MB_TOPMOST | MB_SYSTEMMODAL | MB_USERICON;
     params.lpszIcon = MAKEINTRESOURCEW(IDI_APPICON);
     if (MessageBoxIndirectW(&params) == 0) {
-        MessageBoxW(nullptr, body.c_str(), L"TClock-Win11", MB_OK | MB_SETFOREGROUND | MB_ICONINFORMATION);
+        MessageBoxW(nullptr, body.c_str(), L"TClock-Win11", MB_OK | MB_SETFOREGROUND | MB_TOPMOST | MB_SYSTEMMODAL | MB_ICONINFORMATION);
     }
 }
 
@@ -218,14 +218,10 @@ int RunAlertMode(const tcalendar::HostConfig& config) {
     if (window_minutes < 30) window_minutes = 30;
 
     int tick_seconds = config.alert_dispatch_tick_seconds;
-    if (tick_seconds < 30) tick_seconds = 30;
+    if (tick_seconds < 60) tick_seconds = 60;
 
     int refresh_minutes = config.alert_refresh_minutes;
     if (refresh_minutes < 1) refresh_minutes = 1;
-
-    int grace_minutes = config.alert_grace_minutes;
-    if (grace_minutes < 0) grace_minutes = 0;
-    if (grace_minutes > 5) grace_minutes = 5;
 
     std::unordered_set<std::wstring> delivered;
     std::vector<tcalendar::TaskItem> due_queue;
@@ -292,7 +288,6 @@ int RunAlertMode(const tcalendar::HostConfig& config) {
 
         const time_t now = time(nullptr);
         const time_t now_minute = FloorToMinute(now);
-        const time_t floor_min = now_minute - static_cast<time_t>(grace_minutes) * 60;
         std::tm now_tm{};
         localtime_s(&now_tm, &now);
 
@@ -305,7 +300,7 @@ int RunAlertMode(const tcalendar::HostConfig& config) {
             } else {
                 time_t task_minute = 0;
                 if (!BuildTaskStartLocalMinute(task, task_minute)) continue;
-                if (task_minute < floor_min || task_minute > now_minute) continue;
+                if (task_minute != now_minute) continue;
             }
 
             const std::wstring body = BuildNotifyBody(task);
@@ -319,7 +314,14 @@ int RunAlertMode(const tcalendar::HostConfig& config) {
             delivered.insert(key);
         }
 
-        std::this_thread::sleep_for(std::chrono::seconds(tick_seconds));
+        int sleep_seconds = tick_seconds;
+        if (tick_seconds <= 60) {
+            std::tm sleep_tm{};
+            localtime_s(&sleep_tm, &now);
+            sleep_seconds = 60 - sleep_tm.tm_sec;
+            if (sleep_seconds <= 0 || sleep_seconds > 60) sleep_seconds = 60;
+        }
+        std::this_thread::sleep_for(std::chrono::seconds(sleep_seconds));
     }
 }
 

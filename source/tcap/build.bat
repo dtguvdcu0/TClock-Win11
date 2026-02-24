@@ -54,9 +54,8 @@ if not exist "%TCAP_EXE%" (
 )
 
 if not exist "%DEPLOY_DIR%" mkdir "%DEPLOY_DIR%"
-copy /y "%TCAP_EXE%" "%DEPLOY_DIR%\TCapture.exe" >nul
+call :copy_with_retry "%TCAP_EXE%" "%DEPLOY_DIR%\TCapture.exe" "TCapture.exe"
 if errorlevel 1 (
-    echo ERROR: Failed to copy TCapture.exe to %DEPLOY_DIR%
     popd
     exit /b 1
 )
@@ -69,9 +68,35 @@ if exist "%SCRIPT_DIR%lang" (
     xcopy /e /i /y "%SCRIPT_DIR%lang" "%DEPLOY_DIR%\lang" >nul
 )
 
-if exist "%DEPLOY_DIR%\*.exp" del /q "%DEPLOY_DIR%\*.exp" >nul 2>&1
-if exist "%DEPLOY_DIR%\*.lib" del /q "%DEPLOY_DIR%\*.lib" >nul 2>&1
 
 echo Build succeeded. Deployed artifact: %DEPLOY_DIR%\TCapture.exe.
 popd
+exit /b 0
+
+:copy_with_retry
+set "COPY_SRC=%~1"
+set "COPY_DST=%~2"
+set "LOCK_PROC=%~3"
+
+copy /y "%COPY_SRC%" "%COPY_DST%" >nul
+if not errorlevel 1 exit /b 0
+
+echo WARN: Initial copy failed: %COPY_DST%
+tasklist /fi "IMAGENAME eq %LOCK_PROC%" 2>nul | find /i "%LOCK_PROC%" >nul
+if errorlevel 1 (
+    echo ERROR: Copy failed and locking process was not detected: %LOCK_PROC%
+    exit /b 1
+)
+
+echo INFO: Stopping process to unlock file: %LOCK_PROC%
+taskkill /f /im "%LOCK_PROC%" >nul 2>&1
+timeout /t 1 /nobreak >nul
+
+copy /y "%COPY_SRC%" "%COPY_DST%" >nul
+if errorlevel 1 (
+    echo ERROR: Copy failed after stopping process: %COPY_DST%
+    exit /b 1
+)
+
+echo INFO: Copy succeeded after stopping process: %LOCK_PROC%
 exit /b 0

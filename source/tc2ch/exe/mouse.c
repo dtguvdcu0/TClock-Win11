@@ -32,6 +32,7 @@ static int GetMouseFuncNum(int button, int nclick);
 static ATOM atomHotkey[4] = { 0,0,0,0 };
 static UINT idTCaptureHotkey[32] = { 0 };
 static char tcapProfileByHotkey[32][128] = { { 0 } };
+extern BOOL b_EnglishMenu;
 
 static const char *atomName[4] = {
 	"hotkey1_atom_tcklock2ch",
@@ -48,6 +49,26 @@ static void tc_mouse_normalize_setting_utf8_in_place(char* value, int valueBytes
 	if (tc_utf8_to_utf16(value, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) <= 0) return;
 	if (tc_utf16_to_utf8(wbuf, utf8, (int)sizeof(utf8)) <= 0) return;
 	lstrcpyn(value, utf8, valueBytes);
+}
+
+static LONG GetTCaptureEnableConfigMouse(void)
+{
+	LONG v = GetMyRegLong("TCapture", "Enable", -1);
+	if (v != -1) return (v != 0) ? 1 : 0;
+	v = GetMyRegLong("ETC", "TCaptureEnable", 0);
+	SetMyRegLong("TCapture", "Enable", (v != 0) ? 1 : 0);
+	DelMyReg("ETC", "TCaptureEnable");
+	return (v != 0) ? 1 : 0;
+}
+
+static LONG GetTCalendarEnableConfigMouse(void)
+{
+	LONG v = GetMyRegLong("TCalendar", "Enable", -1);
+	if (v == -1) {
+		SetMyRegLong("TCalendar", "Enable", 0);
+		return 0;
+	}
+	return (v != 0) ? 1 : 0;
 }
 
 static void GetTCapturePathConfigMouse(char* outPath, int outPathLen)
@@ -78,6 +99,40 @@ static BOOL ResolveTCaptureExePathMouse(char* outPath, int outPathLen)
 	outPath[0] = '\0';
 	GetTCapturePathConfigMouse(cfgPath, MAX_PATH);
 	if (cfgPath[0] == 0) strcpy(cfgPath, "TCapture.exe");
+	if (PathFileExistsUtf8Strict(cfgPath)) {
+		lstrcpyn(outPath, cfgPath, outPathLen);
+		return TRUE;
+	}
+	lstrcpyn(outPath, g_mydir, outPathLen);
+	add_title(outPath, cfgPath);
+	if (PathFileExistsUtf8Strict(outPath)) return TRUE;
+	lstrcpyn(outPath, cfgPath, outPathLen);
+	return PathFileExistsUtf8Strict(outPath);
+}
+
+static void GetTCalendarPathConfigMouse(char* outPath, int outPathLen)
+{
+	char before[MAX_PATH];
+	BOOL wasMissing = FALSE;
+	if (!outPath || outPathLen <= 0) return;
+	outPath[0] = '\0';
+	GetMyRegStr("TCalendar", "Path", outPath, outPathLen, "");
+	if (outPath[0] == '\0') {
+		strcpy(outPath, "TCalendar.exe");
+		wasMissing = TRUE;
+	}
+	lstrcpyn(before, outPath, (int)sizeof(before));
+	tc_mouse_normalize_setting_utf8_in_place(outPath, outPathLen);
+	if (wasMissing || lstrcmp(before, outPath) != 0) SetMyRegStr("TCalendar", "Path", outPath);
+}
+
+static BOOL ResolveTCalendarExePathMouse(char* outPath, int outPathLen)
+{
+	char cfgPath[MAX_PATH];
+	if (!outPath || outPathLen <= 0) return FALSE;
+	outPath[0] = '\0';
+	GetTCalendarPathConfigMouse(cfgPath, MAX_PATH);
+	if (cfgPath[0] == 0) strcpy(cfgPath, "TCalendar.exe");
 	if (PathFileExistsUtf8Strict(cfgPath)) {
 		lstrcpyn(outPath, cfgPath, outPathLen);
 		return TRUE;
@@ -171,6 +226,96 @@ static void TriggerTCaptureProfile(HWND hwnd, const char* profileName)
 	}
 	wsprintf(params, "--capture --profile \"%s\"", safeProfile);
 	ShellExecuteUtf8Strict(hwnd, "open", exePath, params, g_mydir, SW_SHOWNORMAL);
+}
+
+typedef struct {
+	char file[MAX_PATH];
+	char args[256];
+	char workdir[MAX_PATH];
+	int showCmd;
+	int activateTCalendar;
+} TC_MOUSE_DELAYED_LAUNCH;
+
+static void tc_mouse_activate_tcalendar_window(void)
+{
+	HWND hwndTcal = FindWindowW(L"TCalendarStandaloneWindowClass", NULL);
+	if (!hwndTcal) hwndTcal = FindWindowW(L"TCalendarWindowClass", NULL);
+	if (!hwndTcal) return;
+	ShowWindow(hwndTcal, SW_RESTORE);
+	{
+		HWND hwndFg = GetForegroundWindow();
+		DWORD fgThread = hwndFg ? GetWindowThreadProcessId(hwndFg, NULL) : 0;
+		DWORD targetThread = GetWindowThreadProcessId(hwndTcal, NULL);
+		DWORD currentThread = GetCurrentThreadId();
+		BOOL attachedCurrent = FALSE;
+		BOOL attachedFg = FALSE;
+		if (targetThread && currentThread != targetThread) {
+			attachedCurrent = AttachThreadInput(currentThread, targetThread, TRUE);
+		}
+		if (targetThread && fgThread && fgThread != targetThread) {
+			attachedFg = AttachThreadInput(fgThread, targetThread, TRUE);
+		}
+		SetWindowPos(hwndTcal, HWND_TOPMOST, 0, 0, 0, 0,
+			SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+		SetWindowPos(hwndTcal, HWND_NOTOPMOST, 0, 0, 0, 0,
+			SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+		BringWindowToTop(hwndTcal);
+		SetForegroundWindow(hwndTcal);
+		SetActiveWindow(hwndTcal);
+		SetFocus(hwndTcal);
+		if (attachedFg) AttachThreadInput(fgThread, targetThread, FALSE);
+		if (attachedCurrent) AttachThreadInput(currentThread, targetThread, FALSE);
+	}
+}
+
+static DWORD WINAPI tc_mouse_delayed_launch_thread(LPVOID lp)
+{
+	TC_MOUSE_DELAYED_LAUNCH* launch = (TC_MOUSE_DELAYED_LAUNCH*)lp;
+	int retry;
+	if (!launch) return 0;
+	Sleep(250);
+	ShellExecuteUtf8Strict(g_hwndMain, "open", launch->file[0] ? launch->file : NULL,
+		launch->args[0] ? launch->args : NULL,
+		launch->workdir[0] ? launch->workdir : NULL,
+		launch->showCmd ? launch->showCmd : SW_SHOWNORMAL);
+	if (launch->activateTCalendar) {
+		for (retry = 0; retry < 12; ++retry) {
+			Sleep(150);
+			tc_mouse_activate_tcalendar_window();
+			if (FindWindowW(L"TCalendarStandaloneWindowClass", NULL) ||
+				FindWindowW(L"TCalendarWindowClass", NULL)) {
+				break;
+			}
+		}
+	}
+	free(launch);
+	return 0;
+}
+
+static void tc_mouse_launch_with_delay(const char* file, const char* args, const char* workdir, int showCmd, int activateTCalendar)
+{
+	TC_MOUSE_DELAYED_LAUNCH* launch = (TC_MOUSE_DELAYED_LAUNCH*)malloc(sizeof(TC_MOUSE_DELAYED_LAUNCH));
+	HANDLE hThread;
+	if (!launch) {
+		ShellExecuteUtf8Strict(g_hwndMain, "open", file, args, workdir, showCmd ? showCmd : SW_SHOWNORMAL);
+		if (activateTCalendar) tc_mouse_activate_tcalendar_window();
+		return;
+	}
+	ZeroMemory(launch, sizeof(TC_MOUSE_DELAYED_LAUNCH));
+	if (file) lstrcpyn(launch->file, file, MAX_PATH);
+	if (args) lstrcpyn(launch->args, args, 256);
+	if (workdir) lstrcpyn(launch->workdir, workdir, MAX_PATH);
+	launch->showCmd = showCmd;
+	launch->activateTCalendar = activateTCalendar;
+	hThread = CreateThread(NULL, 0, tc_mouse_delayed_launch_thread, launch, 0, NULL);
+	if (hThread) {
+		CloseHandle(hThread);
+	}
+	else {
+		free(launch);
+		ShellExecuteUtf8Strict(g_hwndMain, "open", file, args, workdir, showCmd ? showCmd : SW_SHOWNORMAL);
+		if (activateTCalendar) tc_mouse_activate_tcalendar_window();
+	}
 }
 
 /*------------------------------------------------
@@ -729,6 +874,26 @@ void ExecuteMouseFunction(HWND hwnd, LONG fnc, int btn, int clk)
 		case MOUSEFUNC_ALARM_CLOCK:
 		{
 			ShellExecuteW(NULL, L"open", L"ms-clock:", NULL, NULL, SW_SHOWNORMAL);
+			break;
+		}
+
+		case MOUSEFUNC_TCALENDAR_OPEN:
+		{
+			char tcalExePath[MAX_PATH];
+			if (!GetTCalendarEnableConfigMouse()) break;
+			if (!ResolveTCalendarExePathMouse(tcalExePath, MAX_PATH)) break;
+			tc_mouse_launch_with_delay(tcalExePath, NULL, g_mydir, SW_SHOWNORMAL, 1);
+			break;
+		}
+
+		case MOUSEFUNC_TCAPTURE_SETTINGS:
+		{
+			char tcapExePath[MAX_PATH];
+			const char* tcapSettingsParams;
+			if (!GetTCaptureEnableConfigMouse()) break;
+			if (!ResolveTCaptureExePathMouse(tcapExePath, MAX_PATH)) break;
+			tcapSettingsParams = b_EnglishMenu ? "--settings --lang en" : "--settings --lang ja";
+			ShellExecuteUtf8Strict(hwnd, "open", tcapExePath, tcapSettingsParams, g_mydir, SW_SHOWNORMAL);
 			break;
 		}
 

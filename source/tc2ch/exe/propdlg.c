@@ -436,14 +436,11 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 					break;
 				}
 				{
-					int pageIndex;
 					NMHDR lp;
 					lp.code = PSN_APPLY;
-					/* Apply all instantiated pages, not only the active tab. */
-					for (pageIndex = 0; pageIndex < MAX_PAGE; pageIndex++) {
-						if (hDlg[pageIndex] && IsWindow(hDlg[pageIndex])) {
-							SendMessage(hDlg[pageIndex], WM_NOTIFY, 0, (LPARAM)&lp);
-						}
+					/* Apply only the active page to avoid unnecessary full-save latency. */
+					if (hNowDlg && *hNowDlg && IsWindow(*hNowDlg)) {
+						SendMessage(*hNowDlg, WM_NOTIFY, 0, (LPARAM)&lp);
 					}
 				}
 				if(g_bApplyClock)

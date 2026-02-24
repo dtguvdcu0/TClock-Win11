@@ -9,9 +9,14 @@
 <body>
   <main class="app">
     <header class="topbar">
-      <button id="prevMonth" type="button">◀</button>
-      <h1 id="monthTitle">TCalendar</h1>
-      <button id="nextMonth" type="button">▶</button>
+      <div class="calendarTopbar">
+        <button id="prevMonth" type="button" aria-label="Previous month">&lt;</button>
+        <h1 id="monthTitle">TCalendar</h1>
+        <button id="nextMonth" type="button" aria-label="Next month">&gt;</button>
+      </div>
+      <div class="topbarActions">
+        <button id="settingsButton" type="button">Settings</button>
+      </div>
     </header>
 
     <section class="gridWrap">

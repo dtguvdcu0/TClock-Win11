@@ -269,6 +269,21 @@ body.isResizingCalendarHeight {
 }
 
 
+.dayCell .dateTaskMarker {
+  display: inline-block;
+  margin-left: 3px;
+  font-size: 0.72em;
+  line-height: 1;
+  transform: translateY(-0.42em);
+  opacity: 0.72;
+  color: #5f6b78;
+}
+
+.dayCell.isOutside .dateTaskMarker {
+  opacity: 0.4;
+}
+
+
 taskList,
 #taskList {
   font-size: var(--task-font-size);
@@ -388,6 +403,19 @@ taskList,
 .taskModal label {
   font-size: 12px;
   color: #4f5966;
+}
+
+.taskModalInlineCheck {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #4f5966;
+}
+
+.taskModalInlineCheck input[type="checkbox"] {
+  width: auto;
+  margin: 0;
 }
 
 .taskModal input,

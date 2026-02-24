@@ -241,7 +241,7 @@ static void tc_mouse_activate_tcalendar_window(void)
 	HWND hwndTcal = FindWindowW(L"TCalendarStandaloneWindowClass", NULL);
 	if (!hwndTcal) hwndTcal = FindWindowW(L"TCalendarWindowClass", NULL);
 	if (!hwndTcal) return;
-	ShowWindow(hwndTcal, SW_RESTORE);
+	if (IsIconic(hwndTcal)) ShowWindow(hwndTcal, SW_RESTORE);
 	{
 		HWND hwndFg = GetForegroundWindow();
 		DWORD fgThread = hwndFg ? GetWindowThreadProcessId(hwndFg, NULL) : 0;
@@ -255,14 +255,11 @@ static void tc_mouse_activate_tcalendar_window(void)
 		if (targetThread && fgThread && fgThread != targetThread) {
 			attachedFg = AttachThreadInput(fgThread, targetThread, TRUE);
 		}
-		SetWindowPos(hwndTcal, HWND_TOPMOST, 0, 0, 0, 0,
-			SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-		SetWindowPos(hwndTcal, HWND_NOTOPMOST, 0, 0, 0, 0,
-			SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
 		BringWindowToTop(hwndTcal);
+		SetWindowPos(hwndTcal, HWND_TOP, 0, 0, 0, 0,
+			SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
 		SetForegroundWindow(hwndTcal);
 		SetActiveWindow(hwndTcal);
-		SetFocus(hwndTcal);
 		if (attachedFg) AttachThreadInput(fgThread, targetThread, FALSE);
 		if (attachedCurrent) AttachThreadInput(currentThread, targetThread, FALSE);
 	}
@@ -279,13 +276,14 @@ static DWORD WINAPI tc_mouse_delayed_launch_thread(LPVOID lp)
 		launch->workdir[0] ? launch->workdir : NULL,
 		launch->showCmd ? launch->showCmd : SW_SHOWNORMAL);
 	if (launch->activateTCalendar) {
-		for (retry = 0; retry < 12; ++retry) {
-			Sleep(150);
-			tc_mouse_activate_tcalendar_window();
-			if (FindWindowW(L"TCalendarStandaloneWindowClass", NULL) ||
-				FindWindowW(L"TCalendarWindowClass", NULL)) {
+		for (retry = 0; retry < 20; ++retry) {
+			HWND hwndTcal = FindWindowW(L"TCalendarStandaloneWindowClass", NULL);
+			if (!hwndTcal) hwndTcal = FindWindowW(L"TCalendarWindowClass", NULL);
+			if (hwndTcal) {
+				tc_mouse_activate_tcalendar_window();
 				break;
 			}
+			Sleep(100);
 		}
 	}
 	free(launch);

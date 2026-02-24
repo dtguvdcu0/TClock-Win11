@@ -20,6 +20,7 @@
 #include <cwctype>
 
 #include "task_store.h"
+#include "resource.h"
 
 namespace {
 
@@ -764,6 +765,12 @@ int RunStandaloneWindowMode(tcalendar::TCalendarHost& host, const tcalendar::Hos
     wc.cbSize = sizeof(wc);
     wc.lpfnWndProc = TCalendarWndProc;
     wc.hInstance = instance;
+    wc.hIcon = static_cast<HICON>(LoadImageW(instance, MAKEINTRESOURCEW(IDI_APPICON), IMAGE_ICON,
+                                             GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON), LR_DEFAULTCOLOR));
+    wc.hIconSm = static_cast<HICON>(LoadImageW(instance, MAKEINTRESOURCEW(IDI_APPICON), IMAGE_ICON,
+                                               GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), LR_DEFAULTCOLOR));
+    if (!wc.hIcon) wc.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
+    if (!wc.hIconSm) wc.hIconSm = wc.hIcon;
     wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
     wc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
     wc.lpszClassName = kTCalendarWindowClassName;

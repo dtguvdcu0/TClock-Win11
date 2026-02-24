@@ -30,10 +30,12 @@ add_executable(TCalendar
   host/bridge_contract.cpp
   host/task_store.cpp
   host/json_strict.cpp
+  resources.rc
 )
 
 target_include_directories(TCalendar PRIVATE
   host
+  ${CMAKE_CURRENT_SOURCE_DIR}
   ${WEBVIEW2_INCLUDE_DIR}
 )
 

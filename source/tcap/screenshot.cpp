@@ -642,7 +642,7 @@ int RunCaptureMain(int argc, char* argv[]) {
         // Prefer TCapture.ini alongside the executable; fall back to CWD.
         fs::path exeDir = getExecutableDir();
         fs::path exeIni = exeDir / "TCapture.ini";
-        bool loaded = loadSettings(settings, exeIni.string(), profileName);
+        bool loaded = loadSettings(settings, exeIni, profileName);
         if (!loaded) {
             loaded = loadSettings(settings, "TCapture.ini", profileName);
         }

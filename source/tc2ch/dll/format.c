@@ -282,7 +282,9 @@ static BOOL tc_custom_read_text_wide(const char* path, wchar_t* outWide, int out
 	outWide[0] = L'\0';
 	{
 		wchar_t wPath[MAX_PATH];
-		if (tc_utf8_to_utf16(path, wPath, (int)(sizeof(wPath) / sizeof(wPath[0]))) <= 0) return FALSE;
+		if (tc_utf8_to_utf16(path, wPath, (int)(sizeof(wPath) / sizeof(wPath[0]))) <= 0) {
+			if (tc_ansi_to_utf16_compat(0, path, wPath, (int)(sizeof(wPath) / sizeof(wPath[0]))) <= 0) return FALSE;
+		}
 		h = CreateFileW(wPath, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 	}
 	if (h == INVALID_HANDLE_VALUE) return FALSE;

@@ -409,10 +409,10 @@ static void EnsureTCalendarConfigDefaults(void)
     LONG alart = GetMyRegLong("TCalendar", "Alart", -1);
     if (enable == -1) {
         SetMyRegLong("TCalendar", "Enable", 0);
-		SetMyRegLong("TCalendar", "Alart", 0);
+		SetMyRegLong("TCalendar", "Alart", 1);
     }
     if (alart == -1) {
-        SetMyRegLong("TCalendar", "Alart", 0);
+        SetMyRegLong("TCalendar", "Alart", 1);
     }
 
     GetMyRegStr("TCalendar", "Path", tcalPath, MAX_PATH, "");
@@ -462,11 +462,11 @@ static LONG GetTCalendarAlertEnableConfig(void)
     if (enable == -1) {
         enable = 0;
         SetMyRegLong("TCalendar", "Enable", 0);
-		SetMyRegLong("TCalendar", "Alart", 0);
+		SetMyRegLong("TCalendar", "Alart", 1);
     }
     if (alart == -1) {
-        alart = 0;
-        SetMyRegLong("TCalendar", "Alart", 0);
+        alart = 1;
+        SetMyRegLong("TCalendar", "Alart", 1);
     }
 
     if (enable == 0) return 0;
@@ -2020,7 +2020,7 @@ void CreateDefaultIniFile_Win10(const wchar_t* fnameW)
 		SetMyRegLong("TCapture", "Enable", 0);
 		SetMyRegStr("TCapture", "Path", "TCapture.exe");
 		SetMyRegLong("TCalendar", "Enable", 0);
-		SetMyRegLong("TCalendar", "Alart", 0);
+		SetMyRegLong("TCalendar", "Alart", 1);
 		SetMyRegStr("TCalendar", "Path", "TCalendar.exe");
 		SetMyRegLong("Chime", "EnableChime", 0);
 		SetMyRegLong("Chime", "OffsetChimeSec", 0);

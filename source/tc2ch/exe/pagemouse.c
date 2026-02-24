@@ -19,6 +19,8 @@ static void OnMouseFileChange(HWND hDlg);
 
 static void OnSansho(HWND hDlg, WORD id);
 static void InitMouseFuncList(HWND hDlg);
+static LONG GetTCaptureEnableForMousePage(void);
+static LONG GetTCalendarEnableForMousePage(void);
 
 static char reg_section[] = "Mouse";
 
@@ -42,6 +44,26 @@ __inline void SendPSChanged(HWND hDlg)
 
 extern BOOL b_EnglishMenu;
 extern int Language_Offset;
+
+static LONG GetTCaptureEnableForMousePage(void)
+{
+	LONG v = GetMyRegLong("TCapture", "Enable", -1);
+	if (v != -1) return (v != 0) ? 1 : 0;
+	v = GetMyRegLong("ETC", "TCaptureEnable", 0);
+	SetMyRegLong("TCapture", "Enable", (v != 0) ? 1 : 0);
+	DelMyReg("ETC", "TCaptureEnable");
+	return (v != 0) ? 1 : 0;
+}
+
+static LONG GetTCalendarEnableForMousePage(void)
+{
+	LONG v = GetMyRegLong("TCalendar", "Enable", -1);
+	if (v == -1) {
+		SetMyRegLong("TCalendar", "Enable", 0);
+		return 0;
+	}
+	return (v != 0) ? 1 : 0;
+}
 
 /*------------------------------------------------
 　「マウス操作」ページ用ダイアログプロシージャ
@@ -500,10 +522,14 @@ void InitMouseFuncList(HWND hDlg)
 {
 	int i, index, cnt;
 	MOUSE_FUNC_INFO *pmfl;
+	LONG tcapEnabled = GetTCaptureEnableForMousePage();
+	LONG tcalEnabled = GetTCalendarEnableForMousePage();
 	cnt = GetMouseFuncCount();
 	pmfl = GetMouseFuncList();
 	for (i = 0; i < cnt; i++)
 	{
+		if (pmfl[i].mousefunc == MOUSEFUNC_TCALENDAR_OPEN && !tcalEnabled) continue;
+		if (pmfl[i].mousefunc == MOUSEFUNC_TCAPTURE_SETTINGS && !tcapEnabled) continue;
 		//リストの各項目を追加
 		index = CBAddStringUTF8Compat(hDlg, IDC_MOUSEFUNC, MyStringUTF8(pmfl[i].idstring));
 		CBSetItemData(hDlg, IDC_MOUSEFUNC, index, pmfl[i].mousefunc);

@@ -42,6 +42,11 @@ static BOOL tc_is_utf8_hex_target_key(const char* section, const char* entry)
 		 lstrcmpi(entry, "Tooltip") == 0 ||
 		 lstrcmpi(entry, "Tooltip2") == 0 ||
 		 lstrcmpi(entry, "Tooltip3") == 0)) return TRUE;
+	if (lstrcmpi(section, "TCapture") == 0 && lstrcmpi(entry, "Path") == 0) return TRUE;
+	if (lstrcmpi(section, "TCalendar") == 0 && lstrcmpi(entry, "Path") == 0) return TRUE;
+	if (lstrcmpi(section, "ETC") == 0 &&
+		(lstrcmpi(entry, "TCapturePath") == 0 || lstrcmpi(entry, "2chHelpURL") == 0)) return TRUE;
+	if (lstrcmpi(section, "CustomVars") == 0) return TRUE;
 	return FALSE;
 }
 
@@ -55,6 +60,11 @@ static BOOL tc_should_keep_utf8_bytes(const char* section, const char* entry)
 		 lstrcmpi(entry, "Tooltip") == 0 ||
 		 lstrcmpi(entry, "Tooltip2") == 0 ||
 		 lstrcmpi(entry, "Tooltip3") == 0)) return TRUE;
+	if (lstrcmpi(section, "TCapture") == 0 && lstrcmpi(entry, "Path") == 0) return TRUE;
+	if (lstrcmpi(section, "TCalendar") == 0 && lstrcmpi(entry, "Path") == 0) return TRUE;
+	if (lstrcmpi(section, "ETC") == 0 &&
+		(lstrcmpi(entry, "TCapturePath") == 0 || lstrcmpi(entry, "2chHelpURL") == 0)) return TRUE;
+	if (lstrcmpi(section, "CustomVars") == 0) return TRUE;
 	return FALSE;
 }
 

@@ -33,6 +33,7 @@ INT_PTR CALLBACK PageAppControlProc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK PageEtc1Proc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK PageWin11Proc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK PageColorAdditionalProc(HWND, UINT, WPARAM, LPARAM);
+INT_PTR CALLBACK PageCustomVarsProc(HWND, UINT, WPARAM, LPARAM);
 
 
 
@@ -194,7 +195,7 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 	static BOOL bDlgFlg[MAX_PAGE];
 	static HWND *hNowDlg;
 	_TV_INSERTSTRUCT tv;
-	HTREEITEM hParent[6], hChild[MAX_PAGE];
+	HTREEITEM hParent[MAX_PAGE], hChild[MAX_PAGE];
 	NM_TREEVIEW *pNMTV;
 //	HINSTANCE hInst;
 	static int nowDlg;
@@ -226,6 +227,10 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 			tv.item.lParam = 6;
 			tv.item.pszText = (LPWSTR)MyStringW(IDS_PROP_MOUSE);
 			hParent[6] = (HTREEITEM)SendMessageW(hTree, TVM_INSERTITEMW, 0, (LPARAM)&tv);
+
+			tv.item.lParam = 8;
+			tv.item.pszText = (LPWSTR)MyStringW(IDS_PROP_CUSTOMVARS);
+			hParent[8] = (HTREEITEM)SendMessageW(hTree, TVM_INSERTITEMW, 0, (LPARAM)&tv);
 
 			tv.item.lParam = 7;
 			tv.item.pszText = (LPWSTR)MyStringW(IDS_PROP_ETC);
@@ -364,6 +369,11 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 							CreatePageDialog(hDwnd, hDlg, bDlgFlg, nowDlg, GetSafeLanguageOffset() + IDD_PAGE_ETC, PageEtcProc);
 							break;
 
+						case 8:
+							nowDlg = 18;
+							CreatePageDialog(hDwnd, hDlg, bDlgFlg, nowDlg, GetSafeLanguageOffset() + IDD_PAGE_CUSTOMVARS, PageCustomVarsProc);
+							break;
+
 						case 100:
 							//nowDlg -= 10;
 							nowDlg = 0;		//PAGECOLORの親と同じ
@@ -437,10 +447,22 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 				}
 				{
 					NMHDR lp;
+					int applyActiveOnly;
+					int pageIdx;
 					lp.code = PSN_APPLY;
-					/* Apply only the active page to avoid unnecessary full-save latency. */
-					if (hNowDlg && *hNowDlg && IsWindow(*hNowDlg)) {
-						SendMessage(*hNowDlg, WM_NOTIFY, 0, (LPARAM)&lp);
+					/* INI switch: [ETC] ApplyActivePageOnly=1 keeps active-page-only apply. */
+					applyActiveOnly = GetMyRegLong("ETC", "ApplyActivePageOnly", 0) ? 1 : 0;
+					if (applyActiveOnly) {
+						if (hNowDlg && *hNowDlg && IsWindow(*hNowDlg)) {
+							SendMessage(*hNowDlg, WM_NOTIFY, 0, (LPARAM)&lp);
+						}
+					}
+					else {
+						for (pageIdx = 0; pageIdx < MAX_PAGE; ++pageIdx) {
+							if (hDlg[pageIdx] && IsWindow(hDlg[pageIdx])) {
+								SendMessage(hDlg[pageIdx], WM_NOTIFY, 0, (LPARAM)&lp);
+							}
+						}
 					}
 				}
 				if(g_bApplyClock)

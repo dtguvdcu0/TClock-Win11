@@ -1996,6 +1996,8 @@ void RestartOnRefresh(void)
 
 	tempBool = bEnableSubClks;
 
+	/* Ensure CustomVars [Exec/Path/JsonValue] updates from property UI are reloaded. */
+	CustomFormatVarsInvalidateSettings();
 	ReadData();
 
 	if (!tempBool && bEnableSubClks) {

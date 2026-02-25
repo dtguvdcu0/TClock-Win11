@@ -37,6 +37,7 @@ static PFN_CHARNEXTEXA g_pCharNextExCompat = NULL;
 static BOOL g_bCharNextExCompatInit = FALSE;
 
 extern BOOL bHour12, bHourZero;
+extern BOOL b_DebugLog;
 
 #define TC_CUSTOM_VAR_MAX 32
 #define TC_CUSTOM_PATH_MAX 1024
@@ -70,6 +71,18 @@ typedef enum {
 	TC_CUSTOM_JSON_TYPE_BOOL = 3
 } TC_CUSTOM_JSON_TYPE;
 
+typedef enum {
+	TC_CUSTOM_EXEC_TYPE_COMMAND = 0,
+	TC_CUSTOM_EXEC_TYPE_SHELL = 1
+} TC_CUSTOM_EXEC_TYPE;
+
+typedef enum {
+	TC_CUSTOM_EXEC_START_STARTUP = 0,
+	TC_CUSTOM_EXEC_START_INTERVAL = 1,
+	TC_CUSTOM_EXEC_START_BOTH = 2,
+	TC_CUSTOM_EXEC_START_TIME = 3
+} TC_CUSTOM_EXEC_START;
+
 typedef struct {
 	char path[TC_CUSTOM_PATH_MAX];
 	int refreshSec;
@@ -79,12 +92,21 @@ typedef struct {
 	char value[TC_CUSTOM_VALUE_MAX];
 	char valueUtf8[TC_CUSTOM_VALUE_MAX];
 	int mode;
-	char jsonPath[TC_CUSTOM_JSON_PATH_MAX];
 	char jsonDefault[TC_CUSTOM_FAIL_MAX];
 	int jsonValueType;
 	int jsonStringify;
 	int jsonNullAsEmpty;
 	char jsonValueExpr[TC_CUSTOM_VALUE_MAX];
+	int execEnable;
+	int execType;
+	int execStart;
+	int execIntervalSec;
+	int execTimeHour;
+	int execTimeMinute;
+	char execCommand[TC_CUSTOM_PATH_MAX];
+	DWORD nextExecTick;
+	int lastExecDate;
+	BOOL execStartupDone;
 	DWORD nextRefreshTick;
 	DWORD configHash;
 	BOOL hasPath;
@@ -138,14 +160,48 @@ static int tc_custom_parse_mode(const char* s)
 	return TC_CUSTOM_MODE_LINE;
 }
 
-static int tc_custom_parse_json_type(const char* s)
+static int tc_custom_parse_exec_type(const char* s)
 {
-	if (!s || !s[0]) return TC_CUSTOM_JSON_TYPE_AUTO;
-	if (_stricmp(s, "auto") == 0) return TC_CUSTOM_JSON_TYPE_AUTO;
-	if (_stricmp(s, "string") == 0) return TC_CUSTOM_JSON_TYPE_STRING;
-	if (_stricmp(s, "number") == 0) return TC_CUSTOM_JSON_TYPE_NUMBER;
-	if (_stricmp(s, "bool") == 0) return TC_CUSTOM_JSON_TYPE_BOOL;
-	return TC_CUSTOM_JSON_TYPE_AUTO;
+	if (!s || !s[0]) return TC_CUSTOM_EXEC_TYPE_COMMAND;
+	if (_stricmp(s, "shell") == 0) return TC_CUSTOM_EXEC_TYPE_SHELL;
+	return TC_CUSTOM_EXEC_TYPE_COMMAND;
+}
+
+static int tc_custom_parse_exec_start(const char* s)
+{
+	if (!s || !s[0]) return TC_CUSTOM_EXEC_START_INTERVAL;
+	if (_stricmp(s, "startup") == 0) return TC_CUSTOM_EXEC_START_STARTUP;
+	if (_stricmp(s, "interval") == 0) return TC_CUSTOM_EXEC_START_INTERVAL;
+	if (_stricmp(s, "both") == 0) return TC_CUSTOM_EXEC_START_BOTH;
+	if (_stricmp(s, "time") == 0) return TC_CUSTOM_EXEC_START_TIME;
+	return TC_CUSTOM_EXEC_START_INTERVAL;
+}
+
+static void tc_custom_parse_hhmm(const char* s, int* outHour, int* outMinute)
+{
+	int h = -1;
+	int m = -1;
+	if (s && sscanf(s, "%d:%d", &h, &m) == 2 && h >= 0 && h <= 23 && m >= 0 && m <= 59) {
+		*outHour = h;
+		*outMinute = m;
+		return;
+	}
+	*outHour = -1;
+	*outMinute = -1;
+}
+
+static int tc_custom_today_key(void)
+{
+	SYSTEMTIME st;
+	GetLocalTime(&st);
+	return (int)(st.wYear * 10000 + st.wMonth * 100 + st.wDay);
+}
+
+static int tc_custom_now_minutes(void)
+{
+	SYSTEMTIME st;
+	GetLocalTime(&st);
+	return (int)(st.wHour * 60 + st.wMinute);
 }
 
 static void tc_custom_try_init_inifile(void)
@@ -827,6 +883,13 @@ static BOOL tc_custom_json_node_to_wide(
 		}
 	} else if (target->type == TC_JSON_NODE_OBJECT || target->type == TC_JSON_NODE_ARRAY) {
 		if (!e->jsonStringify) {
+			if (b_DebugLog) {
+				char dbgJson[TC_CUSTOM_VALUE_MAX];
+				int dbgPos = 0;
+				tc_custom_json_stringify_node(target, dbgJson, (int)sizeof(dbgJson), &dbgPos);
+				writeDebugLog_Win10("[format.c][CustomVars] Json object/array (stringify=0):", 999);
+				writeDebugLog_Win10(dbgJson, 999);
+			}
 			if (useFallback) return tc_custom_text_to_utf16_compat(fallback ? fallback : "", outWide, outCch);
 			return FALSE;
 		}
@@ -920,19 +983,6 @@ static BOOL tc_custom_json_expand_template(TC_CUSTOM_VAR_ENTRY* e, TC_CUSTOM_JSO
 }
 
 
-static BOOL tc_custom_json_extract_single_from_root(TC_CUSTOM_VAR_ENTRY* e, TC_CUSTOM_JSON_NODE* root, wchar_t* outWide, int outCch)
-{
-	TC_CUSTOM_JSON_NODE* target;
-	if (!e || !root || !outWide || outCch <= 0) return FALSE;
-	if (!e->jsonPath[0]) return FALSE;
-	target = tc_custom_json_path_find(root, e->jsonPath);
-	if (!target) {
-		if (e->jsonDefault[0]) return tc_custom_text_to_utf16_compat(e->jsonDefault, outWide, outCch);
-		return FALSE;
-	}
-	return tc_custom_json_node_to_wide(e, target, e->jsonValueType, e->jsonDefault, FALSE, outWide, outCch);
-}
-
 static BOOL tc_custom_json_extract_text(TC_CUSTOM_VAR_ENTRY* e, const wchar_t* wjson, wchar_t* outWide, int outCch)
 {
 	char* utf8;
@@ -948,8 +998,7 @@ static BOOL tc_custom_json_extract_text(TC_CUSTOM_VAR_ENTRY* e, const wchar_t* w
 	root = tc_custom_json_parse_document(utf8);
 	HeapFree(GetProcessHeap(), 0, utf8);
 	if (!root) return FALSE;
-	if (e->jsonValueExpr[0]) ok = tc_custom_json_expand_template(e, root, outWide, outCch);
-	else ok = tc_custom_json_extract_single_from_root(e, root, outWide, outCch);
+	ok = tc_custom_json_expand_template(e, root, outWide, outCch);
 	tc_custom_json_free_node(root);
 	return ok;
 }
@@ -965,6 +1014,73 @@ static void tc_custom_set_fallback(TC_CUSTOM_VAR_ENTRY* e)
 static const char* tc_custom_get_emit_value(const TC_CUSTOM_VAR_ENTRY* e);
 static const char* tc_custom_get_value(int index1);
 
+static void tc_custom_run_script(TC_CUSTOM_VAR_ENTRY* e)
+{
+	WCHAR wcmd[2048];
+	WCHAR wline[2304];
+	WCHAR wIniPath[MAX_PATH];
+	WCHAR wCwd[MAX_PATH];
+	LPCWSTR cwd = NULL;
+	STARTUPINFOW si;
+	PROCESS_INFORMATION pi;
+	if (!e || !e->execCommand[0]) return;
+	if (tc_utf8_to_utf16(e->execCommand, wcmd, (int)(sizeof(wcmd) / sizeof(wcmd[0]))) <= 0) {
+		if (!tc_ansi_to_utf16_compat(0, e->execCommand, wcmd, (int)(sizeof(wcmd) / sizeof(wcmd[0])))) return;
+	}
+	if (g_inifile[0]) {
+		int okIni = tc_utf8_to_utf16(g_inifile, wIniPath, (int)(sizeof(wIniPath) / sizeof(wIniPath[0])));
+		if (okIni <= 0) {
+			if (!tc_ansi_to_utf16_compat(0, g_inifile, wIniPath, (int)(sizeof(wIniPath) / sizeof(wIniPath[0])))) {
+				wIniPath[0] = L'\0';
+			}
+		}
+		if (wIniPath[0]) {
+			lstrcpynW(wCwd, wIniPath, (int)(sizeof(wCwd) / sizeof(wCwd[0])));
+			if (PathRemoveFileSpecW(wCwd)) {
+				cwd = wCwd;
+			}
+		}
+	}
+	ZeroMemory(&si, sizeof(si));
+	ZeroMemory(&pi, sizeof(pi));
+	si.cb = sizeof(si);
+	if (e->execType == TC_CUSTOM_EXEC_TYPE_SHELL) wsprintfW(wline, L"cmd.exe /c %s", wcmd);
+	else lstrcpynW(wline, wcmd, (int)(sizeof(wline) / sizeof(wline[0])));
+	if (!CreateProcessW(NULL, wline, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, cwd, &si, &pi)) {
+		if (b_DebugLog) writeDebugLog_Win10("[format.c][CustomVars] script launch failed", 999);
+		return;
+	}
+	CloseHandle(pi.hThread);
+	CloseHandle(pi.hProcess);
+	if (b_DebugLog) writeDebugLog_Win10("[format.c][CustomVars] script launched", 999);
+}
+
+static void tc_custom_maybe_run_script(TC_CUSTOM_VAR_ENTRY* e, DWORD nowTick, BOOL forceRefresh)
+{
+	int runNow = 0;
+	int todayKey;
+	if (!e || !e->execEnable || !e->execCommand[0]) return;
+	if ((e->execStart == TC_CUSTOM_EXEC_START_STARTUP || e->execStart == TC_CUSTOM_EXEC_START_BOTH) && forceRefresh && !e->execStartupDone) runNow = 1;
+	if (!runNow && (e->execStart == TC_CUSTOM_EXEC_START_INTERVAL || e->execStart == TC_CUSTOM_EXEC_START_BOTH)) {
+		if (e->nextExecTick == 0 || tc_custom_tick_expired(nowTick, e->nextExecTick)) runNow = 1;
+	}
+	if (!runNow && e->execStart == TC_CUSTOM_EXEC_START_TIME && e->execTimeHour >= 0 && e->execTimeMinute >= 0) {
+		todayKey = tc_custom_today_key();
+		if (e->lastExecDate != todayKey) {
+			int nowMin = tc_custom_now_minutes();
+			int targetMin = e->execTimeHour * 60 + e->execTimeMinute;
+			if (nowMin >= targetMin) runNow = 1;
+		}
+	}
+	if (!runNow) return;
+	tc_custom_run_script(e);
+	e->execStartupDone = TRUE;
+	e->lastExecDate = tc_custom_today_key();
+	if (e->execStart == TC_CUSTOM_EXEC_START_INTERVAL || e->execStart == TC_CUSTOM_EXEC_START_BOTH) {
+		e->nextExecTick = nowTick + (DWORD)(tc_custom_clamp_int(e->execIntervalSec, 1, 86400) * 1000);
+	}
+}
+
 static void tc_custom_refresh_one(int idx, DWORD nowTick, BOOL forceRefresh)
 {
 	TC_CUSTOM_VAR_ENTRY* e;
@@ -974,6 +1090,7 @@ static void tc_custom_refresh_one(int idx, DWORD nowTick, BOOL forceRefresh)
 	char ansi[TC_CUSTOM_VALUE_MAX];
 	if (idx < 0 || idx >= TC_CUSTOM_VAR_MAX) return;
 	e = &g_customVars[idx];
+	tc_custom_maybe_run_script(e, nowTick, forceRefresh);
 	if (!forceRefresh && !tc_custom_tick_expired(nowTick, e->nextRefreshTick)) return;
 	if (!e->hasPath) {
 		tc_custom_set_fallback(e);
@@ -1094,12 +1211,21 @@ void CustomFormatVarsReadSettings(void)
 		lstrcpyn(e->failValue, g_customDefaultFailValue, (int)sizeof(e->failValue));
 		e->whitespaceMode = g_customDefaultWhitespaceMode;
 		e->mode = TC_CUSTOM_MODE_LINE;
-		e->jsonPath[0] = '\0';
 		e->jsonDefault[0] = '\0';
 		e->jsonValueType = TC_CUSTOM_JSON_TYPE_AUTO;
 		e->jsonStringify = 0;
 		e->jsonNullAsEmpty = 0;
 		e->jsonValueExpr[0] = '\0';
+		e->execEnable = 0;
+		e->execType = TC_CUSTOM_EXEC_TYPE_COMMAND;
+		e->execStart = TC_CUSTOM_EXEC_START_INTERVAL;
+		e->execIntervalSec = 60;
+		e->execTimeHour = -1;
+		e->execTimeMinute = -1;
+		e->execCommand[0] = '\0';
+		e->nextExecTick = 0;
+		e->lastExecDate = 0;
+		e->execStartupDone = FALSE;
 		e->valueUtf8[0] = '\0';
 		e->jsonValueType = TC_CUSTOM_JSON_TYPE_AUTO;
 
@@ -1115,7 +1241,6 @@ void CustomFormatVarsReadSettings(void)
 				lstrcpyn(e->failValue, g_customDefaultFailValue, (int)sizeof(e->failValue));
 			}
 			tc_custom_build_key(i + 1, "Whitespace", key, (int)sizeof(key));
-			tmp[0] = '\0';
 			if (GetMyRegStr("CustomVars", key, tmp, (int)sizeof(tmp), "") <= 0) {
 				tmp[0] = '\0';
 			}
@@ -1124,20 +1249,32 @@ void CustomFormatVarsReadSettings(void)
 			tmp[0] = '\0';
 			if (GetMyRegStr("CustomVars", key, tmp, (int)sizeof(tmp), "") <= 0) tmp[0] = '\0';
 			e->mode = tc_custom_parse_mode(tmp);
-			tc_custom_build_key(i + 1, "JsonPath", key, (int)sizeof(key));
-			if (GetMyRegStr("CustomVars", key, e->jsonPath, (int)sizeof(e->jsonPath), "") <= 0) e->jsonPath[0] = '\0';
 			tc_custom_build_key(i + 1, "JsonDefault", key, (int)sizeof(key));
 			if (GetMyRegStr("CustomVars", key, e->jsonDefault, (int)sizeof(e->jsonDefault), "") <= 0) e->jsonDefault[0] = '\0';
-			tc_custom_build_key(i + 1, "JsonType", key, (int)sizeof(key));
-			tmp[0] = '\0';
-			if (GetMyRegStr("CustomVars", key, tmp, (int)sizeof(tmp), "") <= 0) tmp[0] = '\0';
-			e->jsonValueType = tc_custom_parse_json_type(tmp);
 			tc_custom_build_key(i + 1, "JsonStringify", key, (int)sizeof(key));
 			e->jsonStringify = GetMyRegLong("CustomVars", key, 0) ? 1 : 0;
 			tc_custom_build_key(i + 1, "JsonNullAsEmpty", key, (int)sizeof(key));
 			e->jsonNullAsEmpty = GetMyRegLong("CustomVars", key, 0) ? 1 : 0;
 			tc_custom_build_key(i + 1, "JsonValue", key, (int)sizeof(key));
 			if (GetMyRegStr("CustomVars", key, e->jsonValueExpr, (int)sizeof(e->jsonValueExpr), "") <= 0) e->jsonValueExpr[0] = '\0';
+			tc_custom_build_key(i + 1, "ExecEnable", key, (int)sizeof(key));
+			e->execEnable = GetMyRegLong("CustomVars", key, 0) ? 1 : 0;
+			tc_custom_build_key(i + 1, "ExecType", key, (int)sizeof(key));
+			tmp[0] = '\0';
+			if (GetMyRegStr("CustomVars", key, tmp, (int)sizeof(tmp), "") <= 0) tmp[0] = '\0';
+			e->execType = tc_custom_parse_exec_type(tmp);
+			tc_custom_build_key(i + 1, "ExecStart", key, (int)sizeof(key));
+			tmp[0] = '\0';
+			if (GetMyRegStr("CustomVars", key, tmp, (int)sizeof(tmp), "") <= 0) tmp[0] = '\0';
+			e->execStart = tc_custom_parse_exec_start(tmp);
+			tc_custom_build_key(i + 1, "ExecIntervalSec", key, (int)sizeof(key));
+			e->execIntervalSec = tc_custom_clamp_int((int)GetMyRegLong("CustomVars", key, 60), 1, 86400);
+			tc_custom_build_key(i + 1, "ExecTime", key, (int)sizeof(key));
+			tmp[0] = '\0';
+			if (GetMyRegStr("CustomVars", key, tmp, (int)sizeof(tmp), "") <= 0) tmp[0] = '\0';
+			tc_custom_parse_hhmm(tmp, &e->execTimeHour, &e->execTimeMinute);
+			tc_custom_build_key(i + 1, "ExecCommand", key, (int)sizeof(key));
+			if (GetMyRegStr("CustomVars", key, e->execCommand, (int)sizeof(e->execCommand), "") <= 0) e->execCommand[0] = '\0';
 			if (e->mode == TC_CUSTOM_MODE_JSON && e->refreshSec < 5) e->refreshSec = 5;
 		}
 
@@ -1151,12 +1288,21 @@ void CustomFormatVarsReadSettings(void)
 		h ^= ((DWORD)e->jsonValueType << 22);
 		h ^= ((DWORD)e->jsonStringify << 24);
 		h ^= ((DWORD)e->jsonNullAsEmpty << 25);
-		h ^= tc_custom_hash_text(e->jsonPath);
 		h ^= tc_custom_hash_text(e->jsonDefault);
 		h ^= tc_custom_hash_text(e->jsonValueExpr);
+		h ^= ((DWORD)e->execEnable << 26);
+		h ^= ((DWORD)e->execType << 27);
+		h ^= ((DWORD)e->execStart << 28);
+		h ^= tc_custom_hash_text(e->execCommand);
+		h ^= (DWORD)e->execIntervalSec;
+		h ^= ((DWORD)((e->execTimeHour + 1) & 0x1F) << 5);
+		h ^= ((DWORD)((e->execTimeMinute + 1) & 0x3F) << 10);
 		if (h != e->configHash) {
 			e->configHash = h;
 			e->nextRefreshTick = 0;
+			e->nextExecTick = 0;
+			e->lastExecDate = 0;
+			e->execStartupDone = FALSE;
 			e->value[0] = '\0';
 			e->valueUtf8[0] = '\0';
 		}
@@ -1173,6 +1319,11 @@ void CustomFormatVarsPreloadIfEnabled(void)
 	if (!g_customPreloadOnStartup) return;
 	nowTick = GetTickCount();
 	for (i = 0; i < TC_CUSTOM_VAR_MAX; ++i) tc_custom_refresh_one(i, nowTick, TRUE);
+}
+
+void CustomFormatVarsInvalidateSettings(void)
+{
+	g_customSettingsLoaded = FALSE;
 }
 
 static const char* tc_custom_get_emit_value(const TC_CUSTOM_VAR_ENTRY* e)
@@ -1281,7 +1432,6 @@ BOOL b_SummerTime_Europe = FALSE;
 
 BOOL b_exist_DOWzone = FALSE;
 
-extern BOOL b_DebugLog;
 extern int nLogicalProcessors;
 extern BOOL b_EnableClock2;
 
@@ -3771,6 +3921,37 @@ static BOOL tc_parse_num_format_w(const WCHAR** psp, int* len, int* slen, BOOL* 
 	return TRUE;
 }
 
+static BOOL tc_parse_num_format_w_tok(const WCHAR** psp, WCHAR token, WCHAR commaTok, int* len, int* slen, BOOL* bComma)
+{
+	const WCHAR* p;
+	int n = 0;
+	int ns = 0;
+	BOOL comma = FALSE;
+
+	if (!psp || !*psp) return FALSE;
+	p = *psp;
+	while (*p == L'_') {
+		ns++;
+		p++;
+	}
+	if (*p != token && *p != commaTok) return FALSE;
+	while (*p == token) {
+		n++;
+		p++;
+	}
+	while (*p == commaTok) {
+		n++;
+		p++;
+		comma = TRUE;
+	}
+
+	if (len) *len = n + ns;
+	if (slen) *slen = ns;
+	if (bComma) *bComma = comma;
+	*psp = p;
+	return TRUE;
+}
+
 static void tc_wappend_num_format(WCHAR** dp, int* remain, int n, int len, int slen, BOOL bComma)
 {
 	WCHAR tmp[64];
@@ -4637,6 +4818,117 @@ static BOOL tc_makeformatw_native_core(WCHAR* s, int sCch, SYSTEMTIME* pt, int b
 					continue;
 				}
 
+				if (*sp == L'A' && *(sp + 1) == L'D') {
+					if (pw_mode == 0) tc_wappend_text(&dp, &remain, L"DC");
+					else if (pw_mode == 1) tc_wappend_text(&dp, &remain, L"AC");
+					else tc_wappend_text(&dp, &remain, L"UN");
+					sp += 2;
+					continue;
+				}
+				if (*sp == L'a' && *(sp + 1) == L'd') {
+					if (pw_mode == 0) tc_wappend_char(&dp, &remain, L'D');
+					else if (pw_mode == 1) tc_wappend_char(&dp, &remain, L'A');
+					else tc_wappend_char(&dp, &remain, L'U');
+					sp += 2;
+					continue;
+				}
+				if (*sp == L'B' && *(sp + 1) == L'C' && *(sp + 2) == L'S') {
+					tc_wappend_char(&dp, &remain, b_Charging ? L'*' : L' ');
+					sp += 3;
+					continue;
+				}
+				if (*sp == L'B' && *(sp + 1) == L'L') {
+					sp += 2;
+					if (iBatteryLife <= 100) {
+						int len = 0;
+						int slen = 0;
+						BOOL bComma = FALSE;
+						const WCHAR* p2 = sp;
+						if (tc_parse_num_format_w(&p2, &len, &slen, &bComma)) {
+							tc_wappend_num_format(&dp, &remain, iBatteryLife, len, slen, bComma);
+							sp = p2;
+						}
+						else {
+							if (iBatteryLife > 99) tc_wappend_uint_fixed(&dp, &remain, iBatteryLife, 3);
+							else tc_wappend_uint_fixed(&dp, &remain, iBatteryLife, 2);
+						}
+					}
+					continue;
+				}
+				if (*sp == L'B' && (*(sp + 1) == L'h' || *(sp + 1) == L'n' || *(sp + 1) == L's' || *(sp + 1) == L'_')) {
+					int len = 0;
+					int slen = 0;
+					BOOL bComma = FALSE;
+					const WCHAR* p2;
+					sp++;
+					p2 = sp;
+					if (tc_parse_num_format_w_tok(&p2, L'h', L',', &len, &slen, &bComma)) {
+						tc_wappend_num_format(&dp, &remain, blt_h, len, slen, bComma);
+						sp = p2;
+					}
+					p2 = sp;
+					if (tc_parse_num_format_w_tok(&p2, L'n', L',', &len, &slen, &bComma)) {
+						tc_wappend_num_format(&dp, &remain, blt_m, len, slen, bComma);
+						sp = p2;
+					}
+					p2 = sp;
+					if (tc_parse_num_format_w_tok(&p2, L's', L',', &len, &slen, &bComma)) {
+						tc_wappend_num_format(&dp, &remain, blt_s, len, slen, bComma);
+						sp = p2;
+					}
+					continue;
+				}
+				if (*sp == L'T' && *(sp + 1) == L'E' && *(sp + 2) == L'M' && *(sp + 3) == L'P') {
+					int len = 0;
+					int slen = 0;
+					BOOL bComma = FALSE;
+					const WCHAR* p2;
+					sp += 4;
+					if (!b_TempAvailable) {
+						tc_wappend_text(&dp, &remain, L"NA");
+					}
+					else {
+						p2 = sp;
+						if (tc_parse_num_format_w(&p2, &len, &slen, &bComma)) {
+							tc_wappend_num_format(&dp, &remain, pdhTemperature, len, slen, bComma);
+							sp = p2;
+						}
+						else {
+							if (pdhTemperature > 99) tc_wappend_uint_fixed(&dp, &remain, pdhTemperature, 3);
+							else tc_wappend_uint_fixed(&dp, &remain, pdhTemperature, 2);
+						}
+					}
+					continue;
+				}
+				if (*sp == L'V' && *(sp + 1) == L'L') {
+					int len = 0;
+					int slen = 0;
+					BOOL bComma = FALSE;
+					const WCHAR* p2;
+					sp += 2;
+					p2 = sp;
+					if (tc_parse_num_format_w(&p2, &len, &slen, &bComma)) {
+						tc_wappend_num_format(&dp, &remain, iVolume, len, slen, FALSE);
+						sp = p2;
+					}
+					else {
+						tc_wappend_num_format(&dp, &remain, iVolume, 3, 2, FALSE);
+					}
+					continue;
+				}
+				if (*sp == L'V' && *(sp + 1) == L'M') {
+					WCHAR muteW[128];
+					int muteLen;
+					sp += 2;
+					if (tc_ansi_to_utf16_compat((UINT)codepage, strMute, muteW, (int)(sizeof(muteW) / sizeof(muteW[0]))) <= 0) {
+						muteW[0] = L'\0';
+					}
+					muteLen = (int)lstrlenW(muteW);
+					if (muteStatus) tc_wappend_text(&dp, &remain, muteW);
+					else while (muteLen-- > 0) tc_wappend_char(&dp, &remain, L' ');
+					continue;
+				}
+
 				if (_wcsnicmp(sp, L"PCORE", 5) == 0) {
 					extern int nCores;
 					{ int cores = (nCores < 0) ? 0 : nCores; tc_wappend_uint_var(&dp, &remain, cores); }
@@ -4726,6 +5018,37 @@ static BOOL tc_makeformatw_native_core(WCHAR* s, int sCch, SYSTEMTIME* pt, int b
 					if (*(sp + 2) == L'y' && *(sp + 3) == L'y') tc_wappend_uint_fixed(&dp, &remain, (int)disptime.wYear, 4);
 					else tc_wappend_uint_fixed(&dp, &remain, (int)(disptime.wYear % 100), 2);
 					sp += (*(sp + 2) == L'y' && *(sp + 3) == L'y') ? 4 : 2;
+					continue;
+				}
+
+				if (*sp == L'Y' && AltYear > -1)
+				{
+					int n = 1;
+					while (*sp == L'Y') { n *= 10; sp++; }
+					if (n < AltYear) {
+						n = 1;
+						while (n < AltYear) n *= 10;
+					}
+					for (;;) {
+						tc_wappend_char(&dp, &remain, (WCHAR)(L'0' + ((AltYear % n) / (n / 10))));
+						if (n == 10) break;
+						n /= 10;
+					}
+					continue;
+				}
+				if (*sp == L'g')
+				{
+					WCHAR eraW[32];
+					const WCHAR* pEra;
+					if (tc_ansi_to_utf16_compat((UINT)codepage, EraStr, eraW, (int)(sizeof(eraW) / sizeof(eraW[0]))) <= 0) {
+						eraW[0] = L'\0';
+					}
+					pEra = eraW;
+					while (*pEra && *sp == L'g') {
+						tc_wappend_char(&dp, &remain, *pEra++);
+						sp++;
+					}
+					while (*sp == L'g') sp++;
 					continue;
 				}
 

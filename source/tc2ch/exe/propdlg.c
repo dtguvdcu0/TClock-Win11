@@ -447,10 +447,22 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 				}
 				{
 					NMHDR lp;
+					int applyActiveOnly;
+					int pageIdx;
 					lp.code = PSN_APPLY;
-					/* Apply only the active page to avoid unnecessary full-save latency. */
-					if (hNowDlg && *hNowDlg && IsWindow(*hNowDlg)) {
-						SendMessage(*hNowDlg, WM_NOTIFY, 0, (LPARAM)&lp);
+					/* INI switch: [ETC] ApplyActivePageOnly=1 keeps active-page-only apply. */
+					applyActiveOnly = GetMyRegLong("ETC", "ApplyActivePageOnly", 0) ? 1 : 0;
+					if (applyActiveOnly) {
+						if (hNowDlg && *hNowDlg && IsWindow(*hNowDlg)) {
+							SendMessage(*hNowDlg, WM_NOTIFY, 0, (LPARAM)&lp);
+						}
+					}
+					else {
+						for (pageIdx = 0; pageIdx < MAX_PAGE; ++pageIdx) {
+							if (hDlg[pageIdx] && IsWindow(hDlg[pageIdx])) {
+								SendMessage(hDlg[pageIdx], WM_NOTIFY, 0, (LPARAM)&lp);
+							}
+						}
 					}
 				}
 				if(g_bApplyClock)

@@ -829,6 +829,13 @@
 #define IDC_CV_LBL_JSON_DEFAULT         10325
 #define IDC_CV_LBL_JSON_VALUE           10327
 #define IDC_CV_ITEM_PATH_BROWSE         10328
+#define IDC_CV_EXEC_ENABLE               10329
+#define IDC_CV_EXEC_TYPE                 10330
+#define IDC_CV_EXEC_START                10331
+#define IDC_CV_EXEC_INTERVAL             10332
+#define IDC_CV_SPIN_EXEC_INTERVAL        10333
+#define IDC_CV_EXEC_TIME                 10334
+#define IDC_CV_EXEC_COMMAND              10335
 #define IDD_PAGEBARMETER_ENG            11001
 #define IDD_PAGE_KEYWORDS_ENG           11002
 #define IDD_PAGE_WIN11_ENG              11003

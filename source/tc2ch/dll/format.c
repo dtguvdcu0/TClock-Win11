@@ -1018,18 +1018,35 @@ static void tc_custom_run_script(TC_CUSTOM_VAR_ENTRY* e)
 {
 	WCHAR wcmd[2048];
 	WCHAR wline[2304];
+	WCHAR wIniPath[MAX_PATH];
+	WCHAR wCwd[MAX_PATH];
+	LPCWSTR cwd = NULL;
 	STARTUPINFOW si;
 	PROCESS_INFORMATION pi;
 	if (!e || !e->execCommand[0]) return;
 	if (tc_utf8_to_utf16(e->execCommand, wcmd, (int)(sizeof(wcmd) / sizeof(wcmd[0]))) <= 0) {
 		if (!tc_ansi_to_utf16_compat(0, e->execCommand, wcmd, (int)(sizeof(wcmd) / sizeof(wcmd[0])))) return;
 	}
+	if (g_inifile[0]) {
+		int okIni = tc_utf8_to_utf16(g_inifile, wIniPath, (int)(sizeof(wIniPath) / sizeof(wIniPath[0])));
+		if (okIni <= 0) {
+			if (!tc_ansi_to_utf16_compat(0, g_inifile, wIniPath, (int)(sizeof(wIniPath) / sizeof(wIniPath[0])))) {
+				wIniPath[0] = L'\0';
+			}
+		}
+		if (wIniPath[0]) {
+			lstrcpynW(wCwd, wIniPath, (int)(sizeof(wCwd) / sizeof(wCwd[0])));
+			if (PathRemoveFileSpecW(wCwd)) {
+				cwd = wCwd;
+			}
+		}
+	}
 	ZeroMemory(&si, sizeof(si));
 	ZeroMemory(&pi, sizeof(pi));
 	si.cb = sizeof(si);
 	if (e->execType == TC_CUSTOM_EXEC_TYPE_SHELL) wsprintfW(wline, L"cmd.exe /c %s", wcmd);
 	else lstrcpynW(wline, wcmd, (int)(sizeof(wline) / sizeof(wline[0])));
-	if (!CreateProcessW(NULL, wline, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
+	if (!CreateProcessW(NULL, wline, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, cwd, &si, &pi)) {
 		if (b_DebugLog) writeDebugLog_Win10("[format.c][CustomVars] script launch failed", 999);
 		return;
 	}
@@ -1302,6 +1319,11 @@ void CustomFormatVarsPreloadIfEnabled(void)
 	if (!g_customPreloadOnStartup) return;
 	nowTick = GetTickCount();
 	for (i = 0; i < TC_CUSTOM_VAR_MAX; ++i) tc_custom_refresh_one(i, nowTick, TRUE);
+}
+
+void CustomFormatVarsInvalidateSettings(void)
+{
+	g_customSettingsLoaded = FALSE;
 }
 
 static const char* tc_custom_get_emit_value(const TC_CUSTOM_VAR_ENTRY* e)

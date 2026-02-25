@@ -12,6 +12,14 @@
 #define CV_MODE_LINE 0
 #define CV_MODE_JSON 1
 
+#define CV_EXEC_TYPE_COMMAND 0
+#define CV_EXEC_TYPE_SHELL 1
+
+#define CV_EXEC_START_STARTUP 0
+#define CV_EXEC_START_INTERVAL 1
+#define CV_EXEC_START_BOTH 2
+#define CV_EXEC_START_TIME 3
+
 typedef struct {
     char path[1024];
     int refreshSec;
@@ -22,6 +30,12 @@ typedef struct {
     char jsonDefault[256];
     int jsonNullAsEmpty;
     char jsonValue[4096];
+    int execEnable;
+    int execType;
+    int execStart;
+    int execIntervalSec;
+    char execTime[16];
+    char execCommand[1024];
 } CV_ITEM;
 
 static int g_selectedN = 1;
@@ -97,6 +111,44 @@ static const char* cv_mode_to_str(int mode)
     return (mode == CV_MODE_JSON) ? "json" : "line";
 }
 
+static int cv_exec_type_from_str(const char* s)
+{
+    if (s && lstrcmpi(s, "shell") == 0) return CV_EXEC_TYPE_SHELL;
+    return CV_EXEC_TYPE_COMMAND;
+}
+
+static const char* cv_exec_type_to_str(int v)
+{
+    return (v == CV_EXEC_TYPE_SHELL) ? "shell" : "command";
+}
+
+static int cv_exec_start_from_str(const char* s)
+{
+    if (s && lstrcmpi(s, "startup") == 0) return CV_EXEC_START_STARTUP;
+    if (s && lstrcmpi(s, "interval") == 0) return CV_EXEC_START_INTERVAL;
+    if (s && lstrcmpi(s, "both") == 0) return CV_EXEC_START_BOTH;
+    if (s && lstrcmpi(s, "time") == 0) return CV_EXEC_START_TIME;
+    return CV_EXEC_START_INTERVAL;
+}
+
+static const char* cv_exec_start_to_str(int v)
+{
+    if (v == CV_EXEC_START_STARTUP) return "startup";
+    if (v == CV_EXEC_START_BOTH) return "both";
+    if (v == CV_EXEC_START_TIME) return "time";
+    return "interval";
+}
+
+static int cv_whitespace_to_sel(const char* v)
+{
+    return (v && lstrcmpi(v, "trim_edges") == 0) ? 1 : 0;
+}
+
+static const char* cv_whitespace_from_sel(int sel)
+{
+    return (sel == 1) ? "trim_edges" : "keep";
+}
+
 static int cv_combo_find_text(HWND hDlg, int id, const char* text)
 {
     int i, count;
@@ -112,16 +164,26 @@ static int cv_combo_find_text(HWND hDlg, int id, const char* text)
 static void cv_fill_combo_defaults(HWND hDlg)
 {
     CBResetContent(hDlg, IDC_CV_GLOBAL_WHITESPACE);
-    CBAddString(hDlg, IDC_CV_GLOBAL_WHITESPACE, (LPARAM)"trim_edges");
-    CBAddString(hDlg, IDC_CV_GLOBAL_WHITESPACE, (LPARAM)"keep");
+    CBAddString(hDlg, IDC_CV_GLOBAL_WHITESPACE, (LPARAM)"off");
+    CBAddString(hDlg, IDC_CV_GLOBAL_WHITESPACE, (LPARAM)"on");
 
     CBResetContent(hDlg, IDC_CV_ITEM_WHITESPACE);
-    CBAddString(hDlg, IDC_CV_ITEM_WHITESPACE, (LPARAM)"trim_edges");
-    CBAddString(hDlg, IDC_CV_ITEM_WHITESPACE, (LPARAM)"keep");
+    CBAddString(hDlg, IDC_CV_ITEM_WHITESPACE, (LPARAM)"off");
+    CBAddString(hDlg, IDC_CV_ITEM_WHITESPACE, (LPARAM)"on");
 
     CBResetContent(hDlg, IDC_CV_ITEM_MODE);
     CBAddString(hDlg, IDC_CV_ITEM_MODE, (LPARAM)"line");
     CBAddString(hDlg, IDC_CV_ITEM_MODE, (LPARAM)"json");
+
+    CBResetContent(hDlg, IDC_CV_EXEC_TYPE);
+    CBAddString(hDlg, IDC_CV_EXEC_TYPE, (LPARAM)"command");
+    CBAddString(hDlg, IDC_CV_EXEC_TYPE, (LPARAM)"shell");
+
+    CBResetContent(hDlg, IDC_CV_EXEC_START);
+    CBAddString(hDlg, IDC_CV_EXEC_START, (LPARAM)"startup");
+    CBAddString(hDlg, IDC_CV_EXEC_START, (LPARAM)"interval");
+    CBAddString(hDlg, IDC_CV_EXEC_START, (LPARAM)"both");
+    CBAddString(hDlg, IDC_CV_EXEC_START, (LPARAM)"time");
 
     CBResetContent(hDlg, IDC_CV_SELECT_N);
     {
@@ -149,9 +211,8 @@ static void cv_read_global(HWND hDlg)
     SetDlgItemTextUTF8Strict(hDlg, IDC_CV_GLOBAL_FAILVALUE, s);
 
     cv_get_reg_str("Whitespace", s, (int)sizeof(s), "trim_edges");
-    CBSetCurSel(hDlg, IDC_CV_GLOBAL_WHITESPACE, cv_combo_find_text(hDlg, IDC_CV_GLOBAL_WHITESPACE, s));
+    CBSetCurSel(hDlg, IDC_CV_GLOBAL_WHITESPACE, cv_whitespace_to_sel(s));
 
-    CheckDlgButton(hDlg, IDC_CV_GLOBAL_PRELOAD, GetMyRegLong("CustomVars", "PreloadOnStartup", 1) ? BST_CHECKED : BST_UNCHECKED);
 }
 
 static void cv_read_item(int n, CV_ITEM* it)
@@ -184,18 +245,47 @@ static void cv_read_item(int n, CV_ITEM* it)
     cv_get_reg_str(key, it->jsonDefault, (int)sizeof(it->jsonDefault), "");
 
     cv_build_key(n, "JsonNullAsEmpty", key, (int)sizeof(key));
-    it->jsonNullAsEmpty = GetMyRegLong("CustomVars", key, 0) ? 1 : 0;
+    it->jsonNullAsEmpty = GetMyRegLong("CustomVars", key, 1) ? 1 : 0;
 
     cv_build_key(n, "JsonValue", key, (int)sizeof(key));
     cv_get_reg_str(key, it->jsonValue, (int)sizeof(it->jsonValue), "");
+
+    cv_build_key(n, "ExecEnable", key, (int)sizeof(key));
+    it->execEnable = GetMyRegLong("CustomVars", key, 0) ? 1 : 0;
+
+    cv_build_key(n, "ExecType", key, (int)sizeof(key));
+    cv_get_reg_str(key, tmp, (int)sizeof(tmp), "command");
+    it->execType = cv_exec_type_from_str(tmp);
+
+    cv_build_key(n, "ExecStart", key, (int)sizeof(key));
+    cv_get_reg_str(key, tmp, (int)sizeof(tmp), "interval");
+    it->execStart = cv_exec_start_from_str(tmp);
+
+    cv_build_key(n, "ExecIntervalSec", key, (int)sizeof(key));
+    it->execIntervalSec = cv_clamp_int((int)GetMyRegLong("CustomVars", key, 60), 1, 86400);
+
+    cv_build_key(n, "ExecTime", key, (int)sizeof(key));
+    cv_get_reg_str(key, it->execTime, (int)sizeof(it->execTime), "00:00");
+
+    cv_build_key(n, "ExecCommand", key, (int)sizeof(key));
+    cv_get_reg_str(key, it->execCommand, (int)sizeof(it->execCommand), "");
 }
 
 static void cv_set_json_visibility(HWND hDlg, int mode)
 {
     const int isJson = (mode == CV_MODE_JSON);
-    ShowDlgItem(hDlg, IDC_CV_JSON_NULL_EMPTY, isJson);
     ShowDlgItem(hDlg, IDC_CV_LBL_JSON_VALUE, isJson);
     ShowDlgItem(hDlg, IDC_CV_JSON_VALUE, isJson);
+}
+
+static void cv_set_exec_controls_enabled(HWND hDlg, int enabled)
+{
+    EnableDlgItem(hDlg, IDC_CV_EXEC_TYPE, enabled);
+    EnableDlgItem(hDlg, IDC_CV_EXEC_START, enabled);
+    EnableDlgItem(hDlg, IDC_CV_EXEC_INTERVAL, enabled);
+    EnableDlgItem(hDlg, IDC_CV_SPIN_EXEC_INTERVAL, enabled);
+    EnableDlgItem(hDlg, IDC_CV_EXEC_TIME, enabled);
+    EnableDlgItem(hDlg, IDC_CV_EXEC_COMMAND, enabled);
 }
 
 static void cv_fill_item_controls(HWND hDlg, const CV_ITEM* it)
@@ -205,12 +295,19 @@ static void cv_fill_item_controls(HWND hDlg, const CV_ITEM* it)
     SetDlgItemInt(hDlg, IDC_CV_ITEM_REFRESH, (UINT)it->refreshSec, FALSE);
     SetDlgItemInt(hDlg, IDC_CV_ITEM_MAXCHARS, (UINT)it->maxChars, FALSE);
     SetDlgItemTextUTF8Strict(hDlg, IDC_CV_ITEM_FAILVALUE, it->failValue);
-    CBSetCurSel(hDlg, IDC_CV_ITEM_WHITESPACE, cv_combo_find_text(hDlg, IDC_CV_ITEM_WHITESPACE, it->whitespace));
+    CBSetCurSel(hDlg, IDC_CV_ITEM_WHITESPACE, cv_whitespace_to_sel(it->whitespace));
     CBSetCurSel(hDlg, IDC_CV_ITEM_MODE, it->mode == CV_MODE_JSON ? 1 : 0);
 
-    CheckDlgButton(hDlg, IDC_CV_JSON_NULL_EMPTY, it->jsonNullAsEmpty ? BST_CHECKED : BST_UNCHECKED);
     SetDlgItemTextUTF8Strict(hDlg, IDC_CV_JSON_VALUE, it->jsonValue);
 
+    CheckDlgButton(hDlg, IDC_CV_EXEC_ENABLE, it->execEnable ? BST_CHECKED : BST_UNCHECKED);
+    CBSetCurSel(hDlg, IDC_CV_EXEC_TYPE, it->execType == CV_EXEC_TYPE_SHELL ? 1 : 0);
+    CBSetCurSel(hDlg, IDC_CV_EXEC_START, cv_clamp_int(it->execStart, 0, 3));
+    SetDlgItemInt(hDlg, IDC_CV_EXEC_INTERVAL, (UINT)it->execIntervalSec, FALSE);
+    SetDlgItemTextUTF8Strict(hDlg, IDC_CV_EXEC_TIME, it->execTime);
+    SetDlgItemTextUTF8Strict(hDlg, IDC_CV_EXEC_COMMAND, it->execCommand);
+
+    cv_set_exec_controls_enabled(hDlg, it->execEnable ? 1 : 0);
     cv_set_json_visibility(hDlg, it->mode);
 }
 
@@ -249,6 +346,7 @@ static void cv_on_init(HWND hDlg)
     SendDlgItemMessage(hDlg, IDC_CV_SPIN_GLOBAL_MAXCHARS, UDM_SETRANGE, 0, MAKELONG(4096, 1));
     SendDlgItemMessage(hDlg, IDC_CV_SPIN_ITEM_REFRESH, UDM_SETRANGE, 0, MAKELONG(86400, 1));
     SendDlgItemMessage(hDlg, IDC_CV_SPIN_ITEM_MAXCHARS, UDM_SETRANGE, 0, MAKELONG(4096, 1));
+    SendDlgItemMessage(hDlg, IDC_CV_SPIN_EXEC_INTERVAL, UDM_SETRANGE, 0, MAKELONG(86400, 1));
 
     cv_read_global(hDlg);
     g_selectedN = 1;
@@ -302,18 +400,37 @@ static void cv_write_item(HWND hDlg, int n)
     cv_build_key(n, "FailValue", key, (int)sizeof(key));
     SetMyRegStr("CustomVars", key, s);
 
-    cv_get_combo_text(hDlg, IDC_CV_ITEM_WHITESPACE, s, (int)sizeof(s), "trim_edges");
     cv_build_key(n, "Whitespace", key, (int)sizeof(key));
-    SetMyRegStr("CustomVars", key, s);
+    SetMyRegStr("CustomVars", key, cv_whitespace_from_sel(CBGetCurSel(hDlg, IDC_CV_ITEM_WHITESPACE)));
 
     cv_build_key(n, "Mode", key, (int)sizeof(key));
     SetMyRegStr("CustomVars", key, cv_mode_to_str(mode));
 
-    cv_build_key(n, "JsonNullAsEmpty", key, (int)sizeof(key));
-    SetMyRegLong("CustomVars", key, IsDlgButtonChecked(hDlg, IDC_CV_JSON_NULL_EMPTY) ? 1 : 0);
 
     GetDlgItemTextUTF8(hDlg, IDC_CV_JSON_VALUE, s, (int)sizeof(s));
     cv_build_key(n, "JsonValue", key, (int)sizeof(key));
+    SetMyRegStr("CustomVars", key, s);
+
+    cv_build_key(n, "ExecEnable", key, (int)sizeof(key));
+    SetMyRegLong("CustomVars", key, IsDlgButtonChecked(hDlg, IDC_CV_EXEC_ENABLE) ? 1 : 0);
+
+    cv_build_key(n, "ExecType", key, (int)sizeof(key));
+    cv_get_combo_text(hDlg, IDC_CV_EXEC_TYPE, s, (int)sizeof(s), "command");
+    SetMyRegStr("CustomVars", key, s);
+
+    cv_build_key(n, "ExecStart", key, (int)sizeof(key));
+    cv_get_combo_text(hDlg, IDC_CV_EXEC_START, s, (int)sizeof(s), "interval");
+    SetMyRegStr("CustomVars", key, s);
+
+    cv_build_key(n, "ExecIntervalSec", key, (int)sizeof(key));
+    SetMyRegLong("CustomVars", key, (DWORD)cv_get_int(hDlg, IDC_CV_EXEC_INTERVAL, 60, 1, 86400));
+
+    GetDlgItemTextUTF8(hDlg, IDC_CV_EXEC_TIME, s, (int)sizeof(s));
+    cv_build_key(n, "ExecTime", key, (int)sizeof(key));
+    SetMyRegStr("CustomVars", key, s);
+
+    GetDlgItemTextUTF8(hDlg, IDC_CV_EXEC_COMMAND, s, (int)sizeof(s));
+    cv_build_key(n, "ExecCommand", key, (int)sizeof(key));
     SetMyRegStr("CustomVars", key, s);
 }
 
@@ -324,8 +441,6 @@ static void cv_on_apply(HWND hDlg)
 
     // Keep global FailValue/Whitespace runtime support, but do not overwrite from UI.
     // UI intentionally exposes only per-item Fail/Whitespace to avoid duplicate settings.
-
-    SetMyRegLong("CustomVars", "PreloadOnStartup", IsDlgButtonChecked(hDlg, IDC_CV_GLOBAL_PRELOAD) ? 1 : 0);
 
     cv_write_item(hDlg, g_selectedN);
 }
@@ -366,8 +481,8 @@ BOOL CALLBACK PageCustomVarsProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
         }
 
         switch (id) {
-        case IDC_CV_GLOBAL_PRELOAD:
-        case IDC_CV_JSON_NULL_EMPTY:
+        case IDC_CV_EXEC_ENABLE:
+            cv_set_exec_controls_enabled(hDlg, IsDlgButtonChecked(hDlg, IDC_CV_EXEC_ENABLE) == BST_CHECKED);
             cv_send_ps_changed(hDlg);
             return TRUE;
         default:

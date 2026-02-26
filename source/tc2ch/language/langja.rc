@@ -1060,7 +1060,9 @@ BEGIN
 
     LTEXT           "ê›íËëŒè€",IDC_STATIC,10,5,30,8
     COMBOBOX        IDC_CV_SELECT_N,44,3,52,150,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    LTEXT           "èÛë‘: ñ¢ê›íË",IDC_CV_HINT,104,5,100,8
+    PUSHBUTTON      "Å™",IDC_CV_SELECT_PREV,98,2,12,12
+    PUSHBUTTON      "Å´",IDC_CV_SELECT_NEXT,111,2,12,12
+    LTEXT           "èÛë‘: ñ¢ê›íË",IDC_CV_HINT,126,5,88,8
 
     GROUPBOX        "å¬ï ê›íË",IDC_STATIC,6,26,208,168
     LTEXT           "ì«Ç›çûÇﬁÉtÉ@ÉCÉã",IDC_STATIC,11,39,48,8
@@ -1102,7 +1104,9 @@ BEGIN
 
     LTEXT           "Target",IDC_STATIC,10,5,24,8
     COMBOBOX        IDC_CV_SELECT_N,38,3,58,150,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    LTEXT           "Status: empty",IDC_CV_HINT,104,5,100,8
+    PUSHBUTTON      "Å™",IDC_CV_SELECT_PREV,98,2,12,12
+    PUSHBUTTON      "Å´",IDC_CV_SELECT_NEXT,111,2,12,12
+    LTEXT           "Status: empty",IDC_CV_HINT,126,5,88,8
 
     GROUPBOX        "Per N",IDC_STATIC,6,26,208,168
     LTEXT           "Path",IDC_STATIC,11,39,18,8

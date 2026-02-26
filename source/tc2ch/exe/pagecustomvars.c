@@ -176,8 +176,8 @@ static void cv_fill_combo_defaults(HWND hDlg)
     CBAddString(hDlg, IDC_CV_ITEM_MODE, (LPARAM)"json");
 
     CBResetContent(hDlg, IDC_CV_EXEC_TYPE);
-    CBAddString(hDlg, IDC_CV_EXEC_TYPE, (LPARAM)"command");
     CBAddString(hDlg, IDC_CV_EXEC_TYPE, (LPARAM)"shell");
+    CBAddString(hDlg, IDC_CV_EXEC_TYPE, (LPARAM)"command");
 
     CBResetContent(hDlg, IDC_CV_EXEC_START);
     CBAddString(hDlg, IDC_CV_EXEC_START, (LPARAM)"startup");
@@ -301,7 +301,7 @@ static void cv_fill_item_controls(HWND hDlg, const CV_ITEM* it)
     SetDlgItemTextUTF8Strict(hDlg, IDC_CV_JSON_VALUE, it->jsonValue);
 
     CheckDlgButton(hDlg, IDC_CV_EXEC_ENABLE, it->execEnable ? BST_CHECKED : BST_UNCHECKED);
-    CBSetCurSel(hDlg, IDC_CV_EXEC_TYPE, it->execType == CV_EXEC_TYPE_SHELL ? 1 : 0);
+    CBSetCurSel(hDlg, IDC_CV_EXEC_TYPE, it->execType == CV_EXEC_TYPE_SHELL ? 0 : 1);
     CBSetCurSel(hDlg, IDC_CV_EXEC_START, cv_clamp_int(it->execStart, 0, 3));
     SetDlgItemInt(hDlg, IDC_CV_EXEC_INTERVAL, (UINT)it->execIntervalSec, FALSE);
     SetDlgItemTextUTF8Strict(hDlg, IDC_CV_EXEC_TIME, it->execTime);

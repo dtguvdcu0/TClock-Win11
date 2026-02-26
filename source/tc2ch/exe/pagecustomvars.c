@@ -338,6 +338,34 @@ static void cv_update_hint(HWND hDlg)
     SetDlgItemTextUTF8Strict(hDlg, IDC_CV_HINT, configured ? "Status: configured" : "Status: empty");
 }
 
+static void cv_update_select_nav_buttons(HWND hDlg)
+{
+    int sel = CBGetCurSel(hDlg, IDC_CV_SELECT_N);
+    int count = CBGetCount(hDlg, IDC_CV_SELECT_N);
+    int hasSel = (sel >= 0 && count > 0);
+    EnableDlgItem(hDlg, IDC_CV_SELECT_PREV, hasSel && sel > 0);
+    EnableDlgItem(hDlg, IDC_CV_SELECT_NEXT, hasSel && sel < (count - 1));
+}
+
+static void cv_apply_selected_index(HWND hDlg, int sel, int notifyChanged)
+{
+    int count = CBGetCount(hDlg, IDC_CV_SELECT_N);
+    if (count <= 0) {
+        cv_update_select_nav_buttons(hDlg);
+        return;
+    }
+
+    sel = cv_clamp_int(sel, 0, count - 1);
+    CBSetCurSel(hDlg, IDC_CV_SELECT_N, sel);
+    g_selectedN = sel + 1;
+    cv_load_selected_item(hDlg);
+    cv_update_hint(hDlg);
+    cv_update_select_nav_buttons(hDlg);
+    if (notifyChanged) {
+        cv_send_ps_changed(hDlg);
+    }
+}
+
 static void cv_on_init(HWND hDlg)
 {
     cv_fill_combo_defaults(hDlg);
@@ -350,9 +378,7 @@ static void cv_on_init(HWND hDlg)
 
     cv_read_global(hDlg);
     g_selectedN = 1;
-    CBSetCurSel(hDlg, IDC_CV_SELECT_N, 0);
-    cv_load_selected_item(hDlg);
-    cv_update_hint(hDlg);
+    cv_apply_selected_index(hDlg, 0, 0);
 }
 
 static int cv_get_int(HWND hDlg, int id, int defv, int minv, int maxv)
@@ -460,10 +486,16 @@ BOOL CALLBACK PageCustomVarsProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
         if (id == IDC_CV_SELECT_N && code == CBN_SELCHANGE) {
             int sel = CBGetCurSel(hDlg, IDC_CV_SELECT_N);
             if (sel >= 0) {
-                g_selectedN = sel + 1;
-                cv_load_selected_item(hDlg);
-                cv_update_hint(hDlg);
-                cv_send_ps_changed(hDlg);
+                cv_apply_selected_index(hDlg, sel, 1);
+            }
+            return TRUE;
+        }
+
+        if ((id == IDC_CV_SELECT_PREV || id == IDC_CV_SELECT_NEXT) && code == BN_CLICKED) {
+            int sel = CBGetCurSel(hDlg, IDC_CV_SELECT_N);
+            int delta = (id == IDC_CV_SELECT_PREV) ? -1 : 1;
+            if (sel >= 0) {
+                cv_apply_selected_index(hDlg, sel + delta, 1);
             }
             return TRUE;
         }

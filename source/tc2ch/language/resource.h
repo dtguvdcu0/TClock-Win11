@@ -836,6 +836,8 @@
 #define IDC_CV_SPIN_EXEC_INTERVAL        10333
 #define IDC_CV_EXEC_TIME                 10334
 #define IDC_CV_EXEC_COMMAND              10335
+#define IDC_CV_SELECT_PREV              10336
+#define IDC_CV_SELECT_NEXT              10337
 #define IDD_PAGEBARMETER_ENG            11001
 #define IDD_PAGE_KEYWORDS_ENG           11002
 #define IDD_PAGE_WIN11_ENG              11003

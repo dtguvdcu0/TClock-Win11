@@ -823,15 +823,19 @@ static void tc_menu_format_label_datetime(const char* format, char* out, int out
 		PFN_FormatMenuLabel_Win11 pfn = tc_menu_get_format_api();
 		if (pfn) {
 			BOOL hasTagMarker = FALSE;
+			BOOL hasQuote = FALSE;
 			const char* q = format;
 			while (*q) {
 				if (tc_menu_match_token(q, "<%") || tc_menu_match_token(q, "%>")) {
 					hasTagMarker = TRUE;
 					break;
 				}
+				if (*q == '"') {
+					hasQuote = TRUE;
+				}
 				q++;
 			}
-			if (pfn(format, out, outLen) && out[0]) {
+			if (!hasQuote && pfn(format, out, outLen) && out[0]) {
 				if (hasTagMarker || strcmp(out, format) != 0) {
 					return;
 				}
@@ -849,6 +853,19 @@ static void tc_menu_format_label_datetime(const char* format, char* out, int out
 	}
 
 	while (*p && pos < outLen - 1) {
+		if (*p == '"') {
+			const char* q = p + 1;
+			while (*q && *q != '"') q++;
+			if (*q == '"') {
+				p++;
+				while (p < q && pos < outLen - 1) {
+					out[pos++] = *p++;
+				}
+				out[pos] = '\0';
+				p = q + 1;
+				continue;
+			}
+		}
 		if (tc_menu_match_token(p, "yyyy")) {
 			pos = tc_menu_append_num(out, outLen, pos, st.wYear, 4);
 			p += 4;
@@ -1075,12 +1092,15 @@ static void tc_menu_prune_to_fixed(HMENU hMenu)
 		MENUITEMINFO mii;
 		ZeroMemory(&mii, sizeof(mii));
 		mii.cbSize = sizeof(mii);
-		mii.fMask = MIIM_ID | MIIM_SUBMENU;
+		mii.fMask = MIIM_ID | MIIM_SUBMENU | MIIM_FTYPE;
 		if (!GetMenuItemInfo(hMenu, i, TRUE, &mii)) {
 			continue;
 		}
 		if (mii.hSubMenu != NULL) {
 			continue; /* keep Language submenu */
+		}
+		if (mii.fType & MFT_SEPARATOR) {
+			continue; /* keep fixed separators layout */
 		}
 		if (tc_menu_is_fixed_id(mii.wID)) {
 			continue;
@@ -1408,10 +1428,12 @@ void MenuCustomMigrateLegacyModeKeys(void)
 	int i;
 	int count;
 	int migrated = 0;
+	int labelMigrated = 0;
 	int deleted = 0;
 
 	/* TEMP MIGRATION (remove after 2026-03-31):
-	   Rescue old ItemNType/ItemNExecType into ItemNMode at startup, then delete legacy keys. */
+	   Rescue old ItemNType/ItemNExecType into ItemNMode and ItemNLabel into ItemNLabelFormat.
+	   Keep legacy ItemNLabel keys for fallback safety in property UI. */
 	if (!tc_menu_has_section_header(TC_MENU_SECTION)) {
 		return;
 	}
@@ -1425,9 +1447,13 @@ void MenuCustomMigrateLegacyModeKeys(void)
 		char key[64];
 		char mode[64];
 		char recovered[64];
+		char label[256];
+		char labelFmt[256];
 
 		mode[0] = '\0';
 		recovered[0] = '\0';
+		label[0] = '\0';
+		labelFmt[0] = '\0';
 
 		wsprintf(key, "Item%dMode", i);
 		GetMyRegStr(TC_MENU_SECTION, key, mode, (int)sizeof(mode), "");
@@ -1439,15 +1465,24 @@ void MenuCustomMigrateLegacyModeKeys(void)
 			}
 		}
 
+		wsprintf(key, "Item%dLabel", i);
+		GetMyRegStr(TC_MENU_SECTION, key, label, (int)sizeof(label), "");
+		wsprintf(key, "Item%dLabelFormat", i);
+		GetMyRegStr(TC_MENU_SECTION, key, labelFmt, (int)sizeof(labelFmt), "");
+		if (!labelFmt[0] && label[0]) {
+			SetMyRegStr(TC_MENU_SECTION, key, label);
+			++labelMigrated;
+		}
+
 		wsprintf(key, "Item%dType", i);
 		if (DelMyReg(TC_MENU_SECTION, key)) ++deleted;
 		wsprintf(key, "Item%dExecType", i);
 		if (DelMyReg(TC_MENU_SECTION, key)) ++deleted;
 	}
 
-	if (b_NormalLog && (migrated > 0 || deleted > 0)) {
+	if (b_NormalLog && (migrated > 0 || labelMigrated > 0 || deleted > 0)) {
 		char msg[192];
-		wsprintf(msg, "[menu.c][MenuCustomMigrateLegacyModeKeys] migrated=%d deleted_legacy_keys=%d", migrated, deleted);
+		wsprintf(msg, "[menu.c][MenuCustomMigrateLegacyModeKeys] mode_migrated=%d label_migrated=%d deleted_legacy_keys=%d", migrated, labelMigrated, deleted);
 		WriteNormalLog(msg);
 	}
 }
@@ -1485,13 +1520,8 @@ static void tc_menu_ensure_ini_defaults(void)
 			wsprintf(key, "Item%dAction", i);
 			SetMyRegStr(TC_MENU_SECTION, key, action);
 			defaultLabel = tc_menu_default_label_for_action(action);
-			char labelHex[512];
-			wsprintf(key, "Item%dLabel", i);
+			wsprintf(key, "Item%dLabelFormat", i);
 			SetMyRegStr(TC_MENU_SECTION, key, (char*)defaultLabel);
-			if (tc_menu_encode_hex_from_utf8_bytes(defaultLabel, labelHex, (int)sizeof(labelHex))) {
-				wsprintf(key, "Item%dLabelUtf8Hex", i);
-				SetMyRegStr(TC_MENU_SECTION, key, labelHex);
-			}
 			param[0] = '\0';
 			tc_menu_default_param_for_action(action, param, (int)sizeof(param));
 			wsprintf(key, "Item%dParam", i);
@@ -1518,6 +1548,15 @@ static void tc_menu_apply_custom_from_ini(HMENU hMenu)
 	tc_menu_prune_to_fixed(hMenu);
 
 	insertPos = tc_menu_find_position_by_id(hMenu, IDC_SHOWPROP);
+	{
+		int fixedPos;
+		fixedPos = tc_menu_find_position_by_id(hMenu, IDC_TCAL_OPEN);
+		if (fixedPos >= 0 && (insertPos < 0 || fixedPos < insertPos)) insertPos = fixedPos;
+		fixedPos = tc_menu_find_position_by_id(hMenu, IDC_TCAP_CAPTURE);
+		if (fixedPos >= 0 && (insertPos < 0 || fixedPos < insertPos)) insertPos = fixedPos;
+		fixedPos = tc_menu_find_position_by_id(hMenu, IDC_TCAP_SETTINGS);
+		if (fixedPos >= 0 && (insertPos < 0 || fixedPos < insertPos)) insertPos = fixedPos;
+	}
 	if (insertPos < 0) {
 		insertPos = GetMenuItemCount(hMenu);
 	}
@@ -1588,7 +1627,7 @@ static void tc_menu_apply_custom_from_ini(HMENU hMenu)
 			char alarmMessage[256];
 			char alarmSoundFile[MAX_PATH];
 			char alarmText[256];
-			wsprintf(key, "Item%dLabel", i);
+			wsprintf(key, "Item%dLabelFormat", i);
 			tc_menu_section_cache_get_str(&cache, key, label, sizeof(label), "Timer");
 			wsprintf(key, "Item%dAlarmInitialSec", i);
 			alarmInitialSec = tc_menu_section_cache_get_long(&cache, key, 60);
@@ -1646,10 +1685,9 @@ static void tc_menu_apply_custom_from_ini(HMENU hMenu)
 			continue;
 		}
 		if (_stricmp(mode, "passive") == 0) {
-			wsprintf(key, "Item%dLabel", i);
-			tc_menu_section_cache_get_str(&cache, key, label, sizeof(label), "Info");
 			wsprintf(key, "Item%dLabelFormat", i);
-			tc_menu_section_cache_get_str(&cache, key, labelFormat, sizeof(labelFormat), "");
+			tc_menu_section_cache_get_str(&cache, key, labelFormat, sizeof(labelFormat), "Info");
+			lstrcpyn(label, labelFormat, (int)sizeof(label));
 			wsprintf(key, "Item%dLabelUpdateSec", i);
 			labelUpdateSec = tc_menu_section_cache_get_long(&cache, key, labelUpdateSec);
 			tc_menu_resolve_label_text(i, label, labelFormat, labelUpdateSec, resolvedLabel, (int)sizeof(resolvedLabel));
@@ -1666,10 +1704,9 @@ static void tc_menu_apply_custom_from_ini(HMENU hMenu)
 		wsprintf(key, "Item%dAction", i);
 		tc_menu_section_cache_get_str(&cache, key, action, sizeof(action), action);
 		defaultLabel = tc_menu_default_label_for_action(action);
-		wsprintf(key, "Item%dLabel", i);
-		tc_menu_section_cache_get_str(&cache, key, label, sizeof(label), (char*)defaultLabel);
 		wsprintf(key, "Item%dLabelFormat", i);
-		tc_menu_section_cache_get_str(&cache, key, labelFormat, sizeof(labelFormat), "");
+		tc_menu_section_cache_get_str(&cache, key, labelFormat, sizeof(labelFormat), (char*)defaultLabel);
+		lstrcpyn(label, labelFormat, (int)sizeof(label));
 		wsprintf(key, "Item%dLabelUpdateSec", i);
 		labelUpdateSec = tc_menu_section_cache_get_long(&cache, key, labelUpdateSec);
 		tc_menu_resolve_label_text(i, label, labelFormat, labelUpdateSec, resolvedLabel, (int)sizeof(resolvedLabel));
@@ -1816,11 +1853,6 @@ void OnContextMenu(HWND hwnd, HWND hwndClicked, int xPos, int yPos)
 		b_MenuItems_Initialized = TRUE;
 	}
 	tc_menu_dynamic_reset();
-	if (tc_menu_is_custom_enabled()) {
-		/* Re-seed default [MenuCustom] only when the section is absent. */
-		tc_menu_ensure_ini_defaults();
-		tc_menu_apply_custom_from_ini(hPopupMenu);
-	}
 	{
 		LONG tcalendarEnabled = tc_menu_get_tcalendar_enable();
 		LONG tcaptureEnabled = tc_menu_get_tcapture_enable();
@@ -1860,6 +1892,11 @@ void OnContextMenu(HWND hwnd, HWND hwndClicked, int xPos, int yPos)
 				}
 			}
 		}
+	}
+	if (tc_menu_is_custom_enabled()) {
+		/* Re-seed default [MenuCustom] only when the section is absent. */
+		tc_menu_ensure_ini_defaults();
+		tc_menu_apply_custom_from_ini(hPopupMenu);
 	}
 
 	b_CompactMode_menu = GetMyRegLong(NULL, "CompactMode", FALSE);

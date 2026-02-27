@@ -256,7 +256,7 @@ static UINT tc_menu_alarm_register(int itemIndex)
 	e->remainSec = 60;
 	e->updateSec = 1;
 	e->keepOpen = 1;
-	e->notifyFlags = 0;
+	e->notifyFlags = 3;
 	e->soundVolume = 70;
 	e->soundLoop = 0;
 	e->state = 0;
@@ -835,9 +835,14 @@ static void tc_menu_format_label_datetime(const char* format, char* out, int out
 				}
 				q++;
 			}
-			if (!hasQuote && pfn(format, out, outLen) && out[0]) {
-				if (hasTagMarker || strcmp(out, format) != 0) {
-					return;
+			if (pfn(format, out, outLen) && out[0]) {
+				/* Prefer the shared format engine for tag/quote formats, but only when output is valid UTF-8. */
+				if (hasTagMarker || hasQuote || strcmp(out, format) != 0) {
+					if (tc_menu_is_valid_utf8_text(out)) {
+						return;
+					}
+					/* Non-UTF8 output would hide the menu item at insert stage; fall back to local parser. */
+					out[0] = '\0';
 				}
 			}
 		}
@@ -1663,7 +1668,7 @@ static void tc_menu_apply_custom_from_ini(HMENU hMenu)
 			wsprintf(key, "Item%dAlarmKeepMenuOpen", i);
 			alarmKeepOpen = tc_menu_section_cache_get_long(&cache, key, 1);
 			wsprintf(key, "Item%dAlarmNotifyFlags", i);
-			alarmNotifyFlags = tc_menu_section_cache_get_long(&cache, key, 0);
+			alarmNotifyFlags = tc_menu_section_cache_get_long(&cache, key, 3);
 			wsprintf(key, "Item%dAlarmSoundVolume", i);
 			alarmSoundVolume = tc_menu_section_cache_get_long(&cache, key, 70);
 			wsprintf(key, "Item%dAlarmSoundLoop", i);

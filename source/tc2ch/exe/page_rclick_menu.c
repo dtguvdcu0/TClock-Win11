@@ -176,12 +176,23 @@ static void rm_set_alarm_extra_visible(HWND hDlg, int visible)
     ShowWindow(GetDlgItem(hDlg, IDC_RM_ALARM_LABEL_PAUSE), cmd);
     ShowWindow(GetDlgItem(hDlg, IDC_RM_ALARM_LBL_DONE), cmd);
     ShowWindow(GetDlgItem(hDlg, IDC_RM_ALARM_LABEL_DONE), cmd);
+    ShowWindow(GetDlgItem(hDlg, IDC_RM_LBL_ALARM_SEC), cmd);
+    ShowWindow(GetDlgItem(hDlg, IDC_RM_ITEM_ALARM_SEC), cmd);
+    ShowWindow(GetDlgItem(hDlg, IDC_RM_SPIN_ALARM_SEC), cmd);
+    ShowWindow(GetDlgItem(hDlg, IDC_RM_LBL_ALARM_SOUND_FILE), cmd);
+    ShowWindow(GetDlgItem(hDlg, IDC_RM_ITEM_ALARM_SOUND_FILE), cmd);
+    ShowWindow(GetDlgItem(hDlg, IDC_RM_LBL_ALARM_VOLUME), cmd);
+    ShowWindow(GetDlgItem(hDlg, IDC_RM_ITEM_ALARM_VOLUME), cmd);
+    ShowWindow(GetDlgItem(hDlg, IDC_RM_SPIN_ALARM_VOLUME), cmd);
 
     EnableDlgItem(hDlg, IDC_RM_ALARM_KEEP_OPEN, visible);
     EnableDlgItem(hDlg, IDC_RM_ALARM_SOUND_LOOP, visible);
     EnableDlgItem(hDlg, IDC_RM_ALARM_LABEL_IDLE, visible);
     EnableDlgItem(hDlg, IDC_RM_ALARM_LABEL_PAUSE, visible);
     EnableDlgItem(hDlg, IDC_RM_ALARM_LABEL_DONE, visible);
+    EnableDlgItem(hDlg, IDC_RM_ITEM_ALARM_SEC, visible);
+    EnableDlgItem(hDlg, IDC_RM_ITEM_ALARM_SOUND_FILE, visible);
+    EnableDlgItem(hDlg, IDC_RM_ITEM_ALARM_VOLUME, visible);
 }
 
 static void rm_set_type_labels(HWND hDlg, const char* type)
@@ -193,20 +204,20 @@ static void rm_set_type_labels(HWND hDlg, const char* type)
             SetDlgItemTextUTF8Strict(hDlg, IDC_RM_LBL_ACTION, "AlarmMessage");
             SetDlgItemTextUTF8Strict(hDlg, IDC_RM_LBL_EXEC, "(unused)");
             SetDlgItemTextUTF8Strict(hDlg, IDC_RM_LBL_SHOW, "Notify");
-            SetDlgItemTextUTF8Strict(hDlg, IDC_RM_LBL_PARAM, "InitialSec");
-            SetDlgItemTextUTF8Strict(hDlg, IDC_RM_LBL_ARGS, "UpdateSec");
+            SetDlgItemTextUTF8Strict(hDlg, IDC_RM_LBL_PARAM, "AlarmSec");
+            SetDlgItemTextUTF8Strict(hDlg, IDC_RM_LBL_ARGS, "Volume");
             SetDlgItemTextUTF8Strict(hDlg, IDC_RM_LBL_WORKDIR, "SoundFile");
-            SetDlgItemTextUTF8Strict(hDlg, IDC_RM_LBL_LABEL_FORMAT, "DisplayLabel");
-            SetDlgItemTextUTF8Strict(hDlg, IDC_RM_LBL_LABEL_UPDATE, "Volume");
+            SetDlgItemTextUTF8Strict(hDlg, IDC_RM_LBL_LABEL_FORMAT, "Running");
+            SetDlgItemTextUTF8Strict(hDlg, IDC_RM_LBL_LABEL_UPDATE, "UpdSec");
         } else {
-            SetDlgItemTextUTF8Strict(hDlg, IDC_RM_LBL_ACTION, "通知メッセージ");
+            SetDlgItemTextUTF8Strict(hDlg, IDC_RM_LBL_ACTION, "メッセージ");
             SetDlgItemTextUTF8Strict(hDlg, IDC_RM_LBL_EXEC, "(未使用)");
             SetDlgItemTextUTF8Strict(hDlg, IDC_RM_LBL_SHOW, "通知");
             SetDlgItemTextUTF8Strict(hDlg, IDC_RM_LBL_PARAM, "初期秒");
-            SetDlgItemTextUTF8Strict(hDlg, IDC_RM_LBL_ARGS, "更新秒");
+            SetDlgItemTextUTF8Strict(hDlg, IDC_RM_LBL_ARGS, "音量");
             SetDlgItemTextUTF8Strict(hDlg, IDC_RM_LBL_WORKDIR, "音声ファイル");
-            SetDlgItemTextUTF8Strict(hDlg, IDC_RM_LBL_LABEL_FORMAT, "表示ラベル");
-            SetDlgItemTextUTF8Strict(hDlg, IDC_RM_LBL_LABEL_UPDATE, "音量");
+            SetDlgItemTextUTF8Strict(hDlg, IDC_RM_LBL_LABEL_FORMAT, "実行中");
+            SetDlgItemTextUTF8Strict(hDlg, IDC_RM_LBL_LABEL_UPDATE, "更新秒");
         }
     } else {
         if (en) {
@@ -258,7 +269,11 @@ static void rm_apply_type_ui_state(HWND hDlg)
     int showShow;
     int showAction;
     int showCmdInputs;
+    int showParam;
+    int showArgs;
+    int showWorkDir;
     int showDisplay;
+    int showLabelUpdate;
 
     rm_get_combo_text(hDlg, IDC_RM_ITEM_TYPE, mode, (int)sizeof(mode), "builtin");
     rm_get_combo_text(hDlg, IDC_RM_ITEM_SHOW, curShow, (int)sizeof(curShow), "1");
@@ -275,22 +290,26 @@ static void rm_apply_type_ui_state(HWND hDlg)
     CBSetCurSel(hDlg, IDC_RM_ITEM_SHOW, rm_combo_find_text(hDlg, IDC_RM_ITEM_SHOW, curShow));
 
     showShow = 0;
-    showAction = (isAlarm || isBuiltin);
+    showAction = isBuiltin;
     showCmdInputs = (isAlarm || isShell || isCommandline);
+    showParam = (isShell || isCommandline);
+    showArgs = (isShell || isCommandline);
+    showWorkDir = (isShell || isCommandline);
     showDisplay = !isSeparator;
+    showLabelUpdate = showDisplay;
 
     rm_set_pair_visible_enabled(hDlg, IDC_RM_LBL_EXEC, IDC_RM_ITEM_EXEC_TYPE, 0);
     rm_set_pair_visible_enabled(hDlg, IDC_RM_LBL_SHOW, IDC_RM_ITEM_SHOW, showShow);
 
     rm_set_pair_visible_enabled(hDlg, IDC_RM_LBL_ACTION, IDC_RM_ITEM_ACTION, showAction);
 
-    rm_set_pair_visible_enabled(hDlg, IDC_RM_LBL_PARAM, IDC_RM_ITEM_PARAM, showCmdInputs);
-    rm_set_pair_visible_enabled(hDlg, IDC_RM_LBL_ARGS, IDC_RM_ITEM_ARGS, showCmdInputs);
-    rm_set_pair_visible_enabled(hDlg, IDC_RM_LBL_WORKDIR, IDC_RM_ITEM_WORKDIR, showCmdInputs);
+    rm_set_pair_visible_enabled(hDlg, IDC_RM_LBL_PARAM, IDC_RM_ITEM_PARAM, showParam);
+    rm_set_pair_visible_enabled(hDlg, IDC_RM_LBL_ARGS, IDC_RM_ITEM_ARGS, showArgs);
+    rm_set_pair_visible_enabled(hDlg, IDC_RM_LBL_WORKDIR, IDC_RM_ITEM_WORKDIR, showWorkDir);
 
     rm_set_pair_visible_enabled(hDlg, IDC_RM_LBL_LABEL_FORMAT, IDC_RM_ITEM_LABEL_FORMAT, showDisplay);
-    rm_set_pair_visible_enabled(hDlg, IDC_RM_LBL_LABEL_UPDATE, IDC_RM_ITEM_LABEL_UPDATE_SEC, showDisplay);
-    rm_set_visible_enabled(hDlg, IDC_RM_SPIN_ITEM_LABEL_UPDATE_SEC, showDisplay);
+    rm_set_pair_visible_enabled(hDlg, IDC_RM_LBL_LABEL_UPDATE, IDC_RM_ITEM_LABEL_UPDATE_SEC, showLabelUpdate);
+    rm_set_visible_enabled(hDlg, IDC_RM_SPIN_ITEM_LABEL_UPDATE_SEC, showLabelUpdate);
 
     rm_set_alarm_extra_visible(hDlg, isAlarm);
 }
@@ -379,18 +398,19 @@ static void rm_load_selected_item(HWND hDlg)
 
         rm_build_key(n, "AlarmInitialSec", key, (int)sizeof(key));
         wsprintf(s, "%d", (int)GetMyRegLong("MenuCustom", key, 60));
-        SetDlgItemTextUTF8Strict(hDlg, IDC_RM_ITEM_PARAM, s);
+        SetDlgItemTextUTF8Strict(hDlg, IDC_RM_ITEM_ALARM_SEC, s);
 
         rm_build_key(n, "AlarmUpdateSec", key, (int)sizeof(key));
-        wsprintf(s, "%d", (int)GetMyRegLong("MenuCustom", key, 1));
-        SetDlgItemTextUTF8Strict(hDlg, IDC_RM_ITEM_ARGS, s);
+        v = (int)GetMyRegLong("MenuCustom", key, 1);
+        SetDlgItemInt(hDlg, IDC_RM_ITEM_LABEL_UPDATE_SEC, (UINT)rm_clamp_int(v, 0, 9999), FALSE);
+
 
         rm_build_key(n, "AlarmSoundFile", key, (int)sizeof(key));
         rm_get_reg_str(key, s, (int)sizeof(s), "");
-        SetDlgItemTextUTF8Strict(hDlg, IDC_RM_ITEM_WORKDIR, s);
+        SetDlgItemTextUTF8Strict(hDlg, IDC_RM_ITEM_ALARM_SOUND_FILE, s);
 
         rm_build_key(n, "AlarmNotifyFlags", key, (int)sizeof(key));
-        wsprintf(s, "%d", (int)GetMyRegLong("MenuCustom", key, 0));
+        wsprintf(s, "%d", (int)GetMyRegLong("MenuCustom", key, 3));
         rm_fill_show_combo(hDlg, 1);
         CBSetCurSel(hDlg, IDC_RM_ITEM_SHOW, rm_combo_find_text(hDlg, IDC_RM_ITEM_SHOW, s));
 
@@ -400,7 +420,7 @@ static void rm_load_selected_item(HWND hDlg)
 
         rm_build_key(n, "AlarmSoundVolume", key, (int)sizeof(key));
         v = (int)GetMyRegLong("MenuCustom", key, 70);
-        SetDlgItemInt(hDlg, IDC_RM_ITEM_LABEL_UPDATE_SEC, (UINT)rm_clamp_int(v, 0, 100), FALSE);
+        SetDlgItemInt(hDlg, IDC_RM_ITEM_ALARM_VOLUME, (UINT)rm_clamp_int(v, 0, 100), FALSE);
 
         rm_build_key(n, "AlarmKeepMenuOpen", key, (int)sizeof(key));
         CheckDlgButton(hDlg, IDC_RM_ALARM_KEEP_OPEN, GetMyRegLong("MenuCustom", key, 1) ? BST_CHECKED : BST_UNCHECKED);
@@ -426,6 +446,9 @@ static void rm_load_selected_item(HWND hDlg)
         SetDlgItemTextUTF8Strict(hDlg, IDC_RM_ALARM_LABEL_IDLE, "");
         SetDlgItemTextUTF8Strict(hDlg, IDC_RM_ALARM_LABEL_PAUSE, "");
         SetDlgItemTextUTF8Strict(hDlg, IDC_RM_ALARM_LABEL_DONE, "");
+        SetDlgItemInt(hDlg, IDC_RM_ITEM_ALARM_VOLUME, 70, FALSE);
+        SetDlgItemInt(hDlg, IDC_RM_ITEM_ALARM_SEC, 60, FALSE);
+        SetDlgItemTextUTF8Strict(hDlg, IDC_RM_ITEM_ALARM_SOUND_FILE, "");
         rm_build_key(n, "Action", key, (int)sizeof(key));
         rm_get_reg_str(key, s, (int)sizeof(s), "");
         SetDlgItemTextUTF8Strict(hDlg, IDC_RM_ITEM_ACTION, s);
@@ -471,7 +494,7 @@ static void rm_load_selected_item(HWND hDlg)
 
         rm_build_key(n, "LabelUpdateSec", key, (int)sizeof(key));
         v = (int)GetMyRegLong("MenuCustom", key, 1);
-        SetDlgItemInt(hDlg, IDC_RM_ITEM_LABEL_UPDATE_SEC, (UINT)rm_clamp_int(v, 0, 86400), FALSE);
+        SetDlgItemInt(hDlg, IDC_RM_ITEM_LABEL_UPDATE_SEC, (UINT)rm_clamp_int(v, 0, 9999), FALSE);
     }
 
     rm_apply_type_ui_state(hDlg);
@@ -516,19 +539,18 @@ static void rm_write_item(HWND hDlg, int n)
         rm_build_key(n, "Show", key, (int)sizeof(key));
         SetMyRegLong("MenuCustom", key, 1);
 
-        GetDlgItemTextUTF8(hDlg, IDC_RM_ITEM_PARAM, s, (int)sizeof(s));
+        GetDlgItemTextUTF8(hDlg, IDC_RM_ITEM_ALARM_SEC, s, (int)sizeof(s));
         rm_build_key(n, "AlarmInitialSec", key, (int)sizeof(key));
         SetMyRegLong("MenuCustom", key, (DWORD)rm_clamp_int(atoi(s), 1, 86400));
 
-        GetDlgItemTextUTF8(hDlg, IDC_RM_ITEM_ARGS, s, (int)sizeof(s));
         rm_build_key(n, "AlarmUpdateSec", key, (int)sizeof(key));
-        SetMyRegLong("MenuCustom", key, (DWORD)rm_clamp_int(atoi(s), 1, 3600));
+        SetMyRegLong("MenuCustom", key, (DWORD)rm_get_int(hDlg, IDC_RM_ITEM_LABEL_UPDATE_SEC, 1, 0, 9999));
 
-        GetDlgItemTextUTF8(hDlg, IDC_RM_ITEM_WORKDIR, s, (int)sizeof(s));
+        GetDlgItemTextUTF8(hDlg, IDC_RM_ITEM_ALARM_SOUND_FILE, s, (int)sizeof(s));
         rm_build_key(n, "AlarmSoundFile", key, (int)sizeof(key));
         SetMyRegStr("MenuCustom", key, s);
 
-        rm_get_combo_text(hDlg, IDC_RM_ITEM_SHOW, s, (int)sizeof(s), "0");
+        rm_get_combo_text(hDlg, IDC_RM_ITEM_SHOW, s, (int)sizeof(s), "3");
         show = atoi(s);
         rm_build_key(n, "AlarmNotifyFlags", key, (int)sizeof(key));
         SetMyRegLong("MenuCustom", key, (DWORD)rm_clamp_int(show, 0, 3));
@@ -538,7 +560,7 @@ static void rm_write_item(HWND hDlg, int n)
         SetMyRegStr("MenuCustom", key, s);
 
         rm_build_key(n, "AlarmSoundVolume", key, (int)sizeof(key));
-        SetMyRegLong("MenuCustom", key, (DWORD)rm_get_int(hDlg, IDC_RM_ITEM_LABEL_UPDATE_SEC, 70, 0, 100));
+        SetMyRegLong("MenuCustom", key, (DWORD)rm_get_int(hDlg, IDC_RM_ITEM_ALARM_VOLUME, 70, 0, 100));
 
         rm_build_key(n, "AlarmKeepMenuOpen", key, (int)sizeof(key));
         SetMyRegLong("MenuCustom", key, IsDlgButtonChecked(hDlg, IDC_RM_ALARM_KEEP_OPEN) == BST_CHECKED ? 1 : 0);
@@ -597,7 +619,7 @@ static void rm_write_item(HWND hDlg, int n)
         SetMyRegStr("MenuCustom", key, s);
 
         rm_build_key(n, "LabelUpdateSec", key, (int)sizeof(key));
-        SetMyRegLong("MenuCustom", key, (DWORD)rm_get_int(hDlg, IDC_RM_ITEM_LABEL_UPDATE_SEC, 1, 0, 86400));
+        SetMyRegLong("MenuCustom", key, (DWORD)rm_get_int(hDlg, IDC_RM_ITEM_LABEL_UPDATE_SEC, 1, 0, 9999));
     }
 }
 
@@ -631,7 +653,12 @@ static void rm_on_init(HWND hDlg)
     ShowWindow(GetDlgItem(hDlg, IDC_RM_ITEM_SHOW), SW_HIDE);
 
     SendDlgItemMessage(hDlg, IDC_RM_SPIN_ITEMCOUNT, UDM_SETRANGE, 0, MAKELONG(RM_ITEM_MAX, 0));
-    SendDlgItemMessage(hDlg, IDC_RM_SPIN_ITEM_LABEL_UPDATE_SEC, UDM_SETRANGE, 0, MAKELONG(86400, 0));
+    SendDlgItemMessage(hDlg, IDC_RM_ITEM_LABEL_UPDATE_SEC, EM_LIMITTEXT, 4, 0);
+    SendDlgItemMessage(hDlg, IDC_RM_SPIN_ITEM_LABEL_UPDATE_SEC, UDM_SETRANGE, 0, MAKELONG(9999, 0));
+    SendDlgItemMessage(hDlg, IDC_RM_ITEM_ALARM_SEC, EM_LIMITTEXT, 5, 0);
+    SendDlgItemMessage(hDlg, IDC_RM_SPIN_ALARM_SEC, UDM_SETRANGE, 0, MAKELONG(86400, 1));
+    SendDlgItemMessage(hDlg, IDC_RM_ITEM_ALARM_VOLUME, EM_LIMITTEXT, 3, 0);
+    SendDlgItemMessage(hDlg, IDC_RM_SPIN_ALARM_VOLUME, UDM_SETRANGE, 0, MAKELONG(100, 0));
 
     CheckDlgButton(hDlg, IDC_RM_ENABLE, GetMyRegLong("MenuCustom", "MenuCustomEnabled", 1) ? BST_CHECKED : BST_UNCHECKED);
 

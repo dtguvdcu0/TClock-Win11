@@ -13,6 +13,8 @@ extern int Language_Offset;
 
 static int g_rm_selectedN = 1;
 
+static const char* rm_type_key_from_index(int idx);
+
 static void rm_send_ps_changed(HWND hDlg)
 {
     g_bApplyClock = TRUE;
@@ -61,6 +63,10 @@ static void rm_get_combo_text(HWND hDlg, int id, char* out, int outBytes, const 
 
     sel = CBGetCurSel(hDlg, id);
     if (sel >= 0) {
+        if (id == IDC_RM_ITEM_TYPE) {
+            lstrcpyn(out, rm_type_key_from_index(sel), outBytes);
+            return;
+        }
         CBGetLBText(hDlg, id, sel, out);
         if (out[0]) return;
     }
@@ -87,6 +93,42 @@ static int rm_is_english_ui(void)
 static int rm_is_alarm_type(const char* type)
 {
     return (type && lstrcmpi(type, "alarm") == 0) ? 1 : 0;
+}
+
+static const char* rm_type_key_from_index(int idx)
+{
+    switch (idx) {
+    case 0: return "builtin";
+    case 1: return "shell";
+    case 2: return "commandline";
+    case 3: return "passive";
+    case 4: return "separator";
+    case 5: return "alarm";
+    default: return "builtin";
+    }
+}
+
+static int rm_type_index_from_key(const char* key)
+{
+    int i;
+    if (!key || !key[0]) return 0;
+    for (i = 0; i < 6; ++i) {
+        if (lstrcmpi(key, rm_type_key_from_index(i)) == 0) return i;
+    }
+    return 0;
+}
+
+static const char* rm_type_label_from_index(int idx, int englishUi)
+{
+    switch (idx) {
+    case 0: return englishUi ? "builtin" : "内蔵機能";
+    case 1: return englishUi ? "shell" : "シェル";
+    case 2: return englishUi ? "commandline" : "コマンド";
+    case 3: return englishUi ? "passive" : "表示のみ";
+    case 4: return englishUi ? "separator" : "区切り線";
+    case 5: return englishUi ? "alarm" : "アラーム";
+    default: return englishUi ? "builtin" : "内蔵機能";
+    }
 }
 
 static int rm_hex_value(unsigned char c)
@@ -150,13 +192,13 @@ static void rm_fill_show_combo(HWND hDlg, int alarmMode)
 
 static void rm_fill_combo_defaults(HWND hDlg)
 {
+    int i;
+    int en = rm_is_english_ui();
+
     CBResetContent(hDlg, IDC_RM_ITEM_TYPE);
-    CBAddString(hDlg, IDC_RM_ITEM_TYPE, (LPARAM)"builtin");
-    CBAddString(hDlg, IDC_RM_ITEM_TYPE, (LPARAM)"shell");
-    CBAddString(hDlg, IDC_RM_ITEM_TYPE, (LPARAM)"commandline");
-    CBAddString(hDlg, IDC_RM_ITEM_TYPE, (LPARAM)"passive");
-    CBAddString(hDlg, IDC_RM_ITEM_TYPE, (LPARAM)"separator");
-    CBAddString(hDlg, IDC_RM_ITEM_TYPE, (LPARAM)"alarm");
+    for (i = 0; i < 6; ++i) {
+        CBAddStringUTF8Compat(hDlg, IDC_RM_ITEM_TYPE, rm_type_label_from_index(i, en));
+    }
 
     CBResetContent(hDlg, IDC_RM_ITEM_EXEC_TYPE);
     CBAddString(hDlg, IDC_RM_ITEM_EXEC_TYPE, (LPARAM)"(merged)");
@@ -384,7 +426,7 @@ static void rm_load_selected_item(HWND hDlg)
 
     rm_build_key(n, "Mode", key, (int)sizeof(key));
     rm_get_reg_str(key, mode, (int)sizeof(mode), "builtin");
-    CBSetCurSel(hDlg, IDC_RM_ITEM_TYPE, rm_combo_find_text(hDlg, IDC_RM_ITEM_TYPE, mode));
+    CBSetCurSel(hDlg, IDC_RM_ITEM_TYPE, rm_type_index_from_key(mode));
 
     rm_build_key(n, "Enabled", key, (int)sizeof(key));
     v = (int)GetMyRegLong("MenuCustom", key, 1);

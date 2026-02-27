@@ -1728,6 +1728,15 @@ static BOOL SetIniPathFromWide(const wchar_t* inifileW)
 	return TRUE;
 }
 
+static int tc_is_japanese_ui_locale(void)
+{
+	LANGID uiLang = GetUserDefaultUILanguage();
+	if (PRIMARYLANGID(uiLang) == LANG_JAPANESE) return 1;
+	uiLang = GetSystemDefaultUILanguage();
+	if (PRIMARYLANGID(uiLang) == LANG_JAPANESE) return 1;
+	return 0;
+}
+
 static BOOL BuildDefaultIniPathW(wchar_t* outPath, int outCch)
 {
 	DWORD n;
@@ -1775,7 +1784,10 @@ void CreateDefaultIniFile_Win10(const wchar_t* fnameW)
 		SetMyRegLong(NULL, "AutoClearLogLines", 1000);
 		SetMyRegLong(NULL, "AutoRestart", 1);
 		SetMyRegLong(NULL, "CompactMode", 0);
-		SetMyRegLong(NULL, "EnglishMenu", 0);
+		{
+			int englishMenuDefault = tc_is_japanese_ui_locale() ? 0 : 1;
+			SetMyRegLong(NULL, "EnglishMenu", englishMenuDefault);
+		}
 		SetMyRegLong(NULL, "AdjustThreshold", 200);
 		SetMyRegLong(NULL, "EnableOnSubDisplay", 1);
 		SetMyRegLong(NULL, "OffsetClockMS", 0);
@@ -2043,7 +2055,10 @@ void CreateDefaultIniFile_Win10(const wchar_t* fnameW)
 		SetMyRegLong(NULL, "AdjustThreshold", 200);
 		SetMyRegLong(NULL, "NormalLog", 1);
 		SetMyRegLong(NULL, "AutoRestart", 1);
-		SetMyRegLong(NULL, "EnglishMenu", 0);
+		{
+			int englishMenuDefault = tc_is_japanese_ui_locale() ? 0 : 1;
+			SetMyRegLong(NULL, "EnglishMenu", englishMenuDefault);
+		}
 		SetMyRegLong(NULL, "ShowTrayIcon", 1);
 
 	}

@@ -89,6 +89,50 @@ static int rm_is_alarm_type(const char* type)
     return (type && lstrcmpi(type, "alarm") == 0) ? 1 : 0;
 }
 
+static int rm_hex_value(unsigned char c)
+{
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    return -1;
+}
+
+static int rm_decode_utf8_hex(const char* hex, char* out, int outBytes)
+{
+    int i;
+    int n;
+    if (!hex || !out || outBytes <= 0) return 0;
+    out[0] = '\0';
+    n = lstrlen(hex);
+    if ((n & 1) != 0) return 0;
+    if ((n / 2) + 1 > outBytes) return 0;
+    for (i = 0; i < n / 2; ++i) {
+        int hi = rm_hex_value((unsigned char)hex[i * 2]);
+        int lo = rm_hex_value((unsigned char)hex[i * 2 + 1]);
+        if (hi < 0 || lo < 0) return 0;
+        out[i] = (char)((hi << 4) | lo);
+    }
+    out[n / 2] = '\0';
+    return 1;
+}
+
+static const char* rm_default_label_for_action(const char* action)
+{
+    if (!action || !action[0]) return "";
+    if (lstrcmpi(action, "taskmgr") == 0) return MyStringUTF8(IDS_TASKMGR);
+    if (lstrcmpi(action, "cmd") == 0) return MyStringUTF8(IDS_CMD);
+    if (lstrcmpi(action, "alarm_clock") == 0) return MyStringUTF8(IDS_ALARM_CLOCK);
+    if (lstrcmpi(action, "pullback") == 0) return MyStringUTF8(IDS_PULLBACK);
+    if (lstrcmpi(action, "control_panel") == 0) return MyStringUTF8(IDS_CONTROLPNL);
+    if (lstrcmpi(action, "power_options") == 0) return MyStringUTF8(IDS_POWERPNL);
+    if (lstrcmpi(action, "network_connections") == 0) return MyStringUTF8(IDS_NETWORKPNL);
+    if (lstrcmpi(action, "settings_home") == 0) return MyStringUTF8(IDS_SETTING);
+    if (lstrcmpi(action, "settings_network") == 0) return MyStringUTF8(IDS_NETWORKSTG);
+    if (lstrcmpi(action, "settings_datetime") == 0) return MyStringUTF8(IDS_PROPDATE);
+    if (lstrcmpi(action, "remove_drive_dynamic") == 0) return MyStringUTF8(IDS_ABOUTRMVDRV);
+    return action;
+}
+
 static void rm_fill_show_combo(HWND hDlg, int alarmMode)
 {
     CBResetContent(hDlg, IDC_RM_ITEM_SHOW);
@@ -152,7 +196,7 @@ static void rm_set_type_labels(HWND hDlg, const char* type)
             SetDlgItemTextUTF8Strict(hDlg, IDC_RM_LBL_PARAM, "InitialSec");
             SetDlgItemTextUTF8Strict(hDlg, IDC_RM_LBL_ARGS, "UpdateSec");
             SetDlgItemTextUTF8Strict(hDlg, IDC_RM_LBL_WORKDIR, "SoundFile");
-            SetDlgItemTextUTF8Strict(hDlg, IDC_RM_LBL_LABEL_FORMAT, "LabelRun");
+            SetDlgItemTextUTF8Strict(hDlg, IDC_RM_LBL_LABEL_FORMAT, "DisplayLabel");
             SetDlgItemTextUTF8Strict(hDlg, IDC_RM_LBL_LABEL_UPDATE, "Volume");
         } else {
             SetDlgItemTextUTF8Strict(hDlg, IDC_RM_LBL_ACTION, "通知メッセージ");
@@ -161,7 +205,7 @@ static void rm_set_type_labels(HWND hDlg, const char* type)
             SetDlgItemTextUTF8Strict(hDlg, IDC_RM_LBL_PARAM, "初期秒");
             SetDlgItemTextUTF8Strict(hDlg, IDC_RM_LBL_ARGS, "更新秒");
             SetDlgItemTextUTF8Strict(hDlg, IDC_RM_LBL_WORKDIR, "音声ファイル");
-            SetDlgItemTextUTF8Strict(hDlg, IDC_RM_LBL_LABEL_FORMAT, "実行中ラベル");
+            SetDlgItemTextUTF8Strict(hDlg, IDC_RM_LBL_LABEL_FORMAT, "表示ラベル");
             SetDlgItemTextUTF8Strict(hDlg, IDC_RM_LBL_LABEL_UPDATE, "音量");
         }
     } else {
@@ -172,7 +216,7 @@ static void rm_set_type_labels(HWND hDlg, const char* type)
             SetDlgItemTextUTF8Strict(hDlg, IDC_RM_LBL_PARAM, "Param");
             SetDlgItemTextUTF8Strict(hDlg, IDC_RM_LBL_ARGS, "Args");
             SetDlgItemTextUTF8Strict(hDlg, IDC_RM_LBL_WORKDIR, "WorkDir");
-            SetDlgItemTextUTF8Strict(hDlg, IDC_RM_LBL_LABEL_FORMAT, "LabelFmt");
+            SetDlgItemTextUTF8Strict(hDlg, IDC_RM_LBL_LABEL_FORMAT, "DisplayLabel");
             SetDlgItemTextUTF8Strict(hDlg, IDC_RM_LBL_LABEL_UPDATE, "UpdSec");
         } else {
             SetDlgItemTextUTF8Strict(hDlg, IDC_RM_LBL_ACTION, "アクション");
@@ -181,7 +225,7 @@ static void rm_set_type_labels(HWND hDlg, const char* type)
             SetDlgItemTextUTF8Strict(hDlg, IDC_RM_LBL_PARAM, "パラメータ");
             SetDlgItemTextUTF8Strict(hDlg, IDC_RM_LBL_ARGS, "引数");
             SetDlgItemTextUTF8Strict(hDlg, IDC_RM_LBL_WORKDIR, "作業フォルダ");
-            SetDlgItemTextUTF8Strict(hDlg, IDC_RM_LBL_LABEL_FORMAT, "ラベル書式");
+            SetDlgItemTextUTF8Strict(hDlg, IDC_RM_LBL_LABEL_FORMAT, "表示ラベル");
             SetDlgItemTextUTF8Strict(hDlg, IDC_RM_LBL_LABEL_UPDATE, "更新秒");
         }
     }
@@ -230,7 +274,7 @@ static void rm_apply_type_ui_state(HWND hDlg)
     rm_fill_show_combo(hDlg, isAlarm);
     CBSetCurSel(hDlg, IDC_RM_ITEM_SHOW, rm_combo_find_text(hDlg, IDC_RM_ITEM_SHOW, curShow));
 
-    showShow = (!isSeparator && !isPassive);
+    showShow = 0;
     showAction = (isAlarm || isBuiltin);
     showCmdInputs = (isAlarm || isShell || isCommandline);
     showDisplay = !isSeparator;
@@ -405,6 +449,24 @@ static void rm_load_selected_item(HWND hDlg)
 
         rm_build_key(n, "LabelFormat", key, (int)sizeof(key));
         rm_get_reg_str(key, s, (int)sizeof(s), "");
+        if (!s[0]) {
+            char actionForLabel[128];
+            char hex[2048];
+            rm_build_key(n, "Label", key, (int)sizeof(key));
+            rm_get_reg_str(key, s, (int)sizeof(s), "");
+            if (!s[0]) {
+                rm_build_key(n, "LabelUtf8Hex", key, (int)sizeof(key));
+                rm_get_reg_str(key, hex, (int)sizeof(hex), "");
+                if (hex[0]) {
+                    rm_decode_utf8_hex(hex, s, (int)sizeof(s));
+                }
+            }
+            if (!s[0]) {
+                rm_build_key(n, "Action", key, (int)sizeof(key));
+                rm_get_reg_str(key, actionForLabel, (int)sizeof(actionForLabel), "");
+                lstrcpyn(s, rm_default_label_for_action(actionForLabel), (int)sizeof(s));
+            }
+        }
         SetDlgItemTextUTF8Strict(hDlg, IDC_RM_ITEM_LABEL_FORMAT, s);
 
         rm_build_key(n, "LabelUpdateSec", key, (int)sizeof(key));
@@ -562,6 +624,8 @@ static void rm_on_init(HWND hDlg)
     ShowWindow(GetDlgItem(hDlg, IDC_RM_ITEM_LABEL), SW_HIDE);
     ShowWindow(GetDlgItem(hDlg, IDC_RM_LBL_EXEC), SW_HIDE);
     ShowWindow(GetDlgItem(hDlg, IDC_RM_ITEM_EXEC_TYPE), SW_HIDE);
+    ShowWindow(GetDlgItem(hDlg, IDC_RM_LBL_SHOW), SW_HIDE);
+    ShowWindow(GetDlgItem(hDlg, IDC_RM_ITEM_SHOW), SW_HIDE);
 
     SendDlgItemMessage(hDlg, IDC_RM_SPIN_ITEMCOUNT, UDM_SETRANGE, 0, MAKELONG(RM_ITEM_MAX, 0));
     SendDlgItemMessage(hDlg, IDC_RM_SPIN_ITEM_LABEL_UPDATE_SEC, UDM_SETRANGE, 0, MAKELONG(86400, 0));
@@ -607,9 +671,7 @@ BOOL CALLBACK PageRClickMenuProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
         if (id == IDC_RM_SELECT_N && code == CBN_SELCHANGE) {
             int sel = CBGetCurSel(hDlg, IDC_RM_SELECT_N);
             if (sel >= 0) {
-                rm_write_item(hDlg, g_rm_selectedN);
                 rm_select_item(hDlg, sel);
-                rm_send_ps_changed(hDlg);
             }
             return TRUE;
         }
@@ -618,9 +680,7 @@ BOOL CALLBACK PageRClickMenuProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
             int sel = CBGetCurSel(hDlg, IDC_RM_SELECT_N);
             int delta = (id == IDC_RM_SELECT_PREV) ? -1 : 1;
             if (sel >= 0) {
-                rm_write_item(hDlg, g_rm_selectedN);
                 rm_select_item(hDlg, sel + delta);
-                rm_send_ps_changed(hDlg);
             }
             return TRUE;
         }

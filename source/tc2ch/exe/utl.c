@@ -601,6 +601,42 @@ int GetDlgItemTextUTF8(HWND hDlg, int id, char* text, int textBytes)
 }
 
 
+void EnsureUnicodeEditControlShared(HWND hDlg, int id)
+{
+	HWND hOld;
+	HWND hNew;
+	RECT rc;
+	POINT pt;
+	DWORD style;
+	DWORD exStyle;
+	HFONT hFont;
+	BOOL enabled;
+	WCHAR wText[1024];
+
+	if (!hDlg) return;
+	hOld = GetDlgItem(hDlg, id);
+	if (!hOld) return;
+	if (IsWindowUnicode(hOld)) return;
+
+	style = (DWORD)GetWindowLongPtr(hOld, GWL_STYLE);
+	exStyle = (DWORD)GetWindowLongPtr(hOld, GWL_EXSTYLE);
+	hFont = (HFONT)SendMessage(hOld, WM_GETFONT, 0, 0);
+	enabled = IsWindowEnabled(hOld);
+	GetWindowRect(hOld, &rc);
+	pt.x = rc.left;
+	pt.y = rc.top;
+	ScreenToClient(hDlg, &pt);
+	if (GetWindowTextW(hOld, wText, (int)(sizeof(wText) / sizeof(wText[0]))) <= 0) wText[0] = L'\0';
+
+	DestroyWindow(hOld);
+	hNew = CreateWindowExW(exStyle, L"EDIT", wText, style,
+		pt.x, pt.y, rc.right - rc.left, rc.bottom - rc.top, hDlg, (HMENU)(INT_PTR)id, GetModuleHandleW(NULL), NULL);
+	if (!hNew) return;
+	if (hFont) SendMessage(hNew, WM_SETFONT, (WPARAM)hFont, 0);
+	EnableWindow(hNew, enabled);
+}
+
+
 int CBAddStringUTF8Compat(HWND hDlg, int idCombo, const char* utf8)
 {
 	HWND hCombo;

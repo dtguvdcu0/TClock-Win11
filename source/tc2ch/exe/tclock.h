@@ -280,6 +280,7 @@ BOOL SetWindowTextUTF8Strict(HWND hwnd, const char* text);
 int GetWindowTextUTF8(HWND hwnd, char* text, int textBytes);
 BOOL SetDlgItemTextUTF8Strict(HWND hDlg, int id, const char* text);
 int GetDlgItemTextUTF8(HWND hDlg, int id, char* text, int textBytes);
+void EnsureUnicodeEditControlShared(HWND hDlg, int id);
 int CBAddStringUTF8Compat(HWND hDlg, int idCombo, const char* utf8);
 void NormalizeUtf8ForAcpCombo(const char* src, char* dst, int dstBytes);
 int GetClassNameUTF8(HWND hwnd, char* text, int textBytes);

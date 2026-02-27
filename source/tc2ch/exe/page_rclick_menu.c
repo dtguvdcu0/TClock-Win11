@@ -620,6 +620,9 @@ static void rm_on_init(HWND hDlg)
 
     rm_fill_combo_defaults(hDlg);
 
+    /* Format-capable display label input must stay Unicode to preserve non-ACP symbols. */
+    EnsureUnicodeEditControlShared(hDlg, IDC_RM_ITEM_LABEL_FORMAT);
+
     ShowWindow(GetDlgItem(hDlg, IDC_RM_LBL_LABEL), SW_HIDE);
     ShowWindow(GetDlgItem(hDlg, IDC_RM_ITEM_LABEL), SW_HIDE);
     ShowWindow(GetDlgItem(hDlg, IDC_RM_LBL_EXEC), SW_HIDE);

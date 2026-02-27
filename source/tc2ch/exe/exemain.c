@@ -804,6 +804,7 @@ static UINT WINAPI TclockExeMain(void)
 
 
 	InitializeMenuItems();
+	MenuCustomMigrateLegacyModeKeys();
 
 	if(!CheckTCDLL()) { return 1; }	//tclock.dllのバージョンチェック
 

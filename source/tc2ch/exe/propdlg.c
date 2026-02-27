@@ -34,6 +34,7 @@ INT_PTR CALLBACK PageEtc1Proc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK PageWin11Proc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK PageColorAdditionalProc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK PageCustomVarsProc(HWND, UINT, WPARAM, LPARAM);
+INT_PTR CALLBACK PageRClickMenuProc(HWND, UINT, WPARAM, LPARAM);
 
 
 
@@ -228,6 +229,10 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 			tv.item.pszText = (LPWSTR)MyStringW(IDS_PROP_MOUSE);
 			hParent[6] = (HTREEITEM)SendMessageW(hTree, TVM_INSERTITEMW, 0, (LPARAM)&tv);
 
+			tv.item.lParam = 9;
+			tv.item.pszText = (LPWSTR)MyStringW(IDS_PROP_RCLICK_MENU);
+			hParent[9] = (HTREEITEM)SendMessageW(hTree, TVM_INSERTITEMW, 0, (LPARAM)&tv);
+
 			tv.item.lParam = 8;
 			tv.item.pszText = (LPWSTR)MyStringW(IDS_PROP_CUSTOMVARS);
 			hParent[8] = (HTREEITEM)SendMessageW(hTree, TVM_INSERTITEMW, 0, (LPARAM)&tv);
@@ -372,6 +377,11 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 						case 8:
 							nowDlg = 18;
 							CreatePageDialog(hDwnd, hDlg, bDlgFlg, nowDlg, GetSafeLanguageOffset() + IDD_PAGE_CUSTOMVARS, PageCustomVarsProc);
+							break;
+
+						case 9:
+							nowDlg = 19;
+							CreatePageDialog(hDwnd, hDlg, bDlgFlg, nowDlg, GetSafeLanguageOffset() + IDD_PAGE_RCLICK_MENU, PageRClickMenuProc);
 							break;
 
 						case 100:

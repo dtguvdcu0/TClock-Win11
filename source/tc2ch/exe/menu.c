@@ -1355,6 +1355,103 @@ static BOOL tc_menu_has_section_header(const char* section)
 	return found;
 }
 
+static int tc_menu_is_valid_mode_value(const char* mode)
+{
+	if (!mode || !mode[0]) return 0;
+	if (_stricmp(mode, "builtin") == 0) return 1;
+	if (_stricmp(mode, "shell") == 0) return 1;
+	if (_stricmp(mode, "commandline") == 0) return 1;
+	if (_stricmp(mode, "passive") == 0) return 1;
+	if (_stricmp(mode, "separator") == 0) return 1;
+	if (_stricmp(mode, "alarm") == 0) return 1;
+	return 0;
+}
+
+static void tc_menu_derive_mode_from_legacy_keys(int index, char* outMode, int outLen)
+{
+	char key[64];
+	char type[64];
+	char execType[64];
+	char action[128];
+	outMode[0] = '\0';
+	type[0] = '\0';
+	execType[0] = '\0';
+	action[0] = '\0';
+
+	wsprintf(key, "Item%dType", index);
+	GetMyRegStr(TC_MENU_SECTION, key, type, (int)sizeof(type), "");
+	wsprintf(key, "Item%dExecType", index);
+	GetMyRegStr(TC_MENU_SECTION, key, execType, (int)sizeof(execType), "");
+	wsprintf(key, "Item%dAction", index);
+	GetMyRegStr(TC_MENU_SECTION, key, action, (int)sizeof(action), "");
+
+	if (_stricmp(type, "separator") == 0 || _stricmp(type, "passive") == 0 || _stricmp(type, "alarm") == 0) {
+		lstrcpyn(outMode, type, outLen);
+		return;
+	}
+	if (_stricmp(type, "command") == 0) {
+		if (tc_menu_is_valid_mode_value(execType) && _stricmp(execType, "passive") != 0 &&
+			_stricmp(execType, "separator") != 0 && _stricmp(execType, "alarm") != 0) {
+			lstrcpyn(outMode, execType, outLen);
+			return;
+		}
+		lstrcpyn(outMode, tc_menu_default_exec_type_for_action(action), outLen);
+		return;
+	}
+	if (tc_menu_is_valid_mode_value(type)) {
+		lstrcpyn(outMode, type, outLen);
+	}
+}
+
+void MenuCustomMigrateLegacyModeKeys(void)
+{
+	int i;
+	int count;
+	int migrated = 0;
+	int deleted = 0;
+
+	/* TEMP MIGRATION (remove after 2026-03-31):
+	   Rescue old ItemNType/ItemNExecType into ItemNMode at startup, then delete legacy keys. */
+	if (!tc_menu_has_section_header(TC_MENU_SECTION)) {
+		return;
+	}
+
+	count = (int)GetMyRegLong(TC_MENU_SECTION, "ItemCount", 0);
+	if (count < 0) count = 0;
+	if (count > TC_MENU_CUSTOM_MAX_ITEMS) count = TC_MENU_CUSTOM_MAX_ITEMS;
+	if (count == 0) count = 16;
+
+	for (i = 1; i <= count; ++i) {
+		char key[64];
+		char mode[64];
+		char recovered[64];
+
+		mode[0] = '\0';
+		recovered[0] = '\0';
+
+		wsprintf(key, "Item%dMode", i);
+		GetMyRegStr(TC_MENU_SECTION, key, mode, (int)sizeof(mode), "");
+		if (!tc_menu_is_valid_mode_value(mode)) {
+			tc_menu_derive_mode_from_legacy_keys(i, recovered, (int)sizeof(recovered));
+			if (tc_menu_is_valid_mode_value(recovered)) {
+				SetMyRegStr(TC_MENU_SECTION, key, recovered);
+				++migrated;
+			}
+		}
+
+		wsprintf(key, "Item%dType", i);
+		if (DelMyReg(TC_MENU_SECTION, key)) ++deleted;
+		wsprintf(key, "Item%dExecType", i);
+		if (DelMyReg(TC_MENU_SECTION, key)) ++deleted;
+	}
+
+	if (b_NormalLog && (migrated > 0 || deleted > 0)) {
+		char msg[192];
+		wsprintf(msg, "[menu.c][MenuCustomMigrateLegacyModeKeys] migrated=%d deleted_legacy_keys=%d", migrated, deleted);
+		WriteNormalLog(msg);
+	}
+}
+
 static void tc_menu_ensure_ini_defaults(void)
 {
 	int i;
@@ -1366,19 +1463,25 @@ static void tc_menu_ensure_ini_defaults(void)
 	for (i = 1; i <= 16; ++i) {
 		char key[64];
 		char type[32];
+		char mode[32];
 		char action[64];
 		int enabled = 1;
 		const char* defaultLabel;
 		type[0] = '\0';
+		mode[0] = '\0';
 		action[0] = '\0';
 		tc_menu_get_default_item(i, type, (int)sizeof(type), action, (int)sizeof(action), &enabled);
-		wsprintf(key, "Item%dType", i);
-		SetMyRegStr(TC_MENU_SECTION, key, type);
+		if (_stricmp(type, "command") == 0) {
+			lstrcpyn(mode, tc_menu_default_exec_type_for_action(action), (int)sizeof(mode));
+		} else {
+			lstrcpyn(mode, type, (int)sizeof(mode));
+		}
+		wsprintf(key, "Item%dMode", i);
+		SetMyRegStr(TC_MENU_SECTION, key, mode);
 		wsprintf(key, "Item%dEnabled", i);
 		SetMyRegLong(TC_MENU_SECTION, key, enabled);
 		if (_stricmp(type, "command") == 0) {
 			char param[512];
-			const char* execType;
 			wsprintf(key, "Item%dAction", i);
 			SetMyRegStr(TC_MENU_SECTION, key, action);
 			defaultLabel = tc_menu_default_label_for_action(action);
@@ -1389,9 +1492,6 @@ static void tc_menu_ensure_ini_defaults(void)
 				wsprintf(key, "Item%dLabelUtf8Hex", i);
 				SetMyRegStr(TC_MENU_SECTION, key, labelHex);
 			}
-			execType = tc_menu_default_exec_type_for_action(action);
-			wsprintf(key, "Item%dExecType", i);
-			SetMyRegStr(TC_MENU_SECTION, key, (char*)execType);
 			param[0] = '\0';
 			tc_menu_default_param_for_action(action, param, (int)sizeof(param));
 			wsprintf(key, "Item%dParam", i);
@@ -1424,9 +1524,8 @@ static void tc_menu_apply_custom_from_ini(HMENU hMenu)
 
 	for (i = 1; i <= count; ++i) {
 		char key[64];
-		char type[32];
+		char mode[32];
 		char action[64];
-		char execType[32];
 		char param[512];
 		char args[512];
 		char workdir[MAX_PATH];
@@ -1446,9 +1545,8 @@ static void tc_menu_apply_custom_from_ini(HMENU hMenu)
 		UINT cmdId;
 		TC_MENU_ALARM_ENTRY* alarmEntry;
 
-		type[0] = '\0';
+		mode[0] = '\0';
 		action[0] = '\0';
-		execType[0] = '\0';
 		param[0] = '\0';
 		args[0] = '\0';
 		workdir[0] = '\0';
@@ -1465,24 +1563,24 @@ static void tc_menu_apply_custom_from_ini(HMENU hMenu)
 		alarmSoundVolume = 70;
 		alarmSoundLoop = 0;
 		alarmEntry = NULL;
-		wsprintf(key, "Item%dType", i);
-		tc_menu_section_cache_get_str(&cache, key, type, sizeof(type), "");
+		wsprintf(key, "Item%dMode", i);
+		tc_menu_section_cache_get_str(&cache, key, mode, sizeof(mode), "");
 		wsprintf(key, "Item%dEnabled", i);
 		enabled = tc_menu_section_cache_get_long(&cache, key, enabled);
 		if (!enabled) {
 			continue;
 		}
-		if (!type[0]) {
+		if (!mode[0]) {
 			continue;
 		}
 
-		if (_stricmp(type, "separator") == 0) {
+		if (_stricmp(mode, "separator") == 0) {
 			InsertMenu(hMenu, insertPos, MF_BYPOSITION | MF_SEPARATOR, 0, NULL);
 			++insertPos;
 			continue;
 		}
 
-		if (_stricmp(type, "alarm") == 0) {
+		if (_stricmp(mode, "alarm") == 0) {
 			char alarmLabelIdle[256];
 			char alarmLabelRun[256];
 			char alarmLabelPause[256];
@@ -1547,7 +1645,7 @@ static void tc_menu_apply_custom_from_ini(HMENU hMenu)
 			++insertPos;
 			continue;
 		}
-		if (_stricmp(type, "passive") == 0) {
+		if (_stricmp(mode, "passive") == 0) {
 			wsprintf(key, "Item%dLabel", i);
 			tc_menu_section_cache_get_str(&cache, key, label, sizeof(label), "Info");
 			wsprintf(key, "Item%dLabelFormat", i);
@@ -1576,8 +1674,6 @@ static void tc_menu_apply_custom_from_ini(HMENU hMenu)
 		labelUpdateSec = tc_menu_section_cache_get_long(&cache, key, labelUpdateSec);
 		tc_menu_resolve_label_text(i, label, labelFormat, labelUpdateSec, resolvedLabel, (int)sizeof(resolvedLabel));
 
-		wsprintf(key, "Item%dExecType", i);
-		tc_menu_section_cache_get_str(&cache, key, execType, sizeof(execType), (char*)tc_menu_default_exec_type_for_action(action));
 		wsprintf(key, "Item%dParam", i);
 		tc_menu_default_param_for_action(action, param, (int)sizeof(param));
 		tc_menu_section_cache_get_str(&cache, key, param, sizeof(param), param);
@@ -1588,14 +1684,14 @@ static void tc_menu_apply_custom_from_ini(HMENU hMenu)
 		wsprintf(key, "Item%dShow", i);
 		show = tc_menu_section_cache_get_long(&cache, key, SW_SHOWNORMAL);
 
-		if (_stricmp(execType, "builtin") == 0 || execType[0] == '\0') {
+		if (_stricmp(mode, "builtin") == 0 || mode[0] == '\0') {
 			if (!tc_menu_action_to_command(action, &cmdId)) {
 				char warn[256];
 				wsprintf(warn, "[menu.c][menucustom] Unknown action skipped: %s", action);
 				if (b_NormalLog) WriteNormalLog(warn);
 				continue;
 			}
-		} else if (_stricmp(execType, "shell") == 0) {
+		} else if (_stricmp(mode, "shell") == 0) {
 			char target[MAX_PATH];
 			target[0] = '\0';
 			if (param[0]) {
@@ -1639,12 +1735,12 @@ static void tc_menu_apply_custom_from_ini(HMENU hMenu)
 			}
 			cmdId = tc_menu_dynamic_register(1, target, args, workdir, show);
 			if (!cmdId) continue;
-		} else if (_stricmp(execType, "commandline") == 0) {
+		} else if (_stricmp(mode, "commandline") == 0) {
 			cmdId = tc_menu_dynamic_register(2, param, "", workdir, show);
 			if (!cmdId) continue;
 		} else {
 			char warn2[256];
-			wsprintf(warn2, "[menu.c][menucustom] Unknown exec type skipped: %s", execType);
+			wsprintf(warn2, "[menu.c][menucustom] Unknown mode skipped: %s", mode);
 			if (b_NormalLog) WriteNormalLog(warn2);
 			continue;
 		}

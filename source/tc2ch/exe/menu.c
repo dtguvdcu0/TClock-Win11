@@ -1021,6 +1021,15 @@ static const char* tc_menu_default_exec_type_for_action(const char* action)
 	return "builtin";
 }
 
+static int tc_menu_is_english_ui(void)
+{
+	extern BOOL b_EnglishMenu;
+	extern int Language_Offset;
+	if (Language_Offset == LANGUAGE_OFFSET_ENGLISH) return 1;
+	if (Language_Offset == LANGUAGE_OFFSET_JAPANESE) return 0;
+	return b_EnglishMenu ? 1 : 0;
+}
+
 static BOOL tc_menu_get_default_item(int index, char* type, int typeLen, char* action, int actionLen, int* enabled)
 {
 	/* Baseline that mirrors current non-fixed menu block (with separators). */
@@ -1530,7 +1539,7 @@ static void tc_menu_ensure_ini_defaults(void)
 	if (tc_menu_has_section_header(TC_MENU_SECTION)) {
 		return;
 	}
-	SetMyRegLong(TC_MENU_SECTION, "ItemCount", 16);
+	SetMyRegLong(TC_MENU_SECTION, "ItemCount", 17);
 	SetMyRegLong(TC_MENU_SECTION, "MenuCustomEnabled", 1);
 	for (i = 1; i <= 16; ++i) {
 		char key[64];
@@ -1564,6 +1573,22 @@ static void tc_menu_ensure_ini_defaults(void)
 			wsprintf(key, "Item%dParam", i);
 			SetMyRegStr(TC_MENU_SECTION, key, param);
 		}
+	}
+	{
+		char key[64];
+		int en = tc_menu_is_english_ui();
+		wsprintf(key, "Item%dMode", 17);
+		SetMyRegStr(TC_MENU_SECTION, key, "alarm");
+		wsprintf(key, "Item%dEnabled", 17);
+		SetMyRegLong(TC_MENU_SECTION, key, 1);
+		wsprintf(key, "Item%dLabelFormat", 17);
+		SetMyRegStr(TC_MENU_SECTION, key, en ? "%REMAIN_MMSS% Timer" : "%REMAIN_MMSS% タイマー");
+		wsprintf(key, "Item%dAlarmInitialSec", 17);
+		SetMyRegLong(TC_MENU_SECTION, key, 10);
+		wsprintf(key, "Item%dAlarmMessage", 17);
+		SetMyRegStr(TC_MENU_SECTION, key, en ? "Timer finished" : "タイマー終了");
+		wsprintf(key, "Item%dAlarmSoundFile", 17);
+		SetMyRegStr(TC_MENU_SECTION, key, "C:\\Windows\\Media\\notify.wav");
 	}
 }
 

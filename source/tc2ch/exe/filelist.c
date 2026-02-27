@@ -533,6 +533,7 @@ void OnDrawItem(HWND hwnd, WPARAM wParam, LPARAM lParam)
 	tRectText.left += g_tODMenuState.iIconSizeX + 14;
 	tRectText.top += 2;
 
+	/* Compatibility boundary: owner-draw menu still uses legacy ANSI label buffer. */
 	DrawText(hDC, ptMenuItem->sMenuStr, strlen(ptMenuItem->sMenuStr), &tRectText, DT_BOTTOM);
 }
 

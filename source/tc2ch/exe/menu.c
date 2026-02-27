@@ -1151,26 +1151,31 @@ static void tc_menu_ensure_prop_showdir_order(HMENU hMenu)
 {
 	int propPos;
 	int dirPos;
-	char propLabel[256];
-	char dirLabel[256];
+	WCHAR propLabelW[1024];
+	WCHAR dirLabelW[1024];
+	WCHAR fallbackW[256];
 	int insertPos;
 	propPos = tc_menu_find_position_by_id(hMenu, IDC_SHOWPROP);
 	dirPos = tc_menu_find_position_by_id(hMenu, IDC_SHOWDIR);
 	if (propPos < 0 || dirPos < 0 || propPos < dirPos) {
 		return;
 	}
-	propLabel[0] = '\0';
-	dirLabel[0] = '\0';
-	GetMenuString(hMenu, IDC_SHOWPROP, propLabel, (int)sizeof(propLabel), MF_BYCOMMAND);
-	GetMenuString(hMenu, IDC_SHOWDIR, dirLabel, (int)sizeof(dirLabel), MF_BYCOMMAND);
-	if (!propLabel[0]) lstrcpyn(propLabel, MyStringUTF8(IDS_PROPERTY), (int)sizeof(propLabel));
-	if (!dirLabel[0]) lstrcpyn(dirLabel, MyStringUTF8(IDS_OPENTCFOLDER), (int)sizeof(dirLabel));
+	propLabelW[0] = L'\0';
+	dirLabelW[0] = L'\0';
+	GetMenuStringW(hMenu, IDC_SHOWPROP, propLabelW, (int)(sizeof(propLabelW) / sizeof(propLabelW[0])), MF_BYCOMMAND);
+	GetMenuStringW(hMenu, IDC_SHOWDIR, dirLabelW, (int)(sizeof(dirLabelW) / sizeof(dirLabelW[0])), MF_BYCOMMAND);
+	if (!propLabelW[0] && tc_menu_utf8_to_wide_strict(MyStringUTF8(IDS_PROPERTY), fallbackW, (int)(sizeof(fallbackW) / sizeof(fallbackW[0])))) {
+		lstrcpynW(propLabelW, fallbackW, (int)(sizeof(propLabelW) / sizeof(propLabelW[0])));
+	}
+	if (!dirLabelW[0] && tc_menu_utf8_to_wide_strict(MyStringUTF8(IDS_OPENTCFOLDER), fallbackW, (int)(sizeof(fallbackW) / sizeof(fallbackW[0])))) {
+		lstrcpynW(dirLabelW, fallbackW, (int)(sizeof(dirLabelW) / sizeof(dirLabelW[0])));
+	}
 	DeleteMenu(hMenu, IDC_SHOWPROP, MF_BYCOMMAND);
 	DeleteMenu(hMenu, IDC_SHOWDIR, MF_BYCOMMAND);
 	insertPos = tc_menu_find_position_by_id(hMenu, IDC_RESTART);
 	if (insertPos < 0) insertPos = GetMenuItemCount(hMenu);
-	tc_menu_insert_string_utf8(hMenu, insertPos, MF_BYPOSITION | MF_STRING, IDC_SHOWPROP, propLabel);
-	tc_menu_insert_string_utf8(hMenu, insertPos + 1, MF_BYPOSITION | MF_STRING, IDC_SHOWDIR, dirLabel);
+	InsertMenuW(hMenu, insertPos, MF_BYPOSITION | MF_STRING, IDC_SHOWPROP, propLabelW);
+	InsertMenuW(hMenu, insertPos + 1, MF_BYPOSITION | MF_STRING, IDC_SHOWDIR, dirLabelW);
 }
 
 typedef struct {

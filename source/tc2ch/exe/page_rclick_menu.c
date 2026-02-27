@@ -184,6 +184,8 @@ static void rm_set_alarm_extra_visible(HWND hDlg, int visible)
     ShowWindow(GetDlgItem(hDlg, IDC_RM_LBL_ALARM_VOLUME), cmd);
     ShowWindow(GetDlgItem(hDlg, IDC_RM_ITEM_ALARM_VOLUME), cmd);
     ShowWindow(GetDlgItem(hDlg, IDC_RM_SPIN_ALARM_VOLUME), cmd);
+    ShowWindow(GetDlgItem(hDlg, IDC_RM_LBL_ALARM_MESSAGE), cmd);
+    ShowWindow(GetDlgItem(hDlg, IDC_RM_ITEM_ALARM_MESSAGE), cmd);
 
     EnableDlgItem(hDlg, IDC_RM_ALARM_KEEP_OPEN, visible);
     EnableDlgItem(hDlg, IDC_RM_ALARM_SOUND_LOOP, visible);
@@ -193,6 +195,7 @@ static void rm_set_alarm_extra_visible(HWND hDlg, int visible)
     EnableDlgItem(hDlg, IDC_RM_ITEM_ALARM_SEC, visible);
     EnableDlgItem(hDlg, IDC_RM_ITEM_ALARM_SOUND_FILE, visible);
     EnableDlgItem(hDlg, IDC_RM_ITEM_ALARM_VOLUME, visible);
+    EnableDlgItem(hDlg, IDC_RM_ITEM_ALARM_MESSAGE, visible);
 }
 
 static void rm_set_type_labels(HWND hDlg, const char* type)
@@ -394,7 +397,7 @@ static void rm_load_selected_item(HWND hDlg)
     if (rm_is_alarm_type(mode)) {
         rm_build_key(n, "AlarmMessage", key, (int)sizeof(key));
         rm_get_reg_str(key, s, (int)sizeof(s), "Timer finished");
-        SetDlgItemTextUTF8Strict(hDlg, IDC_RM_ITEM_ACTION, s);
+        SetDlgItemTextUTF8Strict(hDlg, IDC_RM_ITEM_ALARM_MESSAGE, s);
 
         rm_build_key(n, "AlarmInitialSec", key, (int)sizeof(key));
         wsprintf(s, "%d", (int)GetMyRegLong("MenuCustom", key, 60));
@@ -449,6 +452,7 @@ static void rm_load_selected_item(HWND hDlg)
         SetDlgItemInt(hDlg, IDC_RM_ITEM_ALARM_VOLUME, 70, FALSE);
         SetDlgItemInt(hDlg, IDC_RM_ITEM_ALARM_SEC, 60, FALSE);
         SetDlgItemTextUTF8Strict(hDlg, IDC_RM_ITEM_ALARM_SOUND_FILE, "");
+        SetDlgItemTextUTF8Strict(hDlg, IDC_RM_ITEM_ALARM_MESSAGE, "");
         rm_build_key(n, "Action", key, (int)sizeof(key));
         rm_get_reg_str(key, s, (int)sizeof(s), "");
         SetDlgItemTextUTF8Strict(hDlg, IDC_RM_ITEM_ACTION, s);
@@ -522,7 +526,7 @@ static void rm_write_item(HWND hDlg, int n)
     }
 
     if (rm_is_alarm_type(mode)) {
-        GetDlgItemTextUTF8(hDlg, IDC_RM_ITEM_ACTION, s, (int)sizeof(s));
+        GetDlgItemTextUTF8(hDlg, IDC_RM_ITEM_ALARM_MESSAGE, s, (int)sizeof(s));
         rm_build_key(n, "AlarmMessage", key, (int)sizeof(key));
         SetMyRegStr("MenuCustom", key, s);
 
@@ -644,6 +648,7 @@ static void rm_on_init(HWND hDlg)
 
     /* Format-capable display label input must stay Unicode to preserve non-ACP symbols. */
     EnsureUnicodeEditControlShared(hDlg, IDC_RM_ITEM_LABEL_FORMAT);
+    EnsureUnicodeEditControlShared(hDlg, IDC_RM_ITEM_ALARM_MESSAGE);
 
     ShowWindow(GetDlgItem(hDlg, IDC_RM_LBL_LABEL), SW_HIDE);
     ShowWindow(GetDlgItem(hDlg, IDC_RM_ITEM_LABEL), SW_HIDE);

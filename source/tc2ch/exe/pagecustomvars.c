@@ -38,6 +38,9 @@ typedef struct {
     char execCommand[1024];
 } CV_ITEM;
 
+extern BOOL b_EnglishMenu;
+extern int Language_Offset;
+
 static int g_selectedN = 1;
 
 static void cv_send_ps_changed(HWND hDlg);
@@ -122,6 +125,24 @@ static const char* cv_exec_type_to_str(int v)
     return (v == CV_EXEC_TYPE_SHELL) ? "shell" : "command";
 }
 
+static int cv_is_english_ui(void)
+{
+    if (Language_Offset == LANGUAGE_OFFSET_ENGLISH) return 1;
+    if (Language_Offset == LANGUAGE_OFFSET_JAPANESE) return 0;
+    return b_EnglishMenu ? 1 : 0;
+}
+
+static const char* cv_exec_type_key_from_index(int idx)
+{
+    return (idx == 0) ? "shell" : "command";
+}
+
+static const char* cv_exec_type_label_from_index(int idx, int englishUi)
+{
+    if (idx == 0) return englishUi ? "shell" : "シェル";
+    return englishUi ? "command" : "コマンド";
+}
+
 static int cv_exec_start_from_str(const char* s)
 {
     if (s && lstrcmpi(s, "startup") == 0) return CV_EXEC_START_STARTUP;
@@ -175,9 +196,12 @@ static void cv_fill_combo_defaults(HWND hDlg)
     CBAddString(hDlg, IDC_CV_ITEM_MODE, (LPARAM)"line");
     CBAddString(hDlg, IDC_CV_ITEM_MODE, (LPARAM)"json");
 
-    CBResetContent(hDlg, IDC_CV_EXEC_TYPE);
-    CBAddString(hDlg, IDC_CV_EXEC_TYPE, (LPARAM)"shell");
-    CBAddString(hDlg, IDC_CV_EXEC_TYPE, (LPARAM)"command");
+    {
+        int en = cv_is_english_ui();
+        CBResetContent(hDlg, IDC_CV_EXEC_TYPE);
+        CBAddStringUTF8Compat(hDlg, IDC_CV_EXEC_TYPE, cv_exec_type_label_from_index(0, en));
+        CBAddStringUTF8Compat(hDlg, IDC_CV_EXEC_TYPE, cv_exec_type_label_from_index(1, en));
+    }
 
     CBResetContent(hDlg, IDC_CV_EXEC_START);
     CBAddString(hDlg, IDC_CV_EXEC_START, (LPARAM)"startup");
@@ -395,6 +419,10 @@ static void cv_get_combo_text(HWND hDlg, int id, char* out, int outBytes, const 
     if (!out || outBytes <= 0) return;
     sel = CBGetCurSel(hDlg, id);
     if (sel >= 0) {
+        if (id == IDC_CV_EXEC_TYPE) {
+            lstrcpyn(out, cv_exec_type_key_from_index(sel), outBytes);
+            return;
+        }
         CBGetLBText(hDlg, id, sel, out);
         if (out[0]) return;
     }

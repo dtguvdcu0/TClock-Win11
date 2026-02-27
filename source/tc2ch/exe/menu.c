@@ -701,7 +701,7 @@ static void tc_menu_launch_with_delay(const char* file, const char* args, const 
 
 static BOOL tc_menu_is_fixed_id(UINT id)
 {
-	return id == IDC_SHOWPROP || id == IDC_SHOWDIR || id == IDC_RESTART || id == IDC_EXIT || id == IDC_TCAP_SETTINGS || id == IDC_TCAP_CAPTURE || id == IDC_TCAL_OPEN;
+	return id == IDC_SHOWPROP || id == IDC_SHOWDIR || id == IDC_RESTART || id == IDC_EXIT || id == IDC_REMOVE_DRIVE0 || id == IDC_TCAP_SETTINGS || id == IDC_TCAP_CAPTURE || id == IDC_TCAL_OPEN;
 }
 
 static int tc_menu_find_position_by_id(HMENU hMenu, UINT id)
@@ -1146,6 +1146,33 @@ static void tc_menu_normalize_separators(HMENU hMenu)
 	}
 }
 
+
+static void tc_menu_ensure_prop_showdir_order(HMENU hMenu)
+{
+	int propPos;
+	int dirPos;
+	char propLabel[256];
+	char dirLabel[256];
+	int insertPos;
+	propPos = tc_menu_find_position_by_id(hMenu, IDC_SHOWPROP);
+	dirPos = tc_menu_find_position_by_id(hMenu, IDC_SHOWDIR);
+	if (propPos < 0 || dirPos < 0 || propPos < dirPos) {
+		return;
+	}
+	propLabel[0] = '\0';
+	dirLabel[0] = '\0';
+	GetMenuString(hMenu, IDC_SHOWPROP, propLabel, (int)sizeof(propLabel), MF_BYCOMMAND);
+	GetMenuString(hMenu, IDC_SHOWDIR, dirLabel, (int)sizeof(dirLabel), MF_BYCOMMAND);
+	if (!propLabel[0]) lstrcpyn(propLabel, MyStringUTF8(IDS_PROPERTY), (int)sizeof(propLabel));
+	if (!dirLabel[0]) lstrcpyn(dirLabel, MyStringUTF8(IDS_OPENTCFOLDER), (int)sizeof(dirLabel));
+	DeleteMenu(hMenu, IDC_SHOWPROP, MF_BYCOMMAND);
+	DeleteMenu(hMenu, IDC_SHOWDIR, MF_BYCOMMAND);
+	insertPos = tc_menu_find_position_by_id(hMenu, IDC_RESTART);
+	if (insertPos < 0) insertPos = GetMenuItemCount(hMenu);
+	tc_menu_insert_string_utf8(hMenu, insertPos, MF_BYPOSITION | MF_STRING, IDC_SHOWPROP, propLabel);
+	tc_menu_insert_string_utf8(hMenu, insertPos + 1, MF_BYPOSITION | MF_STRING, IDC_SHOWDIR, dirLabel);
+}
+
 typedef struct {
 	char data[TC_MENU_SECTION_CACHE_BYTES];
 	BOOL isUtf8;
@@ -1547,15 +1574,10 @@ static void tc_menu_apply_custom_from_ini(HMENU hMenu)
 
 	tc_menu_prune_to_fixed(hMenu);
 
-	insertPos = tc_menu_find_position_by_id(hMenu, IDC_SHOWPROP);
-	{
-		int fixedPos;
-		fixedPos = tc_menu_find_position_by_id(hMenu, IDC_TCAL_OPEN);
-		if (fixedPos >= 0 && (insertPos < 0 || fixedPos < insertPos)) insertPos = fixedPos;
-		fixedPos = tc_menu_find_position_by_id(hMenu, IDC_TCAP_CAPTURE);
-		if (fixedPos >= 0 && (insertPos < 0 || fixedPos < insertPos)) insertPos = fixedPos;
-		fixedPos = tc_menu_find_position_by_id(hMenu, IDC_TCAP_SETTINGS);
-		if (fixedPos >= 0 && (insertPos < 0 || fixedPos < insertPos)) insertPos = fixedPos;
+	/* Keep bottom fixed block stable: prefer inserting custom items before removable-drive slot. */
+	insertPos = tc_menu_find_position_by_id(hMenu, IDC_REMOVE_DRIVE0);
+	if (insertPos < 0) {
+		insertPos = tc_menu_find_position_by_id(hMenu, IDC_SHOWPROP);
 	}
 	if (insertPos < 0) {
 		insertPos = GetMenuItemCount(hMenu);
@@ -1728,6 +1750,10 @@ static void tc_menu_apply_custom_from_ini(HMENU hMenu)
 				if (b_NormalLog) WriteNormalLog(warn);
 				continue;
 			}
+			/* Keep fixed items single-instance in menu layout. */
+			if (tc_menu_is_fixed_id(cmdId)) {
+				continue;
+			}
 		} else if (_stricmp(mode, "shell") == 0) {
 			char target[MAX_PATH];
 			target[0] = '\0';
@@ -1857,22 +1883,23 @@ void OnContextMenu(HWND hwnd, HWND hwndClicked, int xPos, int yPos)
 		LONG tcalendarEnabled = tc_menu_get_tcalendar_enable();
 		LONG tcaptureEnabled = tc_menu_get_tcapture_enable();
 		if (tcalendarEnabled || tcaptureEnabled) {
-			int propPos = tc_menu_find_position_by_id(hPopupMenu, IDC_SHOWPROP);
-			if (propPos >= 0) {
-				int insertPos = propPos;
+			int anchorPos = tc_menu_find_position_by_id(hPopupMenu, IDC_REMOVE_DRIVE0);
+			if (anchorPos < 0) {
+				anchorPos = tc_menu_find_position_by_id(hPopupMenu, IDC_SHOWPROP);
+			}
+			if (anchorPos >= 0) {
+				int insertPos = anchorPos;
 				int itemPos;
 				MENUITEMINFO prevMii;
-				if (propPos > 0) {
+				if (anchorPos > 0) {
 					ZeroMemory(&prevMii, sizeof(prevMii));
 					prevMii.cbSize = sizeof(prevMii);
 					prevMii.fMask = MIIM_FTYPE;
-					if (GetMenuItemInfo(hPopupMenu, propPos - 1, TRUE, &prevMii) && (prevMii.fType & MFT_SEPARATOR)) {
-						insertPos = propPos - 1;
+					if (GetMenuItemInfo(hPopupMenu, anchorPos - 1, TRUE, &prevMii) && (prevMii.fType & MFT_SEPARATOR)) {
+						insertPos = anchorPos - 1;
 					}
 				}
-				/* Keep legacy TCapture behavior: always insert one separator here.
-				   If a separator already exists before Property, this yields a trailing
-				   separator after inserted launcher items. */
+				/* Insert launcher block before removable-drive slot to keep Property block stable. */
 				InsertMenu(hPopupMenu, insertPos, MF_BYPOSITION | MF_SEPARATOR, 0, NULL);
 				itemPos = insertPos + 1;
 				if (tcalendarEnabled) {
@@ -2124,6 +2151,7 @@ void OnContextMenu(HWND hwnd, HWND hwndClicked, int xPos, int yPos)
 
 	}
 
+	tc_menu_ensure_prop_showdir_order(hPopupMenu);
 
 	SetForegroundWindow98(hwnd);
 	g_menuPopupActive = TRUE;

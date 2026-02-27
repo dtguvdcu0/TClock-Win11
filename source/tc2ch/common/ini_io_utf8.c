@@ -1072,6 +1072,13 @@ BOOL tc_ini_utf8_selfcheck(void)
 
 cleanup:
     if (outText) tc_free_text_buffer(outText);
-    DeleteFile(tmpFile);
+    {
+        wchar_t wTmpFile[MAX_PATH];
+        /* Migrate cleanup to W API; ignore cleanup failure in selfcheck path. */
+        if (tc_utf8_to_utf16(tmpFile, wTmpFile, (int)(sizeof(wTmpFile) / sizeof(wTmpFile[0]))) > 0 ||
+            tc_ansi_to_utf16_compat(0, tmpFile, wTmpFile, (int)(sizeof(wTmpFile) / sizeof(wTmpFile[0]))) > 0) {
+            DeleteFileW(wTmpFile);
+        }
+    }
     return ok;
 }

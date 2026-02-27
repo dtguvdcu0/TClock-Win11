@@ -988,6 +988,7 @@ int GetMyRegStr(const char* section, const char* entry, char* val, int cbData,
 	BOOL isUtf8 = FALSE;
 	BOOL isUtf8Target = FALSE;
 	BOOL needsHexBackfill = FALSE;
+	BOOL isMenuCustomSection = (section && lstrcmpi(section, "MenuCustom") == 0);
 	char hexEntry[128];
 	const char missingSentinel[] = "\x1D";
 
@@ -1017,8 +1018,12 @@ int GetMyRegStr(const char* section, const char* entry, char* val, int cbData,
 					mainbuf[0] == '\0') {
 					if (lstrcmp(mainbuf, missingSentinel) != 0) {
 						tc_strip_wrapping_quotes(mainbuf);
-						lstrcpyn(val, mainbuf, cbData);
-						r = lstrlen(val);
+						if (isMenuCustomSection && mainbuf[0] && !tc_is_valid_utf8_bytes(mainbuf)) {
+							/* MenuCustom must remain UTF-8: ignore non-UTF8 main value and try Utf8Hex fallback. */
+						}
+						else {
+							lstrcpyn(val, mainbuf, cbData);
+							r = lstrlen(val);
 						if (isUtf8 && !isUtf8Target && r > 0) {
 							WCHAR wbuf[4096];
 							char abuf[4096];
@@ -1029,10 +1034,11 @@ int GetMyRegStr(const char* section, const char* entry, char* val, int cbData,
 								r = lstrlen(val);
 							}
 						}
-						if (r == 0 && tc_build_utf8_hex_entry_name(entry, hexEntry, (int)sizeof(hexEntry))) {
-							tc_ini_utf8_delete_key(g_inifile, key, hexEntry);
+							if (r == 0 && tc_build_utf8_hex_entry_name(entry, hexEntry, (int)sizeof(hexEntry))) {
+								tc_ini_utf8_delete_key(g_inifile, key, hexEntry);
+							}
+							goto getmyregstr_done;
 						}
-						goto getmyregstr_done;
 					}
 				}
 				if (tc_build_utf8_hex_entry_name(entry, hexEntry, (int)sizeof(hexEntry))) {
@@ -1164,6 +1170,7 @@ BOOL SetMyRegStr(const char* section, const char* entry, const char* val)
 	BOOL r = FALSE;
 	char key[80];
 	BOOL isUtf8 = FALSE;
+	BOOL isMenuCustomSection = (section && lstrcmpi(section, "MenuCustom") == 0);
 
 	if (strlen(g_inifile) == 0) return 0;
 
@@ -1219,7 +1226,7 @@ BOOL SetMyRegStr(const char* section, const char* entry, const char* val)
 				else if (tc_is_valid_utf8_bytes(val) && tc_encode_hex_from_utf8_bytes(val, hexbuf, (int)sizeof(hexbuf))) {
 					rHex = tc_ini_utf8_write_string(g_inifile, key, hexEntry, hexbuf) ? TRUE : FALSE;
 				}
-				else if (tc_encode_utf8_hex_from_ansi(val, hexbuf, (int)sizeof(hexbuf))) {
+				else if (!isMenuCustomSection && tc_encode_utf8_hex_from_ansi(val, hexbuf, (int)sizeof(hexbuf))) {
 					rHex = tc_ini_utf8_write_string(g_inifile, key, hexEntry, hexbuf) ? TRUE : FALSE;
 				}
 				else {

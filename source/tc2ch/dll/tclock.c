@@ -424,6 +424,7 @@ static void ClockTextOutCompat(HDC hdc, int x, int y, const char* sp, int len)
 	if(wlen > 0)
 		ok = TextOutW(hdc, x, y, wbuf, wlen);
 	if(!ok)
+		/* Compatibility boundary: keep ANSI draw fallback for rare conversion failure paths. */
 		ok = TextOut(hdc, x, y, sp, len);
 }
 
@@ -2957,9 +2958,11 @@ void ReadData()
 				if (g_formatW) lstrcpyW(g_formatW, wtmp);
 			}
 			if (!g_formatW) {
+				/* Compatibility boundary: legacy format setting may still arrive in configured ANSI codepage. */
 				int fwLen = MultiByteToWideChar((UINT)codepage, 0, format, -1, NULL, 0);
 				if (fwLen > 0) {
 					g_formatW = (WCHAR*)malloc((size_t)fwLen * sizeof(WCHAR));
+					/* Compatibility boundary: preserve ANSI fallback decode while settings migrate to UTF-8. */
 					if (g_formatW && MultiByteToWideChar((UINT)codepage, 0, format, -1, g_formatW, fwLen) <= 0) {
 						free(g_formatW); g_formatW = NULL;
 					}
@@ -2967,6 +2970,7 @@ void ReadData()
 			}
 			if (g_formatW) {
 				char formatAnsi[sizeof(format)];
+				/* Compatibility boundary: maintain ANSI mirror for legacy formatter pipeline. */
 				if (tc_utf16_to_ansi((UINT)codepage, g_formatW, formatAnsi, (int)sizeof(formatAnsi)) > 0) {
 					lstrcpyn(format, formatAnsi, (int)sizeof(format));
 				}

@@ -1472,6 +1472,7 @@ int GetLocaleInfoCompat(WORD wLanguageID, LCTYPE LCType, char* dst, int n)
 		*pw = 0;
 		r = GetLocaleInfoW(Locale, LCType, pw, n);
 		if(r) {
+			/* Compatibility boundary: locale helper keeps ANSI-return contract for legacy callers. */
 			tc_utf16_to_ansi_compat((UINT)codepage, pw, dst, n);
 		}
 		GlobalFreePtr(pw);
@@ -1505,6 +1506,7 @@ int GetDateFormatCompat(WORD wLanguageID, DWORD dwFlags, CONST SYSTEMTIME *t,
 		pw2 = (WCHAR*)GlobalAllocPtr(GHND, sizeof(WCHAR)*(n+1));
 		r = GetDateFormatW(Locale, dwFlags, t, pw1, pw2, n);
 		if(r) {
+			/* Compatibility boundary: date-format helper keeps ANSI-return contract for legacy callers. */
 			tc_utf16_to_ansi_compat((UINT)codepage, pw2, dst, n);
 		}
 		if(pw1) GlobalFreePtr(pw1);
@@ -1539,6 +1541,7 @@ int GetTimeFormatCompat(WORD wLanguageID, DWORD dwFlags, CONST SYSTEMTIME *t,
 		pw2 = (WCHAR*)GlobalAllocPtr(GHND, sizeof(WCHAR)*(n+1));
 		r = GetTimeFormatW(Locale, dwFlags, t, pw1, pw2, n);
 		if(r) {
+			/* Compatibility boundary: time-format helper keeps ANSI-return contract for legacy callers. */
 			tc_utf16_to_ansi_compat((UINT)codepage, pw2, dst, n);
 		}
 		if(pw1) GlobalFreePtr(pw1);

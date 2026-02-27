@@ -179,6 +179,7 @@ static DWORD TooltipFindFormatWrapped(const char* raw, const char* logContext)
 
 static int TooltipDrawTextLogged(HDC hdc, LPCTSTR pszText, int cchText, LPRECT prc, UINT format, int tag)
 {
+	/* Compatibility boundary: keep ANSI/LPCTSTR draw path for legacy tooltip text buffers. */
 	int ret = DrawText(hdc, pszText, cchText, prc, format);
 	if (ret == 0 && b_DebugLog) {
 		static DWORD s_lastLogTick = 0;
@@ -220,9 +221,11 @@ static void TooltipSyncWideText(void)
 
 static void TooltipSyncAnsiMirrorFromWide(void)
 {
+	/* Compatibility boundary: keep ANSI mirror buffer synchronized for legacy tooltip consumers. */
 	if (tc_utf16_to_ansi_compat((UINT)codepage, formatTooltipW, formatTooltip, LEN_TOOLTIP) <= 0) {
 		formatTooltip[0] = '\0';
 	}
+	/* Compatibility boundary: keep ANSI title mirror synchronized for legacy tooltip consumers. */
 	if (tc_utf16_to_ansi_compat((UINT)codepage, titleTooltipW, titleTooltip, (int)sizeof(titleTooltip)) <= 0) {
 		titleTooltip[0] = '\0';
 	}

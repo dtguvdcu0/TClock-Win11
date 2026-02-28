@@ -1599,6 +1599,7 @@ static void tc_menu_apply_custom_from_ini(HMENU hMenu)
 	TC_MENU_SECTION_CACHE cache;
 	int globalLabelUpdateSec;
 	int count;
+	int removeDriveEnabledByCustom;
 	tc_menu_section_cache_load(&cache);
 	tc_menu_backfill_label_utf8hex(&cache);
 	globalLabelUpdateSec = tc_menu_section_cache_get_long(&cache, "LabelFormatUpdateSec", 1);
@@ -1606,6 +1607,7 @@ static void tc_menu_apply_custom_from_ini(HMENU hMenu)
 	if (globalLabelUpdateSec < 0) globalLabelUpdateSec = 0;
 	if (count < 0) count = 0;
 	if (count > TC_MENU_CUSTOM_MAX_ITEMS) count = TC_MENU_CUSTOM_MAX_ITEMS;
+	removeDriveEnabledByCustom = -1;
 
 	tc_menu_prune_to_fixed(hMenu);
 
@@ -1663,6 +1665,11 @@ static void tc_menu_apply_custom_from_ini(HMENU hMenu)
 		tc_menu_section_cache_get_str(&cache, key, mode, sizeof(mode), "");
 		wsprintf(key, "Item%dEnabled", i);
 		enabled = tc_menu_section_cache_get_long(&cache, key, enabled);
+		wsprintf(key, "Item%dAction", i);
+		tc_menu_section_cache_get_str(&cache, key, action, sizeof(action), "");
+		if (_stricmp(action, "remove_drive_dynamic") == 0) {
+			removeDriveEnabledByCustom = enabled ? 1 : 0;
+		}
 		if (!enabled) {
 			continue;
 		}
@@ -1758,8 +1765,7 @@ static void tc_menu_apply_custom_from_ini(HMENU hMenu)
 			continue;
 		}
 
-		wsprintf(key, "Item%dAction", i);
-		tc_menu_section_cache_get_str(&cache, key, action, sizeof(action), action);
+		/* action already loaded above */
 		defaultLabel = tc_menu_default_label_for_action(action);
 		wsprintf(key, "Item%dLabelFormat", i);
 		tc_menu_section_cache_get_str(&cache, key, labelFormat, sizeof(labelFormat), (char*)defaultLabel);
@@ -1848,6 +1854,13 @@ static void tc_menu_apply_custom_from_ini(HMENU hMenu)
 			tc_menu_live_register(cmdId, i, labelUpdateSec, label, labelFormat);
 		}
 		++insertPos;
+	}
+
+	if (removeDriveEnabledByCustom == 0) {
+		DeleteMenu(hMenu, IDC_REMOVE_DRIVE0, MF_BYCOMMAND);
+		for (i = 1; i < 10; ++i) {
+			DeleteMenu(hMenu, IDC_REMOVE_DRIVE0 + i, MF_BYCOMMAND);
+		}
 	}
 
 	tc_menu_normalize_separators(hMenu);

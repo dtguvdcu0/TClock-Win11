@@ -56,6 +56,9 @@ static int rm_combo_find_text(HWND hDlg, int id, const char* text)
     return 0;
 }
 
+static const char* rm_action_key_from_index(int idx);
+static int rm_action_index_from_key(const char* key);
+
 static void rm_get_combo_text(HWND hDlg, int id, char* out, int outBytes, const char* defv)
 {
     int sel;
@@ -67,9 +70,16 @@ static void rm_get_combo_text(HWND hDlg, int id, char* out, int outBytes, const 
             lstrcpyn(out, rm_type_key_from_index(sel), outBytes);
             return;
         }
+        if (id == IDC_RM_ITEM_ACTION) {
+            lstrcpyn(out, rm_action_key_from_index(sel), outBytes);
+            return;
+        }
         CBGetLBText(hDlg, id, sel, out);
         if (out[0]) return;
     }
+
+    GetDlgItemTextUTF8(hDlg, id, out, outBytes);
+    if (out[0]) return;
 
     lstrcpyn(out, defv ? defv : "", outBytes);
 }
@@ -175,6 +185,42 @@ static const char* rm_default_label_for_action(const char* action)
     return action;
 }
 
+static const char* rm_action_key_from_index(int idx)
+{
+    switch (idx) {
+    case 0: return "taskmgr";
+    case 1: return "cmd";
+    case 2: return "alarm_clock";
+    case 3: return "pullback";
+    case 4: return "control_panel";
+    case 5: return "power_options";
+    case 6: return "network_connections";
+    case 7: return "settings_home";
+    case 8: return "settings_network";
+    case 9: return "settings_datetime";
+    case 10: return "remove_drive_dynamic";
+    default: return "taskmgr";
+    }
+}
+
+static int rm_action_index_from_key(const char* key)
+{
+    int i;
+    if (!key || !key[0]) return -1;
+    for (i = 0; i < 11; ++i) {
+        if (lstrcmpi(key, rm_action_key_from_index(i)) == 0) return i;
+    }
+    return -1;
+}
+
+static void rm_fill_builtin_action_combo(HWND hDlg)
+{
+    int i;
+    CBResetContent(hDlg, IDC_RM_ITEM_ACTION);
+    for (i = 0; i < 11; ++i) {
+        CBAddStringUTF8Compat(hDlg, IDC_RM_ITEM_ACTION, rm_default_label_for_action(rm_action_key_from_index(i)));
+    }
+}
 static void rm_fill_show_combo(HWND hDlg, int alarmMode)
 {
     CBResetContent(hDlg, IDC_RM_ITEM_SHOW);
@@ -204,6 +250,7 @@ static void rm_fill_combo_defaults(HWND hDlg)
     CBAddString(hDlg, IDC_RM_ITEM_EXEC_TYPE, (LPARAM)"(merged)");
 
     rm_fill_show_combo(hDlg, 0);
+    rm_fill_builtin_action_combo(hDlg);
 }
 
 
@@ -497,7 +544,9 @@ static void rm_load_selected_item(HWND hDlg)
         SetDlgItemTextUTF8Strict(hDlg, IDC_RM_ITEM_ALARM_MESSAGE, "");
         rm_build_key(n, "Action", key, (int)sizeof(key));
         rm_get_reg_str(key, s, (int)sizeof(s), "");
-        SetDlgItemTextUTF8Strict(hDlg, IDC_RM_ITEM_ACTION, s);
+        v = rm_action_index_from_key(s);
+        if (v >= 0) CBSetCurSel(hDlg, IDC_RM_ITEM_ACTION, v);
+        else SetDlgItemTextUTF8Strict(hDlg, IDC_RM_ITEM_ACTION, s);
 
         rm_build_key(n, "Param", key, (int)sizeof(key));
         rm_get_reg_str(key, s, (int)sizeof(s), "");
@@ -627,7 +676,7 @@ static void rm_write_item(HWND hDlg, int n)
         SetMyRegStr("MenuCustom", key, s);
     }
     else {
-        GetDlgItemTextUTF8(hDlg, IDC_RM_ITEM_ACTION, s, (int)sizeof(s));
+        rm_get_combo_text(hDlg, IDC_RM_ITEM_ACTION, s, (int)sizeof(s), "");
         rm_build_key(n, "Action", key, (int)sizeof(key));
         SetMyRegStr("MenuCustom", key, s);
 

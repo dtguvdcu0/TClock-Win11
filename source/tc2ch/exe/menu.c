@@ -1607,7 +1607,7 @@ static void tc_menu_apply_custom_from_ini(HMENU hMenu)
 	if (globalLabelUpdateSec < 0) globalLabelUpdateSec = 0;
 	if (count < 0) count = 0;
 	if (count > TC_MENU_CUSTOM_MAX_ITEMS) count = TC_MENU_CUSTOM_MAX_ITEMS;
-	removeDriveEnabledByCustom = -1;
+	removeDriveEnabledByCustom = 0;
 
 	tc_menu_prune_to_fixed(hMenu);
 

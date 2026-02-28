@@ -118,6 +118,7 @@ static int g_customDefaultMaxChars = TC_CUSTOM_MAX_CHARS_DEFAULT;
 static int g_customDefaultWhitespaceMode = TC_CUSTOM_WS_TRIM_EDGES;
 static char g_customDefaultFailValue[TC_CUSTOM_FAIL_MAX] = "N/A";
 static int g_customPreloadOnStartup = TC_CUSTOM_PRELOAD_DEFAULT;
+static LONG g_customSuppressPreloadOnce = 0;
 static BOOL g_customSettingsLoaded = FALSE;
 extern HANDLE hmod;
 extern PSTR CreateFullPathName(HINSTANCE hinst, PSTR fname);
@@ -1316,9 +1317,15 @@ void CustomFormatVarsPreloadIfEnabled(void)
 	int i;
 	DWORD nowTick;
 	if (!g_customSettingsLoaded) CustomFormatVarsReadSettings();
+	if (InterlockedExchange(&g_customSuppressPreloadOnce, 0) != 0) return;
 	if (!g_customPreloadOnStartup) return;
 	nowTick = GetTickCount();
 	for (i = 0; i < TC_CUSTOM_VAR_MAX; ++i) tc_custom_refresh_one(i, nowTick, TRUE);
+}
+
+void CustomFormatVarsSuppressNextPreload(void)
+{
+	InterlockedExchange(&g_customSuppressPreloadOnce, 1);
 }
 
 void CustomFormatVarsInvalidateSettings(void)

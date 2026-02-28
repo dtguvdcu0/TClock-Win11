@@ -30,6 +30,28 @@ static int tc_hex_value(int c)
 	return -1;
 }
 
+static BOOL tc_has_casei_suffix(const char* s, const char* suffix)
+{
+	int slen;
+	int nlen;
+	if (!s || !suffix || !*s || !*suffix) return FALSE;
+	slen = lstrlen(s);
+	nlen = lstrlen(suffix);
+	if (slen < nlen) return FALSE;
+	return lstrcmpi(s + (slen - nlen), suffix) == 0 ? TRUE : FALSE;
+}
+
+static BOOL tc_is_customvars_utf8hex_entry(const char* entry)
+{
+	if (!entry || !*entry) return FALSE;
+	if (tc_has_casei_suffix(entry, "Path")) return TRUE;
+	if (tc_has_casei_suffix(entry, "FailValue")) return TRUE;
+	if (tc_has_casei_suffix(entry, "JsonValue")) return TRUE;
+	if (tc_has_casei_suffix(entry, "JsonDefault")) return TRUE;
+	if (tc_has_casei_suffix(entry, "ExecCommand")) return TRUE;
+	return FALSE;
+}
+
 static BOOL tc_is_utf8_hex_target_key(const char* section, const char* entry)
 {
 	if (!section || !entry || !*section || !*entry) return FALSE;
@@ -46,7 +68,7 @@ static BOOL tc_is_utf8_hex_target_key(const char* section, const char* entry)
 	if (lstrcmpi(section, "TCalendar") == 0 && lstrcmpi(entry, "Path") == 0) return TRUE;
 	if (lstrcmpi(section, "ETC") == 0 &&
 		(lstrcmpi(entry, "TCapturePath") == 0 || lstrcmpi(entry, "2chHelpURL") == 0)) return TRUE;
-	if (lstrcmpi(section, "CustomVars") == 0) return TRUE;
+	if (lstrcmpi(section, "CustomVars") == 0 && tc_is_customvars_utf8hex_entry(entry)) return TRUE;
 	return FALSE;
 }
 
@@ -64,7 +86,7 @@ static BOOL tc_should_keep_utf8_bytes(const char* section, const char* entry)
 	if (lstrcmpi(section, "TCalendar") == 0 && lstrcmpi(entry, "Path") == 0) return TRUE;
 	if (lstrcmpi(section, "ETC") == 0 &&
 		(lstrcmpi(entry, "TCapturePath") == 0 || lstrcmpi(entry, "2chHelpURL") == 0)) return TRUE;
-	if (lstrcmpi(section, "CustomVars") == 0) return TRUE;
+	if (lstrcmpi(section, "CustomVars") == 0 && tc_is_customvars_utf8hex_entry(entry)) return TRUE;
 	return FALSE;
 }
 

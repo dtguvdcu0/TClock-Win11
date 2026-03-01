@@ -158,6 +158,7 @@ void MakeFormatW(WCHAR* s, int sCch, char* s_info, SYSTEMTIME* pt, int beat100, 
 void CustomFormatVarsReadSettings(void);
 void CustomFormatVarsPreloadIfEnabled(void);
 void CustomFormatVarsSuppressNextPreload(void);
+void CustomFormatVarsTick(void);
 void CustomFormatVarsInvalidateSettings(void);
 //void MakeFormat_Colored(char* s, COLORREF* s_col,  SYSTEMTIME* pt, int beat100, char* fmt);
 #define FORMAT_SECOND    0x0001

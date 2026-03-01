@@ -119,6 +119,7 @@ static int g_customDefaultWhitespaceMode = TC_CUSTOM_WS_TRIM_EDGES;
 static char g_customDefaultFailValue[TC_CUSTOM_FAIL_MAX] = "N/A";
 static int g_customPreloadOnStartup = TC_CUSTOM_PRELOAD_DEFAULT;
 static LONG g_customSuppressPreloadOnce = 0;
+static LONG g_customDeferIntervalBootstrapOnce = 0;
 static BOOL g_customSettingsLoaded = FALSE;
 extern HANDLE hmod;
 extern PSTR CreateFullPathName(HINSTANCE hinst, PSTR fname);
@@ -1326,6 +1327,29 @@ void CustomFormatVarsPreloadIfEnabled(void)
 void CustomFormatVarsSuppressNextPreload(void)
 {
 	InterlockedExchange(&g_customSuppressPreloadOnce, 1);
+	InterlockedExchange(&g_customDeferIntervalBootstrapOnce, 1);
+}
+
+static void tc_custom_defer_interval_bootstrap(DWORD nowTick)
+{
+	int i;
+	for (i = 0; i < TC_CUSTOM_VAR_MAX; ++i) {
+		TC_CUSTOM_VAR_ENTRY* e = &g_customVars[i];
+		if (!e->execEnable || !e->execCommand[0]) continue;
+		if (!(e->execStart == TC_CUSTOM_EXEC_START_INTERVAL || e->execStart == TC_CUSTOM_EXEC_START_BOTH)) continue;
+		if (e->nextExecTick != 0) continue;
+		e->nextExecTick = nowTick + (DWORD)(tc_custom_clamp_int(e->execIntervalSec, 1, 86400) * 1000);
+	}
+}
+
+void CustomFormatVarsTick(void)
+{
+	int i;
+	DWORD nowTick;
+	if (!g_customSettingsLoaded) CustomFormatVarsReadSettings();
+	nowTick = GetTickCount();
+	if (InterlockedExchange(&g_customDeferIntervalBootstrapOnce, 0) != 0) tc_custom_defer_interval_bootstrap(nowTick);
+	for (i = 0; i < TC_CUSTOM_VAR_MAX; ++i) tc_custom_refresh_one(i, nowTick, FALSE);
 }
 
 void CustomFormatVarsInvalidateSettings(void)

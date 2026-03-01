@@ -3307,6 +3307,7 @@ void OnTimer_Win10(void)
 
 
 	GetDisplayTime(&t, nDispBeat ? (&beat100) : NULL);
+	CustomFormatVarsTick();
 
 	if (b_DebugLog)
 	{

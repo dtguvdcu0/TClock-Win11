@@ -19,9 +19,6 @@ Build scripts (product-specific):
 source/build_tclock.bat
 source/build_tcalendar.bat
 
-Gate scripts (product-specific):
-source/gate_tclock.bat
-source/gate_tcalendar.bat
 
 Router script:
 source/build.bat tclock

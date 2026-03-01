@@ -14,16 +14,15 @@ TCalendar is a Windows-focused minimal calendar application built with a native 
 - Host and bridge are skeleton implementations.
 - Template and contract documents are ready for Phase 1 implementation.
 
-## Build and Gate Commands
+## Build Commands
 - Build TCalendar only: `source/build_tcalendar.bat`
 - Build TClock only: `source/build_tclock.bat`
 - Router build entry: `source/build.bat tcalendar` or `source/build.bat tclock`
-- TCalendar gate: `source/gate_tcalendar.bat`
-- TClock gate: `source/gate_tclock.bat`
 
 Notes:
 - TCalendar deploy target is `source/x64/Release/TCalendar.exe`.
-- `source/gate_tcalendar.bat` runs quick touched gate and full touched gate with `BUILD_TARGET=tcalendar`.
+- Verification command (quick): `python source/scripts/migration_gate.py --mode touched --skip-build`
+- Verification command (full): `set BUILD_TARGET=tcalendar && python source/scripts/migration_gate.py --mode touched`
 
 ## Bundled WebView2 SDK
 - SDK files are vendored under `source/tcal/third_party/webview2/`.

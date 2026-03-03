@@ -11,6 +11,7 @@
 static void OnInit(HWND hDlg);
 static void OnApply(HWND hDlg);
 static void OnUpdate(HWND hDlg);
+static void LaunchTCycleRuntimeFromEtcIfEnabled(HWND hDlg);
 
 __inline void SendPSChanged(HWND hDlg)
 {
@@ -133,6 +134,28 @@ INT_PTR CALLBACK PageEtcProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPar
 			return TRUE;
 	}
 	return FALSE;
+}
+
+static void LaunchTCycleRuntimeFromEtcIfEnabled(HWND hDlg)
+{
+	char tcycPathCfg[MAX_PATH];
+	char exePath[MAX_PATH];
+
+	if (!IsDlgButtonChecked(hDlg, IDC_ETC_TCYCLE_INTEGRATION)) return;
+
+	GetMyRegStr("TCycle", "Path", tcycPathCfg, MAX_PATH, "");
+	if (tcycPathCfg[0] == '\0') strcpy(tcycPathCfg, "TCycle.exe");
+
+	if ((tcycPathCfg[1] == ':') || (tcycPathCfg[0] == '\\') || (tcycPathCfg[0] == '/')) {
+		strcpy(exePath, tcycPathCfg);
+	}
+	else {
+		strcpy(exePath, g_mydir);
+		add_title(exePath, tcycPathCfg);
+	}
+
+	if (!PathFileExistsUtf8Strict(exePath)) return;
+	ShellExecuteUtf8Strict(g_hwndMain, "open", exePath, NULL, g_mydir, SW_HIDE);
 }
 
 /*------------------------------------------------
@@ -262,6 +285,7 @@ static void OnApply(HWND hDlg)
 	CreateTClockTrayIcon(bTemp);
 
 	SetMyRegLong("TCycle", "Enable", IsDlgButtonChecked(hDlg, IDC_ETC_TCYCLE_INTEGRATION));
+	LaunchTCycleRuntimeFromEtcIfEnabled(hDlg);
 
 	SetMyRegLong("TCalendar", "Enable", IsDlgButtonChecked(hDlg, IDC_ETC_TCALENDAR_INTEGRATION));
 	SetMyRegLong("TCapture", "Enable", IsDlgButtonChecked(hDlg, IDC_ETC_TCAPTURE_INTEGRATION));

@@ -614,9 +614,9 @@ static void TerminateExtensionsOnExplicitExitIfNeeded(void)
     if (!g_ExitRequestedFromMenu) return;
     if (!GetMyRegLong("ETC", "ExitExtensionsOnTClockExit", 0)) return;
 
-    ShellExecuteW(NULL, L"open", L"taskkill.exe", L"/F /IM TCycle.exe /T", NULL, SW_HIDE);
-    ShellExecuteW(NULL, L"open", L"taskkill.exe", L"/F /IM TCalendar.exe /T", NULL, SW_HIDE);
-    ShellExecuteW(NULL, L"open", L"taskkill.exe", L"/F /IM TCapture.exe /T", NULL, SW_HIDE);
+    ShellExecuteW(NULL, L"open", L"taskkill.exe", L"/F /IM TCycle.exe", NULL, SW_HIDE);
+    ShellExecuteW(NULL, L"open", L"taskkill.exe", L"/F /IM TCalendar.exe", NULL, SW_HIDE);
+    ShellExecuteW(NULL, L"open", L"taskkill.exe", L"/F /IM TCapture.exe", NULL, SW_HIDE);
     if (b_DebugLog) WriteDebug_New2("[exemain.c] ExitExtensionsOnTClockExit applied.");
 }
 

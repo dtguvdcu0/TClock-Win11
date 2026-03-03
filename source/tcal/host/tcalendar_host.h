@@ -28,7 +28,7 @@ struct HostConfig {
     bool enable_task_start_notify = false;
     bool alert_sound_enabled = true;
     std::wstring alert_sound_path = L"C:\\Windows\\Media\\notify.wav";
-    int alert_scan_window_minutes = 120;
+    int alert_scan_window_minutes = 60;
     int alert_dispatch_tick_seconds = 60;
     int alert_refresh_minutes = 10;
     int alert_grace_minutes = 1;

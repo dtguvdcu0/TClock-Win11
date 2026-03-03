@@ -79,13 +79,20 @@ bool ParseHotkey(const std::wstring& text, HotkeySpec& out) {
     return true;
 }
 
+bool HasHotkeyTrigger(const TaskConfig& t) {
+    if (t.triggerMask != 0) {
+        return (t.triggerMask & (1 << 4)) != 0;
+    }
+    return t.trigger == TriggerType::HotkeyOnly;
+}
+
 } // namespace
 
 std::wstring BuildHotkeyConfigSignature(const RuntimeConfig& cfg) {
     std::wstring sig;
     for (const auto& t : cfg.tasks) {
         if (!t.enabled) continue;
-        if (t.trigger != TriggerType::HotkeyOnly) continue;
+        if (!HasHotkeyTrigger(t)) continue;
         sig.append(std::to_wstring(t.id));
         sig.push_back(L':');
         sig.append(ToLower(Trim(t.hotkey)));
@@ -107,7 +114,7 @@ bool ReloadHotkeys(const RuntimeConfig& cfg, std::wstring& outError) {
     UnregisterAllHotkeys();
     UINT serial = 0;
     for (const auto& t : cfg.tasks) {
-        if (!t.enabled || t.trigger != TriggerType::HotkeyOnly) continue;
+        if (!t.enabled || !HasHotkeyTrigger(t)) continue;
         HotkeySpec spec{};
         if (!ParseHotkey(t.hotkey, spec)) continue;
         UINT id = kHotkeyIdBase + serial++;

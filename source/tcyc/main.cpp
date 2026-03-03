@@ -1,4 +1,5 @@
 #include "config.h"
+#include "gui_main.h"
 #include "hotkey.h"
 #include "log.h"
 #include "runner.h"
@@ -8,13 +9,18 @@
 
 #include <windows.h>
 #include <shellapi.h>
+#include <string>
+#include <unordered_map>
 
 namespace {
 
 constexpr wchar_t kMutexName[] = L"Local\\TCycle_Singleton_Mutex";
+constexpr wchar_t kReloadEventName[] = L"Local\\TCycle_Reload_Config_Event";
 
 struct Args {
     bool validateOnly = false;
+    bool settingsOnly = false;
+    std::string preferredLanguage;
 };
 
 Args ParseArgs() {
@@ -25,6 +31,15 @@ Args ParseArgs() {
     for (int i = 1; i < argc; ++i) {
         if (lstrcmpiW(argv[i], L"--validate-config") == 0) {
             a.validateOnly = true;
+        } else if (lstrcmpiW(argv[i], L"--settings") == 0) {
+            a.settingsOnly = true;
+        } else if (wcsncmp(argv[i], L"--lang=", 7) == 0) {
+            if (lstrcmpiW(argv[i] + 7, L"ja") == 0) a.preferredLanguage = "ja";
+            else if (lstrcmpiW(argv[i] + 7, L"en") == 0) a.preferredLanguage = "en";
+        } else if (lstrcmpiW(argv[i], L"--lang") == 0 && i + 1 < argc) {
+            ++i;
+            if (lstrcmpiW(argv[i], L"ja") == 0) a.preferredLanguage = "ja";
+            else if (lstrcmpiW(argv[i], L"en") == 0) a.preferredLanguage = "en";
         }
     }
     LocalFree(argv);
@@ -54,13 +69,44 @@ const wchar_t* MatchModeToString(tcyc::ProcessMatchMode mode) {
     }
 }
 
+struct LaunchGuardSnapshot {
+    bool gateOff = false;
+    std::unordered_map<int, bool> taskEnabledCache;
+};
+
+LaunchGuardSnapshot BuildLaunchGuardSnapshot(const tcyc::RuntimeConfig& cfg, const std::wstring& iniPath) {
+    LaunchGuardSnapshot snap{};
+    snap.gateOff = tcyc::IsTClockGateDisabled(cfg);
+    return snap;
+}
+
+bool IsRuntimeLaunchAllowed(LaunchGuardSnapshot& snap, const std::wstring& iniPath, int taskId, const wchar_t* reason) {
+    auto it = snap.taskEnabledCache.find(taskId);
+    bool taskEnabledNow = false;
+    if (it == snap.taskEnabledCache.end()) {
+        wchar_t section[32] = {0};
+        swprintf_s(section, L"Task.%d", taskId);
+        taskEnabledNow = GetPrivateProfileIntW(section, L"Enabled", 1, iniPath.c_str()) != 0;
+        snap.taskEnabledCache.emplace(taskId, taskEnabledNow);
+    } else {
+        taskEnabledNow = it->second;
+    }
+
+    if (!taskEnabledNow) {
+        tcyc::LogWrite(1, L"Launch skipped: taskId=%d reason=%s disabled by runtime ini", taskId, reason);
+        return false;
+    }
+    if (snap.gateOff) {
+        tcyc::LogWrite(1, L"Launch skipped: taskId=%d reason=%s gate disabled at launch", taskId, reason);
+        return false;
+    }
+    return true;
+}
+
 } // namespace
 
 int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     const Args args = ParseArgs();
-    if (!AcquireSingleton()) {
-        return 0;
-    }
 
     const std::wstring exeDir = tcyc::GetExeDirectory();
     const std::wstring iniPath = tcyc::JoinPath(exeDir, L"TCycle.ini");
@@ -70,6 +116,15 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         MessageBoxW(nullptr, err.c_str(), L"TCycle", MB_OK | MB_ICONERROR);
         return 1;
     }
+
+    if (args.settingsOnly) {
+        return tcyc::RunReadOnlySettingsWindow(cfg, iniPath, exeDir, args.preferredLanguage);
+    }
+
+    if (!AcquireSingleton()) {
+        return 0;
+    }
+    HANDLE hReloadEvent = CreateEventW(nullptr, FALSE, FALSE, kReloadEventName);
 
     tcyc::LogInit(cfg.logFile);
     tcyc::LogWrite(1, L"TCycle boot: ini=%s", iniPath.c_str());
@@ -90,8 +145,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
 
     if (args.validateOnly) {
         const bool gateOff = tcyc::IsTClockGateDisabled(cfg);
-        tcyc::LogWrite(1, L"Validate-only: enabled=%d gateOff=%d pollSec=%d",
-            cfg.enabled ? 1 : 0, gateOff ? 1 : 0, cfg.pollSec);
+        tcyc::LogWrite(1, L"Validate-only: gateOff=%d pollSec=%d",
+            gateOff ? 1 : 0, cfg.pollSec);
         return 0;
     }
 
@@ -102,16 +157,20 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     for (;;) {
         if (!tcyc::LoadRuntimeConfig(iniPath, exeDir, cfg, err)) {
             tcyc::LogWrite(0, L"Config reload failed: %s", err.c_str());
-            Sleep(3000);
+            if (hReloadEvent) {
+                (void)WaitForSingleObject(hReloadEvent, 3000);
+            } else {
+                Sleep(3000);
+            }
             continue;
         }
 
         const bool gateOff = tcyc::IsTClockGateDisabled(cfg);
-        const bool effectiveEnabled = cfg.enabled && !gateOff;
+        const bool effectiveEnabled = !gateOff;
 
         if (!hasPrev || prevEffectiveEnabled != effectiveEnabled) {
-            tcyc::LogWrite(1, L"EffectiveEnabled changed: enabled=%d gateOff=%d effective=%d",
-                cfg.enabled ? 1 : 0, gateOff ? 1 : 0, effectiveEnabled ? 1 : 0);
+            tcyc::LogWrite(1, L"EffectiveEnabled changed: gateOff=%d effective=%d",
+                gateOff ? 1 : 0, effectiveEnabled ? 1 : 0);
             prevEffectiveEnabled = effectiveEnabled;
             hasPrev = true;
         }
@@ -137,17 +196,19 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
             return nullptr;
         };
 
+        LaunchGuardSnapshot launchGuard = BuildLaunchGuardSnapshot(cfg, iniPath);
+
         auto tryLaunch = [&](const tcyc::TaskConfig& task, const wchar_t* reason, bool fromWatchdog) {
             if (task.actionPath.empty()) {
                 tcyc::LogWrite(0, L"Launch skipped: taskId=%d reason=%s actionPath empty", task.id, reason);
                 return;
             }
             tcyc::ProcessMatchMode mode = tcyc::ProcessMatchMode::None;
-            const bool alreadyRunning = tcyc::IsTaskProcessRunning(task, &mode, cfg.debugForceCmdlineReadFail);
+                const bool alreadyRunning = tcyc::IsTaskProcessRunning(task, &mode, cfg.debugForceCmdlineReadFail);
             if (task.singleInstance && alreadyRunning) {
                 const long long now = tcyc::UnixNow();
                 bool consumeCount = true;
-                if (task.trigger == tcyc::TriggerType::HotkeyOnly) consumeCount = false;
+                if (wcscmp(reason, L"hotkey") == 0) consumeCount = false;
                 tcyc::MarkTaskObservedRunning(state, task.id, now, consumeCount);
                 const tcyc::TaskRuntimeState& st = state.tasks[task.id];
                 tcyc::LogWrite(1, L"Launch skipped: taskId=%d reason=%s already running (mode=%s)",
@@ -182,6 +243,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
                     tcyc::LogWrite(0, L"Due task missing config: taskId=%d", d.taskId);
                     continue;
                 }
+                if (!IsRuntimeLaunchAllowed(launchGuard, iniPath, task->id, d.reason.c_str())) continue;
                 tryLaunch(*task, d.reason.c_str(), false);
             }
 
@@ -192,6 +254,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
                     tcyc::LogWrite(0, L"Watchdog due missing config: taskId=%d", w.taskId);
                     continue;
                 }
+                if (!IsRuntimeLaunchAllowed(launchGuard, iniPath, task->id, w.reason.c_str())) continue;
                 tryLaunch(*task, w.reason.c_str(), true);
             }
 
@@ -202,6 +265,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
                     tcyc::LogWrite(0, L"Hotkey task missing config: taskId=%d", tid);
                     continue;
                 }
+                if (!IsRuntimeLaunchAllowed(launchGuard, iniPath, task->id, L"hotkey")) continue;
                 tryLaunch(*task, L"hotkey", false);
             }
         } else {
@@ -218,6 +282,13 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         }
 
         const DWORD waitMs = static_cast<DWORD>(cfg.pollSec <= 0 ? 1000 : cfg.pollSec * 1000);
-        Sleep(waitMs);
+        if (hReloadEvent) {
+            DWORD wr = WaitForSingleObject(hReloadEvent, waitMs);
+            if (wr == WAIT_OBJECT_0) {
+                tcyc::LogWrite(1, L"Reload event received: config reload scheduled immediately");
+            }
+        } else {
+            Sleep(waitMs);
+        }
     }
 }

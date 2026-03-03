@@ -53,6 +53,46 @@ int ParseWeekday(const std::wstring& raw) {
     return -1;
 }
 
+int ParseWeekdayMask(const std::wstring& raw) {
+    std::wstring token;
+    int mask = 0;
+    auto flush = [&]() {
+        const int d = ParseWeekday(token);
+        if (d >= 0 && d <= 6) {
+            mask |= (1 << d);
+        }
+        token.clear();
+    };
+    for (wchar_t ch : raw) {
+        if (ch == L',' || ch == L';' || ch == L'|' || ch == L' ' || ch == L'\t') {
+            if (!token.empty()) flush();
+        } else {
+            token.push_back(ch);
+        }
+    }
+    if (!token.empty()) flush();
+    return mask;
+}
+
+bool ParseWeekdayEveryday(const std::wstring& raw) {
+    std::wstring token;
+    bool everyday = false;
+    auto flush = [&]() {
+        const std::wstring s = ToLower(token);
+        if (s == L"everyday" || s == L"daily" || s == L"all") everyday = true;
+        token.clear();
+    };
+    for (wchar_t ch : raw) {
+        if (ch == L',' || ch == L';' || ch == L'|' || ch == L' ' || ch == L'\t') {
+            if (!token.empty()) flush();
+        } else {
+            token.push_back(ch);
+        }
+    }
+    if (!token.empty()) flush();
+    return everyday;
+}
+
 TriggerType ParseTriggerType(const std::wstring& raw) {
     const std::wstring s = ToLower(raw);
     if (s == L"interval") return TriggerType::Interval;
@@ -60,7 +100,55 @@ TriggerType ParseTriggerType(const std::wstring& raw) {
     if (s == L"weekly_time") return TriggerType::WeeklyTime;
     if (s == L"startup") return TriggerType::Startup;
     if (s == L"hotkey_only") return TriggerType::HotkeyOnly;
+    if (s == L"non_running") return TriggerType::NonRunning;
     return TriggerType::Unknown;
+}
+
+int TriggerTypeToBit(TriggerType t) {
+    switch (t) {
+    case TriggerType::Interval: return (1 << 0);
+    case TriggerType::DateTimeIntervalLimited: return (1 << 1);
+    case TriggerType::WeeklyTime: return (1 << 2);
+    case TriggerType::Startup: return (1 << 3);
+    case TriggerType::HotkeyOnly: return (1 << 4);
+    case TriggerType::NonRunning: return (1 << 5);
+    default: return 0;
+    }
+}
+
+TriggerType FirstTriggerTypeFromMask(int mask) {
+    for (int i = 0; i < 6; ++i) {
+        if ((mask & (1 << i)) == 0) continue;
+        switch (i) {
+        case 0: return TriggerType::Interval;
+        case 1: return TriggerType::DateTimeIntervalLimited;
+        case 2: return TriggerType::WeeklyTime;
+        case 3: return TriggerType::Startup;
+        case 4: return TriggerType::HotkeyOnly;
+        case 5: return TriggerType::NonRunning;
+        default: break;
+        }
+    }
+    return TriggerType::Unknown;
+}
+
+int ParseTriggerMask(const std::wstring& raw) {
+    std::wstring token;
+    int mask = 0;
+    auto flush = [&]() {
+        const TriggerType t = ParseTriggerType(token);
+        mask |= TriggerTypeToBit(t);
+        token.clear();
+    };
+    for (wchar_t ch : raw) {
+        if (ch == L',' || ch == L';' || ch == L'|' || ch == L' ' || ch == L'\t') {
+            if (!token.empty()) flush();
+        } else {
+            token.push_back(ch);
+        }
+    }
+    if (!token.empty()) flush();
+    return mask;
 }
 
 void LoadTasks(const std::wstring& iniPath, const std::wstring& exeDir, std::vector<TaskConfig>& outTasks) {
@@ -76,18 +164,45 @@ void LoadTasks(const std::wstring& iniPath, const std::wstring& exeDir, std::vec
         t.actionPath = ReadIniString(iniPath, section, L"ActionPath", L"");
         t.actionArgs = ReadIniString(iniPath, section, L"ActionArgs", L"");
         t.actionCwd = ReadIniString(iniPath, section, L"ActionCwd", L"");
+        t.actionMode = ToLower(ReadIniString(iniPath, section, L"ActionMode", L"program"));
+        if (t.actionMode != L"program" && t.actionMode != L"command" && t.actionMode != L"shell") {
+            t.actionMode = L"program";
+        }
         t.singleInstance = ReadIniInt(iniPath, section, L"SingleInstance", 1) != 0;
         t.watchdogEnabled = ReadIniInt(iniPath, section, L"WatchdogEnabled", 0) != 0;
-        t.watchdogRetrySec = ClampInt(ReadIniInt(iniPath, section, L"WatchdogRetrySec", 10), 1, 3600);
+        t.watchdogRetrySec = ClampInt(ReadIniInt(iniPath, section, L"WatchdogRetrySec", 10), 10, 3600);
         t.watchdogMaxRetry = ReadIniInt(iniPath, section, L"WatchdogMaxRetry", -1);
         t.watchdogRequireArgsMatch = ReadIniInt(iniPath, section, L"WatchdogRequireArgsMatch", 1) != 0;
-        t.intervalSec = ClampInt(ReadIniInt(iniPath, section, L"IntervalSec", 0), 0, 86400);
+        t.intervalSec = ClampInt(ReadIniInt(iniPath, section, L"IntervalSec", 600), 0, 86400);
         t.startDateTime = ReadIniString(iniPath, section, L"StartDateTime", L"");
         t.repeatEverySec = ClampInt(ReadIniInt(iniPath, section, L"RepeatEverySec", 0), 0, 86400);
         t.repeatCount = ClampInt(ReadIniInt(iniPath, section, L"RepeatCount", 0), 0, 1000000);
         t.hotkey = ReadIniString(iniPath, section, L"Hotkey", L"");
         t.trigger = ParseTriggerType(ReadIniString(iniPath, section, L"TriggerType", L""));
+        t.triggerMask = ParseTriggerMask(ReadIniString(iniPath, section, L"TriggerTypes", L""));
+        if (t.triggerMask == 0) {
+            t.triggerMask = TriggerTypeToBit(t.trigger);
+        } else if (t.trigger == TriggerType::Unknown) {
+            t.trigger = FirstTriggerTypeFromMask(t.triggerMask);
+        }
+        if (t.watchdogEnabled) {
+            t.triggerMask |= TriggerTypeToBit(TriggerType::NonRunning);
+            if (t.trigger == TriggerType::Unknown) t.trigger = TriggerType::NonRunning;
+        }
         t.weekday = ParseWeekday(ReadIniString(iniPath, section, L"Weekday", L""));
+        const std::wstring weekdaysRaw = ReadIniString(iniPath, section, L"Weekdays", L"");
+        t.weeklyEveryday = (ReadIniInt(iniPath, section, L"EveryDay", 0) != 0) || ParseWeekdayEveryday(weekdaysRaw);
+        t.weekdayMask = ParseWeekdayMask(weekdaysRaw);
+        t.dateEnabled = ReadIniInt(iniPath, section, L"DateEnabled", 0) != 0;
+        t.dateYmd = ReadIniString(iniPath, section, L"Date", L"");
+        t.weekdayEnabled = ReadIniInt(iniPath, section, L"WeekdayEnabled", 1) != 0;
+        t.timeEnabled = ReadIniInt(iniPath, section, L"TimeEnabled", 1) != 0;
+        if (t.weeklyEveryday) {
+            t.weekday = -1;
+            t.weekdayMask = 0;
+        } else if (t.weekdayMask == 0 && t.weekday >= 0 && t.weekday <= 6) {
+            t.weekdayMask = (1 << t.weekday);
+        }
         t.timeOfDaySec = -1;
         {
             int tod = -1;
@@ -140,18 +255,14 @@ bool EnsureDefaultIni(const std::wstring& iniPath) {
     if (attrs != INVALID_FILE_ATTRIBUTES && !(attrs & FILE_ATTRIBUTE_DIRECTORY)) {
         return true;
     }
-    if (!WritePrivateProfileStringW(L"TCycle", L"Enabled", L"1", iniPath.c_str())) return false;
-    WritePrivateProfileStringW(L"TCycle", L"PollSec", L"1", iniPath.c_str());
+    if (!WritePrivateProfileStringW(L"TCycle", L"PollSec", L"1", iniPath.c_str())) return false;
     WritePrivateProfileStringW(L"TCycle", L"GraceSec", L"60", iniPath.c_str());
     WritePrivateProfileStringW(L"TCycle", L"LogLevel", L"1", iniPath.c_str());
     WritePrivateProfileStringW(L"TCycle", L"LogFile", L"tcycle.log", iniPath.c_str());
     WritePrivateProfileStringW(L"TCycle", L"StateFile", L"tcycle.state.ini", iniPath.c_str());
     WritePrivateProfileStringW(L"Debug", L"ForceCmdlineReadFail", L"0", iniPath.c_str());
 
-    WritePrivateProfileStringW(L"Integration", L"UseTClockIniGate", L"1", iniPath.c_str());
     WritePrivateProfileStringW(L"Integration", L"TClockIniPath", L"tclock-win11.ini", iniPath.c_str());
-    WritePrivateProfileStringW(L"Integration", L"TClockGateSection", L"TCycle", iniPath.c_str());
-    WritePrivateProfileStringW(L"Integration", L"TClockGateKey", L"Enabled", iniPath.c_str());
     return true;
 }
 
@@ -163,7 +274,6 @@ bool LoadRuntimeConfig(const std::wstring& iniPath, const std::wstring& exeDir, 
     }
 
     RuntimeConfig cfg{};
-    cfg.enabled = ReadIniInt(iniPath, L"TCycle", L"Enabled", 1) != 0;
     cfg.pollSec = ClampInt(ReadIniInt(iniPath, L"TCycle", L"PollSec", 1), 1, 60);
     cfg.graceSec = ClampInt(ReadIniInt(iniPath, L"TCycle", L"GraceSec", 60), 0, 300);
     cfg.logLevel = ClampInt(ReadIniInt(iniPath, L"TCycle", L"LogLevel", 1), 0, 3);
@@ -175,14 +285,9 @@ bool LoadRuntimeConfig(const std::wstring& iniPath, const std::wstring& exeDir, 
     cfg.stateFile = ResolvePathFromExe(exeDir, cfg.stateFile);
     cfg.debugForceCmdlineReadFail = ReadIniInt(iniPath, L"Debug", L"ForceCmdlineReadFail", 0) != 0;
 
-    cfg.useTClockIniGate = ReadIniInt(iniPath, L"Integration", L"UseTClockIniGate", 1) != 0;
     cfg.tclockIniPath = ReadIniString(iniPath, L"Integration", L"TClockIniPath", L"tclock-win11.ini");
     if (cfg.tclockIniPath.empty()) cfg.tclockIniPath = L"tclock-win11.ini";
     cfg.tclockIniPath = ResolvePathFromExe(exeDir, cfg.tclockIniPath);
-    cfg.tclockGateSection = ReadIniString(iniPath, L"Integration", L"TClockGateSection", L"TCycle");
-    cfg.tclockGateKey = ReadIniString(iniPath, L"Integration", L"TClockGateKey", L"Enabled");
-    if (cfg.tclockGateSection.empty()) cfg.tclockGateSection = L"TCycle";
-    if (cfg.tclockGateKey.empty()) cfg.tclockGateKey = L"Enabled";
     LoadTasks(iniPath, exeDir, cfg.tasks);
 
     outConfig = cfg;
@@ -190,12 +295,11 @@ bool LoadRuntimeConfig(const std::wstring& iniPath, const std::wstring& exeDir, 
 }
 
 bool IsTClockGateDisabled(const RuntimeConfig& config) {
-    if (!config.useTClockIniGate) return false;
     const DWORD attrs = GetFileAttributesW(config.tclockIniPath.c_str());
     if (attrs == INVALID_FILE_ATTRIBUTES || (attrs & FILE_ATTRIBUTE_DIRECTORY)) return false;
     const int gate = static_cast<int>(GetPrivateProfileIntW(
-        config.tclockGateSection.c_str(),
-        config.tclockGateKey.c_str(),
+        L"TCycle",
+        L"Enabled",
         1,
         config.tclockIniPath.c_str()));
     return gate == 0;

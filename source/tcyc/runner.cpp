@@ -9,6 +9,18 @@
 namespace tcyc {
 
 namespace {
+std::wstring ToLowerString(std::wstring s) {
+    for (auto& ch : s) {
+        if (ch >= L'A' && ch <= L'Z') ch = static_cast<wchar_t>(ch - L'A' + L'a');
+    }
+    return s;
+}
+
+std::wstring EffectiveActionMode(const TaskConfig& task) {
+    std::wstring mode = ToLowerString(task.actionMode);
+    if (mode != L"program" && mode != L"command" && mode != L"shell") mode = L"program";
+    return mode;
+}
 
 std::wstring NormalizePath(std::wstring s) {
     for (auto& ch : s) {
@@ -42,13 +54,6 @@ bool TryParseArgsFromCmdline(const std::wstring& cmdLine, std::vector<std::wstri
     for (int i = 1; i < argc; ++i) outArgs.emplace_back(argv[i]);
     LocalFree(argv);
     return true;
-}
-
-std::wstring ToLowerString(std::wstring s) {
-    for (auto& ch : s) {
-        if (ch >= L'A' && ch <= L'Z') ch = static_cast<wchar_t>(ch - L'A' + L'a');
-    }
-    return s;
 }
 
 bool EqualArgTokensCaseInsensitive(const std::vector<std::wstring>& a, const std::vector<std::wstring>& b) {
@@ -143,6 +148,7 @@ std::vector<std::wstring> BuildExpectedArgs(const TaskConfig& task) {
 bool IsTaskProcessRunning(const TaskConfig& task, ProcessMatchMode* outMode, bool forceCmdlineReadFailForTest) {
     if (outMode) *outMode = ProcessMatchMode::None;
     if (task.actionPath.empty()) return false;
+    if (EffectiveActionMode(task) != L"program") return false;
 
     const std::wstring target = NormalizePath(task.actionPath);
     const bool requireArgsMatch = task.watchdogRequireArgsMatch && !task.actionArgs.empty();
@@ -199,12 +205,36 @@ bool LaunchTask(const TaskConfig& task, std::wstring& outError) {
         return false;
     }
 
-    std::wstring cmdLine = L"\"";
-    cmdLine.append(task.actionPath);
-    cmdLine.append(L"\"");
-    if (!task.actionArgs.empty()) {
-        cmdLine.push_back(L' ');
-        cmdLine.append(task.actionArgs);
+    const std::wstring mode = EffectiveActionMode(task);
+    std::wstring app;
+    std::wstring cmdLine;
+    if (mode == L"program") {
+        app = task.actionPath;
+        cmdLine = L"\"";
+        cmdLine.append(task.actionPath);
+        cmdLine.append(L"\"");
+        if (!task.actionArgs.empty()) {
+            cmdLine.push_back(L' ');
+            cmdLine.append(task.actionArgs);
+        }
+    } else if (mode == L"command") {
+        app = L"C:\\Windows\\System32\\cmd.exe";
+        std::wstring merged = task.actionPath;
+        if (!task.actionArgs.empty()) {
+            merged.push_back(L' ');
+            merged.append(task.actionArgs);
+        }
+        cmdLine = L"cmd.exe /C ";
+        cmdLine.append(merged);
+    } else { // shell
+        app = L"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";
+        std::wstring merged = task.actionPath;
+        if (!task.actionArgs.empty()) {
+            merged.push_back(L' ');
+            merged.append(task.actionArgs);
+        }
+        cmdLine = L"powershell.exe -NoProfile -Command ";
+        cmdLine.append(merged);
     }
 
     std::vector<wchar_t> mutableCmd(cmdLine.begin(), cmdLine.end());
@@ -215,7 +245,7 @@ bool LaunchTask(const TaskConfig& task, std::wstring& outError) {
     si.cb = sizeof(si);
     LPCWSTR cwd = task.actionCwd.empty() ? nullptr : task.actionCwd.c_str();
     BOOL ok = CreateProcessW(
-        task.actionPath.c_str(),
+        app.c_str(),
         mutableCmd.data(),
         nullptr,
         nullptr,

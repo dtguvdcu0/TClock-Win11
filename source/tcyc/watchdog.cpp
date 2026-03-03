@@ -4,10 +4,18 @@
 
 namespace tcyc {
 
+namespace {
+bool HasNonRunningTrigger(const TaskConfig& t) {
+    if (t.triggerMask != 0) return (t.triggerMask & (1 << 5)) != 0;
+    return t.trigger == TriggerType::NonRunning;
+}
+}
+
 std::vector<WatchdogDue> EvaluateWatchdogDue(const RuntimeConfig& cfg, RuntimeState& state, long long nowUnix) {
     std::vector<WatchdogDue> out;
     for (const auto& t : cfg.tasks) {
         if (!t.enabled || !t.watchdogEnabled) continue;
+        if (!HasNonRunningTrigger(t)) continue;
         if (t.actionPath.empty()) continue;
 
         TaskRuntimeState& st = state.tasks[t.id];

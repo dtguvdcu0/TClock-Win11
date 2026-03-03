@@ -1,4 +1,5 @@
 #include "config.h"
+#include "ini_utf8_util.h"
 
 #include <windows.h>
 #include <shlwapi.h>
@@ -24,13 +25,18 @@ std::wstring ToLower(const std::wstring& s) {
 }
 
 std::wstring ReadIniString(const std::wstring& iniPath, const wchar_t* section, const wchar_t* key, const wchar_t* defval) {
-    wchar_t buf[2048] = {0};
-    GetPrivateProfileStringW(section, key, defval ? defval : L"", buf, static_cast<DWORD>(_countof(buf)), iniPath.c_str());
-    return std::wstring(buf);
+    std::wstring out;
+    if (ReadIniUtf8Value(iniPath, section ? section : L"", key ? key : L"", defval ? defval : L"", out)) return out;
+    return defval ? std::wstring(defval) : L"";
 }
 
 int ReadIniInt(const std::wstring& iniPath, const wchar_t* section, const wchar_t* key, int defval) {
-    return static_cast<int>(GetPrivateProfileIntW(section, key, defval, iniPath.c_str()));
+    const std::wstring raw = ReadIniString(iniPath, section, key, L"");
+    if (raw.empty()) return defval;
+    wchar_t* end = nullptr;
+    long v = wcstol(raw.c_str(), &end, 10);
+    if (!end || *end != L'\0') return defval;
+    return static_cast<int>(v);
 }
 
 bool TryParseTimeOfDay(const std::wstring& s, int& outSec) {
@@ -255,14 +261,13 @@ bool EnsureDefaultIni(const std::wstring& iniPath) {
     if (attrs != INVALID_FILE_ATTRIBUTES && !(attrs & FILE_ATTRIBUTE_DIRECTORY)) {
         return true;
     }
-    if (!WritePrivateProfileStringW(L"TCycle", L"PollSec", L"1", iniPath.c_str())) return false;
-    WritePrivateProfileStringW(L"TCycle", L"GraceSec", L"60", iniPath.c_str());
-    WritePrivateProfileStringW(L"TCycle", L"LogLevel", L"1", iniPath.c_str());
-    WritePrivateProfileStringW(L"TCycle", L"LogFile", L"tcycle.log", iniPath.c_str());
-    WritePrivateProfileStringW(L"TCycle", L"StateFile", L"tcycle.state.ini", iniPath.c_str());
-    WritePrivateProfileStringW(L"Debug", L"ForceCmdlineReadFail", L"0", iniPath.c_str());
-
-    WritePrivateProfileStringW(L"Integration", L"TClockIniPath", L"tclock-win11.ini", iniPath.c_str());
+    if (!WriteIniUtf8Value(iniPath, L"TCycle", L"PollSec", L"1")) return false;
+    if (!WriteIniUtf8Value(iniPath, L"TCycle", L"GraceSec", L"60")) return false;
+    if (!WriteIniUtf8Value(iniPath, L"TCycle", L"LogLevel", L"1")) return false;
+    if (!WriteIniUtf8Value(iniPath, L"TCycle", L"LogFile", L"tcycle.log")) return false;
+    if (!WriteIniUtf8Value(iniPath, L"TCycle", L"StateFile", L"tcycle.state.ini")) return false;
+    if (!WriteIniUtf8Value(iniPath, L"Debug", L"ForceCmdlineReadFail", L"0")) return false;
+    if (!WriteIniUtf8Value(iniPath, L"Integration", L"TClockIniPath", L"tclock-win11.ini")) return false;
     return true;
 }
 
@@ -275,7 +280,16 @@ bool LoadRuntimeConfig(const std::wstring& iniPath, const std::wstring& exeDir, 
 
     RuntimeConfig cfg{};
     cfg.pollSec = ClampInt(ReadIniInt(iniPath, L"TCycle", L"PollSec", 1), 1, 60);
-    cfg.graceSec = ClampInt(ReadIniInt(iniPath, L"TCycle", L"GraceSec", 60), 0, 300);
+    const int grace_sec_raw = ReadIniInt(iniPath, L"TCycle", L"GraceSec", 60);
+    int grace_sec = grace_sec_raw;
+    if (grace_sec <= 0) grace_sec = 60;
+    if (grace_sec > 300) grace_sec = 300;
+    cfg.graceSec = grace_sec;
+    if (grace_sec != grace_sec_raw) {
+        wchar_t buf[16] = {0};
+        swprintf_s(buf, L"%d", grace_sec);
+        WriteIniUtf8Value(iniPath, L"TCycle", L"GraceSec", buf);
+    }
     cfg.logLevel = ClampInt(ReadIniInt(iniPath, L"TCycle", L"LogLevel", 1), 0, 3);
     cfg.logFile = ReadIniString(iniPath, L"TCycle", L"LogFile", L"tcycle.log");
     if (cfg.logFile.empty()) cfg.logFile = L"tcycle.log";

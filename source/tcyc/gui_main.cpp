@@ -71,7 +71,7 @@ struct HotkeyModOption {
 };
 
 struct HotkeyKeyOption {
-    const wchar_t* label;
+    std::wstring label;
     int vk;
 };
 
@@ -130,6 +130,12 @@ struct WindowState {
     bool suppressEvents = false;
     bool actionPathDirty = false;
     bool actionCwdDirty = false;
+    bool dateEnabledDirty = false;
+    bool dateValueDirty = false;
+    bool weekdayDirty = false;
+    bool timeEnabledDirty = false;
+    bool timeOfDayDirty = false;
+    bool hotkeyDirty = false;
 };
 
 std::string ToLowerAscii(std::string s) {
@@ -627,6 +633,7 @@ bool ParseHotkeyString(const std::wstring& hotkey, bool& ctrl, bool& shift, bool
     win = false;
     keyVk = 0;
     if (hotkey.empty()) return true;
+    bool hasUnknownToken = false;
 
     std::wstring token;
     auto flush = [&](const std::wstring& t) {
@@ -650,8 +657,12 @@ bool ParseHotkeyString(const std::wstring& hotkey, bool& ctrl, bool& shift, bool
             }
             if (lower.size() == 1) {
                 wchar_t c = static_cast<wchar_t>(towupper(lower[0]));
-                if ((c >= L'A' && c <= L'Z') || (c >= L'0' && c <= L'9')) keyVk = c;
+                if ((c >= L'A' && c <= L'Z') || (c >= L'0' && c <= L'9')) {
+                    keyVk = c;
+                    return;
+                }
             }
+            hasUnknownToken = true;
         }
     };
 
@@ -664,6 +675,8 @@ bool ParseHotkeyString(const std::wstring& hotkey, bool& ctrl, bool& shift, bool
         }
     }
     flush(token);
+    if (hasUnknownToken) return false;
+    if (keyVk == 0) return false;
     return true;
 }
 
@@ -689,7 +702,7 @@ std::wstring ComposeHotkeyString(WindowState* st) {
 void SetHotkeyCombosFromString(WindowState* st, const std::wstring& hotkey) {
     bool ctrl = false, shift = false, alt = false, win = false;
     int keyVk = 0;
-    ParseHotkeyString(hotkey, ctrl, shift, alt, win, keyVk);
+    (void)ParseHotkeyString(hotkey, ctrl, shift, alt, win, keyVk);
 
     int modIndex = 0;
     for (int i = 0; i < static_cast<int>(HotkeyModOptions().size()); ++i) {
@@ -706,8 +719,17 @@ void SetHotkeyCombosFromString(WindowState* st, const std::wstring& hotkey) {
             break;
         }
     }
-    SendMessageW(st->hotkeyMod, CB_SETCURSEL, modIndex, 0);
-    SendMessageW(st->hotkeyKey, CB_SETCURSEL, keyIndex, 0);
+    if (hotkey.empty()) {
+        SendMessageW(st->hotkeyMod, CB_SETCURSEL, 0, 0);
+        SendMessageW(st->hotkeyKey, CB_SETCURSEL, 0, 0);
+        return;
+    }
+    SendMessageW(st->hotkeyMod, CB_SETCURSEL, static_cast<WPARAM>(modIndex), 0);
+    if (keyVk > 0) {
+        SendMessageW(st->hotkeyKey, CB_SETCURSEL, static_cast<WPARAM>(keyIndex), 0);
+    } else {
+        SendMessageW(st->hotkeyKey, CB_SETCURSEL, static_cast<WPARAM>(-1), 0);
+    }
 }
 
 bool WriteIniInt(const std::wstring& iniPath, const wchar_t* sec, const wchar_t* key, int v) {
@@ -818,6 +840,12 @@ void LoadTaskControls(WindowState* st, int idx) {
     ApplyTriggerUiState(st);
     st->actionPathDirty = false;
     st->actionCwdDirty = false;
+    st->dateEnabledDirty = false;
+    st->dateValueDirty = false;
+    st->weekdayDirty = false;
+    st->timeEnabledDirty = false;
+    st->timeOfDayDirty = false;
+    st->hotkeyDirty = false;
 }
 
 bool SignalReloadEvent() {
@@ -861,14 +889,19 @@ bool SaveAllToIni(WindowState* st, std::wstring& err) {
             swprintf_s(buf, L"Task.%d", t.id);
             t.name = buf;
         }
-        t.triggerMask = ReadTriggerMaskFromChecks(st);
-        if (t.triggerMask == 0) {
+        const int uiTriggerMask = ReadTriggerMaskFromChecks(st);
+        if (uiTriggerMask != 0) {
+            t.triggerMask = uiTriggerMask;
+        } else if (t.triggerMask == 0) {
             t.triggerMask = TriggerTypeToBit(tcyc::TriggerType::Startup);
             SetTriggerChecksFromMask(st, t.triggerMask);
         }
         t.trigger = TriggerIndexToType(FirstTriggerFromMask(t.triggerMask));
         t.intervalSec = ParseIntOrDefault(GetEditText(st->intervalSec), (t.intervalSec > 0 ? t.intervalSec : 600), 0, 86400);
-        t.actionMode = ActionModeFromIndex(static_cast<int>(SendMessageW(st->actionMode, CB_GETCURSEL, 0, 0)));
+        const int actionSel = static_cast<int>(SendMessageW(st->actionMode, CB_GETCURSEL, 0, 0));
+        if (actionSel >= 0) {
+            t.actionMode = ActionModeFromIndex(actionSel);
+        }
         if (st->actionPathDirty) {
             t.actionPath = TrimWide(GetEditText(st->actionPath));
         }
@@ -877,37 +910,59 @@ bool SaveAllToIni(WindowState* st, std::wstring& err) {
         }
         t.watchdogEnabled = ((t.triggerMask & TriggerTypeToBit(tcyc::TriggerType::NonRunning)) != 0);
         t.watchdogRetrySec = ParseIntOrDefault(GetEditText(st->watchdogRetrySec), t.watchdogRetrySec, 10, 3600);
-        t.watchdogMaxRetry = ParseIntOrDefault(GetEditText(st->repeatCount), (t.watchdogMaxRetry >= 0 ? t.watchdogMaxRetry : 5), 1, 1000000);
-        t.dateEnabled = IsChecked(st->dateEnabled);
-        t.dateYmd = TrimWide(GetEditText(st->dateValue));
-        if (t.dateEnabled && t.dateYmd.empty()) t.dateYmd = CurrentDateYmd();
-        t.weekdayEnabled = IsChecked(st->weekdayEnabled);
-        t.weeklyEveryday = t.weekdayEnabled && IsEverydayChecked(st);
-        if (!t.weekdayEnabled) {
-            t.weekday = -1;
-            t.weekdayMask = 0;
-        } else if (t.weeklyEveryday) {
-            t.weekday = -1;
-            t.weekdayMask = 0;
-        } else {
-            t.weekdayMask = ReadWeekdayMaskFromChecks(st);
-            t.weekday = FirstWeekdayFromMask(t.weekdayMask);
+        const int prevWatchdogMaxRetry = t.watchdogMaxRetry;
+        const std::wstring retryInput = TrimWide(GetEditText(st->repeatCount));
+        t.watchdogMaxRetry = ParseIntOrDefault(retryInput, (t.watchdogMaxRetry >= 0 ? t.watchdogMaxRetry : 5), 1, 1000000);
+        if (retryInput.empty() && prevWatchdogMaxRetry < 0) {
+            t.watchdogMaxRetry = prevWatchdogMaxRetry;
+        }
+        if (st->dateEnabledDirty) {
+            t.dateEnabled = IsChecked(st->dateEnabled);
+        }
+        const std::wstring prevDateYmd = t.dateYmd;
+        if (st->dateValueDirty || st->dateEnabledDirty) {
+            const std::wstring inputDateYmd = TrimWide(GetEditText(st->dateValue));
+            if (!inputDateYmd.empty()) {
+                t.dateYmd = inputDateYmd;
+            } else {
+                t.dateYmd = prevDateYmd.empty() ? CurrentDateYmd() : prevDateYmd;
+            }
+        }
+        if (st->weekdayDirty || st->dateEnabledDirty) {
+            t.weekdayEnabled = IsChecked(st->weekdayEnabled);
+            t.weeklyEveryday = t.weekdayEnabled && IsEverydayChecked(st);
+            if (!t.weekdayEnabled) {
+                t.weekday = -1;
+                t.weekdayMask = 0;
+            } else if (t.weeklyEveryday) {
+                t.weekday = -1;
+                t.weekdayMask = 0;
+            } else {
+                t.weekdayMask = ReadWeekdayMaskFromChecks(st);
+                t.weekday = FirstWeekdayFromMask(t.weekdayMask);
+            }
         }
 
-        t.timeEnabled = IsChecked(st->timeEnabled);
-        if (!t.timeEnabled) {
-            t.timeOfDaySec = 0;
-        } else {
+        if (st->timeEnabledDirty) {
+            t.timeEnabled = IsChecked(st->timeEnabled);
+        }
+        if (t.timeEnabled && (st->timeOfDayDirty || st->timeEnabledDirty)) {
             const std::wstring tod = TrimWide(GetEditText(st->timeOfDay));
             if (tod.empty()) {
-                t.timeOfDaySec = 0;
+                if (t.timeOfDaySec < 0) t.timeOfDaySec = 0;
             } else {
                 int sec = -1;
                 if (ParseTimeOfDay(tod, sec)) t.timeOfDaySec = sec;
-                else t.timeOfDaySec = 0;
+                else if (t.timeOfDaySec < 0) t.timeOfDaySec = 0;
             }
         }
-        t.hotkey = ComposeHotkeyString(st);
+        const int modSel = static_cast<int>(SendMessageW(st->hotkeyMod, CB_GETCURSEL, 0, 0));
+        const int keySel = static_cast<int>(SendMessageW(st->hotkeyKey, CB_GETCURSEL, 0, 0));
+        if (st->hotkeyDirty) {
+            if (modSel >= 0 && keySel >= 0) {
+                t.hotkey = ComposeHotkeyString(st);
+            }
+        }
     }
 
     if (!WriteIniInt(iniPath, L"TCycle", L"PollSec", st->config.pollSec) ||
@@ -961,6 +1016,12 @@ bool SaveAllToIni(WindowState* st, std::wstring& err) {
     }
     st->actionPathDirty = false;
     st->actionCwdDirty = false;
+    st->dateEnabledDirty = false;
+    st->dateValueDirty = false;
+    st->weekdayDirty = false;
+    st->timeEnabledDirty = false;
+    st->timeOfDayDirty = false;
+    st->hotkeyDirty = false;
     return true;
 }
 
@@ -1114,7 +1175,7 @@ void InitializeCombos(WindowState* st) {
         SendMessageW(st->hotkeyMod, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(m.label));
     }
     for (const auto& k : HotkeyKeyOptions()) {
-        SendMessageW(st->hotkeyKey, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(k.label));
+        SendMessageW(st->hotkeyKey, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(k.label.c_str()));
     }
 }
 
@@ -1239,9 +1300,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 
         st->grpHotkey = createBtn(0, Tr(st, L"trigger_hotkey_only", L"hotkey_only").c_str(), detailX + 164, detailY + 162, 344, 50, BS_GROUPBOX);
         createStatic(Tr(st, L"label_hotkey", L"Hotkey").c_str(), detailX + 174, detailY + 182, 50, 20);
-        st->hotkeyMod = CreateWindowExW(WS_EX_CLIENTEDGE, L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST,
+        st->hotkeyMod = CreateWindowExW(WS_EX_CLIENTEDGE, L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | WS_VSCROLL | CBS_DROPDOWNLIST,
             detailX + 228, detailY + 178, 110, 220, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kCtrlHotkeyMod)), nullptr, nullptr);
-        st->hotkeyKey = CreateWindowExW(WS_EX_CLIENTEDGE, L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST,
+        st->hotkeyKey = CreateWindowExW(WS_EX_CLIENTEDGE, L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | WS_VSCROLL | CBS_DROPDOWNLIST,
             detailX + 348, detailY + 178, 110, 220, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kCtrlHotkeyKey)), nullptr, nullptr);
         SendMessageW(st->hotkeyMod, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
         SendMessageW(st->hotkeyKey, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
@@ -1355,14 +1416,20 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             (id == kCtrlTimeEnabled) ||
             (id == kCtrlWeekdayEveryday);
         if (conditionClick && code == BN_CLICKED) {
+            if (id == kCtrlDateEnabled) st->dateEnabledDirty = true;
+            if (id == kCtrlWeekdayEnabled || id == kCtrlWeekdayEveryday) st->weekdayDirty = true;
+            if (id == kCtrlTimeEnabled) st->timeEnabledDirty = true;
             if (HasTriggerEnabled(st, tcyc::TriggerType::WeeklyTime)) {
                 if (id == kCtrlDateEnabled && IsChecked(st->dateEnabled)) {
                     SetChecked(st->weekdayEnabled, false);
+                    st->weekdayDirty = true;
                 } else if (id == kCtrlWeekdayEnabled && IsChecked(st->weekdayEnabled)) {
                     SetChecked(st->dateEnabled, false);
+                    st->dateEnabledDirty = true;
                 }
                 if (!IsChecked(st->timeEnabled)) {
                     SetChecked(st->timeEnabled, true);
+                    st->timeEnabledDirty = true;
                 }
                 if (id == kCtrlDateEnabled || id == kCtrlWeekdayEnabled || id == kCtrlTimeEnabled) {
                     EnsureAtLeastOneDateConditionChecked(st, id);
@@ -1389,6 +1456,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             (id == kCtrlHotkeyKey && code == CBN_SELCHANGE);
 
         if (realtimeChange) {
+            if ((id >= kCtrlWeekdaySun && id <= kCtrlWeekdaySat) && code == BN_CLICKED) st->weekdayDirty = true;
+            if (id == kCtrlDateValue && code == EN_KILLFOCUS) st->dateValueDirty = true;
+            if (id == kCtrlTimeOfDay && code == EN_KILLFOCUS) st->timeOfDayDirty = true;
+            if ((id == kCtrlHotkeyMod && code == CBN_SELCHANGE) || (id == kCtrlHotkeyKey && code == CBN_SELCHANGE)) st->hotkeyDirty = true;
             PersistRealtime(st, false);
             return 0;
         }

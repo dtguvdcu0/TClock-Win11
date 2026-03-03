@@ -6,6 +6,8 @@
 
 #include "tclock.h"
 
+#define IDC_ETC_EXIT_EXTENSIONS_ON_EXIT 49001
+
 static void OnInit(HWND hDlg);
 static void OnApply(HWND hDlg);
 static void OnUpdate(HWND hDlg);
@@ -31,6 +33,49 @@ int selectedThermalZone = 0;
 static HFONT hfontb;
 
 BOOL b_TempAvailable = TRUE;
+
+static void EnsureExitExtensionsOnExitControl(HWND hDlg)
+{
+	HWND hCtrl = GetDlgItem(hDlg, IDC_ETC_EXIT_EXTENSIONS_ON_EXIT);
+	if (!hCtrl)
+	{
+		const wchar_t* text = (Language_Offset == LANGUAGE_OFFSET_JAPANESE)
+			? L"TClock終了時に拡張機能も終了させる"
+			: L"Exit extensions when TClock exits";
+		hCtrl = CreateWindowW(L"BUTTON", text,
+			WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX | WS_TABSTOP,
+			9, 188, 210, 11, hDlg,
+			(HMENU)(INT_PTR)IDC_ETC_EXIT_EXTENSIONS_ON_EXIT, g_hInst, NULL);
+	}
+	if (hCtrl)
+	{
+		RECT rcBase = { 0 }, rc2 = { 0 }, rc3 = { 0 }, rcClient = { 0 };
+		HWND h1 = GetDlgItem(hDlg, IDC_ETC_TCYCLE_INTEGRATION);
+		HWND h2 = GetDlgItem(hDlg, IDC_ETC_TCALENDAR_INTEGRATION);
+		HWND h3 = GetDlgItem(hDlg, IDC_ETC_TCAPTURE_INTEGRATION);
+		int x = 9, y = 188, w = 210;
+		GetClientRect(hDlg, &rcClient);
+		if (h1 && GetWindowRect(h1, &rcBase))
+		{
+			MapWindowPoints(NULL, hDlg, (POINT*)&rcBase, 2);
+			x = rcBase.left;
+			if (h2 && GetWindowRect(h2, &rc2)) {
+				MapWindowPoints(NULL, hDlg, (POINT*)&rc2, 2);
+				if (rc2.bottom > rcBase.bottom) rcBase.bottom = rc2.bottom;
+			}
+			if (h3 && GetWindowRect(h3, &rc3)) {
+				MapWindowPoints(NULL, hDlg, (POINT*)&rc3, 2);
+				if (rc3.bottom > rcBase.bottom) rcBase.bottom = rc3.bottom;
+			}
+			y = rcBase.bottom + 6;
+			w = rcClient.right - x - 6;
+			if (w < 120) w = 120;
+		}
+		SetWindowPos(hCtrl, NULL, x, y, w, 11, SWP_NOZORDER | SWP_NOACTIVATE);
+		HFONT hFont = (HFONT)SendMessage(hDlg, WM_GETFONT, 0, 0);
+		if (hFont) SendMessage(hCtrl, WM_SETFONT, (WPARAM)hFont, TRUE);
+	}
+}
 
 /*------------------------------------------------
 　「バージョン情報」ページ用ダイアログプロシージャ
@@ -102,8 +147,11 @@ static void OnInit(HWND hDlg)
 	CheckDlgButton(hDlg, IDC_USE_SUBCLKS, GetMyRegLong(NULL, "EnableOnSubDisplay", TRUE));
 
 	CheckDlgButton(hDlg, IDC_ETC_SHOWTRAYICON, GetMyRegLong(NULL, "ShowTrayIcon", TRUE));
+	CheckDlgButton(hDlg, IDC_ETC_TCYCLE_INTEGRATION, GetMyRegLong("TCycle", "Enable", 0));
 	CheckDlgButton(hDlg, IDC_ETC_TCALENDAR_INTEGRATION, GetMyRegLong("TCalendar", "Enable", 0));
 	CheckDlgButton(hDlg, IDC_ETC_TCAPTURE_INTEGRATION, GetMyRegLong("TCapture", "Enable", 0));
+	EnsureExitExtensionsOnExitControl(hDlg);
+	CheckDlgButton(hDlg, IDC_ETC_EXIT_EXTENSIONS_ON_EXIT, GetMyRegLong("ETC", "ExitExtensionsOnTClockExit", 0));
 	//CheckDlgButton(hDlg, IDC_ETC_SHOWTRAYICON, TRUE);
 	//EnableDlgItem(hDlg, IDC_ETC_SHOWTRAYICON, FALSE);
 
@@ -128,7 +176,7 @@ static void OnInit(HWND hDlg)
 
 		if (Language_Offset == LANGUAGE_OFFSET_JAPANESE) {
 			wchar_t tempStr[64];
-			wsprintfW(tempStr, L"現在値: %d ℃", tempInt % 200);
+		wsprintfW(tempStr, L"\x73FE\x5728\x306E\x30C7\x30FC\x30BF: %d \x2103", tempInt % 200);
 			SetDlgItemTextW(hDlg, IDC_LABEL_CURRENT_TEMP, tempStr);
 		}
 		else {
@@ -146,7 +194,7 @@ static void OnInit(HWND hDlg)
 
 		if (Language_Offset == LANGUAGE_OFFSET_JAPANESE) {
 			wchar_t tempStr[64];
-			wsprintfW(tempStr, L"取得不可");
+			wsprintfW(tempStr, L"\x53D6\x5F97\x4E0D\x53EF");
 			SetDlgItemTextW(hDlg, IDC_LABEL_CURRENT_TEMP, tempStr);
 		}
 		else {
@@ -185,7 +233,7 @@ static void OnUpdate(HWND hDlg)
 
 	if (Language_Offset == LANGUAGE_OFFSET_JAPANESE) {
 		wchar_t tempStr[64];
-		wsprintfW(tempStr, L"現在値: %d ℃", tempInt % 200);
+		wsprintfW(tempStr, L"\x73FE\x5728\x306E\x30C7\x30FC\x30BF: %d \x2103", tempInt % 200);
 		SetDlgItemTextW(hDlg, IDC_LABEL_CURRENT_TEMP, tempStr);
 	}
 	else {
@@ -213,8 +261,11 @@ static void OnApply(HWND hDlg)
 	SetMyRegLong(NULL, "ShowTrayIcon", bTemp);
 	CreateTClockTrayIcon(bTemp);
 
+	SetMyRegLong("TCycle", "Enable", IsDlgButtonChecked(hDlg, IDC_ETC_TCYCLE_INTEGRATION));
+
 	SetMyRegLong("TCalendar", "Enable", IsDlgButtonChecked(hDlg, IDC_ETC_TCALENDAR_INTEGRATION));
 	SetMyRegLong("TCapture", "Enable", IsDlgButtonChecked(hDlg, IDC_ETC_TCAPTURE_INTEGRATION));
+	SetMyRegLong("ETC", "ExitExtensionsOnTClockExit", IsDlgButtonChecked(hDlg, IDC_ETC_EXIT_EXTENSIONS_ON_EXIT));
 
 	SetMyRegLong("ETC", "SelectedThermalZone", selectedThermalZone);
 

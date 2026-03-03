@@ -107,6 +107,7 @@ static LONG GetTCalendarAlertEnableConfig(void);
 static void GetTCalendarPathConfig(char* outPath, int outPathLen);
 static void LaunchTCalendarAlertIfEnabled(void);
 static void EnsureTCalendarConfigDefaults(void);
+static void TerminateExtensionsOnExplicitExitIfNeeded(void);
 
 static UINT s_uTaskbarRestart = 0;
 static BOOL bcontractTimer = FALSE;
@@ -162,6 +163,7 @@ BOOL b_HideClockPolicyApplied = FALSE;
 BOOL b_HideClockPolicyWasEnabled = FALSE;
 BOOL b_SkipHideClockRestore = FALSE;
 BOOL b_IgnoreTaskbarRestartForHideClock = FALSE;
+BOOL g_ExitRequestedFromMenu = FALSE;
 
 
 /*-------------------------------------------------------
@@ -542,6 +544,17 @@ static void LaunchTCalendarAlertIfEnabled(void)
 
     CloseHandle(pi.hThread);
     CloseHandle(pi.hProcess);
+}
+
+static void TerminateExtensionsOnExplicitExitIfNeeded(void)
+{
+    if (!g_ExitRequestedFromMenu) return;
+    if (!GetMyRegLong("ETC", "ExitExtensionsOnTClockExit", 0)) return;
+
+    ShellExecuteW(NULL, L"open", L"taskkill.exe", L"/F /IM TCycle.exe /T", NULL, SW_HIDE);
+    ShellExecuteW(NULL, L"open", L"taskkill.exe", L"/F /IM TCalendar.exe /T", NULL, SW_HIDE);
+    ShellExecuteW(NULL, L"open", L"taskkill.exe", L"/F /IM TCapture.exe /T", NULL, SW_HIDE);
+    if (b_DebugLog) WriteDebug_New2("[exemain.c] ExitExtensionsOnTClockExit applied.");
 }
 
 
@@ -1355,6 +1368,8 @@ void TerminateTClock(HWND hwnd)
 	KillTimer(hwnd, IDTIMER_MAIN);
 	KillTimer(hwnd, IDTIMER_CREATE);
 	KillTimer(hwnd, IDTIMER_ZOMBIECHECK);
+	TerminateExtensionsOnExplicitExitIfNeeded();
+	g_ExitRequestedFromMenu = FALSE;
 
 	if (bcontractTimer)
 	{
@@ -1400,6 +1415,8 @@ void TerminateTClockFromDLL(HWND hwnd)
 	KillTimer(hwnd, IDTIMER_MAIN);
 	KillTimer(hwnd, IDTIMER_CREATE);
 	KillTimer(hwnd, IDTIMER_ZOMBIECHECK);
+	TerminateExtensionsOnExplicitExitIfNeeded();
+	g_ExitRequestedFromMenu = FALSE;
 
 	if (bcontractTimer)
 	{

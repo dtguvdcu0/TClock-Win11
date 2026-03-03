@@ -1,11 +1,17 @@
 @echo off
 setlocal
 
-set CONFIG=%1
+set CONFIG=%~1
 if "%CONFIG%"=="" set CONFIG=Release
 
-set BUILD_DIR=%2
+set BUILD_DIR=%~2
 if "%BUILD_DIR%"=="" set BUILD_DIR=build
+
+if not "%3"=="" (
+    echo ERROR: build.bat no longer accepts a verify argument.
+    echo Use build_verify.bat for build + runtime verification.
+    exit /b 1
+)
 
 set GENERATOR=
 if not "%GENERATOR_OVERRIDE%"=="" set GENERATOR=%GENERATOR_OVERRIDE%
@@ -65,6 +71,11 @@ if exist "%SCRIPT_DIR%TCycle.ini" (
         popd
         exit /b 1
     )
+)
+
+if exist "%SCRIPT_DIR%lang" (
+    if not exist "%DEPLOY_DIR%\tcyc\lang" mkdir "%DEPLOY_DIR%\tcyc\lang"
+    xcopy /e /i /y "%SCRIPT_DIR%lang" "%DEPLOY_DIR%\tcyc\lang" >nul
 )
 
 echo Build succeeded. Deployed artifact: %DEPLOY_DIR%\TCycle.exe.

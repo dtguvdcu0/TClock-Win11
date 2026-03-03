@@ -126,6 +126,8 @@ struct WindowState {
 
     int selectedTask = -1;
     bool suppressEvents = false;
+    bool actionPathDirty = false;
+    bool actionCwdDirty = false;
 };
 
 std::string ToLowerAscii(std::string s) {
@@ -408,8 +410,10 @@ std::wstring GetEditText(HWND h) {
     int len = GetWindowTextLengthW(h);
     if (len <= 0) return L"";
     std::wstring out;
-    out.resize(static_cast<size_t>(len));
-    GetWindowTextW(h, out.data(), len + 1);
+    out.resize(static_cast<size_t>(len + 1), L'\0');
+    int copied = GetWindowTextW(h, out.data(), len + 1);
+    if (copied <= 0) return L"";
+    out.resize(static_cast<size_t>(copied));
     return out;
 }
 
@@ -750,6 +754,8 @@ void LoadTaskControls(WindowState* st, int idx) {
         SetEditText(st->timeOfDay, L"00:00");
         SetHotkeyCombosFromString(st, L"");
         ApplyTriggerUiState(st);
+        st->actionPathDirty = false;
+        st->actionCwdDirty = false;
         return;
     }
     const auto& t = st->config.tasks[static_cast<size_t>(idx)];
@@ -778,6 +784,8 @@ void LoadTaskControls(WindowState* st, int idx) {
     SetHotkeyCombosFromString(st, t.hotkey);
     ApplyActionModeUi(st);
     ApplyTriggerUiState(st);
+    st->actionPathDirty = false;
+    st->actionCwdDirty = false;
 }
 
 bool SignalReloadEvent() {
@@ -811,9 +819,13 @@ bool SaveAllToIni(WindowState* st, std::wstring& err) {
         t.trigger = TriggerIndexToType(FirstTriggerFromMask(t.triggerMask));
         t.intervalSec = ParseIntOrDefault(GetEditText(st->intervalSec), (t.intervalSec > 0 ? t.intervalSec : 600), 0, 86400);
         t.actionMode = ActionModeFromIndex(static_cast<int>(SendMessageW(st->actionMode, CB_GETCURSEL, 0, 0)));
-        t.actionPath = TrimWide(GetEditText(st->actionPath));
+        if (st->actionPathDirty) {
+            t.actionPath = TrimWide(GetEditText(st->actionPath));
+        }
         t.actionArgs = L"";
-        t.actionCwd = TrimWide(GetEditText(st->actionCwd));
+        if (st->actionCwdDirty) {
+            t.actionCwd = TrimWide(GetEditText(st->actionCwd));
+        }
         t.watchdogEnabled = ((t.triggerMask & TriggerTypeToBit(tcyc::TriggerType::NonRunning)) != 0);
         t.watchdogRetrySec = ParseIntOrDefault(GetEditText(st->watchdogRetrySec), t.watchdogRetrySec, 10, 3600);
         t.watchdogMaxRetry = ParseIntOrDefault(GetEditText(st->repeatCount), (t.watchdogMaxRetry >= 0 ? t.watchdogMaxRetry : 5), 1, 1000000);
@@ -886,6 +898,12 @@ bool SaveAllToIni(WindowState* st, std::wstring& err) {
             return false;
         }
     }
+    if (!WritePrivateProfileStringW(nullptr, nullptr, nullptr, iniPath.c_str())) {
+        err = Tr(st, L"err_save_task", L"Failed to save task settings to ini.");
+        return false;
+    }
+    st->actionPathDirty = false;
+    st->actionCwdDirty = false;
     return true;
 }
 
@@ -1230,6 +1248,14 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             PersistRealtime(st, false);
             return 0;
         }
+        if (id == kCtrlActionPath && code == EN_CHANGE) {
+            st->actionPathDirty = true;
+            return 0;
+        }
+        if (id == kCtrlActionCwd && code == EN_CHANGE) {
+            st->actionCwdDirty = true;
+            return 0;
+        }
 
         const bool triggerClick =
             (id == kCtrlTriggerInterval) ||
@@ -1281,8 +1307,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             (id == kCtrlPollSec && code == EN_CHANGE) ||
             (id == kCtrlGraceSec && code == EN_CHANGE) ||
             (id == kCtrlTaskEnabled && code == BN_CLICKED) ||
-            (id == kCtrlActionPath && code == EN_CHANGE) ||
-            (id == kCtrlActionCwd && code == EN_CHANGE) ||
+            (id == kCtrlActionPath && code == EN_KILLFOCUS) ||
+            (id == kCtrlActionCwd && code == EN_KILLFOCUS) ||
             (id == kCtrlIntervalSec && code == EN_CHANGE) ||
             (id == kCtrlWatchdogRetrySec && code == EN_CHANGE) ||
             (id == kCtrlRepeatCount && code == EN_CHANGE) ||
@@ -1298,6 +1324,15 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         }
         return 0;
     }
+    case WM_CLOSE:
+        if (st && !st->suppressEvents) {
+            if (st->actionPathDirty || st->actionCwdDirty) {
+                PersistRealtime(st, false);
+            }
+            st->suppressEvents = true;
+        }
+        DestroyWindow(hwnd);
+        return 0;
     case WM_DESTROY:
         PostQuitMessage(0);
         return 0;

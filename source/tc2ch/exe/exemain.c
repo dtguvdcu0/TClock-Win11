@@ -92,6 +92,7 @@ static BOOL AddMessageFilters(void);
 static BOOL HasCommandLineOption(const wchar_t *option);
 static BOOL PrefixEqualsNoCaseW(const wchar_t* text, const wchar_t* prefix, int prefixLen);
 static int MessageBoxUtf8Strict(HWND hwnd, const char* text, const char* caption, UINT type);
+static void NormalizeSettingUtf8InPlace(char* value, int valueBytes);
 static int DecodeDialogUtf8StrictToWide(const char* utf8, wchar_t* wide, int wideCch);
 static BOOL SetHideClockPolicyValue(DWORD value);
 static BOOL IsHideClockPolicyEnabled(void);
@@ -99,6 +100,9 @@ static BOOL WaitExplorerReady(DWORD timeoutMs);
 static void RestartExplorerForHideClock(void);
 static void ApplyHideClockPolicyFlow(void);
 static void RestoreHideClockPolicyFlow(void);
+static LONG GetTCycleEnableConfig(void);
+static void GetTCyclePathConfig(char* outPath, int outPathLen);
+static void LaunchTCycleAgentIfEnabled(void);
 static LONG GetTCaptureEnableConfig(void);
 static void GetTCapturePathConfig(char* outPath, int outPathLen);
 static void SyncTCaptureIntegrationIniPath(const char* tcapExePath);
@@ -338,6 +342,65 @@ static void RestoreHideClockPolicyFlow(void)
     if (!SetHideClockPolicyValue(0)) return;
     RestartExplorerForHideClock();
     b_HideClockPolicyApplied = FALSE;
+}
+
+static LONG GetTCycleEnableConfig(void)
+{
+    LONG v = GetMyRegLong("TCycle", "Enable", -1);
+    if (v == -1) {
+        SetMyRegLong("TCycle", "Enable", 0);
+        return 0;
+    }
+    return (v != 0) ? 1 : 0;
+}
+
+static void GetTCyclePathConfig(char* outPath, int outPathLen)
+{
+    char before[MAX_PATH];
+    BOOL wasMissing = FALSE;
+    if (!outPath || outPathLen <= 0) return;
+    outPath[0] = '\0';
+
+    GetMyRegStr("TCycle", "Path", outPath, outPathLen, "");
+    if (outPath[0] == '\0') {
+        strcpy(outPath, "TCycle.exe");
+        wasMissing = TRUE;
+    }
+
+    lstrcpyn(before, outPath, (int)sizeof(before));
+    NormalizeSettingUtf8InPlace(outPath, outPathLen);
+    if (wasMissing || lstrcmp(before, outPath) != 0) {
+        SetMyRegStr("TCycle", "Path", outPath);
+    }
+}
+
+static void LaunchTCycleAgentIfEnabled(void)
+{
+    char tcycPathCfg[MAX_PATH];
+    char exePath[MAX_PATH];
+    HINSTANCE launchResult;
+
+    if (!GetTCycleEnableConfig()) return;
+
+    GetTCyclePathConfig(tcycPathCfg, MAX_PATH);
+    if (tcycPathCfg[0] == 0) strcpy(tcycPathCfg, "TCycle.exe");
+    if ((tcycPathCfg[1] == ':') || (tcycPathCfg[0] == '\\') || (tcycPathCfg[0] == '/')) {
+        strcpy(exePath, tcycPathCfg);
+    }
+    else {
+        strcpy(exePath, g_mydir);
+        add_title(exePath, tcycPathCfg);
+    }
+
+    if (!PathFileExistsUtf8Strict(exePath)) {
+        if (b_DebugLog) WriteDebug_New2("[exemain.c] TCycleEnable=1 but TCycle target was not found");
+        return;
+    }
+
+    launchResult = ShellExecuteUtf8Strict(NULL, "open", exePath, NULL, g_mydir, SW_HIDE);
+    if ((INT_PTR)launchResult <= 32 && b_DebugLog) {
+        WriteDebug_New2("[exemain.c] Failed to launch TCycle runtime");
+    }
 }
 
 static LONG GetTCaptureEnableConfig(void)
@@ -1061,6 +1124,7 @@ LRESULT CALLBACK WndProc(HWND hwnd,	UINT message, WPARAM wParam, LPARAM lParam)	
 				bcontractTimer = FALSE;							//起動タイマー動作中フラグFALSE
 				HookStart(hwnd);				// install a hook	dllmain.cの中にある。重要。タスクトレイのメッセージをフック。コア機能の起動
 				EnsureTCalendarConfigDefaults();	// seed TCalendar config keys for existing INI
+				LaunchTCycleAgentIfEnabled();	// launch TCycle runtime when enabled
 				LaunchTCaptureAgentIfEnabled();	// launch TCapture agent when enabled
 				LaunchTCalendarAlertIfEnabled();	// launch TCalendar alert runtime when enabled
 

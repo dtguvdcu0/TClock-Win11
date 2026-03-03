@@ -19,6 +19,8 @@ add_executable(TCycle WIN32
     hotkey.cpp
     log.cpp
     gui_main.cpp
+    tcycle.rc
+    ini_utf8_util.cpp
 )
 
 target_link_libraries(TCycle PRIVATE

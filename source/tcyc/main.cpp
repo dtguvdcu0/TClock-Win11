@@ -74,26 +74,21 @@ struct LaunchGuardSnapshot {
     std::unordered_map<int, bool> taskEnabledCache;
 };
 
-LaunchGuardSnapshot BuildLaunchGuardSnapshot(const tcyc::RuntimeConfig& cfg, const std::wstring& iniPath) {
+LaunchGuardSnapshot BuildLaunchGuardSnapshot(const tcyc::RuntimeConfig& cfg, bool gateOff) {
     LaunchGuardSnapshot snap{};
-    snap.gateOff = tcyc::IsTClockGateDisabled(cfg);
+    snap.gateOff = gateOff;
+    for (const auto& t : cfg.tasks) {
+        snap.taskEnabledCache.emplace(t.id, t.enabled);
+    }
     return snap;
 }
 
-bool IsRuntimeLaunchAllowed(LaunchGuardSnapshot& snap, const std::wstring& iniPath, int taskId, const wchar_t* reason) {
+bool IsRuntimeLaunchAllowed(LaunchGuardSnapshot& snap, int taskId, const wchar_t* reason) {
     auto it = snap.taskEnabledCache.find(taskId);
-    bool taskEnabledNow = false;
-    if (it == snap.taskEnabledCache.end()) {
-        wchar_t section[32] = {0};
-        swprintf_s(section, L"Task.%d", taskId);
-        taskEnabledNow = GetPrivateProfileIntW(section, L"Enabled", 1, iniPath.c_str()) != 0;
-        snap.taskEnabledCache.emplace(taskId, taskEnabledNow);
-    } else {
-        taskEnabledNow = it->second;
-    }
+    const bool taskEnabledNow = (it != snap.taskEnabledCache.end()) ? it->second : false;
 
     if (!taskEnabledNow) {
-        tcyc::LogWrite(1, L"Launch skipped: taskId=%d reason=%s disabled by runtime ini", taskId, reason);
+        tcyc::LogWrite(1, L"Launch skipped: taskId=%d reason=%s disabled by config", taskId, reason);
         return false;
     }
     if (snap.gateOff) {
@@ -127,6 +122,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     HANDLE hReloadEvent = CreateEventW(nullptr, FALSE, FALSE, kReloadEventName);
 
     tcyc::LogInit(cfg.logFile);
+    tcyc::LogSetLevel(cfg.logLevel);
     tcyc::LogWrite(1, L"TCycle boot: ini=%s", iniPath.c_str());
 
     tcyc::RuntimeState state{};
@@ -154,17 +150,39 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     bool hasPrev = false;
     std::wstring hotkeySig;
 
-    for (;;) {
+    auto applyReloadedConfig = [&]() -> bool {
         if (!tcyc::LoadRuntimeConfig(iniPath, exeDir, cfg, err)) {
             tcyc::LogWrite(0, L"Config reload failed: %s", err.c_str());
-            if (hReloadEvent) {
-                (void)WaitForSingleObject(hReloadEvent, 3000);
-            } else {
-                Sleep(3000);
-            }
-            continue;
+            return false;
         }
+        tcyc::LogSetLevel(cfg.logLevel);
 
+        const std::wstring sigNow = tcyc::BuildHotkeyConfigSignature(cfg);
+        if (sigNow != hotkeySig) {
+            std::wstring hkErr;
+            tcyc::ReloadHotkeys(cfg, hkErr);
+            hotkeySig = sigNow;
+            if (!hkErr.empty()) {
+                tcyc::LogWrite(0, L"Hotkey reload warning: %s", hkErr.c_str());
+            } else {
+                tcyc::LogWrite(1, L"Hotkey set reloaded");
+            }
+        }
+        return true;
+    };
+
+    {
+        hotkeySig = tcyc::BuildHotkeyConfigSignature(cfg);
+        std::wstring hkErr;
+        tcyc::ReloadHotkeys(cfg, hkErr);
+        if (!hkErr.empty()) {
+            tcyc::LogWrite(0, L"Hotkey reload warning: %s", hkErr.c_str());
+        } else if (!hotkeySig.empty()) {
+            tcyc::LogWrite(1, L"Hotkey set reloaded");
+        }
+    }
+
+    for (;;) {
         const bool gateOff = tcyc::IsTClockGateDisabled(cfg);
         const bool effectiveEnabled = !gateOff;
 
@@ -175,20 +193,6 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
             hasPrev = true;
         }
 
-        {
-            std::wstring sigNow = tcyc::BuildHotkeyConfigSignature(cfg);
-            if (sigNow != hotkeySig) {
-                std::wstring hkErr;
-                tcyc::ReloadHotkeys(cfg, hkErr);
-                hotkeySig = sigNow;
-                if (!hkErr.empty()) {
-                    tcyc::LogWrite(0, L"Hotkey reload warning: %s", hkErr.c_str());
-                } else {
-                    tcyc::LogWrite(1, L"Hotkey set reloaded");
-                }
-            }
-        }
-
         auto findTask = [&](int taskId) -> const tcyc::TaskConfig* {
             for (const auto& t : cfg.tasks) {
                 if (t.id == taskId) return &t;
@@ -196,7 +200,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
             return nullptr;
         };
 
-        LaunchGuardSnapshot launchGuard = BuildLaunchGuardSnapshot(cfg, iniPath);
+        LaunchGuardSnapshot launchGuard = BuildLaunchGuardSnapshot(cfg, gateOff);
 
         auto tryLaunch = [&](const tcyc::TaskConfig& task, const wchar_t* reason, bool fromWatchdog) {
             if (task.actionPath.empty()) {
@@ -243,7 +247,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
                     tcyc::LogWrite(0, L"Due task missing config: taskId=%d", d.taskId);
                     continue;
                 }
-                if (!IsRuntimeLaunchAllowed(launchGuard, iniPath, task->id, d.reason.c_str())) continue;
+                if (!IsRuntimeLaunchAllowed(launchGuard, task->id, d.reason.c_str())) continue;
                 tryLaunch(*task, d.reason.c_str(), false);
             }
 
@@ -254,7 +258,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
                     tcyc::LogWrite(0, L"Watchdog due missing config: taskId=%d", w.taskId);
                     continue;
                 }
-                if (!IsRuntimeLaunchAllowed(launchGuard, iniPath, task->id, w.reason.c_str())) continue;
+                if (!IsRuntimeLaunchAllowed(launchGuard, task->id, w.reason.c_str())) continue;
                 tryLaunch(*task, w.reason.c_str(), true);
             }
 
@@ -265,7 +269,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
                     tcyc::LogWrite(0, L"Hotkey task missing config: taskId=%d", tid);
                     continue;
                 }
-                if (!IsRuntimeLaunchAllowed(launchGuard, iniPath, task->id, L"hotkey")) continue;
+                if (!IsRuntimeLaunchAllowed(launchGuard, task->id, L"hotkey")) continue;
                 tryLaunch(*task, L"hotkey", false);
             }
         } else {
@@ -286,6 +290,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
             DWORD wr = WaitForSingleObject(hReloadEvent, waitMs);
             if (wr == WAIT_OBJECT_0) {
                 tcyc::LogWrite(1, L"Reload event received: config reload scheduled immediately");
+                (void)applyReloadedConfig();
             }
         } else {
             Sleep(waitMs);

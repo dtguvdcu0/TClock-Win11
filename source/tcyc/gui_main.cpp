@@ -1,4 +1,5 @@
 #include "gui_main.h"
+#include "ini_utf8_util.h"
 
 #include <windows.h>
 #include <commctrl.h>
@@ -59,6 +60,7 @@ constexpr int kCtrlSpinPollSec = 1041;
 constexpr int kCtrlSpinGraceSec = 1042;
 constexpr int kCtrlSpinIntervalSec = 1043;
 constexpr int kCtrlSpinRepeatCount = 1045;
+constexpr UINT_PTR kTaskListTimerId = 1;
 
 struct HotkeyModOption {
     const wchar_t* label;
@@ -241,9 +243,9 @@ std::wstring Tr(const WindowState* st, const wchar_t* id, const wchar_t* fallbac
 }
 
 std::string ReadLanguageFromIni(const std::wstring& iniPath) {
-    wchar_t buf[16] = {0};
-    GetPrivateProfileStringW(L"TCycle", L"Language", L"", buf, static_cast<DWORD>(std::size(buf)), iniPath.c_str());
-    std::wstring ws = TrimWide(buf);
+    std::wstring ws;
+    if (!tcyc::ReadIniUtf8Value(iniPath, L"TCycle", L"Language", L"", ws)) ws.clear();
+    ws = TrimWide(ws);
     if (ws == L"ja" || ws == L"JA" || ws == L"Ja" || ws == L"jA") return "ja";
     if (ws == L"en" || ws == L"EN" || ws == L"En" || ws == L"eN") return "en";
     return "en";
@@ -711,14 +713,44 @@ void SetHotkeyCombosFromString(WindowState* st, const std::wstring& hotkey) {
 bool WriteIniInt(const std::wstring& iniPath, const wchar_t* sec, const wchar_t* key, int v) {
     wchar_t buf[64] = {0};
     swprintf_s(buf, L"%d", v);
-    return !!WritePrivateProfileStringW(sec, key, buf, iniPath.c_str());
+    return tcyc::WriteIniUtf8Value(iniPath, sec ? sec : L"", key ? key : L"", buf);
+}
+
+long long UnixNowSec() {
+    FILETIME ft{};
+    GetSystemTimeAsFileTime(&ft);
+    ULARGE_INTEGER ui{};
+    ui.LowPart = ft.dwLowDateTime;
+    ui.HighPart = ft.dwHighDateTime;
+    constexpr ULONGLONG kEpochDiff = 116444736000000000ULL;
+    return static_cast<long long>((ui.QuadPart - kEpochDiff) / 10000000ULL);
+}
+
+int ReadWatchdogCountdownSec(const std::wstring& statePath, int taskId, int fallbackSec) {
+    if (statePath.empty() || taskId <= 0) return fallbackSec;
+    wchar_t section[32] = {0};
+    swprintf_s(section, L"Task.%d", taskId);
+    wchar_t buf[64] = {0};
+    GetPrivateProfileStringW(section, L"WatchdogNextRetryUnix", L"", buf, static_cast<DWORD>(std::size(buf)), statePath.c_str());
+    if (buf[0] == L'\0') return fallbackSec;
+    const long long nextRetry = _wtoi64(buf);
+    if (nextRetry <= 0) return fallbackSec;
+    long long remain = nextRetry - UnixNowSec();
+    if (remain < 0) remain = 0;
+    if (remain > 99999) remain = 99999;
+    return static_cast<int>(remain);
 }
 
 void PopulateTaskList(WindowState* st) {
     SendMessageW(st->taskList, LB_RESETCONTENT, 0, 0);
     for (const auto& t : st->config.tasks) {
         wchar_t line[256] = {0};
-        swprintf_s(line, L"Task.%d [%s] %s", t.id, t.enabled ? L"on" : L"off", t.name.c_str());
+        if (t.watchdogEnabled) {
+            const int countdown = ReadWatchdogCountdownSec(st->config.stateFile, t.id, t.watchdogRetrySec);
+            swprintf_s(line, L"[%d][%s] %s", countdown, t.enabled ? L"on" : L"off", t.name.c_str());
+        } else {
+            swprintf_s(line, L"[%s] %s", t.enabled ? L"on" : L"off", t.name.c_str());
+        }
         SendMessageW(st->taskList, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(line));
     }
     if (st->config.tasks.empty()) {
@@ -802,10 +834,28 @@ bool SaveAllToIni(WindowState* st, std::wstring& err) {
 
     st->config.pollSec = ParseIntOrDefault(GetEditText(st->pollSec), st->config.pollSec, 1, 60);
     st->config.graceSec = ParseIntOrDefault(GetEditText(st->graceSec), st->config.graceSec, 0, 300);
+    if (st->config.graceSec <= 0) st->config.graceSec = 60;
 
-    if (st->selectedTask >= 0 && st->selectedTask < static_cast<int>(st->config.tasks.size())) {
-        auto& t = st->config.tasks[static_cast<size_t>(st->selectedTask)];
-        t.enabled = (SendMessageW(st->taskEnabled, BM_GETCHECK, 0, 0) == BST_CHECKED);
+    int effectiveTaskIndex = st->selectedTask;
+    bool hasValidTaskSelection = false;
+    if (st->taskList) {
+        const int lbSel = static_cast<int>(SendMessageW(st->taskList, LB_GETCURSEL, 0, 0));
+        if (lbSel >= 0 && lbSel < static_cast<int>(st->config.tasks.size())) {
+            effectiveTaskIndex = lbSel;
+            st->selectedTask = lbSel;
+            hasValidTaskSelection = true;
+        }
+    }
+    if (effectiveTaskIndex < 0 && !st->config.tasks.empty()) {
+        effectiveTaskIndex = 0;
+        st->selectedTask = 0;
+    }
+
+    if (hasValidTaskSelection && effectiveTaskIndex >= 0 && effectiveTaskIndex < static_cast<int>(st->config.tasks.size())) {
+        auto& t = st->config.tasks[static_cast<size_t>(effectiveTaskIndex)];
+        if (st->taskEnabled) {
+            t.enabled = (SendMessageW(st->taskEnabled, BM_GETCHECK, 0, 0) == BST_CHECKED);
+        }
         if (t.name.empty()) {
             wchar_t buf[64] = {0};
             swprintf_s(buf, L"Task.%d", t.id);
@@ -822,7 +872,6 @@ bool SaveAllToIni(WindowState* st, std::wstring& err) {
         if (st->actionPathDirty) {
             t.actionPath = TrimWide(GetEditText(st->actionPath));
         }
-        t.actionArgs = L"";
         if (st->actionCwdDirty) {
             t.actionCwd = TrimWide(GetEditText(st->actionCwd));
         }
@@ -863,44 +912,52 @@ bool SaveAllToIni(WindowState* st, std::wstring& err) {
 
     if (!WriteIniInt(iniPath, L"TCycle", L"PollSec", st->config.pollSec) ||
         !WriteIniInt(iniPath, L"TCycle", L"GraceSec", st->config.graceSec) ||
-        !WritePrivateProfileStringW(L"TCycle", L"Language", Utf8ToWide(st->languageCode).c_str(), iniPath.c_str())) {
+        !tcyc::WriteIniUtf8Value(iniPath, L"TCycle", L"Language", Utf8ToWide(st->languageCode))) {
         err = Tr(st, L"err_save_global", L"Failed to save global settings to ini.");
         return false;
     }
 
+    auto setTaskSaveError = [&](const wchar_t* sec, const wchar_t* key) {
+        std::wstring base = Tr(st, L"err_save_task", L"Failed to save task settings to ini.");
+        err = base + L" [" + sec + L":" + key + L"]";
+    };
+    auto writeTaskInt = [&](const wchar_t* sec, const wchar_t* key, int value) -> bool {
+        if (WriteIniInt(iniPath, sec, key, value)) return true;
+        setTaskSaveError(sec, key);
+        return false;
+    };
+    auto writeTaskStr = [&](const wchar_t* sec, const wchar_t* key, const std::wstring& value) -> bool {
+        if (tcyc::WriteIniUtf8Value(iniPath, sec ? sec : L"", key ? key : L"", value)) return true;
+        setTaskSaveError(sec, key);
+        return false;
+    };
+
     for (const auto& t : st->config.tasks) {
         wchar_t sec[32] = {0};
         swprintf_s(sec, L"Task.%d", t.id);
-        if (!WriteIniInt(iniPath, sec, L"Enabled", t.enabled ? 1 : 0) ||
-            !WritePrivateProfileStringW(sec, L"Name", t.name.c_str(), iniPath.c_str()) ||
-            !WritePrivateProfileStringW(sec, L"TriggerTypes", TriggerMaskToString(t.triggerMask).c_str(), iniPath.c_str()) ||
-            !WritePrivateProfileStringW(sec, L"TriggerType", TriggerToString(t.trigger).c_str(), iniPath.c_str()) ||
-            !WriteIniInt(iniPath, sec, L"IntervalSec", t.intervalSec) ||
-            !WritePrivateProfileStringW(sec, L"ActionMode", t.actionMode.c_str(), iniPath.c_str()) ||
-            !WritePrivateProfileStringW(sec, L"ActionPath", t.actionPath.c_str(), iniPath.c_str()) ||
-            !WritePrivateProfileStringW(sec, L"ActionArgs", t.actionArgs.c_str(), iniPath.c_str()) ||
-            !WritePrivateProfileStringW(sec, L"ActionCwd", t.actionCwd.c_str(), iniPath.c_str()) ||
-            !WriteIniInt(iniPath, sec, L"WatchdogEnabled", t.watchdogEnabled ? 1 : 0) ||
-            !WriteIniInt(iniPath, sec, L"WatchdogRetrySec", t.watchdogRetrySec) ||
-            !WriteIniInt(iniPath, sec, L"WatchdogMaxRetry", t.watchdogMaxRetry) ||
-            !WritePrivateProfileStringW(sec, L"StartDateTime", t.startDateTime.c_str(), iniPath.c_str()) ||
-            !WriteIniInt(iniPath, sec, L"RepeatEverySec", t.repeatEverySec) ||
-            !WriteIniInt(iniPath, sec, L"DateEnabled", t.dateEnabled ? 1 : 0) ||
-            !WritePrivateProfileStringW(sec, L"Date", t.dateYmd.c_str(), iniPath.c_str()) ||
-            !WriteIniInt(iniPath, sec, L"WeekdayEnabled", t.weekdayEnabled ? 1 : 0) ||
-            !WriteIniInt(iniPath, sec, L"EveryDay", t.weeklyEveryday ? 1 : 0) ||
-            !WritePrivateProfileStringW(sec, L"Weekdays", (t.weeklyEveryday ? L"everyday" : WeekdayMaskToString(t.weekdayMask)).c_str(), iniPath.c_str()) ||
-            !WritePrivateProfileStringW(sec, L"Weekday", WeekdayToString(t.weekday).c_str(), iniPath.c_str()) ||
-            !WriteIniInt(iniPath, sec, L"TimeEnabled", t.timeEnabled ? 1 : 0) ||
-            !WritePrivateProfileStringW(sec, L"TimeOfDay", TimeOfDayToString(t.timeOfDaySec).c_str(), iniPath.c_str()) ||
-            !WritePrivateProfileStringW(sec, L"Hotkey", t.hotkey.c_str(), iniPath.c_str())) {
-            err = Tr(st, L"err_save_task", L"Failed to save task settings to ini.");
-            return false;
-        }
-    }
-    if (!WritePrivateProfileStringW(nullptr, nullptr, nullptr, iniPath.c_str())) {
-        err = Tr(st, L"err_save_task", L"Failed to save task settings to ini.");
-        return false;
+        if (!writeTaskInt(sec, L"Enabled", t.enabled ? 1 : 0)) return false;
+        if (!writeTaskStr(sec, L"Name", t.name)) return false;
+        if (!writeTaskStr(sec, L"TriggerTypes", TriggerMaskToString(t.triggerMask))) return false;
+        if (!writeTaskStr(sec, L"TriggerType", TriggerToString(t.trigger))) return false;
+        if (!writeTaskInt(sec, L"IntervalSec", t.intervalSec)) return false;
+        if (!writeTaskStr(sec, L"ActionMode", t.actionMode)) return false;
+        if (!writeTaskStr(sec, L"ActionPath", t.actionPath)) return false;
+        if (!writeTaskStr(sec, L"ActionArgs", t.actionArgs)) return false;
+        if (!writeTaskStr(sec, L"ActionCwd", t.actionCwd)) return false;
+        if (!writeTaskInt(sec, L"WatchdogEnabled", t.watchdogEnabled ? 1 : 0)) return false;
+        if (!writeTaskInt(sec, L"WatchdogRetrySec", t.watchdogRetrySec)) return false;
+        if (!writeTaskInt(sec, L"WatchdogMaxRetry", t.watchdogMaxRetry)) return false;
+        if (!writeTaskStr(sec, L"StartDateTime", t.startDateTime)) return false;
+        if (!writeTaskInt(sec, L"RepeatEverySec", t.repeatEverySec)) return false;
+        if (!writeTaskInt(sec, L"DateEnabled", t.dateEnabled ? 1 : 0)) return false;
+        if (!writeTaskStr(sec, L"Date", t.dateYmd)) return false;
+        if (!writeTaskInt(sec, L"WeekdayEnabled", t.weekdayEnabled ? 1 : 0)) return false;
+        if (!writeTaskInt(sec, L"EveryDay", t.weeklyEveryday ? 1 : 0)) return false;
+        if (!writeTaskStr(sec, L"Weekdays", (t.weeklyEveryday ? L"everyday" : WeekdayMaskToString(t.weekdayMask)))) return false;
+        if (!writeTaskStr(sec, L"Weekday", WeekdayToString(t.weekday))) return false;
+        if (!writeTaskInt(sec, L"TimeEnabled", t.timeEnabled ? 1 : 0)) return false;
+        if (!writeTaskStr(sec, L"TimeOfDay", TimeOfDayToString(t.timeOfDaySec))) return false;
+        if (!writeTaskStr(sec, L"Hotkey", t.hotkey)) return false;
     }
     st->actionPathDirty = false;
     st->actionCwdDirty = false;
@@ -1202,8 +1259,21 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         InitializeCombos(st);
         ApplyActionModeUi(st);
         RefreshAll(st);
+        SetTimer(hwnd, kTaskListTimerId, 1000, nullptr);
         return 0;
     }
+    case WM_TIMER:
+        if (wParam == kTaskListTimerId && st && !st->suppressEvents) {
+            const int prevSel = st->selectedTask;
+            st->suppressEvents = true;
+            PopulateTaskList(st);
+            if (prevSel >= 0 && prevSel < static_cast<int>(st->config.tasks.size())) {
+                st->selectedTask = prevSel;
+                SendMessageW(st->taskList, LB_SETCURSEL, st->selectedTask, 0);
+            }
+            st->suppressEvents = false;
+        }
+        return 0;
     case WM_COMMAND: {
         if (!st) return 0;
         const int id = LOWORD(wParam);
@@ -1325,10 +1395,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         return 0;
     }
     case WM_CLOSE:
+        KillTimer(hwnd, kTaskListTimerId);
         if (st && !st->suppressEvents) {
-            if (st->actionPathDirty || st->actionCwdDirty) {
-                PersistRealtime(st, false);
-            }
+            PersistRealtime(st, false);
             st->suppressEvents = true;
         }
         DestroyWindow(hwnd);

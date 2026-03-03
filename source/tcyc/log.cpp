@@ -11,6 +11,7 @@ namespace {
 CRITICAL_SECTION g_logCs;
 bool g_logCsInit = false;
 std::wstring g_logPath;
+int g_logLevel = 1;
 const unsigned long long kRotateBytes = 1024ull * 1024ull;
 const int kRotateCount = 5;
 
@@ -97,10 +98,23 @@ void LogInit(const std::wstring& logPath) {
     LeaveCriticalSection(&g_logCs);
 }
 
+void LogSetLevel(int level) {
+    EnsureCs();
+    EnterCriticalSection(&g_logCs);
+    if (level < 0) level = 0;
+    if (level > 3) level = 3;
+    g_logLevel = level;
+    LeaveCriticalSection(&g_logCs);
+}
+
 void LogWrite(int level, const wchar_t* fmt, ...) {
     EnsureCs();
     EnterCriticalSection(&g_logCs);
     if (g_logPath.empty()) {
+        LeaveCriticalSection(&g_logCs);
+        return;
+    }
+    if (level > g_logLevel) {
         LeaveCriticalSection(&g_logCs);
         return;
     }

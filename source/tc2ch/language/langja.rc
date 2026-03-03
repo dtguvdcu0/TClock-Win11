@@ -827,7 +827,7 @@ BEGIN
     LTEXT           "TClock左側背景色オフセット",IDC_STATIC,14,109,126,9,NOT WS_GROUP
     EDITTEXT        1912,155,107,27,13,ES_RIGHT | ES_AUTOHSCROLL
     CONTROL         "",1913,"msctls_updown32",UDS_SETBUDDYINT | UDS_ALIGNRIGHT | UDS_AUTOBUDDY | UDS_ARROWKEYS,183,106,10,14
-    CONTROL         "??????????????????/Explorer????",IDC_ETC_ADJUST_WIN11_SMALLTASKBAR,
+    CONTROL         "Hide original clock / Explorer restart",IDC_ETC_ADJUST_WIN11_SMALLTASKBAR,
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,13,127,176,11
     CONTROL         "タスクバーを左揃えにする (TClock再起動後に有効)",IDC_WIN11_TASKBAR_ALIGN_LEFT,
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,13,142,196,11
@@ -1153,10 +1153,13 @@ BEGIN
     LTEXT           "*機種によっては固定値しか取得できません。",-1,62,100,142,11
     CONTROL         "タスクトレイにTClock-Win11のアイコンを表示する",IDC_ETC_SHOWTRAYICON,
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,9,41,182,11
-    CONTROL         "TCalendarの連携を有効化",IDC_ETC_TCALENDAR_INTEGRATION,
-                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,9,165,182,11
-    CONTROL         "TCaptureの連携を有効化",IDC_ETC_TCAPTURE_INTEGRATION,
-                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,9,180,182,11
+    LTEXT           "拡張機能の有効化",IDC_STATIC,9,152,98,8
+    CONTROL         "TCycle",IDC_ETC_TCYCLE_INTEGRATION,
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,9,165,52,11
+    CONTROL         "TCalendar",IDC_ETC_TCALENDAR_INTEGRATION,
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,72,165,60,11
+    CONTROL         "TCapture",IDC_ETC_TCAPTURE_INTEGRATION,
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,137,165,60,11
 END
 
 IDD_PAGE_ETC_ENG DIALOGEX 0, 0, 210, 200
@@ -1174,10 +1177,13 @@ BEGIN
     LTEXT           "*Availability is device-dependent.",-1,70,84,134,11
     CONTROL         "Show TClock-WIn10 TaskTray Icon",IDC_ETC_SHOWTRAYICON,
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,8,28,182,11
-    CONTROL         "Enable TCalendar integration",IDC_ETC_TCALENDAR_INTEGRATION,
-                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,8,165,182,11
-    CONTROL         "Enable TCapture integration",IDC_ETC_TCAPTURE_INTEGRATION,
-                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,8,180,182,11
+    LTEXT           "Enable Extensions",IDC_STATIC,8,152,96,8
+    CONTROL         "TCycle",IDC_ETC_TCYCLE_INTEGRATION,
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,8,165,52,11
+    CONTROL         "TCalendar",IDC_ETC_TCALENDAR_INTEGRATION,
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,70,165,60,11
+    CONTROL         "TCapture",IDC_ETC_TCAPTURE_INTEGRATION,
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,134,165,60,11
 END
 
 
@@ -1836,7 +1842,7 @@ BEGIN
     IDS_EXEDLLFILE2         "Program(*.exe, *.dll)"
     IDS_NOICON2             "No Icon Found"
     IDS_START2              "Start"
-    IDS_STARTUPLINK2        "Create TClock shortcut in Startup?"
+    IDS_STARTUPLINK2        "Create TClock shortcut in Startup."
     IDS_HELP2CH2            "http://tclock2ch.no.land.to/"
     IDS_LANGDLLFILE2        "TClock Language Module(tclang-win11.dll)"
     IDS_NOTFOUNDCLOCK2      "Failed to modify clock"
@@ -2018,6 +2024,7 @@ BEGIN
     IDS_TCAP_CAPTURE_ENG    "TCapture Capture (Default)"
     IDS_TCAP_SETTING_ENG    "TCapture Settings"
     IDS_TCAL_OPEN_ENG       "TCalendar(β)"
+    IDS_TCYC_OPEN_ENG       "TCycle"
 END
 
 STRINGTABLE
@@ -2026,6 +2033,7 @@ BEGIN
     IDS_TCAP_CAPTURE        "TCapture キャプチャー（既定）"
     IDS_TCAP_SETTING        "TCapture 設定"
     IDS_TCAL_OPEN           "TCalendar(β)"
+    IDS_TCYC_OPEN           "TCycle"
 END
 
 #endif    // 日本語 (日本) resources

@@ -45,6 +45,7 @@ BOOL b_MenuItems_Initialized = FALSE;
 
 extern BOOL b_NormalLog;
 extern BOOL b_SkipHideClockRestore;
+extern BOOL g_ExitRequestedFromMenu;
 
 
 #define TC_MENU_CUSTOM_MAX_ITEMS 64
@@ -59,6 +60,7 @@ extern BOOL b_SkipHideClockRestore;
 #define IDC_TCAP_SETTINGS 45990
 #define IDC_TCAP_CAPTURE 45989
 #define IDC_TCAL_OPEN 45991
+#define IDC_TCYC_OPEN 45992
 
 typedef struct {
 	UINT id;
@@ -574,6 +576,16 @@ static LONG tc_menu_get_tcalendar_enable(void)
 	return (v != 0) ? 1 : 0;
 }
 
+static LONG tc_menu_get_tcycle_enable(void)
+{
+	LONG v = GetMyRegLong("TCycle", "Enable", -1);
+	if (v == -1) {
+		SetMyRegLong("TCycle", "Enable", 0);
+		return 0;
+	}
+	return (v != 0) ? 1 : 0;
+}
+
 static void tc_menu_normalize_setting_utf8_in_place(char* value, int valueBytes)
 {
 	WCHAR wbuf[MAX_PATH];
@@ -635,6 +647,22 @@ static void tc_menu_get_tcalendar_path(char* outPath, int outPathLen)
 	lstrcpyn(before, outPath, (int)sizeof(before));
 	tc_menu_normalize_setting_utf8_in_place(outPath, outPathLen);
 	if (wasMissing || lstrcmp(before, outPath) != 0) SetMyRegStr("TCalendar", "Path", outPath);
+}
+
+static void tc_menu_get_tcycle_path(char* outPath, int outPathLen)
+{
+	char before[MAX_PATH];
+	BOOL wasMissing = FALSE;
+	if (!outPath || outPathLen <= 0) return;
+	outPath[0] = '\0';
+	GetMyRegStr("TCycle", "Path", outPath, outPathLen, "");
+	if (outPath[0] == '\0') {
+		strcpy(outPath, "TCycle.exe");
+		wasMissing = TRUE;
+	}
+	lstrcpyn(before, outPath, (int)sizeof(before));
+	tc_menu_normalize_setting_utf8_in_place(outPath, outPathLen);
+	if (wasMissing || lstrcmp(before, outPath) != 0) SetMyRegStr("TCycle", "Path", outPath);
 }
 
 typedef struct {
@@ -701,7 +729,7 @@ static void tc_menu_launch_with_delay(const char* file, const char* args, const 
 
 static BOOL tc_menu_is_fixed_id(UINT id)
 {
-	return id == IDC_SHOWPROP || id == IDC_SHOWDIR || id == IDC_RESTART || id == IDC_EXIT || id == IDC_REMOVE_DRIVE0 || id == IDC_TCAP_SETTINGS || id == IDC_TCAP_CAPTURE || id == IDC_TCAL_OPEN;
+	return id == IDC_SHOWPROP || id == IDC_SHOWDIR || id == IDC_RESTART || id == IDC_EXIT || id == IDC_REMOVE_DRIVE0 || id == IDC_TCAP_SETTINGS || id == IDC_TCAP_CAPTURE || id == IDC_TCAL_OPEN || id == IDC_TCYC_OPEN;
 }
 
 static int tc_menu_find_position_by_id(HMENU hMenu, UINT id)
@@ -1928,9 +1956,10 @@ void OnContextMenu(HWND hwnd, HWND hwndClicked, int xPos, int yPos)
 	}
 	tc_menu_dynamic_reset();
 	{
+		LONG tcycleEnabled = tc_menu_get_tcycle_enable();
 		LONG tcalendarEnabled = tc_menu_get_tcalendar_enable();
 		LONG tcaptureEnabled = tc_menu_get_tcapture_enable();
-		if (tcalendarEnabled || tcaptureEnabled) {
+		if (tcycleEnabled || tcalendarEnabled || tcaptureEnabled) {
 			int anchorPos = tc_menu_find_position_by_id(hPopupMenu, IDC_REMOVE_DRIVE0);
 			if (anchorPos < 0) {
 				anchorPos = tc_menu_find_position_by_id(hPopupMenu, IDC_SHOWPROP);
@@ -1950,6 +1979,12 @@ void OnContextMenu(HWND hwnd, HWND hwndClicked, int xPos, int yPos)
 				/* Insert launcher block before removable-drive slot to keep Property block stable. */
 				InsertMenu(hPopupMenu, insertPos, MF_BYPOSITION | MF_SEPARATOR, 0, NULL);
 				itemPos = insertPos + 1;
+				if (tcycleEnabled) {
+					char tcycleLabel[128];
+					lstrcpyn(tcycleLabel, MyStringUTF8(IDS_TCYC_OPEN), (int)sizeof(tcycleLabel));
+					tc_menu_insert_string_utf8(hPopupMenu, itemPos, MF_BYPOSITION | MF_STRING, IDC_TCYC_OPEN, tcycleLabel);
+					itemPos++;
+				}
 				if (tcalendarEnabled) {
 					char tcalendarLabel[128];
 					lstrcpyn(tcalendarLabel, MyStringUTF8(IDS_TCAL_OPEN), (int)sizeof(tcalendarLabel));
@@ -2246,6 +2281,27 @@ void OnTClockCommand(HWND hwnd, WORD wID, WORD wCode)
 			if (b_DebugLog) WriteDebug_New2("[menu.c][OnTClockCommand] IDC_SHOWDIR received");
 			ShellExecuteUtf8Strict(g_hwndMain, NULL, g_mydir, NULL, NULL, SW_SHOWNORMAL);
 			break;
+		case IDC_TCYC_OPEN: // TCycle open
+		{
+			char tcycPathCfg[MAX_PATH];
+			char tcycPath[MAX_PATH];
+			if (b_DebugLog) WriteDebug_New2("[menu.c][OnTClockCommand] IDC_TCYC_OPEN received");
+			tc_menu_get_tcycle_path(tcycPathCfg, MAX_PATH);
+			if (tcycPathCfg[0] == 0) strcpy(tcycPathCfg, "TCycle.exe");
+			if ((tcycPathCfg[1] == ':') || (tcycPathCfg[0] == '\\') || (tcycPathCfg[0] == '/')) {
+				strcpy(tcycPath, tcycPathCfg);
+			}
+			else {
+				strcpy(tcycPath, g_mydir);
+				add_title(tcycPath, tcycPathCfg);
+			}
+			if (PathFileExistsUtf8Strict(tcycPath)) {
+				const char* tcycSettingsParams = tc_menu_is_english_ui() ? "--settings --lang en" : "--settings --lang ja";
+				/* Open settings explicitly so the action is visible even when daemon singleton is already running. */
+				tc_menu_launch_with_delay(tcycPath, tcycSettingsParams, g_mydir, SW_SHOWNORMAL);
+			}
+			return;
+		}
 		case IDC_TCAL_OPEN: // TCalendar open
 		{
 			char tcalPathCfg[MAX_PATH];
@@ -2313,6 +2369,7 @@ void OnTClockCommand(HWND hwnd, WORD wID, WORD wCode)
 			if (b_NormalLog) WriteNormalLog("Exit TClock-Win10 from right-click menu.");
 			/* Avoid Explorer restart side-effects on explicit user exit. */
 			b_SkipHideClockRestore = TRUE;
+			g_ExitRequestedFromMenu = TRUE;
 			PostMessage(g_hwndMain, WM_CLOSE, 0, 0);
 //			PostMessage(g_hwndClock, WM_COMMAND, IDC_EXIT, 0);
 			return;
@@ -2322,6 +2379,7 @@ void OnTClockCommand(HWND hwnd, WORD wID, WORD wCode)
 			if (b_NormalLog) WriteNormalLog("Restart TClock-Win10 from right-click menu.");
 			/* Avoid Explorer restart side-effects on explicit user restart. */
 			b_SkipHideClockRestore = TRUE;
+			g_ExitRequestedFromMenu = FALSE;
 			PostMessage(g_hwndClock, WM_COMMAND, IDC_RESTART, 0);
 			return;
 		case IDC_POWERPNL:	//Added by TTTT
@@ -2553,12 +2611,15 @@ void InitializeMenuItems(void)
 	tc_menu_modify_string_utf8(hPopupMenu, IDC_REMOVE_DRIVE0, MF_BYCOMMAND, IDC_REMOVE_DRIVE0, MyStringUTF8(IDS_ABOUTRMVDRV));
 	tc_menu_modify_string_utf8(hPopupMenu, IDC_SHOWDIR, MF_BYCOMMAND, IDC_SHOWDIR, MyStringUTF8(IDS_OPENTCFOLDER));
 	{
+		char tcycleLabel[128];
 		char tcalendarLabel[128];
 		char tcapCaptureLabel[128];
 		char tcapSettingsLabel[128];
+		lstrcpyn(tcycleLabel, MyStringUTF8(IDS_TCYC_OPEN), (int)sizeof(tcycleLabel));
 		lstrcpyn(tcalendarLabel, MyStringUTF8(IDS_TCAL_OPEN), (int)sizeof(tcalendarLabel));
 		lstrcpyn(tcapCaptureLabel, MyStringUTF8(IDS_TCAP_CAPTURE), (int)sizeof(tcapCaptureLabel));
 		lstrcpyn(tcapSettingsLabel, MyStringUTF8(IDS_TCAP_SETTING), (int)sizeof(tcapSettingsLabel));
+		tc_menu_modify_string_utf8(hPopupMenu, IDC_TCYC_OPEN, MF_BYCOMMAND, IDC_TCYC_OPEN, tcycleLabel);
 		tc_menu_modify_string_utf8(hPopupMenu, IDC_TCAL_OPEN, MF_BYCOMMAND, IDC_TCAL_OPEN, tcalendarLabel);
 		tc_menu_modify_string_utf8(hPopupMenu, IDC_TCAP_CAPTURE, MF_BYCOMMAND, IDC_TCAP_CAPTURE, tcapCaptureLabel);
 		tc_menu_modify_string_utf8(hPopupMenu, IDC_TCAP_SETTINGS, MF_BYCOMMAND, IDC_TCAP_SETTINGS, tcapSettingsLabel);

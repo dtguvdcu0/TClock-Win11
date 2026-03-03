@@ -65,7 +65,12 @@ if errorlevel 1 (
 )
 
 if exist "%SCRIPT_DIR%TCycle.ini" (
-    copy /y "%SCRIPT_DIR%TCycle.ini" "%DEPLOY_DIR%\TCycle.ini" >nul
+    if not exist "%DEPLOY_DIR%\TCycle.ini" (
+        copy /y "%SCRIPT_DIR%TCycle.ini" "%DEPLOY_DIR%\TCycle.ini" >nul
+        echo INFO: Deployed default TCycle.ini ^(destination did not exist^).
+    ) else (
+        echo INFO: Preserved existing runtime TCycle.ini ^(no overwrite^).
+    )
     call :assert_debug_off "%DEPLOY_DIR%\TCycle.ini"
     if errorlevel 1 (
         popd

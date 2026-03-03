@@ -214,8 +214,7 @@ int RunAlertMode(const tcalendar::HostConfig& config) {
         return 1;
     }
 
-    int window_minutes = config.alert_scan_window_minutes;
-    if (window_minutes < 30) window_minutes = 30;
+    int window_minutes = 60;
 
     int tick_seconds = config.alert_dispatch_tick_seconds;
     if (tick_seconds < 60) tick_seconds = 60;
@@ -387,7 +386,7 @@ void EnsureTCalendarIni(const std::filesystem::path& exe_dir) {
     WritePrivateProfileStringW(L"TCalendar", L"UiPanelRightWidth", L"420", ini_path.wstring().c_str());
     WritePrivateProfileStringW(L"TCalendar", L"UiCalendarHeight", L"420", ini_path.wstring().c_str());
     WritePrivateProfileStringW(L"TCalendar", L"UiShowTaskPanel", L"1", ini_path.wstring().c_str());
-    WritePrivateProfileStringW(L"TCalendar", L"AlertScanWindowMinutes", L"120", ini_path.wstring().c_str());
+    WritePrivateProfileStringW(L"TCalendar", L"AlertScanWindowMinutes", L"60", ini_path.wstring().c_str());
     WritePrivateProfileStringW(L"TCalendar", L"AlertDispatchTickSeconds", L"60", ini_path.wstring().c_str());
     WritePrivateProfileStringW(L"TCalendar", L"AlertRefreshMinutes", L"10", ini_path.wstring().c_str());
     WritePrivateProfileStringW(L"TCalendar", L"AlertGraceMinutes", L"1", ini_path.wstring().c_str());
@@ -432,7 +431,7 @@ void LoadHostConfigFromIni(const std::filesystem::path& exe_dir, bool smoke_mode
     ensure_ini_key(L"UiPanelRightWidth", L"420");
     ensure_ini_key(L"UiCalendarHeight", L"420");
     ensure_ini_key(L"UiShowTaskPanel", L"1");
-    ensure_ini_key(L"AlertScanWindowMinutes", L"120");
+    ensure_ini_key(L"AlertScanWindowMinutes", L"60");
     ensure_ini_key(L"AlertDispatchTickSeconds", L"60");
     ensure_ini_key(L"AlertRefreshMinutes", L"10");
     ensure_ini_key(L"AlertGraceMinutes", L"1");
@@ -535,10 +534,7 @@ void LoadHostConfigFromIni(const std::filesystem::path& exe_dir, bool smoke_mode
         out_config.alert_sound_path = buf;
     }
 
-    int alert_scan_window_minutes = GetPrivateProfileIntW(L"TCalendar", L"AlertScanWindowMinutes", 120, ini_file.c_str());
-    if (alert_scan_window_minutes < 30) alert_scan_window_minutes = 30;
-    if (alert_scan_window_minutes > 1440) alert_scan_window_minutes = 1440;
-    out_config.alert_scan_window_minutes = alert_scan_window_minutes;
+    out_config.alert_scan_window_minutes = 60;
 
     int alert_dispatch_tick_seconds = GetPrivateProfileIntW(L"TCalendar", L"AlertDispatchTickSeconds", 60, ini_file.c_str());
     if (alert_dispatch_tick_seconds < 30) alert_dispatch_tick_seconds = 30;

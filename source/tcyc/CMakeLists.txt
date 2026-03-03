@@ -18,6 +18,7 @@ add_executable(TCycle WIN32
     watchdog.cpp
     hotkey.cpp
     log.cpp
+    gui_main.cpp
 )
 
 target_link_libraries(TCycle PRIVATE

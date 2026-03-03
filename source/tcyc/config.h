@@ -11,6 +11,7 @@ enum class TriggerType {
     WeeklyTime,
     Startup,
     HotkeyOnly,
+    NonRunning,
     Unknown
 };
 
@@ -19,9 +20,11 @@ struct TaskConfig {
     bool enabled = false;
     std::wstring name;
     TriggerType trigger = TriggerType::Unknown;
+    int triggerMask = 0; // bit0=interval bit1=datetime_interval_limited bit2=weekly_time bit3=startup bit4=hotkey_only bit5=non_running
     std::wstring actionPath;
     std::wstring actionArgs;
     std::wstring actionCwd;
+    std::wstring actionMode = L"program"; // program | command | shell
     bool singleInstance = true;
     bool watchdogEnabled = false;
     int watchdogRetrySec = 10;
@@ -31,23 +34,25 @@ struct TaskConfig {
     std::wstring startDateTime;
     int repeatEverySec = 0;
     int repeatCount = 0;
+    bool weeklyEveryday = false;
     int weekday = -1; // 0=Sun ... 6=Sat
+    int weekdayMask = 0; // bit0=Sun ... bit6=Sat
+    bool dateEnabled = false;
+    std::wstring dateYmd;
+    bool weekdayEnabled = true;
+    bool timeEnabled = true;
     int timeOfDaySec = -1;
     std::wstring hotkey;
 };
 
 struct RuntimeConfig {
-    bool enabled = true;
     int pollSec = 1;
     int graceSec = 60;
     int logLevel = 1;
     std::wstring logFile;
     std::wstring stateFile;
     bool debugForceCmdlineReadFail = false; // Test-only: force args-read fallback mode when matching by path.
-    bool useTClockIniGate = true;
     std::wstring tclockIniPath;
-    std::wstring tclockGateSection = L"TCycle";
-    std::wstring tclockGateKey = L"Enabled";
     std::vector<TaskConfig> tasks;
 };
 

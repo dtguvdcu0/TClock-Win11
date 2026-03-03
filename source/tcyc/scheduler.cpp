@@ -24,8 +24,48 @@ bool ParseLocalDateTime(const std::wstring& s, long long& outUnix) {
     return true;
 }
 
+bool ParseDateYmd(const std::wstring& s, int& y, int& mo, int& d) {
+    y = 0;
+    mo = 0;
+    d = 0;
+    if (swscanf_s(s.c_str(), L"%d-%d-%d", &y, &mo, &d) != 3) return false;
+    if (y < 1970 || y > 9999) return false;
+    if (mo < 1 || mo > 12) return false;
+    if (d < 1 || d > 31) return false;
+    return true;
+}
+
+long long ComputeWindowStart(long long lastCheckUnix, long long nowUnix, int graceSec) {
+    long long windowStart = lastCheckUnix;
+    if (graceSec > 0) {
+        const long long graceStart = nowUnix - graceSec;
+        if (windowStart < graceStart) windowStart = graceStart;
+    }
+    return windowStart;
+}
+
 bool IsDueWindow(long long dueUnix, long long lastCheckUnix, long long nowUnix, int graceSec) {
-    return (dueUnix > lastCheckUnix) && (dueUnix <= (nowUnix + graceSec));
+    const long long windowStart = ComputeWindowStart(lastCheckUnix, nowUnix, graceSec);
+    return (dueUnix > windowStart) && (dueUnix <= nowUnix);
+}
+
+int TriggerBit(TriggerType t) {
+    switch (t) {
+    case TriggerType::Interval: return (1 << 0);
+    case TriggerType::DateTimeIntervalLimited: return (1 << 1);
+    case TriggerType::WeeklyTime: return (1 << 2);
+    case TriggerType::Startup: return (1 << 3);
+    case TriggerType::HotkeyOnly: return (1 << 4);
+    case TriggerType::NonRunning: return (1 << 5);
+    default: return 0;
+    }
+}
+
+bool HasTrigger(const TaskConfig& t, TriggerType tr) {
+    if (t.triggerMask != 0) {
+        return (t.triggerMask & TriggerBit(tr)) != 0;
+    }
+    return t.trigger == tr;
 }
 
 } // namespace
@@ -40,45 +80,97 @@ std::vector<DueTask> EvaluateDueTasks(const RuntimeConfig& cfg, RuntimeState& st
 
         bool due = false;
         std::wstring reason;
-        if (t.trigger == TriggerType::Startup) {
+        if (HasTrigger(t, TriggerType::Startup)) {
             if (!st.startupDone) {
                 due = true;
                 reason = L"startup";
             }
-        } else if (t.trigger == TriggerType::Interval) {
+        }
+
+        if (!due && HasTrigger(t, TriggerType::Interval)) {
             if (t.intervalSec > 0) {
-                long long dueUnix = (st.lastFireUnix > 0) ? (st.lastFireUnix + t.intervalSec) : nowUnix;
+                long long dueUnix = nowUnix;
+                if (st.lastFireUnix > 0) {
+                    dueUnix = st.lastFireUnix + t.intervalSec;
+                    const long long windowStart = ComputeWindowStart(lastCheck, nowUnix, cfg.graceSec);
+                    if (dueUnix <= windowStart) {
+                        const long long missedSteps = ((windowStart - dueUnix) / t.intervalSec) + 1;
+                        dueUnix += missedSteps * t.intervalSec;
+                    }
+                }
                 if (IsDueWindow(dueUnix, lastCheck, nowUnix, cfg.graceSec)) {
                     due = true;
                     reason = L"interval";
                 }
             }
-        } else if (t.trigger == TriggerType::DateTimeIntervalLimited) {
+        }
+
+        if (!due && HasTrigger(t, TriggerType::DateTimeIntervalLimited)) {
             if (t.repeatCount > 0 && st.firedCount < t.repeatCount && t.repeatEverySec > 0) {
                 long long baseUnix = 0;
                 if (ParseLocalDateTime(t.startDateTime, baseUnix)) {
-                    long long dueUnix = baseUnix + static_cast<long long>(st.firedCount) * t.repeatEverySec;
+                    int evalCount = st.firedCount;
+                    long long dueUnix = baseUnix + static_cast<long long>(evalCount) * t.repeatEverySec;
+                    const long long windowStart = ComputeWindowStart(lastCheck, nowUnix, cfg.graceSec);
+                    if (dueUnix <= windowStart) {
+                        const long long advance = ((windowStart - dueUnix) / t.repeatEverySec) + 1;
+                        evalCount += static_cast<int>(advance);
+                        if (evalCount > t.repeatCount) evalCount = t.repeatCount;
+                        dueUnix = baseUnix + static_cast<long long>(evalCount) * t.repeatEverySec;
+                        // Keep scheduler evaluation pure; state is only consumed at launch boundary.
+                    }
                     if (IsDueWindow(dueUnix, lastCheck, nowUnix, cfg.graceSec)) {
                         due = true;
                         reason = L"datetime_interval_limited";
                     }
                 }
             }
-        } else if (t.trigger == TriggerType::WeeklyTime) {
-            if (t.weekday >= 0 && t.weekday <= 6 && t.timeOfDaySec >= 0) {
-                std::tm nowTm{};
-                time_t nowT = static_cast<time_t>(nowUnix);
-                localtime_s(&nowTm, &nowT);
-                if (nowTm.tm_wday == t.weekday) {
-                    std::tm dueTm = nowTm;
-                    dueTm.tm_hour = t.timeOfDaySec / 3600;
-                    dueTm.tm_min = (t.timeOfDaySec % 3600) / 60;
-                    dueTm.tm_sec = t.timeOfDaySec % 60;
-                    long long dueUnix = static_cast<long long>(mktime(&dueTm));
-                    if (IsDueWindow(dueUnix, lastCheck, nowUnix, cfg.graceSec)) {
-                        due = true;
-                        reason = L"weekly_time";
-                    }
+        }
+
+        if (!due && HasTrigger(t, TriggerType::WeeklyTime)) {
+            std::tm nowTm{};
+            time_t nowT = static_cast<time_t>(nowUnix);
+            localtime_s(&nowTm, &nowT);
+
+            bool dateOk = true;
+            if (t.dateEnabled) {
+                int y = 0, mo = 0, d = 0;
+                if (!ParseDateYmd(t.dateYmd, y, mo, d)) {
+                    dateOk = false;
+                } else {
+                    dateOk = (y == (nowTm.tm_year + 1900) && mo == (nowTm.tm_mon + 1) && d == nowTm.tm_mday);
+                }
+            }
+
+            bool weekdayOk = true;
+            if (t.weekdayEnabled) {
+                bool allDays = t.weeklyEveryday;
+                int weekdayMask = t.weekdayMask;
+                if (!allDays && weekdayMask == 0 && t.weekday >= 0 && t.weekday <= 6) {
+                    weekdayMask = (1 << t.weekday);
+                }
+                weekdayOk = allDays || ((weekdayMask & (1 << nowTm.tm_wday)) != 0);
+            }
+
+            bool timeOk = true;
+            int dueSec = 0;
+            if (t.timeEnabled) {
+                if (t.timeOfDaySec < 0) {
+                    timeOk = false;
+                } else {
+                    dueSec = t.timeOfDaySec;
+                }
+            }
+
+            if (dateOk && weekdayOk && timeOk) {
+                std::tm dueTm = nowTm;
+                dueTm.tm_hour = dueSec / 3600;
+                dueTm.tm_min = (dueSec % 3600) / 60;
+                dueTm.tm_sec = dueSec % 60;
+                long long dueUnix = static_cast<long long>(mktime(&dueTm));
+                if (IsDueWindow(dueUnix, lastCheck, nowUnix, cfg.graceSec)) {
+                    due = true;
+                    reason = L"weekly_time";
                 }
             }
         }

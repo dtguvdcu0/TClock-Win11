@@ -159,8 +159,11 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         return 0;
     }
 
-    bool prevEffectiveEnabled = false;
-    bool hasPrev = false;
+    const bool gateOffAtBoot = tcyc::IsTClockGateDisabled(cfg);
+    const bool effectiveEnabled = !gateOffAtBoot;
+    tcyc::LogWrite(1, L"EffectiveEnabled fixed at boot: gateOff=%d effective=%d",
+        gateOffAtBoot ? 1 : 0, effectiveEnabled ? 1 : 0);
+
     long long lastHeartbeatUnix = 0;
     int lastHeartbeatMode = -1; // -1=unknown, 0=disabled, 1=active
     std::wstring hotkeySig;
@@ -220,28 +223,23 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     }
 
     for (;;) {
-        const bool gateOff = tcyc::IsTClockGateDisabled(cfg);
-        const bool effectiveEnabled = !gateOff;
-
-        if (!hasPrev || prevEffectiveEnabled != effectiveEnabled) {
-            tcyc::LogWrite(1, L"EffectiveEnabled changed: gateOff=%d effective=%d",
-                gateOff ? 1 : 0, effectiveEnabled ? 1 : 0);
-            prevEffectiveEnabled = effectiveEnabled;
-            hasPrev = true;
-        }
-
         auto findTask = [&](int taskId) -> const tcyc::TaskConfig* {
             auto it = lanes.byId.find(taskId);
             if (it == lanes.byId.end()) return nullptr;
             return it->second;
         };
 
-        LaunchGuardSnapshot launchGuard = BuildLaunchGuardSnapshot(cfg, gateOff);
+        LaunchGuardSnapshot launchGuard = BuildLaunchGuardSnapshot(cfg, gateOffAtBoot);
         const long long loopNow = tcyc::UnixNow();
 
         auto tryLaunch = [&](const tcyc::TaskConfig& task, const wchar_t* reason, bool fromWatchdog) {
             if (task.actionPath.empty()) {
-                tcyc::LogWrite(0, L"Launch skipped: taskId=%d reason=%s actionPath empty", task.id, reason);
+                if (wcscmp(reason, L"startup") == 0) {
+                    state.tasks[task.id].startupDone = true;
+                    tcyc::LogWrite(1, L"Startup skipped once: taskId=%d actionPath empty", task.id);
+                } else {
+                    tcyc::LogWrite(0, L"Launch skipped: taskId=%d reason=%s actionPath empty", task.id, reason);
+                }
                 return;
             }
             tcyc::ProcessMatchMode mode = tcyc::ProcessMatchMode::None;

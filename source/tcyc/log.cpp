@@ -114,7 +114,7 @@ void LogWrite(int level, const wchar_t* fmt, ...) {
         LeaveCriticalSection(&g_logCs);
         return;
     }
-    if (level > g_logLevel) {
+    if (g_logLevel <= 0 || level > g_logLevel) {
         LeaveCriticalSection(&g_logCs);
         return;
     }

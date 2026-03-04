@@ -1,5 +1,6 @@
 #include "gui_main.h"
 #include "ini_utf8_util.h"
+#include "runner.h"
 
 #include <windows.h>
 #include <commctrl.h>
@@ -35,6 +36,7 @@ constexpr int kCtrlStatus = 1018;
 constexpr int kCtrlTaskAdd = 1019;
 constexpr int kCtrlTaskDelete = 1020;
 constexpr int kCtrlTaskRename = 1021;
+constexpr int kCtrlTaskTestRun = 1026;
 constexpr int kCtrlActionMode = 1022;
 constexpr int kCtrlActionPath = 1023;
 constexpr int kCtrlActionArgs = 1024;
@@ -98,6 +100,7 @@ struct WindowState {
     HWND taskAdd = nullptr;
     HWND taskDelete = nullptr;
     HWND taskRename = nullptr;
+    HWND taskTestRun = nullptr;
 
     HWND taskEnabled = nullptr;
     HWND singleInstance = nullptr;
@@ -1290,6 +1293,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         createBtn(0, Tr(st, L"group_schedule", L"Schedule").c_str(), detailX, detailY, detailW, detailH, BS_GROUPBOX);
         st->taskEnabled = createBtn(kCtrlTaskEnabled, Tr(st, L"label_task_enabled", L"Task Enabled").c_str(), detailX + 12, detailY + 22, 118, 22, BS_AUTOCHECKBOX);
         st->singleInstance = createBtn(kCtrlSingleInstance, Tr(st, L"label_single_instance", L"No duplicate launch").c_str(), detailX + 126, detailY + 22, 170, 22, BS_AUTOCHECKBOX);
+        st->taskTestRun = createBtn(kCtrlTaskTestRun, Tr(st, L"button_test_run", L"Test Run").c_str(), detailX + 300, detailY + 22, 90, 22, BS_PUSHBUTTON);
         createStatic(Tr(st, L"label_trigger", L"Trigger").c_str(), colLabelX, detailY + 52, 64, 20);
         st->triggerChecks[3] = createBtn(kCtrlTriggerStartup, Tr(st, L"trigger_startup", L"startup").c_str(), colInputX, detailY + 48, 94, 22, BS_AUTOCHECKBOX);
         st->triggerChecks[0] = createBtn(kCtrlTriggerInterval, Tr(st, L"trigger_interval", L"interval").c_str(), colInputX + 100, detailY + 48, 78, 22, BS_AUTOCHECKBOX);
@@ -1411,6 +1415,59 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 PersistRealtime(st, true);
                 RefreshAll(st);
             }
+            return 0;
+        }
+        if (id == kCtrlTaskTestRun && code == BN_CLICKED) {
+            std::wstring saveErr;
+            if (!SaveAllToIni(st, saveErr)) {
+                SetStatus(st, saveErr);
+                MessageBoxW(hwnd, saveErr.c_str(), Tr(st, L"app_name", L"TCycle").c_str(), MB_ICONERROR);
+                return 0;
+            }
+            (void)SignalReloadEvent();
+
+            int idx = st->selectedTask;
+            if (st->taskList) {
+                const int lbSel = static_cast<int>(SendMessageW(st->taskList, LB_GETCURSEL, 0, 0));
+                if (lbSel >= 0 && lbSel < static_cast<int>(st->config.tasks.size())) {
+                    idx = lbSel;
+                    st->selectedTask = lbSel;
+                }
+            }
+            if (idx < 0 || idx >= static_cast<int>(st->config.tasks.size())) {
+                SetStatus(st, Tr(st, L"status_test_run_no_task", L"No task selected."));
+                return 0;
+            }
+
+            tcyc::TaskConfig runTask = st->config.tasks[static_cast<size_t>(idx)];
+            if (runTask.actionMode == L"program") {
+                runTask.actionPath = tcyc::ResolvePathFromExe(st->exeDir, runTask.actionPath);
+            }
+            if (!runTask.actionCwd.empty()) {
+                runTask.actionCwd = tcyc::ResolvePathFromExe(st->exeDir, runTask.actionCwd);
+            }
+
+            if (runTask.actionPath.empty()) {
+                SetStatus(st, Tr(st, L"status_test_run_path_empty", L"Test run skipped: action path is empty."));
+                return 0;
+            }
+            if (runTask.singleInstance) {
+                tcyc::ProcessMatchMode mode = tcyc::ProcessMatchMode::None;
+                if (tcyc::IsTaskProcessRunning(runTask, &mode, st->config.debugForceCmdlineReadFail)) {
+                    SetStatus(st, Tr(st, L"status_test_run_already_running", L"Test run skipped: already running."));
+                    return 0;
+                }
+            }
+
+            std::wstring launchErr;
+            if (!tcyc::LaunchTask(runTask, launchErr)) {
+                std::wstring failMsg = Tr(st, L"status_test_run_failed_prefix", L"Test run failed: ");
+                failMsg += launchErr;
+                SetStatus(st, failMsg);
+                MessageBoxW(hwnd, failMsg.c_str(), Tr(st, L"app_name", L"TCycle").c_str(), MB_ICONERROR);
+                return 0;
+            }
+            SetStatus(st, Tr(st, L"status_test_run_ok", L"Test run launched."));
             return 0;
         }
         if (id == kCtrlActionMode && code == CBN_SELCHANGE) {

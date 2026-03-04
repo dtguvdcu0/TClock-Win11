@@ -49,6 +49,7 @@ static BOOL tc_is_customvars_utf8hex_entry(const char* entry)
 	if (tc_has_casei_suffix(entry, "JsonValue")) return TRUE;
 	if (tc_has_casei_suffix(entry, "JsonDefault")) return TRUE;
 	if (tc_has_casei_suffix(entry, "ExecCommand")) return TRUE;
+	if (tc_has_casei_suffix(entry, "ExecCwd")) return TRUE;
 	return FALSE;
 }
 

@@ -237,7 +237,9 @@ void LoadTasks(const std::wstring& iniPath, const std::wstring& exeDir, std::vec
         if (t.actionPath.empty() && t.name.empty() && t.trigger == TriggerType::Unknown && !t.enabled) {
             continue;
         }
-        t.actionPath = ResolvePathFromExe(exeDir, t.actionPath);
+        if (t.actionMode == L"program") {
+            t.actionPath = ResolvePathFromExe(exeDir, t.actionPath);
+        }
         if (!t.actionCwd.empty()) t.actionCwd = ResolvePathFromExe(exeDir, t.actionCwd);
         outTasks.push_back(t);
     }

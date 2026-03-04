@@ -363,8 +363,10 @@ static void GetTCyclePathConfig(char* outPath, int outPathLen)
 
     GetMyRegStr("TCycle", "Path", outPath, outPathLen, "");
     if (outPath[0] == '\0') {
-        strcpy(outPath, "TCycle.exe");
+        strcpy(outPath, "plugins\\TCycle.exe");
         wasMissing = TRUE;
+    } else if (lstrcmpi(outPath, "TCycle.exe") == 0) {
+        strcpy(outPath, "plugins\\TCycle.exe");
     }
 
     lstrcpyn(before, outPath, (int)sizeof(before));
@@ -383,7 +385,7 @@ static void LaunchTCycleAgentIfEnabled(void)
     if (!GetTCycleEnableConfig()) return;
 
     GetTCyclePathConfig(tcycPathCfg, MAX_PATH);
-    if (tcycPathCfg[0] == 0) strcpy(tcycPathCfg, "TCycle.exe");
+    if (tcycPathCfg[0] == 0) strcpy(tcycPathCfg, "plugins\\TCycle.exe");
     if ((tcycPathCfg[1] == ':') || (tcycPathCfg[0] == '\\') || (tcycPathCfg[0] == '/')) {
         strcpy(exePath, tcycPathCfg);
     }
@@ -433,14 +435,17 @@ static void GetTCapturePathConfig(char* outPath, int outPathLen)
 
     GetMyRegStr("TCapture", "Path", outPath, outPathLen, "");
     if (outPath[0] != '\0') {
+        if (lstrcmpi(outPath, "TCapture.exe") == 0) {
+            strcpy(outPath, "plugins\\TCapture.exe");
+        }
         lstrcpyn(before, outPath, (int)sizeof(before));
         NormalizeSettingUtf8InPlace(outPath, outPathLen);
         if (lstrcmp(before, outPath) != 0) SetMyRegStr("TCapture", "Path", outPath);
         return;
     }
 
-    GetMyRegStr("ETC", "TCapturePath", legacyPath, MAX_PATH, "TCapture.exe");
-    if (legacyPath[0] == '\0') strcpy(legacyPath, "TCapture.exe");
+    GetMyRegStr("ETC", "TCapturePath", legacyPath, MAX_PATH, "plugins\\TCapture.exe");
+    if (legacyPath[0] == '\0') strcpy(legacyPath, "plugins\\TCapture.exe");
     NormalizeSettingUtf8InPlace(legacyPath, (int)sizeof(legacyPath));
     lstrcpyn(outPath, legacyPath, outPathLen);
     SetMyRegStr("TCapture", "Path", outPath);
@@ -482,7 +487,9 @@ static void EnsureTCalendarConfigDefaults(void)
 
     GetMyRegStr("TCalendar", "Path", tcalPath, MAX_PATH, "");
     if (tcalPath[0] == '\0') {
-        SetMyRegStr("TCalendar", "Path", "TCalendar.exe");
+        SetMyRegStr("TCalendar", "Path", "plugins\\TCalendar.exe");
+    } else if (lstrcmpi(tcalPath, "TCalendar.exe") == 0) {
+        SetMyRegStr("TCalendar", "Path", "plugins\\TCalendar.exe");
     }
 }
 
@@ -496,7 +503,7 @@ static void LaunchTCaptureAgentIfEnabled(void)
     if (!GetTCaptureEnableConfig()) return;
 
     GetTCapturePathConfig(tcapPathCfg, MAX_PATH);
-    if (tcapPathCfg[0] == 0) strcpy(tcapPathCfg, "TCapture.exe");
+    if (tcapPathCfg[0] == 0) strcpy(tcapPathCfg, "plugins\\TCapture.exe");
     if ((tcapPathCfg[1] == ':') || (tcapPathCfg[0] == '\\') || (tcapPathCfg[0] == '/')) {
         strcpy(exePath, tcapPathCfg);
     }
@@ -546,7 +553,9 @@ static void GetTCalendarPathConfig(char* outPath, int outPathLen)
 
     GetMyRegStr("TCalendar", "Path", outPath, outPathLen, "");
     if (outPath[0] == '\0') {
-        strcpy(outPath, "TCalendar.exe");
+        strcpy(outPath, "plugins\\TCalendar.exe");
+    } else if (lstrcmpi(outPath, "TCalendar.exe") == 0) {
+        strcpy(outPath, "plugins\\TCalendar.exe");
     }
 
     lstrcpyn(before, outPath, (int)sizeof(before));
@@ -569,7 +578,7 @@ static void LaunchTCalendarAlertIfEnabled(void)
     if (!GetTCalendarAlertEnableConfig()) return;
 
     GetTCalendarPathConfig(tcalPathCfg, MAX_PATH);
-    if (tcalPathCfg[0] == 0) strcpy(tcalPathCfg, "TCalendar.exe");
+    if (tcalPathCfg[0] == 0) strcpy(tcalPathCfg, "plugins\\TCalendar.exe");
 
     if ((tcalPathCfg[1] == ':') || (tcalPathCfg[0] == '\\\\') || (tcalPathCfg[0] == '/')) {
         strcpy(exePath, tcalPathCfg);
@@ -2112,10 +2121,10 @@ void CreateDefaultIniFile_Win10(const wchar_t* fnameW)
 		SetMyRegLong("ETC", "SelectedThermalZone", 0);
 		SetMyRegLong("ETC", "UseHideClockPolicyFlow", 1);
 		SetMyRegLong("TCapture", "Enable", 0);
-		SetMyRegStr("TCapture", "Path", "TCapture.exe");
+		SetMyRegStr("TCapture", "Path", "plugins\\TCapture.exe");
 		SetMyRegLong("TCalendar", "Enable", 0);
 		SetMyRegLong("TCalendar", "Alart", 1);
-		SetMyRegStr("TCalendar", "Path", "TCalendar.exe");
+		SetMyRegStr("TCalendar", "Path", "plugins\\TCalendar.exe");
 		SetMyRegLong("Chime", "EnableChime", 0);
 		SetMyRegLong("Chime", "OffsetChimeSec", 0);
 		SetMyRegLong("Chime", "ChimeHourStart", 0);

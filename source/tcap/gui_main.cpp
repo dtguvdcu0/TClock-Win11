@@ -482,7 +482,12 @@ fs::path resolveTClockIniPath(AppState& app) {
     }
 
     if (resolved.empty()) {
-        resolved = app.exeDir / "tclock-win11.ini";
+        fs::path exeLocal = app.exeDir / "tclock-win11.ini";
+        if (fs::exists(exeLocal)) {
+            resolved = exeLocal;
+        } else {
+            resolved = app.exeDir.parent_path() / "tclock-win11.ini";
+        }
     }
 
     app.tclockIniPath = resolved;

@@ -26,7 +26,7 @@ if "%GENERATOR%"=="" (
 set ARCH=x64
 set "SCRIPT_DIR=%~dp0"
 set "WV2_ROOT=%SCRIPT_DIR%third_party\webview2"
-set "DEPLOY_DIR=%SCRIPT_DIR%..\x64\%CONFIG%"
+set "DEPLOY_DIR=%SCRIPT_DIR%..\x64\%CONFIG%\plugins"
 
 if not exist "%WV2_ROOT%\include\WebView2.h" (
     echo ERROR: Bundled WebView2 header missing: %WV2_ROOT%\include\WebView2.h

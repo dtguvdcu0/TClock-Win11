@@ -5,7 +5,7 @@ set CONFIG=%~1
 if "%CONFIG%"=="" set CONFIG=Release
 
 set "SCRIPT_DIR=%~dp0"
-set "DEPLOY_DIR=%SCRIPT_DIR%..\x64\%CONFIG%"
+set "DEPLOY_DIR=%SCRIPT_DIR%..\x64\%CONFIG%\plugins"
 
 if not exist "%DEPLOY_DIR%\TCycle.exe" (
     echo ERROR: TCycle.exe not found in %DEPLOY_DIR%

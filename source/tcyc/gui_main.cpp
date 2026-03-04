@@ -531,10 +531,16 @@ void SetEnabled(HWND h, bool enabled) {
 
 void ApplyTriggerUiState(WindowState* st) {
     if (!st) return;
+    const int actionModeIdx = static_cast<int>(SendMessageW(st->actionMode, CB_GETCURSEL, 0, 0));
+    const bool supportsNonRunning = (actionModeIdx == 0);
+    if (!supportsNonRunning && IsChecked(st->triggerChecks[5])) {
+        SetChecked(st->triggerChecks[5], false);
+        EnsureAtLeastOneTriggerChecked(st, 3);
+    }
     const bool isInterval = HasTriggerEnabled(st, tcyc::TriggerType::Interval);
     const bool isWeekly = HasTriggerEnabled(st, tcyc::TriggerType::WeeklyTime);
     const bool isHotkeyOnly = HasTriggerEnabled(st, tcyc::TriggerType::HotkeyOnly);
-    const bool isNonRunning = HasTriggerEnabled(st, tcyc::TriggerType::NonRunning);
+    const bool isNonRunning = supportsNonRunning && HasTriggerEnabled(st, tcyc::TriggerType::NonRunning);
     if (isWeekly) {
         if (IsChecked(st->dateEnabled) && IsChecked(st->weekdayEnabled)) {
             SetChecked(st->weekdayEnabled, false);
@@ -563,7 +569,8 @@ void ApplyTriggerUiState(WindowState* st) {
     SetEnabled(st->hotkeyMod, isHotkeyOnly);
     SetEnabled(st->hotkeyKey, isHotkeyOnly);
 
-    SetEnabled(st->grpNonRunning, true);
+    SetEnabled(st->triggerChecks[5], supportsNonRunning);
+    SetEnabled(st->grpNonRunning, supportsNonRunning);
     SetEnabled(st->watchdogRetrySec, isNonRunning);
     SetEnabled(st->repeatCount, isNonRunning);
 
@@ -1376,6 +1383,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         }
         if (id == kCtrlActionMode && code == CBN_SELCHANGE) {
             ApplyActionModeUi(st);
+            ApplyTriggerUiState(st);
             PersistRealtime(st, false);
             return 0;
         }

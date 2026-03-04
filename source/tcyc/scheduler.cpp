@@ -2,27 +2,25 @@
 
 #include <windows.h>
 #include <time.h>
+#include <unordered_map>
 
 namespace tcyc {
 
 namespace {
 
-bool ParseLocalDateTime(const std::wstring& s, long long& outUnix) {
-    int y = 0, mo = 0, d = 0, hh = 0, mm = 0, ss = 0;
-    if (swscanf_s(s.c_str(), L"%d-%d-%d %d:%d:%d", &y, &mo, &d, &hh, &mm, &ss) < 5) return false;
-    std::tm tmv{};
-    tmv.tm_year = y - 1900;
-    tmv.tm_mon = mo - 1;
-    tmv.tm_mday = d;
-    tmv.tm_hour = hh;
-    tmv.tm_min = mm;
-    tmv.tm_sec = ss;
-    tmv.tm_isdst = -1;
-    time_t t = mktime(&tmv);
-    if (t == static_cast<time_t>(-1)) return false;
-    outUnix = static_cast<long long>(t);
-    return true;
-}
+struct SchedulerTaskCache {
+    std::wstring dateRaw;
+    bool dateValid = false;
+    int dateY = 0;
+    int dateMo = 0;
+    int dateD = 0;
+
+    int weeklyStamp = 0;   // YYYYMMDD
+    int weeklyDueSec = -1; // seconds since 00:00
+    long long weeklyDueUnix = 0;
+};
+
+std::unordered_map<int, SchedulerTaskCache> g_taskCache;
 
 bool ParseDateYmd(const std::wstring& s, int& y, int& mo, int& d) {
     y = 0;
@@ -70,10 +68,22 @@ bool HasTrigger(const TaskConfig& t, TriggerType tr) {
 
 } // namespace
 
-std::vector<DueTask> EvaluateDueTasks(const RuntimeConfig& cfg, RuntimeState& state, long long nowUnix) {
+std::vector<DueTask> EvaluateDueTasks(const RuntimeConfig& cfg,
+                                      RuntimeState& state,
+                                      long long nowUnix,
+                                      const std::vector<const TaskConfig*>* taskLane) {
     std::vector<DueTask> out;
-    for (const auto& t : cfg.tasks) {
-        if (!t.enabled) continue;
+    std::tm nowTm{};
+    time_t nowT = static_cast<time_t>(nowUnix);
+    localtime_s(&nowTm, &nowT);
+    const int nowY = nowTm.tm_year + 1900;
+    const int nowMo = nowTm.tm_mon + 1;
+    const int nowD = nowTm.tm_mday;
+    const int dayStamp = nowY * 10000 + nowMo * 100 + nowD;
+
+    auto evalTask = [&](const TaskConfig& t) {
+        if (!t.enabled) return;
+        SchedulerTaskCache& cache = g_taskCache[t.id];
         TaskRuntimeState& st = state.tasks[t.id];
         long long lastCheck = st.lastCheckUnix;
         if (lastCheck <= 0) lastCheck = nowUnix - cfg.pollSec;
@@ -107,16 +117,15 @@ std::vector<DueTask> EvaluateDueTasks(const RuntimeConfig& cfg, RuntimeState& st
 
         if (!due && HasTrigger(t, TriggerType::DateTimeIntervalLimited)) {
             if (t.repeatCount > 0 && st.firedCount < t.repeatCount && t.repeatEverySec > 0) {
-                long long baseUnix = 0;
-                if (ParseLocalDateTime(t.startDateTime, baseUnix)) {
+                if (t.startDateTimeValid) {
                     int evalCount = st.firedCount;
-                    long long dueUnix = baseUnix + static_cast<long long>(evalCount) * t.repeatEverySec;
+                    long long dueUnix = t.startDateTimeUnix + static_cast<long long>(evalCount) * t.repeatEverySec;
                     const long long windowStart = ComputeWindowStart(lastCheck, nowUnix, cfg.graceSec);
                     if (dueUnix <= windowStart) {
                         const long long advance = ((windowStart - dueUnix) / t.repeatEverySec) + 1;
                         evalCount += static_cast<int>(advance);
                         if (evalCount > t.repeatCount) evalCount = t.repeatCount;
-                        dueUnix = baseUnix + static_cast<long long>(evalCount) * t.repeatEverySec;
+                        dueUnix = t.startDateTimeUnix + static_cast<long long>(evalCount) * t.repeatEverySec;
                         // Keep scheduler evaluation pure; state is only consumed at launch boundary.
                     }
                     if (IsDueWindow(dueUnix, lastCheck, nowUnix, cfg.graceSec)) {
@@ -128,17 +137,16 @@ std::vector<DueTask> EvaluateDueTasks(const RuntimeConfig& cfg, RuntimeState& st
         }
 
         if (!due && HasTrigger(t, TriggerType::WeeklyTime)) {
-            std::tm nowTm{};
-            time_t nowT = static_cast<time_t>(nowUnix);
-            localtime_s(&nowTm, &nowT);
-
             bool dateOk = true;
             if (t.dateEnabled) {
-                int y = 0, mo = 0, d = 0;
-                if (!ParseDateYmd(t.dateYmd, y, mo, d)) {
+                if (cache.dateRaw != t.dateYmd) {
+                    cache.dateRaw = t.dateYmd;
+                    cache.dateValid = ParseDateYmd(t.dateYmd, cache.dateY, cache.dateMo, cache.dateD);
+                }
+                if (!cache.dateValid) {
                     dateOk = false;
                 } else {
-                    dateOk = (y == (nowTm.tm_year + 1900) && mo == (nowTm.tm_mon + 1) && d == nowTm.tm_mday);
+                    dateOk = (cache.dateY == nowY && cache.dateMo == nowMo && cache.dateD == nowD);
                 }
             }
 
@@ -163,11 +171,16 @@ std::vector<DueTask> EvaluateDueTasks(const RuntimeConfig& cfg, RuntimeState& st
             }
 
             if (dateOk && weekdayOk && timeOk) {
-                std::tm dueTm = nowTm;
-                dueTm.tm_hour = dueSec / 3600;
-                dueTm.tm_min = (dueSec % 3600) / 60;
-                dueTm.tm_sec = dueSec % 60;
-                long long dueUnix = static_cast<long long>(mktime(&dueTm));
+                if (cache.weeklyStamp != dayStamp || cache.weeklyDueSec != dueSec) {
+                    std::tm dueTm = nowTm;
+                    dueTm.tm_hour = dueSec / 3600;
+                    dueTm.tm_min = (dueSec % 3600) / 60;
+                    dueTm.tm_sec = dueSec % 60;
+                    cache.weeklyDueUnix = static_cast<long long>(mktime(&dueTm));
+                    cache.weeklyStamp = dayStamp;
+                    cache.weeklyDueSec = dueSec;
+                }
+                long long dueUnix = cache.weeklyDueUnix;
                 if (IsDueWindow(dueUnix, lastCheck, nowUnix, cfg.graceSec)) {
                     due = true;
                     reason = L"weekly_time";
@@ -179,8 +192,23 @@ std::vector<DueTask> EvaluateDueTasks(const RuntimeConfig& cfg, RuntimeState& st
         if (due) {
             out.push_back({t.id, reason});
         }
+    };
+
+    if (taskLane) {
+        for (const TaskConfig* tp : *taskLane) {
+            if (!tp) continue;
+            evalTask(*tp);
+        }
+    } else {
+        for (const auto& t : cfg.tasks) {
+            evalTask(t);
+        }
     }
     return out;
+}
+
+void ResetSchedulerCaches() {
+    g_taskCache.clear();
 }
 
 void MarkTaskFired(RuntimeState& state, int taskId, long long fireUnix) {

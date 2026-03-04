@@ -361,6 +361,14 @@ std::filesystem::path ResolvePathFromExe(const std::filesystem::path& exe_dir, c
     return exe_dir / p;
 }
 
+std::filesystem::path ResolveTClockIniFromExe(const std::filesystem::path& exe_dir) {
+    const std::filesystem::path exe_local = exe_dir / L"tclock-win11.ini";
+    if (std::filesystem::exists(exe_local)) {
+        return exe_local;
+    }
+    return exe_dir.parent_path() / L"tclock-win11.ini";
+}
+
 void EnsureTCalendarIni(const std::filesystem::path& exe_dir) {
     const std::filesystem::path ini_path = exe_dir / kTCalendarIniFileName;
     if (std::filesystem::exists(ini_path)) {
@@ -518,7 +526,7 @@ void LoadHostConfigFromIni(const std::filesystem::path& exe_dir, bool smoke_mode
     out_config.ui_show_task_panel = GetPrivateProfileIntW(L"TCalendar", L"UiShowTaskPanel", 1, ini_file.c_str()) != 0;
 
     // Ownership note: Alart toggle is stored in tclock-win11.ini [TCalendar], not in tcalendar.ini.
-    const std::filesystem::path tclock_ini_path = exe_dir / L"tclock-win11.ini";
+    const std::filesystem::path tclock_ini_path = ResolveTClockIniFromExe(exe_dir);
     out_config.tclock_ini_file_path = tclock_ini_path.wstring();
     out_config.tclock_alert_enabled =
         GetPrivateProfileIntW(L"TCalendar", L"Alart", 0, out_config.tclock_ini_file_path.c_str()) != 0;

@@ -14,7 +14,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-set "TCAL_DST=%~dp0x64\Release\TCalendar.exe"
+set "TCAL_DST=%~dp0x64\Release\plugins\TCalendar.exe"
 if not exist "%TCAL_DST%" (
     echo ERROR: Deployed TCalendar artifact not found: %TCAL_DST%
     exit /b 1

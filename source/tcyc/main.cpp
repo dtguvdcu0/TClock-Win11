@@ -11,6 +11,7 @@
 #include <shellapi.h>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace {
 
@@ -72,6 +73,12 @@ const wchar_t* MatchModeToString(tcyc::ProcessMatchMode mode) {
 struct LaunchGuardSnapshot {
     bool gateOff = false;
     std::unordered_map<int, bool> taskEnabledCache;
+};
+
+struct EvaluationLanes {
+    std::unordered_map<int, const tcyc::TaskConfig*> byId;
+    std::vector<const tcyc::TaskConfig*> dueTasks;
+    std::vector<const tcyc::TaskConfig*> watchdogTasks;
 };
 
 LaunchGuardSnapshot BuildLaunchGuardSnapshot(const tcyc::RuntimeConfig& cfg, bool gateOff) {
@@ -148,13 +155,35 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
 
     bool prevEffectiveEnabled = false;
     bool hasPrev = false;
+    long long lastHeartbeatUnix = 0;
+    int lastHeartbeatMode = -1; // -1=unknown, 0=disabled, 1=active
     std::wstring hotkeySig;
+    EvaluationLanes lanes{};
+
+    auto rebuildLanes = [&]() {
+        lanes.byId.clear();
+        lanes.dueTasks.clear();
+        lanes.watchdogTasks.clear();
+        lanes.byId.reserve(cfg.tasks.size());
+        lanes.dueTasks.reserve(cfg.tasks.size());
+        lanes.watchdogTasks.reserve(cfg.tasks.size());
+        for (const auto& t : cfg.tasks) {
+            lanes.byId.emplace(t.id, &t);
+            if (!t.enabled) continue;
+            lanes.dueTasks.push_back(&t);
+            if (t.watchdogEnabled) {
+                lanes.watchdogTasks.push_back(&t);
+            }
+        }
+    };
 
     auto applyReloadedConfig = [&]() -> bool {
         if (!tcyc::LoadRuntimeConfig(iniPath, exeDir, cfg, err)) {
             tcyc::LogWrite(0, L"Config reload failed: %s", err.c_str());
             return false;
         }
+        tcyc::ResetSchedulerCaches();
+        rebuildLanes();
         tcyc::LogSetLevel(cfg.logLevel);
 
         const std::wstring sigNow = tcyc::BuildHotkeyConfigSignature(cfg);
@@ -172,6 +201,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     };
 
     {
+        tcyc::ResetSchedulerCaches();
+        rebuildLanes();
         hotkeySig = tcyc::BuildHotkeyConfigSignature(cfg);
         std::wstring hkErr;
         tcyc::ReloadHotkeys(cfg, hkErr);
@@ -194,13 +225,13 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         }
 
         auto findTask = [&](int taskId) -> const tcyc::TaskConfig* {
-            for (const auto& t : cfg.tasks) {
-                if (t.id == taskId) return &t;
-            }
-            return nullptr;
+            auto it = lanes.byId.find(taskId);
+            if (it == lanes.byId.end()) return nullptr;
+            return it->second;
         };
 
         LaunchGuardSnapshot launchGuard = BuildLaunchGuardSnapshot(cfg, gateOff);
+        const long long loopNow = tcyc::UnixNow();
 
         auto tryLaunch = [&](const tcyc::TaskConfig& task, const wchar_t* reason, bool fromWatchdog) {
             if (task.actionPath.empty()) {
@@ -238,9 +269,19 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
             tcyc::LogWrite(1, L"Launch success: taskId=%d reason=%s", task.id, reason);
         };
 
+        auto emitHeartbeat = [&](int mode, const wchar_t* message) {
+            if (cfg.logLevel < 2) return;
+            // Emit detailed heartbeat only on mode changes or every 30 seconds.
+            if (lastHeartbeatMode != mode || lastHeartbeatUnix <= 0 || (loopNow - lastHeartbeatUnix) >= 30) {
+                tcyc::LogWrite(2, message);
+                lastHeartbeatUnix = loopNow;
+                lastHeartbeatMode = mode;
+            }
+        };
+
         if (effectiveEnabled) {
-            tcyc::LogWrite(2, L"Heartbeat: scheduler lane active");
-            std::vector<tcyc::DueTask> due = tcyc::EvaluateDueTasks(cfg, state, tcyc::UnixNow());
+            emitHeartbeat(1, L"Heartbeat: scheduler lane active");
+            std::vector<tcyc::DueTask> due = tcyc::EvaluateDueTasks(cfg, state, loopNow, &lanes.dueTasks);
             for (const auto& d : due) {
                 const tcyc::TaskConfig* task = findTask(d.taskId);
                 if (!task) {
@@ -251,7 +292,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
                 tryLaunch(*task, d.reason.c_str(), false);
             }
 
-            std::vector<tcyc::WatchdogDue> wd = tcyc::EvaluateWatchdogDue(cfg, state, tcyc::UnixNow());
+            std::vector<tcyc::WatchdogDue> wd = tcyc::EvaluateWatchdogDue(cfg, state, loopNow, &lanes.watchdogTasks);
             for (const auto& w : wd) {
                 const tcyc::TaskConfig* task = findTask(w.taskId);
                 if (!task) {
@@ -273,11 +314,11 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
                 tryLaunch(*task, L"hotkey", false);
             }
         } else {
-            tcyc::LogWrite(2, L"Heartbeat: all action lanes disabled by config/gate");
+            emitHeartbeat(0, L"Heartbeat: all action lanes disabled by config/gate");
             (void)tcyc::DrainHotkeyTaskIds();
         }
 
-        state.lastEvalUnix = tcyc::UnixNow();
+        state.lastEvalUnix = loopNow;
         if (state.lastEvalUnix - state.lastSaveUnix >= 10) {
             state.lastSaveUnix = state.lastEvalUnix;
             if (!tcyc::SaveRuntimeState(cfg.stateFile, state)) {

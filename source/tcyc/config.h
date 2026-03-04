@@ -52,6 +52,7 @@ struct RuntimeConfig {
     int graceSec = 60;
     int logLevel = 1;
     std::wstring logFile;
+    bool stateEnabled = false;
     std::wstring stateFile;
     bool debugForceCmdlineReadFail = false; // Test-only: force args-read fallback mode when matching by path.
     std::wstring tclockIniPath;

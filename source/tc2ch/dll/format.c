@@ -104,6 +104,7 @@ typedef struct {
 	int execTimeHour;
 	int execTimeMinute;
 	char execCommand[TC_CUSTOM_PATH_MAX];
+	char execCwd[TC_CUSTOM_PATH_MAX];
 	DWORD nextExecTick;
 	int lastExecDate;
 	BOOL execStartupDone;
@@ -1018,37 +1019,40 @@ static const char* tc_custom_get_value(int index1);
 
 static void tc_custom_run_script(TC_CUSTOM_VAR_ENTRY* e)
 {
+	char resolvedCwd[TC_CUSTOM_PATH_MAX + MAX_PATH];
 	WCHAR wcmd[2048];
 	WCHAR wline[2304];
-	WCHAR wIniPath[MAX_PATH];
+	WCHAR wapp[MAX_PATH];
 	WCHAR wCwd[MAX_PATH];
 	LPCWSTR cwd = NULL;
+	LPCWSTR app = NULL;
 	STARTUPINFOW si;
 	PROCESS_INFORMATION pi;
 	if (!e || !e->execCommand[0]) return;
 	if (tc_utf8_to_utf16(e->execCommand, wcmd, (int)(sizeof(wcmd) / sizeof(wcmd[0]))) <= 0) {
 		if (!tc_ansi_to_utf16_compat(0, e->execCommand, wcmd, (int)(sizeof(wcmd) / sizeof(wcmd[0])))) return;
 	}
-	if (g_inifile[0]) {
-		int okIni = tc_utf8_to_utf16(g_inifile, wIniPath, (int)(sizeof(wIniPath) / sizeof(wIniPath[0])));
-		if (okIni <= 0) {
-			if (!tc_ansi_to_utf16_compat(0, g_inifile, wIniPath, (int)(sizeof(wIniPath) / sizeof(wIniPath[0])))) {
-				wIniPath[0] = L'\0';
+	tc_custom_resolve_path(e->execCwd, resolvedCwd, (int)sizeof(resolvedCwd));
+	if (resolvedCwd[0]) {
+		if (tc_utf8_to_utf16(resolvedCwd, wCwd, (int)(sizeof(wCwd) / sizeof(wCwd[0]))) <= 0) {
+			if (!tc_ansi_to_utf16_compat(0, resolvedCwd, wCwd, (int)(sizeof(wCwd) / sizeof(wCwd[0])))) {
+				wCwd[0] = L'\0';
 			}
 		}
-		if (wIniPath[0]) {
-			lstrcpynW(wCwd, wIniPath, (int)(sizeof(wCwd) / sizeof(wCwd[0])));
-			if (PathRemoveFileSpecW(wCwd)) {
-				cwd = wCwd;
-			}
-		}
+		if (wCwd[0]) cwd = wCwd;
 	}
 	ZeroMemory(&si, sizeof(si));
 	ZeroMemory(&pi, sizeof(pi));
 	si.cb = sizeof(si);
-	if (e->execType == TC_CUSTOM_EXEC_TYPE_SHELL) wsprintfW(wline, L"cmd.exe /c %s", wcmd);
-	else lstrcpynW(wline, wcmd, (int)(sizeof(wline) / sizeof(wline[0])));
-	if (!CreateProcessW(NULL, wline, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, cwd, &si, &pi)) {
+	if (e->execType == TC_CUSTOM_EXEC_TYPE_SHELL) {
+		lstrcpynW(wapp, L"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe", (int)(sizeof(wapp) / sizeof(wapp[0])));
+		swprintf_s(wline, (size_t)(sizeof(wline) / sizeof(wline[0])), L"powershell.exe -NoProfile -Command %s", wcmd);
+	} else {
+		lstrcpynW(wapp, L"C:\\Windows\\System32\\cmd.exe", (int)(sizeof(wapp) / sizeof(wapp[0])));
+		swprintf_s(wline, (size_t)(sizeof(wline) / sizeof(wline[0])), L"cmd.exe /C %s", wcmd);
+	}
+	app = wapp;
+	if (!CreateProcessW(app, wline, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, cwd, &si, &pi)) {
 		if (b_DebugLog) writeDebugLog_Win10("[format.c][CustomVars] script launch failed", 999);
 		return;
 	}
@@ -1225,6 +1229,7 @@ void CustomFormatVarsReadSettings(void)
 		e->execTimeHour = -1;
 		e->execTimeMinute = -1;
 		e->execCommand[0] = '\0';
+		lstrcpyn(e->execCwd, ".", (int)sizeof(e->execCwd));
 		e->nextExecTick = 0;
 		e->lastExecDate = 0;
 		e->execStartupDone = FALSE;
@@ -1277,6 +1282,8 @@ void CustomFormatVarsReadSettings(void)
 			tc_custom_parse_hhmm(tmp, &e->execTimeHour, &e->execTimeMinute);
 			tc_custom_build_key(i + 1, "ExecCommand", key, (int)sizeof(key));
 			if (GetMyRegStr("CustomVars", key, e->execCommand, (int)sizeof(e->execCommand), "") <= 0) e->execCommand[0] = '\0';
+			tc_custom_build_key(i + 1, "ExecCwd", key, (int)sizeof(key));
+			if (GetMyRegStr("CustomVars", key, e->execCwd, (int)sizeof(e->execCwd), ".") <= 0) lstrcpyn(e->execCwd, ".", (int)sizeof(e->execCwd));
 			if (e->mode == TC_CUSTOM_MODE_JSON && e->refreshSec < 5) e->refreshSec = 5;
 		}
 
@@ -1296,6 +1303,7 @@ void CustomFormatVarsReadSettings(void)
 		h ^= ((DWORD)e->execType << 27);
 		h ^= ((DWORD)e->execStart << 28);
 		h ^= tc_custom_hash_text(e->execCommand);
+		h ^= tc_custom_hash_text(e->execCwd);
 		h ^= (DWORD)e->execIntervalSec;
 		h ^= ((DWORD)((e->execTimeHour + 1) & 0x1F) << 5);
 		h ^= ((DWORD)((e->execTimeMinute + 1) & 0x3F) << 10);

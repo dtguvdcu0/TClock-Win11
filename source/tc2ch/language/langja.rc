@@ -1154,12 +1154,12 @@ BEGIN
     CONTROL         "タスクトレイにTClock-Win11のアイコンを表示する",IDC_ETC_SHOWTRAYICON,
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,9,41,182,11
     LTEXT           "拡張機能の有効化",IDC_STATIC,9,152,98,8
-    CONTROL         "TCycle",IDC_ETC_TCYCLE_INTEGRATION,
-                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,9,165,52,11
-    CONTROL         "TCalendar",IDC_ETC_TCALENDAR_INTEGRATION,
+    CONTROL         "タスクスケジューラ",IDC_ETC_TCYCLE_INTEGRATION,
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,9,165,62,11
+    CONTROL         "カレンダー",IDC_ETC_TCALENDAR_INTEGRATION,
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,72,165,60,11
-    CONTROL         "TCapture",IDC_ETC_TCAPTURE_INTEGRATION,
-                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,137,165,60,11
+    CONTROL         "キャプチャー",IDC_ETC_TCAPTURE_INTEGRATION,
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,124,165,60,11
 END
 
 IDD_PAGE_ETC_ENG DIALOGEX 0, 0, 210, 200
@@ -2050,4 +2050,6 @@ END
 
 /////////////////////////////////////////////////////////////////////////////
 #endif    // not APSTUDIO_INVOKED
+
+
 

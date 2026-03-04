@@ -24,6 +24,7 @@ constexpr int kCtrlPollSec = 1002;
 constexpr int kCtrlGraceSec = 1003;
 constexpr int kCtrlTaskList = 1005;
 constexpr int kCtrlTaskEnabled = 1006;
+constexpr int kCtrlSingleInstance = 1007;
 constexpr int kCtrlTriggerInterval = 1008;
 constexpr int kCtrlIntervalSec = 1009;
 constexpr int kCtrlRepeatCount = 1012;
@@ -99,6 +100,7 @@ struct WindowState {
     HWND taskRename = nullptr;
 
     HWND taskEnabled = nullptr;
+    HWND singleInstance = nullptr;
     HWND actionPrimaryLabel = nullptr;
     HWND actionMode = nullptr;
     HWND actionPath = nullptr;
@@ -703,6 +705,17 @@ std::wstring ComposeHotkeyString(WindowState* st) {
     return out;
 }
 
+bool ShouldPersistHotkeySelection(WindowState* st) {
+    if (!st) return false;
+    int modSel = static_cast<int>(SendMessageW(st->hotkeyMod, CB_GETCURSEL, 0, 0));
+    int keySel = static_cast<int>(SendMessageW(st->hotkeyKey, CB_GETCURSEL, 0, 0));
+    if (modSel < 0 || modSel >= static_cast<int>(HotkeyModOptions().size())) modSel = 0;
+    if (keySel < 0 || keySel >= static_cast<int>(HotkeyKeyOptions().size())) keySel = 0;
+    const auto& key = HotkeyKeyOptions()[static_cast<size_t>(keySel)];
+    if (key.vk > 0) return true;
+    return (modSel == 0 && keySel == 0);
+}
+
 void SetHotkeyCombosFromString(WindowState* st, const std::wstring& hotkey) {
     bool ctrl = false, shift = false, alt = false, win = false;
     int keyVk = 0;
@@ -796,6 +809,7 @@ void LoadTaskControls(WindowState* st, int idx) {
     st->selectedTask = idx;
     if (idx < 0 || idx >= static_cast<int>(st->config.tasks.size())) {
         SendMessageW(st->taskEnabled, BM_SETCHECK, BST_UNCHECKED, 0);
+        SendMessageW(st->singleInstance, BM_SETCHECK, BST_CHECKED, 0);
         SetTriggerChecksFromMask(st, TriggerTypeToBit(tcyc::TriggerType::Startup));
         SetEditText(st->intervalSec, L"600");
         SendMessageW(st->actionMode, CB_SETCURSEL, 0, 0);
@@ -820,6 +834,7 @@ void LoadTaskControls(WindowState* st, int idx) {
     }
     const auto& t = st->config.tasks[static_cast<size_t>(idx)];
     SendMessageW(st->taskEnabled, BM_SETCHECK, t.enabled ? BST_CHECKED : BST_UNCHECKED, 0);
+    SendMessageW(st->singleInstance, BM_SETCHECK, t.singleInstance ? BST_CHECKED : BST_UNCHECKED, 0);
     int triggerMask = t.triggerMask;
     if (triggerMask == 0) triggerMask = TriggerTypeToBit(t.trigger);
     if (t.watchdogEnabled) triggerMask |= TriggerTypeToBit(tcyc::TriggerType::NonRunning);
@@ -891,6 +906,9 @@ bool SaveAllToIni(WindowState* st, std::wstring& err) {
         auto& t = st->config.tasks[static_cast<size_t>(effectiveTaskIndex)];
         if (st->taskEnabled) {
             t.enabled = (SendMessageW(st->taskEnabled, BM_GETCHECK, 0, 0) == BST_CHECKED);
+        }
+        if (st->singleInstance) {
+            t.singleInstance = (SendMessageW(st->singleInstance, BM_GETCHECK, 0, 0) == BST_CHECKED);
         }
         if (t.name.empty()) {
             wchar_t buf[64] = {0};
@@ -971,7 +989,13 @@ bool SaveAllToIni(WindowState* st, std::wstring& err) {
         const int keySel = static_cast<int>(SendMessageW(st->hotkeyKey, CB_GETCURSEL, 0, 0));
         if (st->hotkeyDirty) {
             if (modSel >= 0 && keySel >= 0) {
-                t.hotkey = ComposeHotkeyString(st);
+                const auto& keyOptions = HotkeyKeyOptions();
+                const bool keyInRange = (keySel < static_cast<int>(keyOptions.size()));
+                const bool keySelected = keyInRange && (keyOptions[static_cast<size_t>(keySel)].vk > 0);
+                const bool clearHotkey = (modSel == 0 && keySel == 0);
+                if (keySelected || clearHotkey) {
+                    t.hotkey = ComposeHotkeyString(st);
+                }
             }
         }
     }
@@ -1010,6 +1034,7 @@ bool SaveAllToIni(WindowState* st, std::wstring& err) {
         if (!writeTaskStr(sec, L"ActionPath", t.actionPath)) return false;
         if (!writeTaskStr(sec, L"ActionArgs", t.actionArgs)) return false;
         if (!writeTaskStr(sec, L"ActionCwd", t.actionCwd)) return false;
+        if (!writeTaskInt(sec, L"SingleInstance", t.singleInstance ? 1 : 0)) return false;
         if (!writeTaskInt(sec, L"WatchdogEnabled", t.watchdogEnabled ? 1 : 0)) return false;
         if (!writeTaskInt(sec, L"WatchdogRetrySec", t.watchdogRetrySec)) return false;
         if (!writeTaskInt(sec, L"WatchdogMaxRetry", t.watchdogMaxRetry)) return false;
@@ -1264,6 +1289,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 
         createBtn(0, Tr(st, L"group_schedule", L"Schedule").c_str(), detailX, detailY, detailW, detailH, BS_GROUPBOX);
         st->taskEnabled = createBtn(kCtrlTaskEnabled, Tr(st, L"label_task_enabled", L"Task Enabled").c_str(), detailX + 12, detailY + 22, 118, 22, BS_AUTOCHECKBOX);
+        st->singleInstance = createBtn(kCtrlSingleInstance, Tr(st, L"label_single_instance", L"No duplicate launch").c_str(), detailX + 126, detailY + 22, 170, 22, BS_AUTOCHECKBOX);
         createStatic(Tr(st, L"label_trigger", L"Trigger").c_str(), colLabelX, detailY + 52, 64, 20);
         st->triggerChecks[3] = createBtn(kCtrlTriggerStartup, Tr(st, L"trigger_startup", L"startup").c_str(), colInputX, detailY + 48, 94, 22, BS_AUTOCHECKBOX);
         st->triggerChecks[0] = createBtn(kCtrlTriggerInterval, Tr(st, L"trigger_interval", L"interval").c_str(), colInputX + 100, detailY + 48, 78, 22, BS_AUTOCHECKBOX);
@@ -1462,6 +1488,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             (id == kCtrlPollSec && code == EN_CHANGE) ||
             (id == kCtrlGraceSec && code == EN_CHANGE) ||
             (id == kCtrlTaskEnabled && code == BN_CLICKED) ||
+            (id == kCtrlSingleInstance && code == BN_CLICKED) ||
             (id == kCtrlActionPath && code == EN_KILLFOCUS) ||
             (id == kCtrlActionArgs && code == EN_KILLFOCUS) ||
             (id == kCtrlActionCwd && code == EN_KILLFOCUS) ||
@@ -1478,7 +1505,14 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             if ((id >= kCtrlWeekdaySun && id <= kCtrlWeekdaySat) && code == BN_CLICKED) st->weekdayDirty = true;
             if (id == kCtrlDateValue && code == EN_KILLFOCUS) st->dateValueDirty = true;
             if (id == kCtrlTimeOfDay && code == EN_KILLFOCUS) st->timeOfDayDirty = true;
-            if ((id == kCtrlHotkeyMod && code == CBN_SELCHANGE) || (id == kCtrlHotkeyKey && code == CBN_SELCHANGE)) st->hotkeyDirty = true;
+            const bool hotkeyChanged = ((id == kCtrlHotkeyMod && code == CBN_SELCHANGE) || (id == kCtrlHotkeyKey && code == CBN_SELCHANGE));
+            if (hotkeyChanged) {
+                st->hotkeyDirty = true;
+                if (!ShouldPersistHotkeySelection(st)) {
+                    SetStatus(st, Tr(st, L"status_hotkey_key_pending", L"Hotkey modifier selected. Choose key to save."));
+                    return 0;
+                }
+            }
             PersistRealtime(st, false);
             return 0;
         }

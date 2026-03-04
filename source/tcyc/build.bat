@@ -28,7 +28,7 @@ if "%GENERATOR%"=="" (
 
 set ARCH=x64
 set "SCRIPT_DIR=%~dp0"
-set "DEPLOY_DIR=%SCRIPT_DIR%..\x64\%CONFIG%"
+set "DEPLOY_DIR=%SCRIPT_DIR%..\x64\%CONFIG%\plugins"
 
 echo Building with configuration: %CONFIG%
 echo Build directory: %BUILD_DIR%

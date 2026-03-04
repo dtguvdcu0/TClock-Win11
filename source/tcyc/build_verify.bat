@@ -8,7 +8,7 @@ set BUILD_DIR=%~2
 if "%BUILD_DIR%"=="" set BUILD_DIR=build
 
 set "SCRIPT_DIR=%~dp0"
-set "DEPLOY_DIR=%SCRIPT_DIR%..\x64\%CONFIG%"
+set "DEPLOY_DIR=%SCRIPT_DIR%..\x64\%CONFIG%\plugins"
 
 echo NOTE: build/verify commands are serial-only. Do not run build.bat, build_verify.bat, verify_only.bat in parallel.
 call "%SCRIPT_DIR%build.bat" "%CONFIG%" "%BUILD_DIR%"

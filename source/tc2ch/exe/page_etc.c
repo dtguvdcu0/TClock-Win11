@@ -144,7 +144,7 @@ static void LaunchTCycleRuntimeFromEtcIfEnabled(HWND hDlg)
 	if (!IsDlgButtonChecked(hDlg, IDC_ETC_TCYCLE_INTEGRATION)) return;
 
 	GetMyRegStr("TCycle", "Path", tcycPathCfg, MAX_PATH, "");
-	if (tcycPathCfg[0] == '\0') strcpy(tcycPathCfg, "TCycle.exe");
+	if (tcycPathCfg[0] == '\0') strcpy(tcycPathCfg, "plugins\\TCycle.exe");
 
 	if ((tcycPathCfg[1] == ':') || (tcycPathCfg[0] == '\\') || (tcycPathCfg[0] == '/')) {
 		strcpy(exePath, tcycPathCfg);

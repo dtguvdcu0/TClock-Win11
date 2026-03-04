@@ -625,8 +625,8 @@ static void tc_menu_get_tcapture_path(char* outPath, int outPathLen)
 		if (lstrcmp(before, outPath) != 0) SetMyRegStr("TCapture", "Path", outPath);
 		return;
 	}
-	GetMyRegStr("ETC", "TCapturePath", legacy, MAX_PATH, "TCapture.exe");
-	if (legacy[0] == '\0') strcpy(legacy, "TCapture.exe");
+	GetMyRegStr("ETC", "TCapturePath", legacy, MAX_PATH, "plugins\\TCapture.exe");
+	if (legacy[0] == '\0') strcpy(legacy, "plugins\\TCapture.exe");
 	tc_menu_normalize_setting_utf8_in_place(legacy, (int)sizeof(legacy));
 	lstrcpyn(outPath, legacy, outPathLen);
 	SetMyRegStr("TCapture", "Path", outPath);
@@ -641,7 +641,7 @@ static void tc_menu_get_tcalendar_path(char* outPath, int outPathLen)
 	outPath[0] = '\0';
 	GetMyRegStr("TCalendar", "Path", outPath, outPathLen, "");
 	if (outPath[0] == '\0') {
-		strcpy(outPath, "TCalendar.exe");
+		strcpy(outPath, "plugins\\TCalendar.exe");
 		wasMissing = TRUE;
 	}
 	lstrcpyn(before, outPath, (int)sizeof(before));
@@ -657,7 +657,7 @@ static void tc_menu_get_tcycle_path(char* outPath, int outPathLen)
 	outPath[0] = '\0';
 	GetMyRegStr("TCycle", "Path", outPath, outPathLen, "");
 	if (outPath[0] == '\0') {
-		strcpy(outPath, "TCycle.exe");
+		strcpy(outPath, "plugins\\TCycle.exe");
 		wasMissing = TRUE;
 	}
 	lstrcpyn(before, outPath, (int)sizeof(before));
@@ -2287,7 +2287,7 @@ void OnTClockCommand(HWND hwnd, WORD wID, WORD wCode)
 			char tcycPath[MAX_PATH];
 			if (b_DebugLog) WriteDebug_New2("[menu.c][OnTClockCommand] IDC_TCYC_OPEN received");
 			tc_menu_get_tcycle_path(tcycPathCfg, MAX_PATH);
-			if (tcycPathCfg[0] == 0) strcpy(tcycPathCfg, "TCycle.exe");
+			if (tcycPathCfg[0] == 0) strcpy(tcycPathCfg, "plugins\\TCycle.exe");
 			if ((tcycPathCfg[1] == ':') || (tcycPathCfg[0] == '\\') || (tcycPathCfg[0] == '/')) {
 				strcpy(tcycPath, tcycPathCfg);
 			}
@@ -2308,7 +2308,7 @@ void OnTClockCommand(HWND hwnd, WORD wID, WORD wCode)
 			char tcalPath[MAX_PATH];
 			if (b_DebugLog) WriteDebug_New2("[menu.c][OnTClockCommand] IDC_TCAL_OPEN received");
 			tc_menu_get_tcalendar_path(tcalPathCfg, MAX_PATH);
-			if (tcalPathCfg[0] == 0) strcpy(tcalPathCfg, "TCalendar.exe");
+			if (tcalPathCfg[0] == 0) strcpy(tcalPathCfg, "plugins\\TCalendar.exe");
 			if ((tcalPathCfg[1] == ':') || (tcalPathCfg[0] == '\\') || (tcalPathCfg[0] == '/')) {
 				strcpy(tcalPath, tcalPathCfg);
 			}
@@ -2327,7 +2327,7 @@ void OnTClockCommand(HWND hwnd, WORD wID, WORD wCode)
 			char tcapPath[MAX_PATH];
 			if (b_DebugLog) WriteDebug_New2("[menu.c][OnTClockCommand] IDC_TCAP_CAPTURE received");
 			tc_menu_get_tcapture_path(tcapPathCfg, MAX_PATH);
-			if (tcapPathCfg[0] == 0) strcpy(tcapPathCfg, "TCapture.exe");
+			if (tcapPathCfg[0] == 0) strcpy(tcapPathCfg, "plugins\\TCapture.exe");
 			if ((tcapPathCfg[1] == ':') || (tcapPathCfg[0] == '\\') || (tcapPathCfg[0] == '/')) {
 				strcpy(tcapPath, tcapPathCfg);
 			}
@@ -2346,7 +2346,7 @@ void OnTClockCommand(HWND hwnd, WORD wID, WORD wCode)
 			char tcapPath[MAX_PATH];
 			if (b_DebugLog) WriteDebug_New2("[menu.c][OnTClockCommand] IDC_TCAP_SETTINGS received");
 			tc_menu_get_tcapture_path(tcapPathCfg, MAX_PATH);
-			if (tcapPathCfg[0] == 0) strcpy(tcapPathCfg, "TCapture.exe");
+			if (tcapPathCfg[0] == 0) strcpy(tcapPathCfg, "plugins\\TCapture.exe");
 			if ((tcapPathCfg[1] == ':') || (tcapPathCfg[0] == '\\') || (tcapPathCfg[0] == '/')) {
 				strcpy(tcapPath, tcapPathCfg);
 			}

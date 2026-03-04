@@ -3,6 +3,7 @@
 
 #include <windows.h>
 #include <shlwapi.h>
+#include <time.h>
 
 #pragma comment(lib, "Shlwapi.lib")
 
@@ -44,6 +45,23 @@ bool TryParseTimeOfDay(const std::wstring& s, int& outSec) {
     if (swscanf_s(s.c_str(), L"%d:%d:%d", &hh, &mm, &ss) < 2) return false;
     if (hh < 0 || hh > 23 || mm < 0 || mm > 59 || ss < 0 || ss > 59) return false;
     outSec = hh * 3600 + mm * 60 + ss;
+    return true;
+}
+
+bool TryParseLocalDateTime(const std::wstring& s, long long& outUnix) {
+    int y = 0, mo = 0, d = 0, hh = 0, mm = 0, ss = 0;
+    if (swscanf_s(s.c_str(), L"%d-%d-%d %d:%d:%d", &y, &mo, &d, &hh, &mm, &ss) < 5) return false;
+    std::tm tmv{};
+    tmv.tm_year = y - 1900;
+    tmv.tm_mon = mo - 1;
+    tmv.tm_mday = d;
+    tmv.tm_hour = hh;
+    tmv.tm_min = mm;
+    tmv.tm_sec = ss;
+    tmv.tm_isdst = -1;
+    time_t t = mktime(&tmv);
+    if (t == static_cast<time_t>(-1)) return false;
+    outUnix = static_cast<long long>(t);
     return true;
 }
 
@@ -181,6 +199,7 @@ void LoadTasks(const std::wstring& iniPath, const std::wstring& exeDir, std::vec
         t.watchdogRequireArgsMatch = ReadIniInt(iniPath, section, L"WatchdogRequireArgsMatch", 1) != 0;
         t.intervalSec = ClampInt(ReadIniInt(iniPath, section, L"IntervalSec", 600), 0, 86400);
         t.startDateTime = ReadIniString(iniPath, section, L"StartDateTime", L"");
+        t.startDateTimeValid = TryParseLocalDateTime(t.startDateTime, t.startDateTimeUnix);
         t.repeatEverySec = ClampInt(ReadIniInt(iniPath, section, L"RepeatEverySec", 0), 0, 86400);
         t.repeatCount = ClampInt(ReadIniInt(iniPath, section, L"RepeatCount", 0), 0, 1000000);
         t.hotkey = ReadIniString(iniPath, section, L"Hotkey", L"");
@@ -263,11 +282,11 @@ bool EnsureDefaultIni(const std::wstring& iniPath) {
     }
     if (!WriteIniUtf8Value(iniPath, L"TCycle", L"PollSec", L"1")) return false;
     if (!WriteIniUtf8Value(iniPath, L"TCycle", L"GraceSec", L"60")) return false;
-    if (!WriteIniUtf8Value(iniPath, L"TCycle", L"LogLevel", L"1")) return false;
+    if (!WriteIniUtf8Value(iniPath, L"TCycle", L"LogLevel", L"0")) return false;
     if (!WriteIniUtf8Value(iniPath, L"TCycle", L"LogFile", L"tcycle.log")) return false;
     if (!WriteIniUtf8Value(iniPath, L"TCycle", L"StateFile", L"tcycle.state.ini")) return false;
     if (!WriteIniUtf8Value(iniPath, L"Debug", L"ForceCmdlineReadFail", L"0")) return false;
-    if (!WriteIniUtf8Value(iniPath, L"Integration", L"TClockIniPath", L"tclock-win11.ini")) return false;
+    if (!WriteIniUtf8Value(iniPath, L"Integration", L"TClockIniPath", L"..\\tclock-win11.ini")) return false;
     return true;
 }
 
@@ -290,7 +309,7 @@ bool LoadRuntimeConfig(const std::wstring& iniPath, const std::wstring& exeDir, 
         swprintf_s(buf, L"%d", grace_sec);
         WriteIniUtf8Value(iniPath, L"TCycle", L"GraceSec", buf);
     }
-    cfg.logLevel = ClampInt(ReadIniInt(iniPath, L"TCycle", L"LogLevel", 1), 0, 3);
+    cfg.logLevel = ClampInt(ReadIniInt(iniPath, L"TCycle", L"LogLevel", 0), 0, 3);
     cfg.logFile = ReadIniString(iniPath, L"TCycle", L"LogFile", L"tcycle.log");
     if (cfg.logFile.empty()) cfg.logFile = L"tcycle.log";
     cfg.logFile = ResolvePathFromExe(exeDir, cfg.logFile);
@@ -299,8 +318,8 @@ bool LoadRuntimeConfig(const std::wstring& iniPath, const std::wstring& exeDir, 
     cfg.stateFile = ResolvePathFromExe(exeDir, cfg.stateFile);
     cfg.debugForceCmdlineReadFail = ReadIniInt(iniPath, L"Debug", L"ForceCmdlineReadFail", 0) != 0;
 
-    cfg.tclockIniPath = ReadIniString(iniPath, L"Integration", L"TClockIniPath", L"tclock-win11.ini");
-    if (cfg.tclockIniPath.empty()) cfg.tclockIniPath = L"tclock-win11.ini";
+    cfg.tclockIniPath = ReadIniString(iniPath, L"Integration", L"TClockIniPath", L"..\\tclock-win11.ini");
+    if (cfg.tclockIniPath.empty()) cfg.tclockIniPath = L"..\\tclock-win11.ini";
     cfg.tclockIniPath = ResolvePathFromExe(exeDir, cfg.tclockIniPath);
     LoadTasks(iniPath, exeDir, cfg.tasks);
 

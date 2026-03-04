@@ -84,8 +84,8 @@ static void GetTCapturePathConfigMouse(char* outPath, int outPathLen)
 		if (lstrcmp(before, outPath) != 0) SetMyRegStr("TCapture", "Path", outPath);
 		return;
 	}
-	GetMyRegStr("ETC", "TCapturePath", legacyPath, MAX_PATH, "TCapture.exe");
-	if (legacyPath[0] == '\0') strcpy(legacyPath, "TCapture.exe");
+	GetMyRegStr("ETC", "TCapturePath", legacyPath, MAX_PATH, "plugins\\TCapture.exe");
+	if (legacyPath[0] == '\0') strcpy(legacyPath, "plugins\\TCapture.exe");
 	tc_mouse_normalize_setting_utf8_in_place(legacyPath, (int)sizeof(legacyPath));
 	lstrcpyn(outPath, legacyPath, outPathLen);
 	SetMyRegStr("TCapture", "Path", outPath);
@@ -98,7 +98,7 @@ static BOOL ResolveTCaptureExePathMouse(char* outPath, int outPathLen)
 	if (!outPath || outPathLen <= 0) return FALSE;
 	outPath[0] = '\0';
 	GetTCapturePathConfigMouse(cfgPath, MAX_PATH);
-	if (cfgPath[0] == 0) strcpy(cfgPath, "TCapture.exe");
+	if (cfgPath[0] == 0) strcpy(cfgPath, "plugins\\TCapture.exe");
 	if (PathFileExistsUtf8Strict(cfgPath)) {
 		lstrcpyn(outPath, cfgPath, outPathLen);
 		return TRUE;
@@ -118,7 +118,7 @@ static void GetTCalendarPathConfigMouse(char* outPath, int outPathLen)
 	outPath[0] = '\0';
 	GetMyRegStr("TCalendar", "Path", outPath, outPathLen, "");
 	if (outPath[0] == '\0') {
-		strcpy(outPath, "TCalendar.exe");
+		strcpy(outPath, "plugins\\TCalendar.exe");
 		wasMissing = TRUE;
 	}
 	lstrcpyn(before, outPath, (int)sizeof(before));
@@ -132,7 +132,7 @@ static BOOL ResolveTCalendarExePathMouse(char* outPath, int outPathLen)
 	if (!outPath || outPathLen <= 0) return FALSE;
 	outPath[0] = '\0';
 	GetTCalendarPathConfigMouse(cfgPath, MAX_PATH);
-	if (cfgPath[0] == 0) strcpy(cfgPath, "TCalendar.exe");
+	if (cfgPath[0] == 0) strcpy(cfgPath, "plugins\\TCalendar.exe");
 	if (PathFileExistsUtf8Strict(cfgPath)) {
 		lstrcpyn(outPath, cfgPath, outPathLen);
 		return TRUE;

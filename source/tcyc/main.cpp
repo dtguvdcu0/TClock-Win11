@@ -133,18 +133,24 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     tcyc::LogWrite(1, L"TCycle boot: ini=%s", iniPath.c_str());
 
     tcyc::RuntimeState state{};
-    if (!tcyc::LoadRuntimeState(cfg.stateFile, state)) {
-        tcyc::LogWrite(0, L"State load failed: %s", cfg.stateFile.c_str());
-    }
-    state.bootCount += 1;
-    state.lastEvalUnix = tcyc::UnixNow();
-    state.lastSaveUnix = state.lastEvalUnix;
-    if (!tcyc::SaveRuntimeState(cfg.stateFile, state)) {
-        tcyc::LogWrite(0, L"State save failed at boot: %s", cfg.stateFile.c_str());
+    if (cfg.stateEnabled) {
+        if (!tcyc::LoadRuntimeState(cfg.stateFile, state)) {
+            tcyc::LogWrite(0, L"State load failed: %s", cfg.stateFile.c_str());
+        }
+        state.bootCount += 1;
+        state.lastEvalUnix = tcyc::UnixNow();
+        state.lastSaveUnix = state.lastEvalUnix;
+        if (!tcyc::SaveRuntimeState(cfg.stateFile, state)) {
+            tcyc::LogWrite(0, L"State save failed at boot: %s", cfg.stateFile.c_str());
+        } else {
+            tcyc::LogWrite(1, L"State loaded: bootCount=%d", state.bootCount);
+        }
+        WritePrivateProfileStringW(L"Runtime", L"ResolvedLogFile", cfg.logFile.c_str(), cfg.stateFile.c_str());
     } else {
-        tcyc::LogWrite(1, L"State loaded: bootCount=%d", state.bootCount);
+        state.lastEvalUnix = tcyc::UnixNow();
+        state.lastSaveUnix = state.lastEvalUnix;
+        tcyc::LogWrite(1, L"State persistence disabled: StateEnabled=0");
     }
-    WritePrivateProfileStringW(L"Runtime", L"ResolvedLogFile", cfg.logFile.c_str(), cfg.stateFile.c_str());
 
     if (args.validateOnly) {
         const bool gateOff = tcyc::IsTClockGateDisabled(cfg);
@@ -319,7 +325,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         }
 
         state.lastEvalUnix = loopNow;
-        if (state.lastEvalUnix - state.lastSaveUnix >= 10) {
+        if (cfg.stateEnabled && (state.lastEvalUnix - state.lastSaveUnix >= 10)) {
             state.lastSaveUnix = state.lastEvalUnix;
             if (!tcyc::SaveRuntimeState(cfg.stateFile, state)) {
                 tcyc::LogWrite(0, L"State periodic save failed: %s", cfg.stateFile.c_str());

@@ -286,6 +286,7 @@ bool EnsureDefaultIni(const std::wstring& iniPath) {
     if (!WriteIniUtf8Value(iniPath, L"TCycle", L"GraceSec", L"60")) return false;
     if (!WriteIniUtf8Value(iniPath, L"TCycle", L"LogLevel", L"0")) return false;
     if (!WriteIniUtf8Value(iniPath, L"TCycle", L"LogFile", L"tcycle.log")) return false;
+    if (!WriteIniUtf8Value(iniPath, L"TCycle", L"StateEnabled", L"0")) return false;
     if (!WriteIniUtf8Value(iniPath, L"TCycle", L"StateFile", L"tcycle.state.ini")) return false;
     if (!WriteIniUtf8Value(iniPath, L"Debug", L"ForceCmdlineReadFail", L"0")) return false;
     if (!WriteIniUtf8Value(iniPath, L"Integration", L"TClockIniPath", L"..\\tclock-win11.ini")) return false;
@@ -315,6 +316,7 @@ bool LoadRuntimeConfig(const std::wstring& iniPath, const std::wstring& exeDir, 
     cfg.logFile = ReadIniString(iniPath, L"TCycle", L"LogFile", L"tcycle.log");
     if (cfg.logFile.empty()) cfg.logFile = L"tcycle.log";
     cfg.logFile = ResolvePathFromExe(exeDir, cfg.logFile);
+    cfg.stateEnabled = ReadIniInt(iniPath, L"TCycle", L"StateEnabled", 0) != 0;
     cfg.stateFile = ReadIniString(iniPath, L"TCycle", L"StateFile", L"tcycle.state.ini");
     if (cfg.stateFile.empty()) cfg.stateFile = L"tcycle.state.ini";
     cfg.stateFile = ResolvePathFromExe(exeDir, cfg.stateFile);

@@ -129,6 +129,7 @@ struct WindowState {
     int selectedTask = -1;
     bool suppressEvents = false;
     bool actionPathDirty = false;
+    bool actionArgsDirty = false;
     bool actionCwdDirty = false;
     bool dateEnabledDirty = false;
     bool dateValueDirty = false;
@@ -346,12 +347,8 @@ std::wstring ActionModeFromIndex(int idx) {
 
 void ApplyActionModeUi(WindowState* st) {
     if (!st) return;
-    const int idx = static_cast<int>(SendMessageW(st->actionMode, CB_GETCURSEL, 0, 0));
-    const bool isProgram = (idx == 0);
     if (st->actionPrimaryLabel) {
-        const std::wstring label = isProgram
-            ? Tr(st, L"label_action_path_only", L"Path")
-            : Tr(st, L"label_action_args", L"Params");
+        const std::wstring label = Tr(st, L"label_action_path_only", L"Path");
         SetWindowTextW(st->actionPrimaryLabel, label.c_str());
     }
 }
@@ -803,6 +800,7 @@ void LoadTaskControls(WindowState* st, int idx) {
         SetEditText(st->intervalSec, L"600");
         SendMessageW(st->actionMode, CB_SETCURSEL, 0, 0);
         SetEditText(st->actionPath, L"");
+        SetEditText(st->actionArgs, L"");
         SetEditText(st->actionCwd, L"");
         SetEditText(st->watchdogRetrySec, L"10");
         SetEditText(st->repeatCount, L"5");
@@ -816,6 +814,7 @@ void LoadTaskControls(WindowState* st, int idx) {
         SetHotkeyCombosFromString(st, L"");
         ApplyTriggerUiState(st);
         st->actionPathDirty = false;
+        st->actionArgsDirty = false;
         st->actionCwdDirty = false;
         return;
     }
@@ -828,6 +827,7 @@ void LoadTaskControls(WindowState* st, int idx) {
     SetEditInt(st->intervalSec, (t.intervalSec > 0) ? t.intervalSec : 600);
     SendMessageW(st->actionMode, CB_SETCURSEL, ActionModeToIndex(t.actionMode), 0);
     SetEditText(st->actionPath, t.actionPath);
+    SetEditText(st->actionArgs, t.actionArgs);
     SetEditText(st->actionCwd, t.actionCwd);
     SetEditInt(st->watchdogRetrySec, t.watchdogRetrySec);
     SetEditInt(st->repeatCount, (t.watchdogMaxRetry >= 0) ? t.watchdogMaxRetry : 5);
@@ -846,6 +846,7 @@ void LoadTaskControls(WindowState* st, int idx) {
     ApplyActionModeUi(st);
     ApplyTriggerUiState(st);
     st->actionPathDirty = false;
+    st->actionArgsDirty = false;
     st->actionCwdDirty = false;
     st->dateEnabledDirty = false;
     st->dateValueDirty = false;
@@ -911,6 +912,9 @@ bool SaveAllToIni(WindowState* st, std::wstring& err) {
         }
         if (st->actionPathDirty) {
             t.actionPath = TrimWide(GetEditText(st->actionPath));
+        }
+        if (st->actionArgsDirty) {
+            t.actionArgs = TrimWide(GetEditText(st->actionArgs));
         }
         if (st->actionCwdDirty) {
             t.actionCwd = TrimWide(GetEditText(st->actionCwd));
@@ -1022,6 +1026,7 @@ bool SaveAllToIni(WindowState* st, std::wstring& err) {
         if (!writeTaskStr(sec, L"Hotkey", t.hotkey)) return false;
     }
     st->actionPathDirty = false;
+    st->actionArgsDirty = false;
     st->actionCwdDirty = false;
     st->dateEnabledDirty = false;
     st->dateValueDirty = false;
@@ -1267,60 +1272,61 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         st->triggerChecks[4] = createBtn(kCtrlTriggerHotkeyOnly, Tr(st, L"trigger_hotkey_only", L"hotkey").c_str(), colInputX + 268, detailY + 48, 70, 22, BS_AUTOCHECKBOX);
         st->triggerChecks[5] = createBtn(kCtrlTriggerNonRunning, Tr(st, L"trigger_non_running", L"non_running").c_str(), colInputX + 344, detailY + 48, 70, 22, BS_AUTOCHECKBOX);
 
-        createBtn(0, Tr(st, L"group_execution", L"Execution").c_str(), detailX + 8, detailY + 78, detailW - 16, 78, BS_GROUPBOX);
+        createBtn(0, Tr(st, L"group_execution", L"Execution").c_str(), detailX + 8, detailY + 78, detailW - 16, 134, BS_GROUPBOX);
         st->actionMode = CreateWindowExW(WS_EX_CLIENTEDGE, L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST,
-            colLabelX, detailY + 98, 90, 220, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kCtrlActionMode)), nullptr, nullptr);
+            colLabelX, detailY + 98, 120, 220, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kCtrlActionMode)), nullptr, nullptr);
         SendMessageW(st->actionMode, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
-        st->actionPrimaryLabel = createStatic(Tr(st, L"label_action_args", L"Params").c_str(), detailX + 114, detailY + 102, 58, 20);
-        st->actionPath = createEdit(kCtrlActionPath, detailX + 174, detailY + 98, 324, editH, ES_AUTOHSCROLL);
-        createStatic(Tr(st, L"label_action_cwd", L"Cwd").c_str(), colLabelX, detailY + 130, 64, 20);
-        st->actionCwd = createEdit(kCtrlActionCwd, colInputX, detailY + 126, 408, editH, ES_AUTOHSCROLL);
-        st->actionArgs = nullptr;
+        st->actionPrimaryLabel = createStatic(Tr(st, L"label_action_path_only", L"Path").c_str(), colLabelX, detailY + 130, 72, 20);
+        st->actionPath = createEdit(kCtrlActionPath, colInputX, detailY + 126, 408, editH, ES_AUTOHSCROLL);
+        createStatic(Tr(st, L"label_action_args", L"Params").c_str(), colLabelX, detailY + 158, 72, 20);
+        st->actionArgs = createEdit(kCtrlActionArgs, colInputX, detailY + 154, 408, editH, ES_AUTOHSCROLL);
+        createStatic(Tr(st, L"label_action_cwd", L"Cwd").c_str(), colLabelX, detailY + 186, 72, 20);
+        st->actionCwd = createEdit(kCtrlActionCwd, colInputX, detailY + 182, 408, editH, ES_AUTOHSCROLL);
 
-        st->grpInterval = createBtn(0, Tr(st, L"trigger_interval", L"interval").c_str(), detailX + 8, detailY + 162, 150, 50, BS_GROUPBOX);
-        createStatic(Tr(st, L"label_intervalsec", L"IntervalSec").c_str(), colLabelX, detailY + 182, 72, 20);
-        st->intervalSec = createNumericEdit(kCtrlIntervalSec, colInputX, detailY + 178, 52, editH, 5);
-        createSpin(kCtrlSpinIntervalSec, colInputX + 42, detailY + 178, 10, editH, 0, 86400);
+        st->grpInterval = createBtn(0, Tr(st, L"trigger_interval", L"interval").c_str(), detailX + 8, detailY + 218, 150, 50, BS_GROUPBOX);
+        createStatic(Tr(st, L"label_intervalsec", L"IntervalSec").c_str(), colLabelX, detailY + 238, 72, 20);
+        st->intervalSec = createNumericEdit(kCtrlIntervalSec, colInputX, detailY + 234, 52, editH, 5);
+        createSpin(kCtrlSpinIntervalSec, colInputX + 42, detailY + 234, 10, editH, 0, 86400);
 
         st->grpDateTime = nullptr;
 
-        st->grpWeekly = createBtn(0, Tr(st, L"trigger_weekly_time", L"weekly_time").c_str(), detailX + 8, detailY + 220, detailW - 16, 90, BS_GROUPBOX);
-        st->dateEnabled = createBtn(kCtrlDateEnabled, Tr(st, L"label_date", L"Date").c_str(), colLabelX, detailY + 238, 64, 22, BS_AUTOCHECKBOX);
-        st->dateValue = createEdit(kCtrlDateValue, colInputX, detailY + 238, 98, editH, ES_AUTOHSCROLL);
+        st->grpWeekly = createBtn(0, Tr(st, L"trigger_weekly_time", L"weekly_time").c_str(), detailX + 8, detailY + 276, detailW - 16, 90, BS_GROUPBOX);
+        st->dateEnabled = createBtn(kCtrlDateEnabled, Tr(st, L"label_date", L"Date").c_str(), colLabelX, detailY + 294, 64, 22, BS_AUTOCHECKBOX);
+        st->dateValue = createEdit(kCtrlDateValue, colInputX, detailY + 294, 98, editH, ES_AUTOHSCROLL);
         SendMessageW(st->dateValue, EM_LIMITTEXT, 10, 0);
 
-        st->timeEnabled = createBtn(kCtrlTimeEnabled, Tr(st, L"label_timeofday", L"Time").c_str(), detailX + 206, detailY + 238, 64, 22, BS_AUTOCHECKBOX);
-        st->timeOfDay = createEdit(kCtrlTimeOfDay, detailX + 278, detailY + 238, 72, editH, ES_AUTOHSCROLL);
+        st->timeEnabled = createBtn(kCtrlTimeEnabled, Tr(st, L"label_timeofday", L"Time").c_str(), detailX + 206, detailY + 294, 64, 22, BS_AUTOCHECKBOX);
+        st->timeOfDay = createEdit(kCtrlTimeOfDay, detailX + 278, detailY + 294, 72, editH, ES_AUTOHSCROLL);
         SendMessageW(st->timeOfDay, EM_LIMITTEXT, 5, 0);
 
-        st->weekdayEnabled = createBtn(kCtrlWeekdayEnabled, Tr(st, L"label_weekday", L"Weekday").c_str(), colLabelX, detailY + 266, 64, 22, BS_AUTOCHECKBOX);
-        st->weekdayChecks[0] = createBtn(kCtrlWeekdaySun, Tr(st, L"weekday_sun", L"Sun").c_str(), colInputX, detailY + 264, 38, 22, BS_AUTOCHECKBOX);
-        st->weekdayChecks[1] = createBtn(kCtrlWeekdayMon, Tr(st, L"weekday_mon", L"Mon").c_str(), colInputX + 38, detailY + 264, 38, 22, BS_AUTOCHECKBOX);
-        st->weekdayChecks[2] = createBtn(kCtrlWeekdayTue, Tr(st, L"weekday_tue", L"Tue").c_str(), colInputX + 76, detailY + 264, 38, 22, BS_AUTOCHECKBOX);
-        st->weekdayChecks[3] = createBtn(kCtrlWeekdayWed, Tr(st, L"weekday_wed", L"Wed").c_str(), colInputX + 114, detailY + 264, 38, 22, BS_AUTOCHECKBOX);
-        st->weekdayChecks[4] = createBtn(kCtrlWeekdayThu, Tr(st, L"weekday_thu", L"Thu").c_str(), colInputX + 152, detailY + 264, 38, 22, BS_AUTOCHECKBOX);
-        st->weekdayChecks[5] = createBtn(kCtrlWeekdayFri, Tr(st, L"weekday_fri", L"Fri").c_str(), colInputX + 190, detailY + 264, 38, 22, BS_AUTOCHECKBOX);
-        st->weekdayChecks[6] = createBtn(kCtrlWeekdaySat, Tr(st, L"weekday_sat", L"Sat").c_str(), colInputX + 228, detailY + 264, 38, 22, BS_AUTOCHECKBOX);
-        st->weekdayEveryday = createBtn(kCtrlWeekdayEveryday, Tr(st, L"weekday_everyday", L"Everyday").c_str(), detailX + 360, detailY + 264, 74, 22, BS_AUTOCHECKBOX);
+        st->weekdayEnabled = createBtn(kCtrlWeekdayEnabled, Tr(st, L"label_weekday", L"Weekday").c_str(), colLabelX, detailY + 322, 64, 22, BS_AUTOCHECKBOX);
+        st->weekdayChecks[0] = createBtn(kCtrlWeekdaySun, Tr(st, L"weekday_sun", L"Sun").c_str(), colInputX, detailY + 320, 38, 22, BS_AUTOCHECKBOX);
+        st->weekdayChecks[1] = createBtn(kCtrlWeekdayMon, Tr(st, L"weekday_mon", L"Mon").c_str(), colInputX + 38, detailY + 320, 38, 22, BS_AUTOCHECKBOX);
+        st->weekdayChecks[2] = createBtn(kCtrlWeekdayTue, Tr(st, L"weekday_tue", L"Tue").c_str(), colInputX + 76, detailY + 320, 38, 22, BS_AUTOCHECKBOX);
+        st->weekdayChecks[3] = createBtn(kCtrlWeekdayWed, Tr(st, L"weekday_wed", L"Wed").c_str(), colInputX + 114, detailY + 320, 38, 22, BS_AUTOCHECKBOX);
+        st->weekdayChecks[4] = createBtn(kCtrlWeekdayThu, Tr(st, L"weekday_thu", L"Thu").c_str(), colInputX + 152, detailY + 320, 38, 22, BS_AUTOCHECKBOX);
+        st->weekdayChecks[5] = createBtn(kCtrlWeekdayFri, Tr(st, L"weekday_fri", L"Fri").c_str(), colInputX + 190, detailY + 320, 38, 22, BS_AUTOCHECKBOX);
+        st->weekdayChecks[6] = createBtn(kCtrlWeekdaySat, Tr(st, L"weekday_sat", L"Sat").c_str(), colInputX + 228, detailY + 320, 38, 22, BS_AUTOCHECKBOX);
+        st->weekdayEveryday = createBtn(kCtrlWeekdayEveryday, Tr(st, L"weekday_everyday", L"Everyday").c_str(), detailX + 360, detailY + 320, 74, 22, BS_AUTOCHECKBOX);
 
         st->grpStartup = nullptr;
 
-        st->grpHotkey = createBtn(0, Tr(st, L"trigger_hotkey_only", L"hotkey_only").c_str(), detailX + 164, detailY + 162, 344, 50, BS_GROUPBOX);
-        createStatic(Tr(st, L"label_hotkey", L"Hotkey").c_str(), detailX + 174, detailY + 182, 50, 20);
+        st->grpHotkey = createBtn(0, Tr(st, L"trigger_hotkey_only", L"hotkey_only").c_str(), detailX + 164, detailY + 218, 344, 50, BS_GROUPBOX);
+        createStatic(Tr(st, L"label_hotkey", L"Hotkey").c_str(), detailX + 174, detailY + 238, 50, 20);
         st->hotkeyMod = CreateWindowExW(WS_EX_CLIENTEDGE, L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | WS_VSCROLL | CBS_DROPDOWNLIST,
-            detailX + 228, detailY + 178, 110, 220, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kCtrlHotkeyMod)), nullptr, nullptr);
+            detailX + 228, detailY + 234, 110, 220, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kCtrlHotkeyMod)), nullptr, nullptr);
         st->hotkeyKey = CreateWindowExW(WS_EX_CLIENTEDGE, L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | WS_VSCROLL | CBS_DROPDOWNLIST,
-            detailX + 348, detailY + 178, 110, 220, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kCtrlHotkeyKey)), nullptr, nullptr);
+            detailX + 348, detailY + 234, 110, 220, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kCtrlHotkeyKey)), nullptr, nullptr);
         SendMessageW(st->hotkeyMod, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
         SendMessageW(st->hotkeyKey, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
 
-        st->grpNonRunning = createBtn(0, Tr(st, L"trigger_non_running", L"non_running").c_str(), detailX + 8, detailY + 316, detailW - 16, 70, BS_GROUPBOX);
-        createStatic(Tr(st, L"label_retrysec", L"RetrySec").c_str(), colLabelX, detailY + 340, 72, 20);
-        st->watchdogRetrySec = createNumericEdit(kCtrlWatchdogRetrySec, colInputX, detailY + 336, 52, editH, 4);
-        createSpin(kCtrlSpinWatchdogRetrySec, colInputX + 42, detailY + 336, 10, editH, 10, 3600);
-        createStatic(Tr(st, L"label_retrycount", L"RetryCount").c_str(), detailX + 174, detailY + 340, 72, 20);
-        st->repeatCount = createNumericEdit(kCtrlRepeatCount, detailX + 248, detailY + 336, 64, editH, 7);
-        createSpin(kCtrlSpinRepeatCount, detailX + 302, detailY + 336, 10, editH, 1, 1000000);
+        st->grpNonRunning = createBtn(0, Tr(st, L"trigger_non_running", L"non_running").c_str(), detailX + 8, detailY + 372, detailW - 16, 70, BS_GROUPBOX);
+        createStatic(Tr(st, L"label_retrysec", L"RetrySec").c_str(), colLabelX, detailY + 396, 72, 20);
+        st->watchdogRetrySec = createNumericEdit(kCtrlWatchdogRetrySec, colInputX, detailY + 392, 52, editH, 4);
+        createSpin(kCtrlSpinWatchdogRetrySec, colInputX + 42, detailY + 392, 10, editH, 10, 3600);
+        createStatic(Tr(st, L"label_retrycount", L"RetryCount").c_str(), detailX + 174, detailY + 396, 72, 20);
+        st->repeatCount = createNumericEdit(kCtrlRepeatCount, detailX + 248, detailY + 392, 64, editH, 7);
+        createSpin(kCtrlSpinRepeatCount, detailX + 302, detailY + 392, 10, editH, 1, 1000000);
 
         st->status = createStatic(Tr(st, L"status_ready", L"Ready.").c_str(), m, 596, globalW, 20);
 
@@ -1391,6 +1397,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             st->actionPathDirty = true;
             return 0;
         }
+        if (id == kCtrlActionArgs && code == EN_CHANGE) {
+            st->actionArgsDirty = true;
+            return 0;
+        }
         if (id == kCtrlActionCwd && code == EN_CHANGE) {
             st->actionCwdDirty = true;
             return 0;
@@ -1453,6 +1463,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             (id == kCtrlGraceSec && code == EN_CHANGE) ||
             (id == kCtrlTaskEnabled && code == BN_CLICKED) ||
             (id == kCtrlActionPath && code == EN_KILLFOCUS) ||
+            (id == kCtrlActionArgs && code == EN_KILLFOCUS) ||
             (id == kCtrlActionCwd && code == EN_KILLFOCUS) ||
             (id == kCtrlIntervalSec && code == EN_CHANGE) ||
             (id == kCtrlWatchdogRetrySec && code == EN_CHANGE) ||

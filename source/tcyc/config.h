@@ -32,6 +32,8 @@ struct TaskConfig {
     bool watchdogRequireArgsMatch = true;
     int intervalSec = 0;
     std::wstring startDateTime;
+    bool startDateTimeValid = false;
+    long long startDateTimeUnix = 0;
     int repeatEverySec = 0;
     int repeatCount = 0;
     bool weeklyEveryday = false;

@@ -11,12 +11,15 @@ bool HasNonRunningTrigger(const TaskConfig& t) {
 }
 }
 
-std::vector<WatchdogDue> EvaluateWatchdogDue(const RuntimeConfig& cfg, RuntimeState& state, long long nowUnix) {
+std::vector<WatchdogDue> EvaluateWatchdogDue(const RuntimeConfig& cfg,
+                                             RuntimeState& state,
+                                             long long nowUnix,
+                                             const std::vector<const TaskConfig*>* taskLane) {
     std::vector<WatchdogDue> out;
-    for (const auto& t : cfg.tasks) {
-        if (!t.enabled || !t.watchdogEnabled) continue;
-        if (!HasNonRunningTrigger(t)) continue;
-        if (t.actionPath.empty()) continue;
+    auto evalTask = [&](const TaskConfig& t) {
+        if (!t.enabled || !t.watchdogEnabled) return;
+        if (!HasNonRunningTrigger(t)) return;
+        if (t.actionPath.empty()) return;
 
         TaskRuntimeState& st = state.tasks[t.id];
         ProcessMatchMode mode = ProcessMatchMode::None;
@@ -26,19 +29,30 @@ std::vector<WatchdogDue> EvaluateWatchdogDue(const RuntimeConfig& cfg, RuntimeSt
             }
             st.watchdogRetryCount = 0;
             st.watchdogNextRetryUnix = 0;
-            continue;
+            return;
         }
 
         if (st.watchdogNextRetryUnix == 0) {
             st.watchdogNextRetryUnix = nowUnix + t.watchdogRetrySec;
-            continue;
+            return;
         }
-        if (nowUnix < st.watchdogNextRetryUnix) continue;
+        if (nowUnix < st.watchdogNextRetryUnix) return;
 
         if (t.watchdogMaxRetry >= 0 && st.watchdogRetryCount >= t.watchdogMaxRetry) {
-            continue;
+            return;
         }
         out.push_back({t.id, L"watchdog_retry"});
+    };
+
+    if (taskLane) {
+        for (const TaskConfig* tp : *taskLane) {
+            if (!tp) continue;
+            evalTask(*tp);
+        }
+    } else {
+        for (const auto& t : cfg.tasks) {
+            evalTask(t);
+        }
     }
     return out;
 }

@@ -38,6 +38,7 @@ constexpr int kCtrlTaskAdd = 1019;
 constexpr int kCtrlTaskDelete = 1020;
 constexpr int kCtrlTaskRename = 1021;
 constexpr int kCtrlTaskTestRun = 1026;
+constexpr int kCtrlTaskInlineRename = 1060;
 constexpr int kCtrlActionMode = 1022;
 constexpr int kCtrlActionPath = 1023;
 constexpr int kCtrlActionArgs = 1024;
@@ -65,6 +66,7 @@ constexpr int kCtrlSpinGraceSec = 1042;
 constexpr int kCtrlSpinIntervalSec = 1043;
 constexpr int kCtrlSpinRepeatCount = 1045;
 constexpr UINT_PTR kTaskListTimerId = 1;
+constexpr UINT kMsgFocusInlineRename = WM_APP + 21;
 constexpr int kTcycleIconResId = 101; // IDI_APP_ICON in tcycle.rc
 
 struct HotkeyModOption {
@@ -133,6 +135,11 @@ struct WindowState {
 
     HWND status = nullptr;
     HWND mainWindow = nullptr;
+    HWND inlineEdit = nullptr;
+    int inlineEditIndex = -1;
+    bool inlineFinalizing = false;
+    WNDPROC taskListOldProc = nullptr;
+    WNDPROC inlineEditOldProc = nullptr;
 
     int selectedTask = -1;
     bool suppressEvents = false;
@@ -691,14 +698,7 @@ void SetStatus(WindowState* st, const std::wstring& msg) {
 
 std::wstring BuildMainWindowTitle(WindowState* st) {
     std::wstring appTitle = Tr(st, L"app_name", L"TCycle");
-    std::wstring settingsTitle = Tr(st, L"window_title", L"TCycle Settings");
-    std::wstring title = settingsTitle;
-    if (title.empty()) {
-        title = appTitle;
-    }
-    if (!appTitle.empty() && title.rfind(appTitle, 0) != 0) {
-        title = appTitle + L" - " + title;
-    }
+    std::wstring title = appTitle.empty() ? L"TCycle" : appTitle;
     if (st && st->selectedTask >= 0 && st->selectedTask < static_cast<int>(st->config.tasks.size())) {
         const std::wstring& taskName = st->config.tasks[static_cast<size_t>(st->selectedTask)].name;
         if (!taskName.empty()) {
@@ -707,7 +707,7 @@ std::wstring BuildMainWindowTitle(WindowState* st) {
         }
     }
     if (title.empty() || title == L" - ") {
-        title = L"TCycle Settings";
+        title = L"TCycle";
     }
     return title;
 }
@@ -720,14 +720,9 @@ void UpdateMainWindowTitle(WindowState* st) {
         if (lbSel >= 0 && lbSel < static_cast<int>(st->config.tasks.size())) {
             const std::wstring& taskName = st->config.tasks[static_cast<size_t>(lbSel)].name;
             if (!taskName.empty()) {
-                std::wstring base = Tr(st, L"window_title", L"TCycle Settings");
+                std::wstring base;
                 const std::wstring appTitle = Tr(st, L"app_name", L"TCycle");
-                if (base.empty()) {
-                    base = appTitle;
-                }
-                if (!appTitle.empty() && base.rfind(appTitle, 0) != 0) {
-                    base = appTitle + L" - " + base;
-                }
+                base = appTitle.empty() ? L"TCycle" : appTitle;
                 title = base + L" - " + taskName;
             }
         }
@@ -1328,6 +1323,115 @@ bool PromptRename(HWND owner, const std::wstring& title, const std::wstring& cur
     return true;
 }
 
+void CancelInlineRenameTask(WindowState* st);
+bool CommitInlineRenameTask(WindowState* st);
+void RefreshAll(WindowState* st);
+
+LRESULT CALLBACK InlineEditSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    auto* st = reinterpret_cast<WindowState*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+    if (!st) return DefWindowProcW(hwnd, msg, wParam, lParam);
+    if (msg == WM_KEYDOWN) {
+        if (wParam == VK_RETURN) {
+            CommitInlineRenameTask(st);
+            return 0;
+        }
+        if (wParam == VK_ESCAPE) {
+            CancelInlineRenameTask(st);
+            return 0;
+        }
+    } else if (msg == WM_CHAR) {
+        if (wParam == VK_RETURN) {
+            CommitInlineRenameTask(st);
+            return 0;
+        }
+        if (wParam == VK_ESCAPE) {
+            CancelInlineRenameTask(st);
+            return 0;
+        }
+    } else if (msg == WM_KILLFOCUS) {
+        CommitInlineRenameTask(st);
+        return 0;
+    }
+    if (st->inlineEditOldProc) return CallWindowProcW(st->inlineEditOldProc, hwnd, msg, wParam, lParam);
+    return DefWindowProcW(hwnd, msg, wParam, lParam);
+}
+
+bool BeginInlineRenameTask(WindowState* st) {
+    if (!st || !st->taskList || !st->mainWindow || st->inlineEdit) return false;
+    const int idx = st->selectedTask;
+    if (idx < 0 || idx >= static_cast<int>(st->config.tasks.size())) return false;
+    RECT rc{};
+    if (SendMessageW(st->taskList, LB_GETITEMRECT, idx, reinterpret_cast<LPARAM>(&rc)) == LB_ERR) return false;
+    // Use listbox-local coordinates and parent to avoid hit-test/focus mismatch.
+    int x = rc.left;
+    int y = rc.top;
+    int w = (rc.right - rc.left);
+    int h = (rc.bottom - rc.top);
+    if (h < 20) h = 20;
+    st->inlineEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"",
+        WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
+        x, y, w, h,
+        st->taskList, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kCtrlTaskInlineRename)), nullptr, nullptr);
+    if (!st->inlineEdit) return false;
+
+    st->inlineEditIndex = idx;
+    SendMessageW(st->inlineEdit, WM_SETFONT, SendMessageW(st->taskList, WM_GETFONT, 0, 0), TRUE);
+    SetWindowTextW(st->inlineEdit, st->config.tasks[static_cast<size_t>(idx)].name.c_str());
+    SendMessageW(st->inlineEdit, EM_SETSEL, 0, -1);
+    SetWindowLongPtrW(st->inlineEdit, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(st));
+    st->inlineEditOldProc = reinterpret_cast<WNDPROC>(
+        SetWindowLongPtrW(st->inlineEdit, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(InlineEditSubclassProc)));
+    SetFocus(st->inlineEdit);
+    SendMessageW(st->inlineEdit, EM_SETSEL, 0, -1);
+    PostMessageW(st->mainWindow, kMsgFocusInlineRename, 0, 0);
+    return true;
+}
+
+LRESULT CALLBACK TaskListSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    auto* st = reinterpret_cast<WindowState*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+    if (st && msg == WM_KEYDOWN && wParam == VK_F2) {
+        BeginInlineRenameTask(st);
+        return 0;
+    }
+    if (st && st->taskListOldProc) return CallWindowProcW(st->taskListOldProc, hwnd, msg, wParam, lParam);
+    return DefWindowProcW(hwnd, msg, wParam, lParam);
+}
+
+void DestroyInlineRenameTask(WindowState* st) {
+    if (!st || !st->inlineEdit) return;
+    HWND edit = st->inlineEdit;
+    if (st->inlineEditOldProc) {
+        SetWindowLongPtrW(edit, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(st->inlineEditOldProc));
+        st->inlineEditOldProc = nullptr;
+    }
+    st->inlineEdit = nullptr;
+    st->inlineEditIndex = -1;
+    DestroyWindow(edit);
+}
+
+void CancelInlineRenameTask(WindowState* st) {
+    if (!st || !st->inlineEdit) return;
+    DestroyInlineRenameTask(st);
+    if (st->taskList) SetFocus(st->taskList);
+}
+
+bool CommitInlineRenameTask(WindowState* st) {
+    if (!st || !st->inlineEdit) return false;
+    if (st->inlineFinalizing) return false;
+    st->inlineFinalizing = true;
+    const int idx = st->inlineEditIndex;
+    const std::wstring newName = TrimWide(GetEditText(st->inlineEdit));
+    DestroyInlineRenameTask(st);
+    if (!newName.empty() && idx >= 0 && idx < static_cast<int>(st->config.tasks.size())) {
+        st->config.tasks[static_cast<size_t>(idx)].name = newName;
+        st->selectedTask = idx;
+        PersistRealtime(st, true);
+        RefreshAll(st);
+    }
+    st->inlineFinalizing = false;
+    return true;
+}
+
 void AddTask(WindowState* st) {
     int maxId = 0;
     for (const auto& t : st->config.tasks) maxId = (t.id > maxId) ? t.id : maxId;
@@ -1449,6 +1553,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         st->taskList = CreateWindowExW(WS_EX_CLIENTEDGE, L"LISTBOX", L"", WS_CHILD | WS_VISIBLE | WS_VSCROLL | LBS_NOTIFY | LBS_NOINTEGRALHEIGHT,
             listX + 10, listY + 22, listW - 20, listH - 64, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kCtrlTaskList)), nullptr, nullptr);
         SendMessageW(st->taskList, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
+        SetWindowLongPtrW(st->taskList, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(st));
+        st->taskListOldProc = reinterpret_cast<WNDPROC>(
+            SetWindowLongPtrW(st->taskList, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(TaskListSubclassProc)));
         st->taskAdd = createBtn(kCtrlTaskAdd, L"+", listX + 10, listY + listH - 34, 32, 24, BS_PUSHBUTTON);
         st->taskDelete = createBtn(kCtrlTaskDelete, L"Del", listX + 46, listY + listH - 34, 40, 24, BS_PUSHBUTTON);
         st->taskRename = createBtn(kCtrlTaskRename, L"Rename", listX + 90, listY + listH - 34, 76, 24, BS_PUSHBUTTON);
@@ -1456,7 +1563,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         createBtn(0, Tr(st, L"group_schedule", L"Schedule").c_str(), detailX, detailY, detailW, detailH, BS_GROUPBOX);
         st->taskEnabled = createBtn(kCtrlTaskEnabled, Tr(st, L"label_task_enabled", L"Task Enabled").c_str(), detailX + 12, detailY + 22, 118, 22, BS_AUTOCHECKBOX);
         st->singleInstance = createBtn(kCtrlSingleInstance, Tr(st, L"label_single_instance", L"No duplicate launch").c_str(), detailX + 126, detailY + 22, 170, 22, BS_AUTOCHECKBOX);
-        st->taskTestRun = createBtn(kCtrlTaskTestRun, Tr(st, L"button_test_run", L"Test Run").c_str(), detailX + 300, detailY + 22, 90, 22, BS_PUSHBUTTON);
+        st->taskTestRun = createBtn(kCtrlTaskTestRun, Tr(st, L"button_test_run", L"Test Run").c_str(), detailX + detailW - 102, detailY + detailH - 34, 90, 22, BS_PUSHBUTTON);
         createStatic(Tr(st, L"label_trigger", L"Trigger").c_str(), colLabelX, detailY + 52, 64, 20);
         st->triggerChecks[3] = createBtn(kCtrlTriggerStartup, Tr(st, L"trigger_startup", L"startup").c_str(), colInputX, detailY + 48, 94, 22, BS_AUTOCHECKBOX);
         st->triggerChecks[0] = createBtn(kCtrlTriggerInterval, Tr(st, L"trigger_interval", L"interval").c_str(), colInputX + 100, detailY + 48, 78, 22, BS_AUTOCHECKBOX);
@@ -1532,6 +1639,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     }
     case WM_TIMER:
         if (wParam == kTaskListTimerId && st && !st->suppressEvents) {
+            if (st->inlineEdit) return 0;
             const int prevSel = st->selectedTask;
             st->suppressEvents = true;
             PopulateTaskList(st);
@@ -1542,13 +1650,26 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             st->suppressEvents = false;
         }
         return 0;
+    case kMsgFocusInlineRename:
+        if (st && st->inlineEdit && IsWindow(st->inlineEdit)) {
+            SetFocus(st->inlineEdit);
+            SendMessageW(st->inlineEdit, EM_SETSEL, 0, -1);
+        }
+        return 0;
     case WM_COMMAND: {
         if (!st) return 0;
         const int id = LOWORD(wParam);
         const int code = HIWORD(wParam);
 
-        if (id == kCtrlTaskList && code == LBN_SELCHANGE) {
+        if (id == kCtrlTaskList && (code == LBN_SELCHANGE || code == LBN_DBLCLK)) {
             int idx = static_cast<int>(SendMessageW(st->taskList, LB_GETCURSEL, 0, 0));
+            if (st->inlineEdit && idx != st->inlineEditIndex) {
+                CancelInlineRenameTask(st);
+            }
+            if (code == LBN_DBLCLK) {
+                BeginInlineRenameTask(st);
+                return 0;
+            }
             st->suppressEvents = true;
             LoadTaskControls(st, idx);
             st->suppressEvents = false;
@@ -1573,11 +1694,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         }
         if (id == kCtrlTaskRename && code == BN_CLICKED) {
             if (st->selectedTask < 0 || st->selectedTask >= static_cast<int>(st->config.tasks.size())) return 0;
-            std::wstring newName;
-            if (PromptRename(hwnd, Tr(st, L"rename_title", L"Rename Task"), st->config.tasks[static_cast<size_t>(st->selectedTask)].name, newName)) {
-                st->config.tasks[static_cast<size_t>(st->selectedTask)].name = newName;
-                PersistRealtime(st, true);
-                RefreshAll(st);
+            if (!st->inlineEdit) {
+                BeginInlineRenameTask(st);
             }
             return 0;
         }
@@ -1741,6 +1859,13 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     }
     case WM_CLOSE:
         KillTimer(hwnd, kTaskListTimerId);
+        if (st && st->inlineEdit) {
+            CancelInlineRenameTask(st);
+        }
+        if (st && st->taskList && st->taskListOldProc) {
+            SetWindowLongPtrW(st->taskList, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(st->taskListOldProc));
+            st->taskListOldProc = nullptr;
+        }
         if (st && !st->suppressEvents) {
             PersistRealtime(st, false);
             st->suppressEvents = true;

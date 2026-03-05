@@ -54,6 +54,7 @@ constexpr UINT ID_TRAY_CAPTURE_BASE = 2100; // per profile
 constexpr UINT HOTKEY_ID_BASE = 3000;      // per profile
 constexpr UINT TIMER_AUTO_BASE = 4000;     // per profile
 constexpr UINT ID_TRAY_LANG_BASE = 5100;
+constexpr int kCtrlProfileInlineRename = 143;
 static const wchar_t* kAgentMainWindowClass = L"TCaptureAgentWindow";
 static const wchar_t* kSettingsWindowClass = L"TCaptureSettings";
 static const wchar_t* kSingletonMutexName = L"Local\\TCaptureMutex";
@@ -203,6 +204,11 @@ struct SettingsDialog {
     int layoutClientHeight = 0;
     int activeProfile = 0;
     bool suppressSave = false;
+    HWND inlineEdit = nullptr;
+    int inlineEditIndex = -1;
+    bool inlineFinalizing = false;
+    WNDPROC tabOldProc = nullptr;
+    WNDPROC inlineEditOldProc = nullptr;
 };
 
 using SetWindowThemeFn = HRESULT(WINAPI*)(HWND, LPCWSTR, LPCWSTR);
@@ -1358,7 +1364,6 @@ void updateStatusBrush(SettingsDialog* dlg) {
 void updateSettingsWindowTitle(SettingsDialog* dlg) {
     if (!dlg || !dlg->app || !dlg->hwnd) return;
     std::wstring appTitle = translateId(*dlg->app, L"app_name", L"TCapture");
-    std::wstring settingsTitle = translateId(*dlg->app, L"settings_title", L"TCapture settings");
     std::wstring profileTitle;
     if (dlg->activeProfile >= 0 && dlg->activeProfile < static_cast<int>(dlg->app->profiles.size())) {
         profileTitle = utf8ToWide(dlg->app->profiles[dlg->activeProfile].name);
@@ -1367,7 +1372,6 @@ void updateSettingsWindowTitle(SettingsDialog* dlg) {
     if (!profileTitle.empty()) {
         title += L" - " + profileTitle;
     }
-    title += L" - " + settingsTitle;
     SetWindowTextW(dlg->hwnd, title.c_str());
 }
 
@@ -1619,6 +1623,141 @@ bool promptRenameProfile(SettingsDialog* dlg, int index) {
     return true;
 }
 
+void destroyInlineRenameProfile(SettingsDialog* dlg);
+void cancelInlineRenameProfile(SettingsDialog* dlg);
+bool commitInlineRenameProfile(SettingsDialog* dlg);
+
+LRESULT CALLBACK InlineProfileEditProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    auto* dlg = reinterpret_cast<SettingsDialog*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+    if (!dlg) return DefWindowProcW(hwnd, msg, wParam, lParam);
+    if (msg == WM_GETDLGCODE) {
+        return DLGC_WANTALLKEYS | DLGC_WANTARROWS;
+    }
+    if (msg == WM_KEYDOWN) {
+        if (wParam == VK_RETURN) {
+            commitInlineRenameProfile(dlg);
+            return 0;
+        }
+        if (wParam == VK_ESCAPE) {
+            cancelInlineRenameProfile(dlg);
+            return 0;
+        }
+    } else if (msg == WM_CHAR) {
+        if (wParam == VK_RETURN) {
+            commitInlineRenameProfile(dlg);
+            return 0;
+        }
+        if (wParam == VK_ESCAPE) {
+            cancelInlineRenameProfile(dlg);
+            return 0;
+        }
+    } else if (msg == WM_KILLFOCUS) {
+        commitInlineRenameProfile(dlg);
+        return 0;
+    }
+    if (dlg->inlineEditOldProc) {
+        return CallWindowProcW(dlg->inlineEditOldProc, hwnd, msg, wParam, lParam);
+    }
+    return DefWindowProcW(hwnd, msg, wParam, lParam);
+}
+
+bool beginInlineRenameProfile(SettingsDialog* dlg, int index) {
+    if (!dlg || !dlg->tab || dlg->inlineEdit) return false;
+    if (index < 0 || index >= static_cast<int>(dlg->app->profiles.size())) return false;
+
+    RECT rc{};
+    if (SendMessageW(dlg->tab, LB_GETITEMRECT, static_cast<WPARAM>(index), reinterpret_cast<LPARAM>(&rc)) == LB_ERR) return false;
+    int x = rc.left;
+    int y = rc.top;
+    int w = rc.right - rc.left;
+    int h = rc.bottom - rc.top;
+    if (h < 20) h = 20;
+
+    dlg->inlineEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"",
+                                      WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
+                                      x, y, w, h, dlg->tab,
+                                      reinterpret_cast<HMENU>(static_cast<INT_PTR>(kCtrlProfileInlineRename)),
+                                      dlg->app->hInstance, nullptr);
+    if (!dlg->inlineEdit) return false;
+
+    dlg->inlineEditIndex = index;
+    SendMessageW(dlg->inlineEdit, WM_SETFONT, SendMessageW(dlg->tab, WM_GETFONT, 0, 0), TRUE);
+    SetWindowTextW(dlg->inlineEdit, utf8ToWide(dlg->app->profiles[static_cast<size_t>(index)].name).c_str());
+    SendMessageW(dlg->inlineEdit, EM_SETSEL, 0, -1);
+    SetWindowLongPtrW(dlg->inlineEdit, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(dlg));
+    dlg->inlineEditOldProc = reinterpret_cast<WNDPROC>(
+        SetWindowLongPtrW(dlg->inlineEdit, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(InlineProfileEditProc)));
+    SetFocus(dlg->inlineEdit);
+    SendMessageW(dlg->inlineEdit, EM_SETSEL, 0, -1);
+    return true;
+}
+
+void destroyInlineRenameProfile(SettingsDialog* dlg) {
+    if (!dlg || !dlg->inlineEdit) return;
+    HWND edit = dlg->inlineEdit;
+    if (dlg->inlineEditOldProc) {
+        SetWindowLongPtrW(edit, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(dlg->inlineEditOldProc));
+        dlg->inlineEditOldProc = nullptr;
+    }
+    dlg->inlineEdit = nullptr;
+    dlg->inlineEditIndex = -1;
+    DestroyWindow(edit);
+}
+
+void cancelInlineRenameProfile(SettingsDialog* dlg) {
+    if (!dlg || !dlg->inlineEdit) return;
+    destroyInlineRenameProfile(dlg);
+    if (dlg->tab) SetFocus(dlg->tab);
+}
+
+bool commitInlineRenameProfile(SettingsDialog* dlg) {
+    if (!dlg || !dlg->inlineEdit) return false;
+    if (dlg->inlineFinalizing) return false;
+    dlg->inlineFinalizing = true;
+
+    const int index = dlg->inlineEditIndex;
+    const std::string newName = trimCopy(getControlText(dlg->inlineEdit));
+    destroyInlineRenameProfile(dlg);
+
+    bool changed = false;
+    if (!newName.empty() && index >= 0 && index < static_cast<int>(dlg->app->profiles.size())) {
+        auto isDup = [&](const std::string& name) {
+            for (size_t i = 0; i < dlg->app->profiles.size(); ++i) {
+                if (i == static_cast<size_t>(index)) continue;
+                if (namesEqual(dlg->app->profiles[i].name, name)) return true;
+            }
+            return false;
+        };
+        if (!isDup(newName)) {
+            dlg->app->profiles[static_cast<size_t>(index)].name = newName;
+            dlg->activeProfile = index;
+            populateTabs(dlg);
+            SendMessageW(dlg->tab, LB_SETCURSEL, static_cast<WPARAM>(dlg->activeProfile), 0);
+            saveProfiles(*dlg->app);
+            updateSettingsWindowTitle(dlg);
+            changed = true;
+        } else {
+            MessageBoxW(dlg->hwnd, L"Name already exists.", L"TCapture", MB_ICONWARNING);
+        }
+    }
+    dlg->inlineFinalizing = false;
+    return changed;
+}
+
+LRESULT CALLBACK ProfileListSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    auto* dlg = reinterpret_cast<SettingsDialog*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+    if (dlg && msg == WM_KEYDOWN && wParam == VK_F2) {
+        int sel = static_cast<int>(SendMessageW(dlg->tab, LB_GETCURSEL, 0, 0));
+        if (sel < 0) sel = dlg->activeProfile;
+        beginInlineRenameProfile(dlg, sel);
+        return 0;
+    }
+    if (dlg && dlg->tabOldProc) {
+        return CallWindowProcW(dlg->tabOldProc, hwnd, msg, wParam, lParam);
+    }
+    return DefWindowProcW(hwnd, msg, wParam, lParam);
+}
+
 std::wstring buildDisplayListText() {
     struct DisplayInfo {
         std::wstring name;
@@ -1711,7 +1850,7 @@ void buildSettingsLayout(SettingsDialog* dlg) {
     int margin = 8;
     int labelWidth = 88;
     int rowHeight = 24;
-    int sidebarWidth = 116;
+    int sidebarWidth = 176;
     int sidebarGap = 8;
     int buttonWidth = 34;
     int controlSpacing = 6;
@@ -1735,6 +1874,7 @@ void buildSettingsLayout(SettingsDialog* dlg) {
 
     const int addBtnWidth = 32;
     const int deleteBtnWidth = 40;
+    const int renameBtnWidth = 76;
     const int taskBtnGap = 4;
     int btnX = margin;
     int btnY = margin + listHeight + 6;
@@ -1744,9 +1884,8 @@ void buildSettingsLayout(SettingsDialog* dlg) {
     dlg->deleteBtn = CreateWindowExW(0, L"BUTTON", L"Del", WS_CHILD | WS_VISIBLE,
                                      btnX + addBtnWidth + taskBtnGap, btnY, deleteBtnWidth, rowHeight, dlg->hwnd,
                                      reinterpret_cast<HMENU>(132), dlg->app->hInstance, nullptr);
-    const int renameBtnWidth = 76;
     dlg->renameBtn = CreateWindowExW(0, L"BUTTON", L"Rename", WS_CHILD | WS_VISIBLE,
-                                     btnX, btnY + rowHeight + taskBtnGap, renameBtnWidth, rowHeight, dlg->hwnd,
+                                     btnX + addBtnWidth + taskBtnGap + deleteBtnWidth + taskBtnGap, btnY, renameBtnWidth, rowHeight, dlg->hwnd,
                                      reinterpret_cast<HMENU>(131), dlg->app->hInstance, nullptr);
     int captureBtnWidth = sidebarWidth;
     SendMessageW(dlg->addBtn, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
@@ -2064,6 +2203,11 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
             dlg->listBackgroundBrush = CreateSolidBrush(dlg->listBackgroundColor);
         }
         buildSettingsLayout(dlg);
+        if (dlg && dlg->tab) {
+            SetWindowLongPtrW(dlg->tab, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(dlg));
+            dlg->tabOldProc = reinterpret_cast<WNDPROC>(
+                SetWindowLongPtrW(dlg->tab, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(ProfileListSubclassProc)));
+        }
         adjustSettingsWindowSize(dlg);
         populateTabs(dlg);
         loadProfileToControls(dlg, dlg->activeProfile);
@@ -2171,6 +2315,9 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
         case 120: // profile list
             if (HIWORD(wParam) == LBN_SELCHANGE) {
                 int sel = static_cast<int>(SendMessageW(dlg->tab, LB_GETCURSEL, 0, 0));
+                if (dlg->inlineEdit && sel != dlg->inlineEditIndex) {
+                    cancelInlineRenameProfile(dlg);
+                }
                 if (!persistActiveProfileNoUI(dlg, true)) {
                     SendMessageW(dlg->tab, LB_SETCURSEL, static_cast<WPARAM>(dlg->activeProfile), 0);
                     return 0;
@@ -2182,7 +2329,7 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
             } else if (HIWORD(wParam) == LBN_DBLCLK) {
                 int sel = static_cast<int>(SendMessageW(dlg->tab, LB_GETCURSEL, 0, 0));
                 if (sel < 0) sel = dlg->activeProfile;
-                promptRenameProfile(dlg, sel);
+                beginInlineRenameProfile(dlg, sel);
             }
             return 0;
         case 130: { // Add
@@ -2214,7 +2361,7 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
             int sel = static_cast<int>(SendMessageW(dlg->tab, LB_GETCURSEL, 0, 0));
             if (sel < 0) sel = dlg->activeProfile;
             if (sel >= 0) {
-                promptRenameProfile(dlg, sel);
+                beginInlineRenameProfile(dlg, sel);
             }
             return 0;
         }
@@ -2327,6 +2474,13 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
         return 0;
     case WM_DESTROY:
         if (dlg) {
+            if (dlg->inlineEdit) {
+                cancelInlineRenameProfile(dlg);
+            }
+            if (dlg->tab && dlg->tabOldProc) {
+                SetWindowLongPtrW(dlg->tab, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(dlg->tabOldProc));
+                dlg->tabOldProc = nullptr;
+            }
             if (dlg->tooltip) DestroyWindow(dlg->tooltip);
             if (dlg->statusBrushActive) DeleteObject(dlg->statusBrushActive);
             if (dlg->statusBrushInactive) DeleteObject(dlg->statusBrushInactive);
@@ -2369,13 +2523,19 @@ HWND showSettingsWindow(AppState& app) {
     dlg->app = &app;
     dlg->activeProfile = 0;
     std::wstring appTitle = translateId(app, L"app_name", L"TCapture");
-    std::wstring settingsTitle = translateId(app, L"settings_title", L"TCapture settings");
-    std::wstring windowTitle = appTitle + L" - " + settingsTitle;
+    std::wstring windowTitle = appTitle;
     HWND hwnd = CreateWindowExW(WS_EX_DLGMODALFRAME, CLASS_NAME, windowTitle.c_str(),
                                 WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
                                 CW_USEDEFAULT, CW_USEDEFAULT, 720, 660,
                                 nullptr, nullptr, app.hInstance, dlg);
     if (hwnd) {
+        HICON hBig = static_cast<HICON>(LoadImageW(app.hInstance, MAKEINTRESOURCEW(IDI_APPICON), IMAGE_ICON, 0, 0, LR_DEFAULTSIZE));
+        HICON hSmall = static_cast<HICON>(LoadImageW(app.hInstance, MAKEINTRESOURCEW(IDI_APPICON), IMAGE_ICON,
+                                                     GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), 0));
+        if (!hBig) hBig = app.nid.hIcon ? app.nid.hIcon : LoadIconW(nullptr, IDI_APPLICATION);
+        if (!hSmall) hSmall = hBig;
+        SendMessageW(hwnd, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(hBig));
+        SendMessageW(hwnd, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(hSmall));
         app.settingsWindow = hwnd;
         ShowWindow(hwnd, SW_SHOW);
         UpdateWindow(hwnd);

@@ -13,6 +13,7 @@
 #include <unordered_map>
 #include <vector>
 #include <cwctype>
+#include <ctime>
 
 namespace {
 namespace fs = std::filesystem;
@@ -64,6 +65,7 @@ constexpr int kCtrlSpinGraceSec = 1042;
 constexpr int kCtrlSpinIntervalSec = 1043;
 constexpr int kCtrlSpinRepeatCount = 1045;
 constexpr UINT_PTR kTaskListTimerId = 1;
+constexpr int kTcycleIconResId = 101; // IDI_APP_ICON in tcycle.rc
 
 struct HotkeyModOption {
     const wchar_t* label;
@@ -130,6 +132,7 @@ struct WindowState {
     HWND grpHotkey = nullptr;
 
     HWND status = nullptr;
+    HWND mainWindow = nullptr;
 
     int selectedTask = -1;
     bool suppressEvents = false;
@@ -250,7 +253,7 @@ bool LoadLanguage(WindowState* st, const std::string& code) {
 std::wstring Tr(const WindowState* st, const wchar_t* id, const wchar_t* fallback) {
     if (!st || !id) return fallback ? std::wstring(fallback) : L"";
     auto it = st->translations.find(id);
-    if (it != st->translations.end()) return it->second;
+    if (it != st->translations.end() && !it->second.empty()) return it->second;
     return fallback ? std::wstring(fallback) : L"";
 }
 
@@ -406,6 +409,108 @@ bool ParseTimeOfDay(const std::wstring& s, int& outSec) {
     outSec = hh * 3600 + mm * 60 + ss;
     return true;
 }
+
+bool ParseDateYmd(const std::wstring& s, int& y, int& mo, int& d) {
+    y = 0; mo = 0; d = 0;
+    if (s.empty()) return false;
+    int n = swscanf_s(s.c_str(), L"%d-%d-%d", &y, &mo, &d);
+    if (n != 3) return false;
+    if (y < 1970 || y > 9999 || mo < 1 || mo > 12 || d < 1 || d > 31) return false;
+    return true;
+}
+
+std::wstring FormatLocalYmdHm(time_t t) {
+    std::tm tmv{};
+    localtime_s(&tmv, &t);
+    wchar_t buf[32] = {0};
+    swprintf_s(buf, L"%04d-%02d-%02d %02d:%02d",
+        tmv.tm_year + 1900, tmv.tm_mon + 1, tmv.tm_mday, tmv.tm_hour, tmv.tm_min);
+    return std::wstring(buf);
+}
+
+bool TryComputeNextRunTime(const tcyc::TaskConfig& t, time_t now, time_t& outNext) {
+    int triggerMask = t.triggerMask;
+    if (triggerMask == 0) triggerMask = TriggerTypeToBit(t.trigger);
+
+    if ((triggerMask & TriggerTypeToBit(tcyc::TriggerType::Interval)) != 0 && t.intervalSec > 0) {
+        outNext = now + static_cast<time_t>(t.intervalSec);
+        return true;
+    }
+
+    if ((triggerMask & TriggerTypeToBit(tcyc::TriggerType::WeeklyTime)) == 0) {
+        return false;
+    }
+    if (!t.timeEnabled || t.timeOfDaySec < 0) {
+        return false;
+    }
+
+    std::tm nowTm{};
+    localtime_s(&nowTm, &now);
+
+    if (t.dateEnabled) {
+        int y = 0, mo = 0, d = 0;
+        if (!ParseDateYmd(t.dateYmd, y, mo, d)) return false;
+        std::tm due{};
+        due.tm_year = y - 1900;
+        due.tm_mon = mo - 1;
+        due.tm_mday = d;
+        due.tm_hour = t.timeOfDaySec / 3600;
+        due.tm_min = (t.timeOfDaySec % 3600) / 60;
+        due.tm_sec = 0;
+        time_t cand = mktime(&due);
+        if (cand == static_cast<time_t>(-1) || cand < now) return false;
+        outNext = cand;
+        return true;
+    }
+
+    int weekdayMask = 0;
+    if (!t.weekdayEnabled) {
+        weekdayMask = 0x7F;
+    } else if (t.weeklyEveryday) {
+        weekdayMask = 0x7F;
+    } else {
+        weekdayMask = t.weekdayMask;
+        if (weekdayMask == 0 && t.weekday >= 0 && t.weekday <= 6) {
+            weekdayMask = (1 << t.weekday);
+        }
+        if (weekdayMask == 0) return false;
+    }
+
+    for (int offset = 0; offset <= 14; ++offset) {
+        std::tm candTm = nowTm;
+        candTm.tm_mday += offset;
+        candTm.tm_hour = t.timeOfDaySec / 3600;
+        candTm.tm_min = (t.timeOfDaySec % 3600) / 60;
+        candTm.tm_sec = 0;
+        time_t cand = mktime(&candTm);
+        if (cand == static_cast<time_t>(-1)) continue;
+        std::tm norm{};
+        localtime_s(&norm, &cand);
+        if ((weekdayMask & (1 << norm.tm_wday)) == 0) continue;
+        if (cand < now) continue;
+        outNext = cand;
+        return true;
+    }
+    return false;
+}
+
+std::wstring BuildNextRunStatusSuffix(WindowState* st, const tcyc::TaskConfig& t) {
+    time_t now = time(nullptr);
+    time_t next = 0;
+    if (!TryComputeNextRunTime(t, now, next)) return L"";
+    std::wstring prefix = Tr(st, L"status_next_run_prefix", L"  次回起動予定: ");
+    return prefix + FormatLocalYmdHm(next);
+}
+
+std::wstring BuildStatusWithNextRun(WindowState* st, const std::wstring& base, int taskIndex) {
+    std::wstring out = base;
+    if (!st) return out;
+    if (taskIndex >= 0 && taskIndex < static_cast<int>(st->config.tasks.size())) {
+        out += BuildNextRunStatusSuffix(st, st->config.tasks[static_cast<size_t>(taskIndex)]);
+    }
+    return out;
+}
+
 
 int ParseIntOrDefault(const std::wstring& s, int def, int lo, int hi) {
     if (s.empty()) return def;
@@ -582,6 +687,52 @@ void ApplyTriggerUiState(WindowState* st) {
 
 void SetStatus(WindowState* st, const std::wstring& msg) {
     if (st && st->status) SetWindowTextW(st->status, msg.c_str());
+}
+
+std::wstring BuildMainWindowTitle(WindowState* st) {
+    std::wstring appTitle = Tr(st, L"app_name", L"TCycle");
+    std::wstring settingsTitle = Tr(st, L"window_title", L"TCycle Settings");
+    std::wstring title = settingsTitle;
+    if (title.empty()) {
+        title = appTitle;
+    }
+    if (!appTitle.empty() && title.rfind(appTitle, 0) != 0) {
+        title = appTitle + L" - " + title;
+    }
+    if (st && st->selectedTask >= 0 && st->selectedTask < static_cast<int>(st->config.tasks.size())) {
+        const std::wstring& taskName = st->config.tasks[static_cast<size_t>(st->selectedTask)].name;
+        if (!taskName.empty()) {
+            title += L" - ";
+            title += taskName;
+        }
+    }
+    if (title.empty() || title == L" - ") {
+        title = L"TCycle Settings";
+    }
+    return title;
+}
+
+void UpdateMainWindowTitle(WindowState* st) {
+    if (!st || !st->mainWindow) return;
+    std::wstring title = BuildMainWindowTitle(st);
+    if (st->taskList) {
+        const int lbSel = static_cast<int>(SendMessageW(st->taskList, LB_GETCURSEL, 0, 0));
+        if (lbSel >= 0 && lbSel < static_cast<int>(st->config.tasks.size())) {
+            const std::wstring& taskName = st->config.tasks[static_cast<size_t>(lbSel)].name;
+            if (!taskName.empty()) {
+                std::wstring base = Tr(st, L"window_title", L"TCycle Settings");
+                const std::wstring appTitle = Tr(st, L"app_name", L"TCycle");
+                if (base.empty()) {
+                    base = appTitle;
+                }
+                if (!appTitle.empty() && base.rfind(appTitle, 0) != 0) {
+                    base = appTitle + L" - " + base;
+                }
+                title = base + L" - " + taskName;
+            }
+        }
+    }
+    SetWindowTextW(st->mainWindow, title.c_str());
 }
 
 const std::vector<HotkeyModOption>& HotkeyModOptions() {
@@ -833,6 +984,7 @@ void LoadTaskControls(WindowState* st, int idx) {
         st->actionPathDirty = false;
         st->actionArgsDirty = false;
         st->actionCwdDirty = false;
+        UpdateMainWindowTitle(st);
         return;
     }
     const auto& t = st->config.tasks[static_cast<size_t>(idx)];
@@ -872,6 +1024,7 @@ void LoadTaskControls(WindowState* st, int idx) {
     st->timeEnabledDirty = false;
     st->timeOfDayDirty = false;
     st->hotkeyDirty = false;
+    UpdateMainWindowTitle(st);
 }
 
 bool SignalReloadEvent() {
@@ -1074,7 +1227,15 @@ void PersistRealtime(WindowState* st, bool showErrorDialog) {
         return;
     }
     (void)SignalReloadEvent();
-    SetStatus(st, Tr(st, L"status_realtime_saved", L"Realtime saved.").c_str());
+    int statusTaskIndex = st->selectedTask;
+    if (st->taskList) {
+        const int lbSel = static_cast<int>(SendMessageW(st->taskList, LB_GETCURSEL, 0, 0));
+        if (lbSel >= 0 && lbSel < static_cast<int>(st->config.tasks.size())) {
+            statusTaskIndex = lbSel;
+        }
+    }
+    const std::wstring status = BuildStatusWithNextRun(st, Tr(st, L"status_realtime_saved", L"Realtime saved."), statusTaskIndex);
+    SetStatus(st, status.c_str());
 
     int prevSel = st->selectedTask;
     st->suppressEvents = true;
@@ -1224,6 +1385,7 @@ void RefreshAll(WindowState* st) {
     LoadGlobalControls(st);
     PopulateTaskList(st);
     LoadTaskControls(st, st->selectedTask);
+    UpdateMainWindowTitle(st);
     st->suppressEvents = false;
 }
 
@@ -1238,6 +1400,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     }
     case WM_CREATE: {
         if (!st) return -1;
+        st->mainWindow = hwnd;
         HFONT font = static_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
         auto createStatic = [&](const wchar_t* text, int x, int y, int w, int h) -> HWND {
             HWND hWnd = CreateWindowExW(0, L"STATIC", text, WS_CHILD | WS_VISIBLE | SS_LEFTNOWORDWRAP, x, y, w, h, hwnd, nullptr, nullptr, nullptr);
@@ -1358,11 +1521,12 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         st->repeatCount = createNumericEdit(kCtrlRepeatCount, detailX + 248, detailY + 392, 64, editH, 7);
         createSpin(kCtrlSpinRepeatCount, detailX + 302, detailY + 392, 10, editH, 1, 1000000);
 
-        st->status = createStatic(Tr(st, L"status_ready", L"Ready.").c_str(), m, 596, globalW, 20);
+        st->status = createStatic(Tr(st, L"status_ready", L"Ready.").c_str(), m, 594, globalW, 20);
 
         InitializeCombos(st);
         ApplyActionModeUi(st);
         RefreshAll(st);
+        SetStatus(st, BuildStatusWithNextRun(st, Tr(st, L"status_ready", L"Ready."), st->selectedTask));
         SetTimer(hwnd, kTaskListTimerId, 1000, nullptr);
         return 0;
     }
@@ -1388,7 +1552,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             st->suppressEvents = true;
             LoadTaskControls(st, idx);
             st->suppressEvents = false;
-            SetStatus(st, Tr(st, L"status_task_selected", L"Task selected."));
+            SetStatus(st, BuildStatusWithNextRun(st, Tr(st, L"status_task_selected", L"Task selected."), idx));
             return 0;
         }
         if (id == kCtrlTaskAdd && code == BN_CLICKED) {
@@ -1614,14 +1778,20 @@ int tcyc::RunReadOnlySettingsWindow(const RuntimeConfig& cfg, const std::wstring
     wc.lpszClassName = kWindowClassName;
     wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
     wc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_BTNFACE + 1);
-    wc.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
+    wc.hIcon = static_cast<HICON>(LoadImageW(inst, MAKEINTRESOURCEW(kTcycleIconResId), IMAGE_ICON, 0, 0, LR_DEFAULTSIZE));
+    if (!wc.hIcon) {
+        wc.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
+    }
+    wc.hIconSm = wc.hIcon;
     RegisterClassExW(&wc);
+
+    std::wstring windowTitle = BuildMainWindowTitle(&state);
 
     HWND hwnd = CreateWindowExW(
         WS_EX_DLGMODALFRAME,
         kWindowClassName,
-        Tr(&state, L"window_title", L"TCycle Settings").c_str(),
-        WS_OVERLAPPEDWINDOW,
+        windowTitle.c_str(),
+        WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
         CW_USEDEFAULT, CW_USEDEFAULT, 742, 648,
         nullptr,
         nullptr,
@@ -1629,6 +1799,8 @@ int tcyc::RunReadOnlySettingsWindow(const RuntimeConfig& cfg, const std::wstring
         &state);
     if (!hwnd) return 1;
 
+    SetWindowTextW(hwnd, windowTitle.c_str());
+    UpdateMainWindowTitle(&state);
     ShowWindow(hwnd, SW_SHOWDEFAULT);
     UpdateWindow(hwnd);
 

@@ -1451,7 +1451,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         SendMessageW(st->taskList, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
         st->taskAdd = createBtn(kCtrlTaskAdd, L"+", listX + 10, listY + listH - 34, 32, 24, BS_PUSHBUTTON);
         st->taskDelete = createBtn(kCtrlTaskDelete, L"Del", listX + 46, listY + listH - 34, 40, 24, BS_PUSHBUTTON);
-        st->taskRename = createBtn(kCtrlTaskRename, Tr(st, L"button_rename", L"Rename").c_str(), listX + 90, listY + listH - 34, 76, 24, BS_PUSHBUTTON);
+        st->taskRename = createBtn(kCtrlTaskRename, L"Rename", listX + 90, listY + listH - 34, 76, 24, BS_PUSHBUTTON);
 
         createBtn(0, Tr(st, L"group_schedule", L"Schedule").c_str(), detailX, detailY, detailW, detailH, BS_GROUPBOX);
         st->taskEnabled = createBtn(kCtrlTaskEnabled, Tr(st, L"label_task_enabled", L"Task Enabled").c_str(), detailX + 12, detailY + 22, 118, 22, BS_AUTOCHECKBOX);

@@ -171,6 +171,7 @@ struct SettingsDialog {
     HWND tab = nullptr;
     HWND addBtn = nullptr;
     HWND deleteBtn = nullptr;
+    HWND renameBtn = nullptr;
     HWND captureBtn = nullptr;
     HWND outputEdit = nullptr;
     HWND formatCombo = nullptr;
@@ -194,8 +195,10 @@ struct SettingsDialog {
     HBRUSH statusBrushInactive = nullptr;
     HBRUSH backgroundBrush = nullptr;
     HBRUSH editBackgroundBrush = nullptr;
+    HBRUSH listBackgroundBrush = nullptr;
     COLORREF backgroundColor = 0;
     COLORREF editBackgroundColor = 0;
+    COLORREF listBackgroundColor = 0;
     int layoutClientWidth = 0;
     int layoutClientHeight = 0;
     int activeProfile = 0;
@@ -1503,6 +1506,7 @@ void populateTabs(SettingsDialog* dlg) {
     }
     SendMessageW(dlg->tab, LB_SETCURSEL, static_cast<WPARAM>(dlg->activeProfile), 0);
     EnableWindow(dlg->deleteBtn, dlg->app->profiles.size() > 1);
+    EnableWindow(dlg->renameBtn, !dlg->app->profiles.empty());
 }
 
 bool promptRenameProfile(SettingsDialog* dlg, int index) {
@@ -1729,20 +1733,28 @@ void buildSettingsLayout(SettingsDialog* dlg) {
     SendMessageW(dlg->tab, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
     applyControlTheme(dlg, dlg->tab, false);
 
-    int sidebarButtonWidth = (sidebarWidth - 6) / 2;
+    const int addBtnWidth = 32;
+    const int deleteBtnWidth = 40;
+    const int taskBtnGap = 4;
     int btnX = margin;
     int btnY = margin + listHeight + 6;
     dlg->addBtn = CreateWindowExW(0, L"BUTTON", L"+", WS_CHILD | WS_VISIBLE,
-                                  btnX, btnY, sidebarButtonWidth, rowHeight, dlg->hwnd,
+                                  btnX, btnY, addBtnWidth, rowHeight, dlg->hwnd,
                                   reinterpret_cast<HMENU>(130), dlg->app->hInstance, nullptr);
     dlg->deleteBtn = CreateWindowExW(0, L"BUTTON", L"Del", WS_CHILD | WS_VISIBLE,
-                                     btnX + sidebarButtonWidth + 6, btnY, sidebarButtonWidth, rowHeight, dlg->hwnd,
+                                     btnX + addBtnWidth + taskBtnGap, btnY, deleteBtnWidth, rowHeight, dlg->hwnd,
                                      reinterpret_cast<HMENU>(132), dlg->app->hInstance, nullptr);
+    const int renameBtnWidth = 76;
+    dlg->renameBtn = CreateWindowExW(0, L"BUTTON", L"Rename", WS_CHILD | WS_VISIBLE,
+                                     btnX, btnY + rowHeight + taskBtnGap, renameBtnWidth, rowHeight, dlg->hwnd,
+                                     reinterpret_cast<HMENU>(131), dlg->app->hInstance, nullptr);
     int captureBtnWidth = sidebarWidth;
     SendMessageW(dlg->addBtn, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
     SendMessageW(dlg->deleteBtn, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
+    SendMessageW(dlg->renameBtn, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
     applyControlTheme(dlg, dlg->addBtn, false);
     applyControlTheme(dlg, dlg->deleteBtn, false);
+    applyControlTheme(dlg, dlg->renameBtn, false);
 
     int contentX = margin + sidebarWidth + sidebarGap;
     int groupWidth = layoutWidth - contentX - margin;
@@ -2048,6 +2060,8 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
             dlg->backgroundBrush = CreateSolidBrush(dlg->backgroundColor);
             dlg->editBackgroundColor = GetSysColor(COLOR_WINDOW);
             dlg->editBackgroundBrush = CreateSolidBrush(dlg->editBackgroundColor);
+            dlg->listBackgroundColor = GetSysColor(COLOR_WINDOW);
+            dlg->listBackgroundBrush = CreateSolidBrush(dlg->listBackgroundColor);
         }
         buildSettingsLayout(dlg);
         adjustSettingsWindowSize(dlg);
@@ -2136,10 +2150,10 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
     }
     case WM_CTLCOLORLISTBOX: {
         HDC hdc = reinterpret_cast<HDC>(wParam);
-        if (dlg && dlg->backgroundBrush) {
-            SetBkColor(hdc, dlg->backgroundColor);
+        if (dlg && dlg->listBackgroundBrush) {
+            SetBkColor(hdc, dlg->listBackgroundColor);
             SetBkMode(hdc, OPAQUE);
-            return reinterpret_cast<INT_PTR>(dlg->backgroundBrush);
+            return reinterpret_cast<INT_PTR>(dlg->listBackgroundBrush);
         }
         break;
     }
@@ -2194,6 +2208,14 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
             populateTabs(dlg);
             loadProfileToControls(dlg, dlg->activeProfile);
             persistActiveProfile(dlg, false);
+            return 0;
+        }
+        case 131: { // Rename
+            int sel = static_cast<int>(SendMessageW(dlg->tab, LB_GETCURSEL, 0, 0));
+            if (sel < 0) sel = dlg->activeProfile;
+            if (sel >= 0) {
+                promptRenameProfile(dlg, sel);
+            }
             return 0;
         }
         case 132: { // Delete
@@ -2310,6 +2332,7 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
             if (dlg->statusBrushInactive) DeleteObject(dlg->statusBrushInactive);
             if (dlg->backgroundBrush) DeleteObject(dlg->backgroundBrush);
             if (dlg->editBackgroundBrush) DeleteObject(dlg->editBackgroundBrush);
+            if (dlg->listBackgroundBrush) DeleteObject(dlg->listBackgroundBrush);
             if (dlg->app) {
                 dlg->app->settingsWindow = nullptr;
                 maybeStopAgentIfIdle(*dlg->app);

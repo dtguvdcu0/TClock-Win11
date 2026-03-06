@@ -1788,7 +1788,7 @@ int SetNumFormat(char **dp, int n, int len, int slen, BOOL bComma)	//返され�
 void MakeFormat(char* s, char* s_info, SYSTEMTIME* pt, int beat100, char* fmt)
 {
 	char *sp, *dp, *p, *infop;
-	DWORD TickCount = 0;
+	ULONGLONG TickCount = 0;
 	SYSTEMTIME disptime;
 	BOOL b_WCS_Token = TRUE;
 	BOOL b_WCE_Token = TRUE;
@@ -3601,49 +3601,49 @@ void MakeFormat(char* s, char* s_info, SYSTEMTIME* pt, int beat100, char* fmt)
 					sp++;
 					if(GetNumFormat(&sp, 'd', ',', &len, &slen, &bComma) == TRUE)
 					{
-						if (!TickCount) TickCount = GetTickCount();
-						st = TickCount/86400000;		//day
+						if (!TickCount) TickCount = GetTickCount64();
+						st = (int)(TickCount/86400000ULL);		//day
 						len_ret = SetNumFormat(&dp, st, len, slen, bComma);
 						for (int i = 0; i < len_ret; i++)*infop++ = 0x01;
 					}
 					else if(GetNumFormat(&sp, 'a', ',', &len, &slen, &bComma) == TRUE)
 					{
-						if (!TickCount) TickCount = GetTickCount();
-						st = TickCount/3600000;		//hour
+						if (!TickCount) TickCount = GetTickCount64();
+						st = (int)(TickCount/3600000ULL);		//hour
 						len_ret = SetNumFormat(&dp, st, len, slen, bComma);
 						for (int i = 0; i < len_ret; i++)*infop++ = 0x01;
 					}
 					else if(GetNumFormat(&sp, 'h', ',', &len, &slen, &bComma) == TRUE)
 					{
-						if (!TickCount) TickCount = GetTickCount();
-						st = (TickCount/3600000)%24;
+						if (!TickCount) TickCount = GetTickCount64();
+						st = (int)((TickCount/3600000ULL)%24ULL);
 						len_ret = SetNumFormat(&dp, st, len, slen, FALSE);
 						for (int i = 0; i < len_ret; i++)*infop++ = 0x01;
 					}
 					else if(GetNumFormat(&sp, 'n', ',', &len, &slen, &bComma) == TRUE)
 					{
-						if (!TickCount) TickCount = GetTickCount();
-						st = (TickCount/60000)%60;
+						if (!TickCount) TickCount = GetTickCount64();
+						st = (int)((TickCount/60000ULL)%60ULL);
 						len_ret = SetNumFormat(&dp, st, len, slen, FALSE);
 						for (int i = 0; i < len_ret; i++)*infop++ = 0x01;
 					}
 					else if(GetNumFormat(&sp, 's', ',', &len, &slen, &bComma) == TRUE)
 					{
-						if (!TickCount) TickCount = GetTickCount();
-						st = (TickCount/1000)%60;
+						if (!TickCount) TickCount = GetTickCount64();
+						st = (int)((TickCount/1000ULL)%60ULL);
 						len_ret = SetNumFormat(&dp, st, len, slen, FALSE);
 						for (int i = 0; i < len_ret; i++)*infop++ = 0x01;
 					}
 					else if(*sp == 'T')
 					{
-						DWORD dw;
+						ULONGLONG dw;
 						int sth, stm, sts;
-						if (!TickCount) TickCount = GetTickCount();
+						if (!TickCount) TickCount = GetTickCount64();
 						dw = TickCount;
-						dw /= 1000;
-						sts = dw%60; dw /= 60;
-						stm = dw%60; dw /= 60;
-						sth = dw;
+						dw /= 1000ULL;
+						sts = (int)(dw%60ULL); dw /= 60ULL;
+						stm = (int)(dw%60ULL); dw /= 60ULL;
+						sth = (int)dw;
 
 						len_ret = SetNumFormat(&dp, sth, 2, 0, FALSE); for (int i = 0; i < len_ret; i++)*infop++ = 0x01;
 						*dp++ = ':'; *infop++ = 0x01;
@@ -4568,7 +4568,7 @@ static void tc_wappend_ansi_fixed_w(WCHAR** dp, int* remain, const char* src, in
 	for (; i < fixed; ++i) tc_wappend_char(dp, remain, L' ');
 }
 
-static BOOL tc_emit_uptime_token_w(WCHAR** dp, int* remain, const WCHAR** psp, DWORD* tickCache)
+static BOOL tc_emit_uptime_token_w(WCHAR** dp, int* remain, const WCHAR** psp, ULONGLONG* tickCache)
 {
 	const WCHAR* p;
 	const WCHAR* p2;
@@ -4585,25 +4585,25 @@ static BOOL tc_emit_uptime_token_w(WCHAR** dp, int* remain, const WCHAR** psp, D
 	if (*p == L'd' || *p == L'a' || *p == L'h' || *p == L'n' || *p == L's') {
 		p2 = p + 1;
 		if (!tc_parse_num_format_w(&p2, &len, &slen, &bComma)) return FALSE;
-		if (!*tickCache) *tickCache = GetTickCount();
+		if (!*tickCache) *tickCache = GetTickCount64();
 		if (*p == L'd') {
-			st = (int)(*tickCache / 86400000UL);
+			st = (int)(*tickCache / 86400000ULL);
 			tc_wappend_num_format(dp, remain, st, len, slen, bComma);
 		}
 		else if (*p == L'a') {
-			st = (int)(*tickCache / 3600000UL);
+			st = (int)(*tickCache / 3600000ULL);
 			tc_wappend_num_format(dp, remain, st, len, slen, bComma);
 		}
 		else if (*p == L'h') {
-			st = (int)((*tickCache / 3600000UL) % 24UL);
+			st = (int)((*tickCache / 3600000ULL) % 24ULL);
 			tc_wappend_num_format(dp, remain, st, len, slen, FALSE);
 		}
 		else if (*p == L'n') {
-			st = (int)((*tickCache / 60000UL) % 60UL);
+			st = (int)((*tickCache / 60000ULL) % 60ULL);
 			tc_wappend_num_format(dp, remain, st, len, slen, FALSE);
 		}
 		else {
-			st = (int)((*tickCache / 1000UL) % 60UL);
+			st = (int)((*tickCache / 1000ULL) % 60ULL);
 			tc_wappend_num_format(dp, remain, st, len, slen, FALSE);
 		}
 		*psp = p2;
@@ -4611,14 +4611,14 @@ static BOOL tc_emit_uptime_token_w(WCHAR** dp, int* remain, const WCHAR** psp, D
 	}
 
 	if (*p == L'T') {
-		DWORD dw;
+		ULONGLONG dw;
 		int sth;
 		int stm;
 		int sts;
-		if (!*tickCache) *tickCache = GetTickCount();
-		dw = *tickCache / 1000UL;
-		sts = (int)(dw % 60UL); dw /= 60UL;
-		stm = (int)(dw % 60UL); dw /= 60UL;
+		if (!*tickCache) *tickCache = GetTickCount64();
+		dw = *tickCache / 1000ULL;
+		sts = (int)(dw % 60ULL); dw /= 60ULL;
+		stm = (int)(dw % 60ULL); dw /= 60ULL;
 		sth = (int)dw;
 		tc_wappend_num_format(dp, remain, sth, 2, 0, FALSE);
 		tc_wappend_char(dp, remain, L':');
@@ -4726,7 +4726,7 @@ static BOOL tc_makeformatw_native_core(WCHAR* s, int sCch, SYSTEMTIME* pt, int b
 	int remain = sCch;
 	WCHAR sdate[16], stime[16], amStr[32], pmStr[32];
 	SYSTEMTIME disptime;
-	DWORD tickCount = 0;
+	ULONGLONG tickCount = 0;
 
 	if (!s || sCch <= 0 || !pt || !fmt) return FALSE;
 	s[0] = L'\0';

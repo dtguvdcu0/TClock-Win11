@@ -476,7 +476,7 @@ static void rm_load_selected_item(HWND hDlg)
     CBSetCurSel(hDlg, IDC_RM_ITEM_TYPE, rm_type_index_from_key(mode));
 
     rm_build_key(n, "Enabled", key, (int)sizeof(key));
-    v = (int)GetMyRegLong("MenuCustom", key, 1);
+    v = (int)GetMyRegLong("MenuCustom", key, rm_is_alarm_type(mode) ? 0 : 1);
     CheckDlgButton(hDlg, IDC_RM_ITEM_ENABLED, v ? BST_CHECKED : BST_UNCHECKED);
 
     rm_build_key(n, "Label", key, (int)sizeof(key));

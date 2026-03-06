@@ -1608,7 +1608,7 @@ static void tc_menu_ensure_ini_defaults(void)
 		wsprintf(key, "Item%dMode", 17);
 		SetMyRegStr(TC_MENU_SECTION, key, "alarm");
 		wsprintf(key, "Item%dEnabled", 17);
-		SetMyRegLong(TC_MENU_SECTION, key, 1);
+		SetMyRegLong(TC_MENU_SECTION, key, 0);
 		wsprintf(key, "Item%dLabelFormat", 17);
 		SetMyRegStr(TC_MENU_SECTION, key, en ? "%REMAIN_MMSS% Timer" : "%REMAIN_MMSS% タイマー");
 		wsprintf(key, "Item%dAlarmInitialSec", 17);

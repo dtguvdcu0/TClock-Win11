@@ -40,3 +40,4 @@ source/tcal/third_party/webview2/lib/x64/*.lib
 source/gate_tclock.bat
 source/gate_tcalendar.bat
 *.ng
+source/tc2ch/winuidll/x64/

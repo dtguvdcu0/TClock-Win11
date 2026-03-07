@@ -639,14 +639,23 @@ bool HasTriggerEnabled(const WindowState* st, tcyc::TriggerType trigger) {
     return (mask & TriggerTypeToBit(trigger)) != 0;
 }
 
+bool CanMonitorFromUi(WindowState* st) {
+    if (!st) return false;
+    tcyc::TaskConfig task;
+    const int actionModeIdx = static_cast<int>(SendMessageW(st->actionMode, CB_GETCURSEL, 0, 0));
+    task.actionMode = ActionModeFromIndex(actionModeIdx);
+    task.actionPath = TrimWide(GetEditText(st->actionPath));
+    task.actionArgs = TrimWide(GetEditText(st->actionArgs));
+    return tcyc::CanMonitorTask(task);
+}
+
 void SetEnabled(HWND h, bool enabled) {
     if (h) EnableWindow(h, enabled ? TRUE : FALSE);
 }
 
 void ApplyTriggerUiState(WindowState* st) {
     if (!st) return;
-    const int actionModeIdx = static_cast<int>(SendMessageW(st->actionMode, CB_GETCURSEL, 0, 0));
-    const bool supportsNonRunning = (actionModeIdx == 0);
+    const bool supportsNonRunning = CanMonitorFromUi(st);
     if (!supportsNonRunning && IsChecked(st->triggerChecks[5])) {
         SetChecked(st->triggerChecks[5], false);
         EnsureAtLeastOneTriggerChecked(st, 3);
@@ -1760,10 +1769,12 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         }
         if (id == kCtrlActionPath && code == EN_CHANGE) {
             st->actionPathDirty = true;
+            ApplyTriggerUiState(st);
             return 0;
         }
         if (id == kCtrlActionArgs && code == EN_CHANGE) {
             st->actionArgsDirty = true;
+            ApplyTriggerUiState(st);
             return 0;
         }
         if (id == kCtrlActionCwd && code == EN_CHANGE) {

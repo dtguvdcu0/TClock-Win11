@@ -46,6 +46,9 @@ extern int Language_Offset;
 #define IDC_WIN11_HIDE_NATIVE_CLOCK 1930
 #define IDC_WIN11_SHOW_NATIVE_CLOCK 1931
 #endif
+#ifndef IDC_WIN11_EXPERIMENTAL_DISPLAY_WINUI
+#define IDC_WIN11_EXPERIMENTAL_DISPLAY_WINUI 1932
+#endif
 
 static BOOL ApplyHideClockActionElevated(HWND hDlg, DWORD hideClock)
 {
@@ -63,6 +66,7 @@ static void EnsureHideClockActionButtons(HWND hDlg)
 	HWND hCheck;
 	HWND hAlign;
 	HWND hSave;
+	HWND hExperimental;
 	RECT rcCheck;
 	RECT rcAlign;
 	RECT rcSave;
@@ -76,14 +80,18 @@ static void EnsureHideClockActionButtons(HWND hDlg)
 	int rowWidth;
 	int btnHeight;
 	int btnTop;
+	int alignHeight;
+	int alignTop;
 	const wchar_t* hideLabel;
 	const wchar_t* showLabel;
+	const wchar_t* experimentalLabel;
 
 	hCheck = GetDlgItem(hDlg, IDC_ETC_ADJUST_WIN11_SMALLTASKBAR);
 	hAlign = GetDlgItem(hDlg, IDC_WIN11_TASKBAR_ALIGN_LEFT);
 	hSave = GetDlgItem(hDlg, IDC_WIN11_SAVE_AUTOBACK_SNAPSHOT);
+	hExperimental = GetDlgItem(hDlg, IDC_WIN11_EXPERIMENTAL_DISPLAY_WINUI);
 	if (!hCheck || !hAlign || !hSave) return;
-	if (GetDlgItem(hDlg, IDC_WIN11_HIDE_NATIVE_CLOCK) && GetDlgItem(hDlg, IDC_WIN11_SHOW_NATIVE_CLOCK)) return;
+	if (GetDlgItem(hDlg, IDC_WIN11_HIDE_NATIVE_CLOCK) && GetDlgItem(hDlg, IDC_WIN11_SHOW_NATIVE_CLOCK) && hExperimental) return;
 	if (!GetWindowRect(hCheck, &rcCheck)) return;
 	if (!GetWindowRect(hAlign, &rcAlign)) return;
 	if (!GetWindowRect(hSave, &rcSave)) return;
@@ -101,8 +109,12 @@ static void EnsureHideClockActionButtons(HWND hDlg)
 	btnHeight = rcSave.bottom - rcSave.top;
 	if (btnHeight <= 0) btnHeight = 14;
 	btnTop = rcSave.bottom + vGap;
+	alignHeight = rcAlign.bottom - rcAlign.top;
+	if (alignHeight <= 0) alignHeight = 11;
+	alignTop = btnTop + btnHeight + vGap;
 	hideLabel = b_EnglishMenu ? L"Hide native clock" : L"純正時計を非表示にする";
 	showLabel = b_EnglishMenu ? L"Show native clock" : L"純正時計を表示する";
+	experimentalLabel = b_EnglishMenu ? L"Display with WinUI (experimental)" : L"WinUIで表示(実験的)";
 
 	hBtnHide = CreateWindowExW(0, L"BUTTON",
 		hideLabel,
@@ -114,12 +126,23 @@ static void EnsureHideClockActionButtons(HWND hDlg)
 		WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
 		rowLeft + btnWidth + gap, btnTop, rowWidth - btnWidth - gap, btnHeight,
 		hDlg, (HMENU)(INT_PTR)IDC_WIN11_SHOW_NATIVE_CLOCK, g_hInst, NULL);
-	SetWindowPos(hAlign, NULL, rowLeft, btnTop + btnHeight + vGap, rowWidth, rcAlign.bottom - rcAlign.top, SWP_NOZORDER);
+	if (!hExperimental) {
+		hExperimental = CreateWindowExW(0, L"BUTTON",
+			experimentalLabel,
+			WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX,
+			rowLeft, alignTop + alignHeight + vGap, rowWidth, alignHeight,
+			hDlg, (HMENU)(INT_PTR)IDC_WIN11_EXPERIMENTAL_DISPLAY_WINUI, g_hInst, NULL);
+	}
+	SetWindowPos(hAlign, NULL, rowLeft, alignTop, rowWidth, alignHeight, SWP_NOZORDER);
+	if (hExperimental) {
+		SetWindowPos(hExperimental, NULL, rowLeft, alignTop + alignHeight + vGap, rowWidth, alignHeight, SWP_NOZORDER);
+	}
 
 	hFont = (HFONT)SendMessage(hCheck, WM_GETFONT, 0, 0);
 	if (hFont) {
 		if (hBtnHide) SendMessage(hBtnHide, WM_SETFONT, (WPARAM)hFont, TRUE);
 		if (hBtnShow) SendMessage(hBtnShow, WM_SETFONT, (WPARAM)hFont, TRUE);
+		if (hExperimental) SendMessage(hExperimental, WM_SETFONT, (WPARAM)hFont, TRUE);
 	}
 }
 static DWORD ReadPolicyDword(const char* subkey, const char* valueName, DWORD defval)
@@ -266,6 +289,7 @@ static void OnInit(HWND hDlg)
 	DWORD hideClock;
 	DWORD transparency;
 	BOOL alignLeft;
+	BOOL displayWinUIExperimental;
 
 	b_exe_Win11Main = GetMyRegLong("Status_DoNotEdit", "Win11TClockMain", 9);
 
@@ -291,12 +315,14 @@ static void OnInit(HWND hDlg)
 	hideClock = ReadPolicyDword("Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer", "HideClock", 0);
 	transparency = ReadPolicyDword("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize", "EnableTransparency", 1);
 	alignLeft = (BOOL)GetMyRegLong("Win11", "AlignTaskbarLeft", 1);
+	displayWinUIExperimental = (BOOL)GetMyRegLong("Win11", "ExperimentalDisplayBackend", 0);
 
 	CheckDlgButton(hDlg, IDC_ETC_USE_WIN11NOTIFY, (BOOL)GetMyRegLong("Color_Font", "AutoBackMatchTaskbar", 1));
 	CheckDlgButton(hDlg, IDC_ETC_ADJUST_WIN11_SMALLTASKBAR, hideClock ? BST_CHECKED : BST_UNCHECKED);
 	EnsureHideClockActionButtons(hDlg);
 	CheckDlgButton(hDlg, IDC_WIN11_ENABLE_TRANSPARENCY, transparency ? BST_CHECKED : BST_UNCHECKED);
 	CheckDlgButton(hDlg, IDC_WIN11_TASKBAR_ALIGN_LEFT, alignLeft ? BST_CHECKED : BST_UNCHECKED);
+	CheckDlgButton(hDlg, IDC_WIN11_EXPERIMENTAL_DISPLAY_WINUI, displayWinUIExperimental ? BST_CHECKED : BST_UNCHECKED);
 
 	SendDlgItemMessage(hDlg, IDC_SPG_ETC_CUTPOSITION, UDM_SETRANGE, 0, MAKELONG(255, 0));
 	SendDlgItemMessage(hDlg, IDC_SPG_ETC_CUTPOSITION, UDM_SETPOS, 0, autoBackAlpha);
@@ -316,6 +342,7 @@ static void OnInit(HWND hDlg)
 		EnableDlgItem(hDlg, IDC_WIN11_SHOW_NATIVE_CLOCK, FALSE);
 		EnableDlgItem(hDlg, IDC_WIN11_ENABLE_TRANSPARENCY, FALSE);
 		EnableDlgItem(hDlg, IDC_WIN11_TASKBAR_ALIGN_LEFT, FALSE);
+		EnableDlgItem(hDlg, IDC_WIN11_EXPERIMENTAL_DISPLAY_WINUI, FALSE);
 		EnableDlgItem(hDlg, IDC_SPG_ETC_CUTPOSITION, FALSE);
 		EnableDlgItem(hDlg, IDC_ETC_CUTPOSITION, FALSE);
 		EnableDlgItem(hDlg, IDC_SPG_ETC_CUT_LIMIT, FALSE);
@@ -342,6 +369,7 @@ void OnApply(HWND hDlg)
 	int autoBackShowDesktopOffset;
 	DWORD transparency;
 	BOOL alignLeft;
+	BOOL displayWinUIExperimental;
 
 	SetMyRegLong("Color_Font", "AutoBackMatchTaskbar", IsDlgButtonChecked(hDlg, IDC_ETC_USE_WIN11NOTIFY));
 	if (IsDlgButtonChecked(hDlg, IDC_ETC_USE_WIN11NOTIFY)) {
@@ -378,6 +406,8 @@ void OnApply(HWND hDlg)
 
 	alignLeft = IsDlgButtonChecked(hDlg, IDC_WIN11_TASKBAR_ALIGN_LEFT) ? TRUE : FALSE;
 	SetMyRegLong("Win11", "AlignTaskbarLeft", alignLeft);
+	displayWinUIExperimental = IsDlgButtonChecked(hDlg, IDC_WIN11_EXPERIMENTAL_DISPLAY_WINUI) ? TRUE : FALSE;
+	SetMyRegLong("Win11", "ExperimentalDisplayBackend", displayWinUIExperimental ? 1 : 0);
 	if (alignLeft) {
 		WriteTaskbarAlignLeftQuiet();
 	} else {

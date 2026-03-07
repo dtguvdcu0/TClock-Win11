@@ -7,6 +7,7 @@
 #include "resource.h"
 #include "../version.h"
 #include "../common/text_codec.h"
+#include "../winuidll/wui_api.h"
 #include <math.h>
 //#include <physicalmonitorenumerationapi.h>
 
@@ -155,6 +156,25 @@ COLORREF TextColorFromInfoVal(int infoval);
 void ClearGraphData(void);
 
 void GetTaskbarColor_Win11Type2(BOOL bBoundary);
+static int wui_sanitize(int backend);
+static BOOL wui_draw_probe(HDC hdc);
+static void wui_repaint(void);
+static COLORREF tc_clr(COLORREF col);
+static COLORREF tc_txtclr(int infoval);
+static BOOL wui_fill_state(TC_DISPLAY_BACKEND_RENDER_STATE* state, SYSTEMTIME* pt, int beat100);
+static void wui_push_text(SYSTEMTIME* pt, int beat100);
+static BOOL wui_sync_localview(void);
+static void wui_drop_localres(void);
+static BOOL wui_make_localres(void);
+static BOOL wui_run_pass(void);
+static void wui_refresh(void);
+static void wui_reset_host(void);
+static void wui_stop_host(void);
+static void wui_draw_gdi(HDC hdc, SYSTEMTIME* pt, int beat100);
+static void wui_draw_body(HDC hdc, SYSTEMTIME* pt, int beat100);
+static void wui_draw_main(HDC hdc, SYSTEMTIME* pt, int beat100);
+static BOOL wui_load_dll(void);
+static void wui_unload_dll(void);
 
 
 
@@ -291,6 +311,46 @@ COLORREF originalColorTaskbarEdge = RGB(0, 0, 0);
 
 // add by 505 =================================
 static BOOL bGetingFocus = FALSE;
+
+enum {
+	TC_DISPLAY_BACKEND_GDI = 0,
+	TC_DISPLAY_BACKEND_WINUI = 1
+};
+
+static int g_wuiCfg = TC_DISPLAY_BACKEND_GDI;
+static int g_wuiMode = TC_DISPLAY_BACKEND_GDI;
+static int g_wuiViewMode = TC_DISPLAY_BACKEND_GDI;
+static BOOL g_wuiDrawOn = FALSE;
+static BOOL g_wuiViewOn = FALSE;
+static BOOL g_wuiOwnIntent = FALSE;
+static BOOL g_wuiOwnTried = FALSE;
+static BOOL g_wuiTakeTried = FALSE;
+static BOOL g_wuiTakeFail = FALSE;
+static BOOL g_wuiFallback = FALSE;
+static HMODULE g_wuiDll = NULL;
+static BOOL(WINAPI* g_wuiCreateHost)(HWND) = NULL;
+static void (WINAPI* g_wuiDestroyHost)(void) = NULL;
+static BOOL(WINAPI* g_wuiUpdateState)(const TC_DISPLAY_BACKEND_RENDER_STATE*) = NULL;
+static BOOL(WINAPI* g_wuiRefreshHost)(void) = NULL;
+static BOOL g_wuiDllLive = FALSE;
+static BOOL g_wuiHostOn = FALSE;
+static BOOL g_wuiHostReady = FALSE;
+static BOOL g_wuiHostLinked = FALSE;
+static BOOL g_wuiDrawTried = FALSE;
+static BOOL g_wuiDrawReady = FALSE;
+static BOOL g_wuiCanOwn = FALSE;
+static BOOL g_wuiPulseReq = FALSE;
+static BOOL g_wuiPulseOn = FALSE;
+static BOOL g_wuiLocalViewOn = FALSE;
+static BOOL g_wuiLocalResOn = FALSE;
+static BOOL g_wuiBgOnly = FALSE;
+static SIZE g_wuiLocalSize = { 0, 0 };
+static DWORD g_wuiLocalGen = 0;
+static DWORD g_wuiResGen = 0;
+static ULONGLONG g_wuiProbeTick = 0;
+static HDC g_wuiResDC = NULL;
+static HBITMAP g_wuiResBmp = NULL;
+static HGDIOBJ g_wuiResBmpOld = NULL;
 
 
 enum {
@@ -943,7 +1003,12 @@ static void RefreshAutoBackColors(BOOL force, const char* reason)
 			} else {
 				xLeft = posXMainClock - (widthWin11Notify > 0 ? (widthWin11Notify / 2) : 10);
 			}
-			xRight = posXMainClock + autoBackSampleClockOffset;
+			if (g_wuiCfg == TC_DISPLAY_BACKEND_WINUI) {
+				xRight = posXMainClock - 10 + autoBackSampleClockOffset;
+			}
+			else {
+				xRight = posXMainClock + autoBackSampleClockOffset;
+			}
 		} else {
 			xLeft = widthTaskbar - 10;
 			xRight = 0;
@@ -1338,6 +1403,479 @@ static void StartupAutoAdjustPass(void)
 	RedrawTClock();
 }
 
+static int wui_sanitize(int backend)
+{
+	if (backend == TC_DISPLAY_BACKEND_WINUI) return TC_DISPLAY_BACKEND_WINUI;
+	return TC_DISPLAY_BACKEND_GDI;
+}
+
+static BOOL wui_load_dll(void)
+{
+	WCHAR dllDir[MAX_PATH];
+	WCHAR dllPath[MAX_PATH];
+	WCHAR* slash;
+
+	if (g_wuiDll && g_wuiCreateHost && g_wuiDestroyHost && g_wuiUpdateState && g_wuiRefreshHost) {
+		return TRUE;
+	}
+	if (GetModuleFileNameW((HMODULE)hmod, dllDir, _countof(dllDir)) <= 0) {
+		return FALSE;
+	}
+	slash = wcsrchr(dllDir, L'\\');
+	if (!slash) slash = wcsrchr(dllDir, L'/');
+	if (!slash) return FALSE;
+	*slash = L'\0';
+	if (swprintf_s(dllPath, _countof(dllPath), L"%s\\tcwui-win11.dll", dllDir) < 0) {
+		return FALSE;
+	}
+	g_wuiDll = LoadLibraryW(dllPath);
+	if (!g_wuiDll) return FALSE;
+
+	g_wuiCreateHost = (BOOL(WINAPI*)(HWND))GetProcAddress(g_wuiDll, "WuiCreateHost");
+	g_wuiDestroyHost = (void (WINAPI*)(void))GetProcAddress(g_wuiDll, "WuiDestroyHost");
+	g_wuiUpdateState = (BOOL(WINAPI*)(const TC_DISPLAY_BACKEND_RENDER_STATE*))GetProcAddress(g_wuiDll, "WuiUpdateState");
+	g_wuiRefreshHost = (BOOL(WINAPI*)(void))GetProcAddress(g_wuiDll, "WuiRefresh");
+	if (!g_wuiCreateHost || !g_wuiDestroyHost || !g_wuiUpdateState || !g_wuiRefreshHost) {
+		wui_unload_dll();
+		return FALSE;
+	}
+	return TRUE;
+}
+
+static BOOL wui_fill_state(TC_DISPLAY_BACKEND_RENDER_STATE* state, SYSTEMTIME* pt, int beat100)
+{
+	WCHAR sW[4096];
+	LOGFONT lf;
+	HDC hdcFace = NULL;
+	HFONT hOldFace = NULL;
+
+	if (!state) return FALSE;
+
+	ZeroMemory(state, sizeof(*state));
+	ZeroMemory(&lf, sizeof(lf));
+	state->cb = sizeof(*state);
+	state->textPos = nTextPos;
+	state->vertPos = dvpos;
+	state->lineHeight = dlineheight;
+	state->shadowRange = nShadowRange;
+	state->textColor = tc_txtclr(1);
+	state->shadowColor = tc_txtclr(99);
+	state->fontWeight = FW_NORMAL;
+	state->fontCharSet = DEFAULT_CHARSET;
+	state->clockShadow = (BYTE)(bClockShadow ? 1 : 0);
+	state->clockBorder = (BYTE)(bClockBorder ? 1 : 0);
+	if (hFon && GetObject(hFon, sizeof(lf), &lf) == sizeof(lf)) {
+		state->fontHeight = lf.lfHeight;
+		state->fontWeight = lf.lfWeight;
+		state->fontItalic = (BYTE)lf.lfItalic;
+		state->fontCharSet = (BYTE)lf.lfCharSet;
+		hdcFace = GetDC(NULL);
+		if (hdcFace) {
+			hOldFace = (HFONT)SelectObject(hdcFace, hFon);
+			GetTextFaceW(hdcFace, LF_FACESIZE, state->fontFace);
+			if (hOldFace) SelectObject(hdcFace, hOldFace);
+			ReleaseDC(NULL, hdcFace);
+		}
+	}
+	if (!pt || !g_formatW) return FALSE;
+
+	MakeFormatW(sW, _countof(sW), NULL, pt, beat100, g_formatW);
+	lstrcpynW(state->text, sW, _countof(state->text));
+	return TRUE;
+}
+
+static void wui_unload_dll(void)
+{
+	g_wuiCreateHost = NULL;
+	g_wuiDestroyHost = NULL;
+	g_wuiUpdateState = NULL;
+	g_wuiRefreshHost = NULL;
+	if (g_wuiDll) {
+		FreeLibrary(g_wuiDll);
+		g_wuiDll = NULL;
+	}
+}
+
+
+static void wui_repaint(void)
+{
+	if (!IsWindow(hwndClockMain)) return;
+	InvalidateRect(hwndClockMain, NULL, TRUE);
+}
+
+static BOOL wui_draw_probe(HDC hdc)
+{
+	RECT rcProbe;
+	int widthProbe;
+	int heightProbe;
+	int copyWidth;
+	int copyHeight;
+
+	if (!hdc) return FALSE;
+	if (!g_wuiViewOn) return FALSE;
+	if (!g_wuiPulseOn) return FALSE;
+	if (!g_wuiLocalResOn) return FALSE;
+	if (!g_wuiResDC) return FALSE;
+	if (GetClipBox(hdc, &rcProbe) == ERROR) return FALSE;
+	widthProbe = rcProbe.right - rcProbe.left;
+	heightProbe = rcProbe.bottom - rcProbe.top;
+	if (widthProbe <= 0 || heightProbe <= 0) return FALSE;
+	copyWidth = (widthProbe < 2) ? widthProbe : 2;
+	copyHeight = (heightProbe < 2) ? heightProbe : 2;
+
+	return BitBlt(hdc,
+		rcProbe.right - copyWidth,
+		rcProbe.bottom - copyHeight,
+		copyWidth,
+		copyHeight,
+		g_wuiResDC,
+		g_wuiLocalSize.cx - copyWidth,
+		g_wuiLocalSize.cy - copyHeight,
+		SRCCOPY);
+}
+
+static COLORREF tc_clr(COLORREF col)
+{
+	if (col & 0x80000000) {
+		return GetSysColor(col & 0x00ffffff);
+	}
+	return col;
+}
+
+static COLORREF tc_txtclr(int infoval)
+{
+	return tc_clr(TextColorFromInfoVal(infoval));
+}
+
+static void wui_push_text(SYSTEMTIME* pt, int beat100)
+{
+	TC_DISPLAY_BACKEND_RENDER_STATE state;
+
+	wui_fill_state(&state, (g_wuiCfg == TC_DISPLAY_BACKEND_WINUI) ? pt : NULL, beat100);
+	if (g_wuiUpdateState && g_wuiDll) {
+		g_wuiUpdateState(&state);
+		if (g_wuiDllLive && g_wuiRefreshHost) g_wuiRefreshHost();
+	}
+}
+
+static BOOL wui_sync_localview(void)
+{
+	RECT rcTarget;
+	int widthTarget;
+	int heightTarget;
+
+	if (!IsWindow(hwndClockMain)) {
+		g_wuiLocalViewOn = FALSE;
+		g_wuiLocalSize.cx = 0;
+		g_wuiLocalSize.cy = 0;
+		return FALSE;
+	}
+	if (!GetClientRect(hwndClockMain, &rcTarget)) {
+		g_wuiLocalViewOn = FALSE;
+		g_wuiLocalSize.cx = 0;
+		g_wuiLocalSize.cy = 0;
+		return FALSE;
+	}
+	widthTarget = rcTarget.right - rcTarget.left;
+	heightTarget = rcTarget.bottom - rcTarget.top;
+	g_wuiLocalViewOn = (widthTarget > 0) && (heightTarget > 0);
+	if (!g_wuiLocalViewOn) {
+		g_wuiLocalSize.cx = 0;
+		g_wuiLocalSize.cy = 0;
+		return FALSE;
+	}
+	if ((g_wuiLocalSize.cx != widthTarget) || (g_wuiLocalSize.cy != heightTarget)) {
+		g_wuiLocalSize.cx = widthTarget;
+		g_wuiLocalSize.cy = heightTarget;
+		++g_wuiLocalGen;
+	}
+	return g_wuiLocalViewOn;
+}
+
+static void wui_drop_localres(void)
+{
+	if (g_wuiResDC && g_wuiResBmpOld) {
+		SelectObject(g_wuiResDC, g_wuiResBmpOld);
+		g_wuiResBmpOld = NULL;
+	}
+	if (g_wuiResBmp) {
+		DeleteObject(g_wuiResBmp);
+		g_wuiResBmp = NULL;
+	}
+	if (g_wuiResDC) {
+		DeleteDC(g_wuiResDC);
+		g_wuiResDC = NULL;
+	}
+	g_wuiLocalResOn = FALSE;
+	g_wuiResGen = 0;
+}
+
+static BOOL wui_make_localres(void)
+{
+	BITMAPINFO bmiPlaceholder;
+	void* bitsPlaceholder;
+
+	if (!g_wuiLocalViewOn) {
+		wui_drop_localres();
+		return FALSE;
+	}
+	if (g_wuiLocalResOn &&
+		g_wuiResGen == g_wuiLocalGen) {
+		return TRUE;
+	}
+
+	wui_drop_localres();
+
+	g_wuiResDC = CreateCompatibleDC(NULL);
+	if (!g_wuiResDC) return FALSE;
+
+	ZeroMemory(&bmiPlaceholder, sizeof(bmiPlaceholder));
+	bmiPlaceholder.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+	bmiPlaceholder.bmiHeader.biWidth = g_wuiLocalSize.cx;
+	bmiPlaceholder.bmiHeader.biHeight = -g_wuiLocalSize.cy;
+	bmiPlaceholder.bmiHeader.biPlanes = 1;
+	bmiPlaceholder.bmiHeader.biBitCount = 32;
+	bmiPlaceholder.bmiHeader.biCompression = BI_RGB;
+	bitsPlaceholder = NULL;
+
+	g_wuiResBmp = CreateDIBSection(g_wuiResDC,
+		&bmiPlaceholder, DIB_RGB_COLORS, &bitsPlaceholder, NULL, 0);
+	if (!g_wuiResBmp) {
+		wui_drop_localres();
+		return FALSE;
+	}
+
+	g_wuiResBmpOld = SelectObject(g_wuiResDC,
+		g_wuiResBmp);
+	if (!g_wuiResBmpOld) {
+		wui_drop_localres();
+		return FALSE;
+	}
+
+	g_wuiLocalResOn = TRUE;
+	g_wuiResGen = g_wuiLocalGen;
+	return TRUE;
+}
+
+static BOOL wui_run_pass(void)
+{
+	int xRight;
+	int yBottom;
+
+	if (!g_wuiLocalViewOn || !g_wuiLocalResOn) return FALSE;
+	if (!g_wuiResDC) return FALSE;
+	if (g_wuiLocalSize.cx <= 0 || g_wuiLocalSize.cy <= 0) return FALSE;
+
+	if (!PatBlt(g_wuiResDC,
+		0, 0,
+		g_wuiLocalSize.cx,
+		g_wuiLocalSize.cy,
+		BLACKNESS)) return FALSE;
+
+	if (g_wuiViewOn && g_wuiPulseOn) {
+		xRight = g_wuiLocalSize.cx - 1;
+		yBottom = g_wuiLocalSize.cy - 1;
+		SetPixelV(g_wuiResDC, xRight, yBottom, RGB(0, 255, 255));
+		if (xRight > 0) {
+			SetPixelV(g_wuiResDC, xRight - 1, yBottom, RGB(0, 255, 255));
+		}
+		if (yBottom > 0) {
+			SetPixelV(g_wuiResDC, xRight, yBottom - 1, RGB(0, 255, 255));
+		}
+		if (xRight > 0 && yBottom > 0) {
+			SetPixelV(g_wuiResDC, xRight - 1, yBottom - 1, RGB(0, 255, 255));
+		}
+	}
+	return TRUE;
+}
+
+static void wui_refresh(void)
+{
+	int backend;
+
+	backend = wui_sanitize((int)GetMyRegLong("Win11", "ExperimentalDisplayBackend", TC_DISPLAY_BACKEND_GDI));
+	g_wuiCfg = backend;
+	SetMyRegLong("Win11", "ExperimentalDisplayBackend", backend);
+
+	if (g_wuiCfg == TC_DISPLAY_BACKEND_GDI) {
+		g_wuiDllLive = FALSE;
+		wui_stop_host();
+		wui_unload_dll();
+	}
+	else if (bWin11Main) {
+		g_wuiDllLive = FALSE;
+		if (wui_load_dll() && g_wuiCreateHost && g_wuiDll && IsWindow(hwndClockMain) &&
+			g_wuiCreateHost(hwndClockMain)) {
+			g_wuiDllLive = TRUE;
+			g_wuiHostOn = TRUE;
+			g_wuiHostReady = TRUE;
+			g_wuiHostLinked = TRUE;
+			g_wuiDrawTried = TRUE;
+			g_wuiDrawReady = TRUE;
+			g_wuiOwnIntent = TRUE;
+			g_wuiOwnTried = TRUE;
+			g_wuiTakeTried = TRUE;
+			g_wuiTakeFail = FALSE;
+			g_wuiCanOwn = TRUE;
+			g_wuiPulseReq = TRUE;
+			g_wuiPulseOn = TRUE;
+			wui_sync_localview();
+			wui_make_localres();
+			g_wuiDrawOn = TRUE;
+			g_wuiViewOn = TRUE;
+			g_wuiMode = TC_DISPLAY_BACKEND_WINUI;
+			g_wuiViewMode = TC_DISPLAY_BACKEND_WINUI;
+			g_wuiFallback = FALSE;
+			if (g_wuiRefreshHost) g_wuiRefreshHost();
+		}
+		else {
+			g_wuiDllLive = FALSE;
+			g_wuiHostOn = FALSE;
+			g_wuiHostReady = FALSE;
+			g_wuiHostLinked = FALSE;
+			g_wuiDrawTried = FALSE;
+			g_wuiDrawReady = FALSE;
+			g_wuiOwnIntent = FALSE;
+			g_wuiOwnTried = FALSE;
+			g_wuiTakeTried = FALSE;
+			g_wuiTakeFail = TRUE;
+			g_wuiCanOwn = FALSE;
+			g_wuiPulseReq = FALSE;
+			g_wuiPulseOn = FALSE;
+			g_wuiDrawOn = FALSE;
+			g_wuiViewOn = FALSE;
+			g_wuiMode = TC_DISPLAY_BACKEND_GDI;
+			g_wuiViewMode = TC_DISPLAY_BACKEND_GDI;
+			g_wuiFallback = TRUE;
+		}
+	}
+	else {
+		g_wuiDllLive = FALSE;
+		wui_stop_host();
+	}
+
+	g_wuiMode = g_wuiDrawOn ? TC_DISPLAY_BACKEND_WINUI : TC_DISPLAY_BACKEND_GDI;
+	g_wuiViewMode = g_wuiViewOn ? TC_DISPLAY_BACKEND_WINUI : TC_DISPLAY_BACKEND_GDI;
+	g_wuiFallback = (g_wuiCfg != g_wuiViewMode);
+
+	if (b_DebugLog && g_wuiCfg == TC_DISPLAY_BACKEND_WINUI) {
+		if (g_wuiDrawOn && g_wuiViewMode == TC_DISPLAY_BACKEND_WINUI) {
+			writeDebugLog_Win10("[tclock.c][DisplayBackend] WinUI placeholder renderer is active and visible presentation ownership is on the experimental backend, with guarded GDI fallback still in place.", 999);
+		}
+		else if (g_wuiPulseOn) {
+			writeDebugLog_Win10("[tclock.c][DisplayBackend] WinUI host has acknowledged presentation participation while visible output still remains on the guarded GDI fallback path.", 999);
+		}
+		else if (g_wuiCanOwn) {
+			writeDebugLog_Win10("[tclock.c][DisplayBackend] WinUI presentation ownership is transferable in state, but visible presentation ownership still remains on GDI.", 999);
+		}
+		else if (g_wuiDrawOn) {
+			writeDebugLog_Win10("[tclock.c][DisplayBackend] WinUI placeholder renderer is active, but visible presentation ownership still remains on GDI.", 999);
+		}
+		else if (g_wuiOwnIntent) {
+			writeDebugLog_Win10("[tclock.c][DisplayBackend] WinUI presentation ownership intent exists, but visible presentation ownership still remains on GDI.", 999);
+		}
+		else if (g_wuiDrawReady && g_wuiLocalViewOn && g_wuiLocalResOn) {
+			writeDebugLog_Win10("[tclock.c][DisplayBackend] WinUI renderer-ready is acknowledged and the local non-visual draw resource exists, but draw routing remains on GDI.", 999);
+		}
+		else if (g_wuiDrawReady && g_wuiLocalViewOn) {
+			writeDebugLog_Win10("[tclock.c][DisplayBackend] WinUI renderer-ready is acknowledged and the local non-GDI draw-target placeholder exists, but draw routing remains on GDI.", 999);
+		}
+		else if (g_wuiDrawReady) {
+			writeDebugLog_Win10("[tclock.c][DisplayBackend] WinUI renderer-ready was acknowledged, but draw routing remains on GDI.", 999);
+		}
+		else if (g_wuiDrawTried) {
+			writeDebugLog_Win10("[tclock.c][DisplayBackend] WinUI renderer activation was attempted, but draw routing remains on GDI.", 999);
+		}
+		else if (g_wuiHostLinked) {
+			writeDebugLog_Win10("[tclock.c][DisplayBackend] WinUI host is attached, but renderer activation is still gated and draw routing remains on GDI.", 999);
+		}
+		else if (g_wuiHostReady) {
+			writeDebugLog_Win10("[tclock.c][DisplayBackend] WinUI host is ready, but paint ownership is still on GDI.", 999);
+		}
+		else if (g_wuiHostOn) {
+			writeDebugLog_Win10("[tclock.c][DisplayBackend] WinUI host launched without ready/attach. Using GDI.", 999);
+		}
+		else {
+			writeDebugLog_Win10("[tclock.c][DisplayBackend] Experimental WinUI backend is not available. Using GDI.", 999);
+		}
+	}
+}
+
+static void wui_reset_host(void)
+{
+	wui_drop_localres();
+
+	g_wuiHostOn = FALSE;
+	g_wuiHostReady = FALSE;
+	g_wuiHostLinked = FALSE;
+	g_wuiDrawTried = FALSE;
+	g_wuiDrawReady = FALSE;
+	g_wuiOwnIntent = FALSE;
+	g_wuiOwnTried = FALSE;
+	g_wuiTakeTried = FALSE;
+	g_wuiTakeFail = FALSE;
+	g_wuiCanOwn = FALSE;
+	g_wuiPulseReq = FALSE;
+	g_wuiPulseOn = FALSE;
+	g_wuiLocalViewOn = FALSE;
+	g_wuiLocalResOn = FALSE;
+	g_wuiLocalSize.cx = 0;
+	g_wuiLocalSize.cy = 0;
+	g_wuiLocalGen = 0;
+	g_wuiResGen = 0;
+	g_wuiProbeTick = 0;
+	g_wuiDrawOn = FALSE;
+	g_wuiViewMode = TC_DISPLAY_BACKEND_GDI;
+	g_wuiViewOn = FALSE;
+	g_wuiMode = TC_DISPLAY_BACKEND_GDI;
+}
+
+static void wui_stop_host(void)
+{
+	g_wuiDllLive = FALSE;
+	if (b_DebugLog && g_wuiDll) {
+		writeDebugLog_Win10("[tclock.c][DisplayBackend] Releasing WinUI host state before taskbar window teardown.", 999);
+	}
+
+	if (g_wuiDestroyHost) g_wuiDestroyHost();
+	wui_reset_host();
+	wui_unload_dll();
+}
+
+static void wui_draw_gdi(HDC hdc, SYSTEMTIME* pt, int beat100)
+{
+	DrawClockSub(hdc, pt, beat100);
+}
+
+static void wui_draw_body(HDC hdc, SYSTEMTIME* pt, int beat100)
+{
+	if (g_wuiLocalViewOn && g_wuiLocalResOn &&
+		wui_run_pass()) {
+		++g_wuiProbeTick;
+	}
+	wui_push_text(pt, beat100);
+	g_wuiBgOnly = TRUE;
+	DrawClockSub(hdc, pt, beat100);
+	g_wuiBgOnly = FALSE;
+}
+
+static void wui_draw_main(HDC hdc, SYSTEMTIME* pt, int beat100)
+{
+	if (g_wuiCfg == TC_DISPLAY_BACKEND_WINUI) {
+		wui_draw_body(hdc, pt, beat100);
+		return;
+	}
+	switch (g_wuiMode) {
+	case TC_DISPLAY_BACKEND_WINUI:
+		wui_draw_body(hdc, pt, beat100);
+		return;
+	case TC_DISPLAY_BACKEND_GDI:
+	default:
+		wui_draw_gdi(hdc, pt, beat100);
+		return;
+	}
+}
+
 static void RefreshClockWorkFont(void)
 {
 	LOGFONT lf;
@@ -1449,6 +1987,8 @@ void EndClock(void)
 {
 
 	if (b_DebugLog)writeDebugLog_Win10("[tclock.c] EndClock called.", 999);
+
+	wui_stop_host();
 
 	if (!b_CompactMode) {
 		newCodes_close_Win10();	//	-> Limited !b_CompactoMode to cope with Win10 April2018 Update
@@ -2877,6 +3417,8 @@ void ReadData()
 	//}
 	SetMyRegLong("Win11", "AdjustWin11IconPosition", bAdjustTrayWin11SmallTaskbar);
 
+	wui_refresh();
+
 
 	b_EnableChime = GetMyRegLong("Chime", "EnableChime", 0);
 	SetMyRegLong("Chime", "EnableChime", b_EnableChime);
@@ -3620,6 +4162,8 @@ void DrawClock_New(HDC hdc, BOOL b_forceUpdateWin11Notify)
 	SYSTEMTIME t;
 	int beat100 = 0;
 
+	wui_refresh();
+
 	//if (bWin11Main && (Win11Type == 2)) {
 	//	GetTaskbarColor_Win11Type2(TRUE);
 	//}
@@ -3630,7 +4174,7 @@ void DrawClock_New(HDC hdc, BOOL b_forceUpdateWin11Notify)
 
 	if (hdcClock) {
 		GetDisplayTime(&t, nDispBeat ? (&beat100) : NULL);
-		DrawClockSub(hdc, &t, beat100);
+		wui_draw_main(hdc, &t, beat100);
 		//		DrawClockFocusRect(hdc);
 		if (b_DebugLog)writeDebugLog_Win10("[tclock.c][DrawClock_New] Drawing completed.", 999);
 	}
@@ -4421,6 +4965,8 @@ void Textout_Tclock_Win10_3(int x, int y, const char* sp, int len, int infoval)
 {
 	COLORREF textshadow, textcol_dow, textcol_temp;
 
+	if (g_wuiBgOnly) return;
+
 	textshadow = TextColorFromInfoVal(99);
 	textcol_dow = TextColorFromInfoVal(88);
 	textcol_temp = TextColorFromInfoVal(infoval);
@@ -4506,6 +5052,8 @@ void Textout_Tclock_Win10_3(int x, int y, const char* sp, int len, int infoval)
 void Textout_Tclock_Win10_3W(int x, int y, const WCHAR* spW, int wlen, int infoval)
 {
 	COLORREF textshadow, textcol_dow, textcol_temp;
+
+	if (g_wuiBgOnly) return;
 
 	textshadow = TextColorFromInfoVal(99);
 	textcol_dow = TextColorFromInfoVal(88);
@@ -5129,6 +5677,8 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
 	else {
 		BitBlt(hdc, 0, 0, widthMainClockFrame, heightMainClockFrame, hdcClock, 0, 0, SRCCOPY);
 	}
+
+	if (g_wuiBgOnly) return;
 
 	HDC hdcSub = NULL;
 	HDC hdcSubBuffer = NULL;

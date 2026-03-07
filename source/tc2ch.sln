@@ -9,6 +9,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "langja", "tc2ch\language\la
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "tcdll", "tc2ch\dll\dll.vcxproj", "{5764565B-0BC9-4C10-88C6-F8D5B8C40C26}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "winuidll", "tc2ch\winuidll\winuidll.vcxproj", "{6B4AA46C-0B9A-4A35-96D0-2E1A96A9C5F2}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Release|x64 = Release|x64
@@ -20,6 +22,8 @@ Global
 		{456DE01E-0AAF-48F8-899D-01CB92528B59}.Release|x64.Build.0 = Release|x64
 		{5764565B-0BC9-4C10-88C6-F8D5B8C40C26}.Release|x64.ActiveCfg = Release|x64
 		{5764565B-0BC9-4C10-88C6-F8D5B8C40C26}.Release|x64.Build.0 = Release|x64
+		{6B4AA46C-0B9A-4A35-96D0-2E1A96A9C5F2}.Release|x64.ActiveCfg = Release|x64
+		{6B4AA46C-0B9A-4A35-96D0-2E1A96A9C5F2}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

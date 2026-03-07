@@ -16,29 +16,6 @@ static RECT g_wuiLastTarget = { 0, 0, 0, 0 };
 static RECT g_wuiLastPlace = { 0, 0, 0, 0 };
 static BOOL g_wuiHasTarget = FALSE;
 static BOOL g_wuiHasPlace = FALSE;
-static BOOL g_wuiOverlayOn = FALSE;
-
-static BOOL wui_has_class(const RECT* prcTarget, LPCWSTR className)
-{
-	HWND hwnd = NULL;
-	RECT rcWindow;
-	RECT rcIntersect;
-
-	if (!prcTarget || !className || !className[0]) return FALSE;
-	while ((hwnd = FindWindowExW(NULL, hwnd, className, NULL)) != NULL) {
-		if (!IsWindowVisible(hwnd)) continue;
-		if (!GetWindowRect(hwnd, &rcWindow)) continue;
-		if (IntersectRect(&rcIntersect, prcTarget, &rcWindow)) return TRUE;
-	}
-	return FALSE;
-}
-
-static BOOL wui_has_overlay(const RECT* prcTarget)
-{
-	if (wui_has_class(prcTarget, L"#32768")) return TRUE;
-	if (wui_has_class(prcTarget, L"tooltips_class32")) return TRUE;
-	return FALSE;
-}
 
 static Gdiplus::Color wui_argb(COLORREF color)
 {
@@ -220,7 +197,6 @@ static void wui_place(HWND hwnd)
 {
 	RECT rcTarget;
 	RECT rcPlace;
-	BOOL bOverlay;
 	int width;
 	int height;
 
@@ -258,17 +234,14 @@ static void wui_place(HWND hwnd)
 
 apply_place:
 	rcPlace = rcTarget;
-	bOverlay = wui_has_overlay(&rcTarget);
 	if (g_wuiHasPlace
-	 && EqualRect(&g_wuiLastPlace, &rcPlace)
-	 && g_wuiOverlayOn == bOverlay) {
+	 && EqualRect(&g_wuiLastPlace, &rcPlace)) {
 		return;
 	}
 	g_wuiLastPlace = rcPlace;
 	g_wuiHasPlace = TRUE;
-	g_wuiOverlayOn = bOverlay;
 	SetWindowPos(hwnd,
-		bOverlay ? HWND_NOTOPMOST : HWND_TOP,
+		HWND_TOP,
 		rcPlace.left,
 		rcPlace.top,
 		width,
@@ -354,7 +327,6 @@ extern "C" void WINAPI WuiDestroyHost(void)
 	g_wuiTarget = NULL;
 	g_wuiHasTarget = FALSE;
 	g_wuiHasPlace = FALSE;
-	g_wuiOverlayOn = FALSE;
 	ZeroMemory(&g_wuiLastTarget, sizeof(g_wuiLastTarget));
 	ZeroMemory(&g_wuiLastPlace, sizeof(g_wuiLastPlace));
 	ZeroMemory(&g_wuiState, sizeof(g_wuiState));

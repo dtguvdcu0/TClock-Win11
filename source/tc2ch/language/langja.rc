@@ -476,14 +476,11 @@ FONT 9, "MS UI Gothic", 0, 0, 0x0
 BEGIN
     ICON            0,IDC_ABOUTICON,10,2,20,20
     LTEXT           "TClock-Win11 Ver. x.x.x.x",IDC_STATIC_VersionText,40,8,158,8
-    RTEXT           "本プログラムはフリーソフトウェアです。",IDC_STATIC,79,18,121,8
-    LTEXT           "本プログラムは、Windows 10 Anniversary update (RS1) 以降で動作するTClockです。ほかのバージョンのTClockと同様に、本プログラムを利用することによる一切の損害等の責任は負いません。",IDC_STATIC,10,29,181,36
-    LTEXT           "本プログラムは、TClock2ch:\n　tclock-101021-analog (Kazubon氏 -> 2ch有志)\nのソースコードをベースに、\n　TClock Light kt160911 (Kazubon氏 -> K.Takata氏)\nを参考にして現行Windows10に対応させたものです。",IDC_STATIC,10,70,172,50
-    LTEXT           "以下の機能を削除・追加しています。\n　　・他のソフトで代替可能な機能を削除しました。\n　　・通信関係の情報取得・表示機能を拡充しました。\n　　・レジストリ不使用化(削除機能は維持)。\n",IDC_STATIC,10,119,182,41
-    LTEXT           "旧来の機能はTClock付属サイトを、新機能はreadme_jp.txtファイルを参照してください。",IDC_STATIC,12,157,127,21
+    LTEXT           "本プログラムはフリーソフトウェアです。",IDC_STATIC,40,18,158,8
+    LTEXT           "本プログラム利用での一切の損害等の責任は負いません。",IDC_STATIC,10,29,181,8
+    LTEXT           "本プログラムは、\n　TClock (by Kazubon氏)\n　TClock2ch (by 2ch有志)\n　TClockLight (by K. Takata氏)\n　Tclock-Win10 (by Mantis Mountain Mobile氏)\nを参考にしWindows11 25H2動作のための修正を行っています。",IDC_STATIC,10,52,182,68
     PUSHBUTTON      "Windowsが起動するたびにTClockを起動",IDC_STARTUP,6,181,136,15
     PUSHBUTTON      "レジストリ削除",IDC_DELREG,146,181,50,15
-    PUSHBUTTON      "TClock付属サイト",IDC_README1,144,157,60,15,BS_CENTER
 END
 
 IDD_PAGEMISC_ENG DIALOGEX 0, 0, 210, 200

@@ -23,7 +23,6 @@ INT_PTR CALLBACK PageTooltipProc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK PageGraphProc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK PageMiscProc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK PageAnalogClockProc(HWND, UINT, WPARAM, LPARAM);
-INT_PTR CALLBACK PageAboutProc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK PageChimeProc(HWND, UINT, WPARAM, LPARAM);
 
 INT_PTR CALLBACK PageBarmeterProc(HWND, UINT, WPARAM, LPARAM);
@@ -196,7 +195,7 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 	static BOOL bDlgFlg[MAX_PAGE];
 	static HWND *hNowDlg;
 	_TV_INSERTSTRUCT tv;
-	HTREEITEM hParent[MAX_PAGE], hChild[MAX_PAGE];
+	HTREEITEM hParent[MAX_PAGE] = { 0 }, hChild[MAX_PAGE] = { 0 };
 	NM_TREEVIEW *pNMTV;
 //	HINSTANCE hInst;
 	static int nowDlg;
@@ -249,10 +248,6 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 			tv.item.pszText = (LPWSTR)MyStringW(IDS_PROP_WIN11);
 			hParent[5] = (HTREEITEM)SendMessageW(hTree, TVM_INSERTITEMW, 0, (LPARAM)&tv);
 
-			tv.item.lParam = 3;
-			tv.item.pszText = (LPWSTR)MyStringW(IDS_ABOUT);
-			hParent[3] = (HTREEITEM)SendMessageW(hTree, TVM_INSERTITEMW, 0, (LPARAM)&tv);
-
 			tv.item.lParam = 4;
 			tv.item.pszText = (LPWSTR)MyStringW(IDS_MISC);
 			hParent[4] = (HTREEITEM)SendMessageW(hTree, TVM_INSERTITEMW, 0, (LPARAM)&tv);
@@ -301,6 +296,9 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 
 			CreatePageDialog(hDwnd, hDlg, bDlgFlg, 0, GetSafeLanguageOffset() + IDD_PAGECOLOR, PageColorProc);
 			nowDlg = startpage;
+			if (nowDlg == 13) {
+				nowDlg = 14;
+			}
 			//nowDlg = 0;
 			hNowDlg = &hDlg[nowDlg];
 			ShowWindow(*hNowDlg, SW_SHOW);
@@ -347,11 +345,6 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 						case 2:
 							nowDlg = 12;
 							CreatePageDialog(hDwnd, hDlg, bDlgFlg, nowDlg, GetSafeLanguageOffset() + IDD_PAGE_KEYWORDS, PageKeywordProc);
-							break;
-
-						case 3:
-							nowDlg = 13;
-							CreatePageDialog(hDwnd, hDlg, bDlgFlg, nowDlg, GetSafeLanguageOffset() + IDD_PAGEABOUT, PageAboutProc);
 							break;
 
 						case 4:

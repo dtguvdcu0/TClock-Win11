@@ -45,24 +45,9 @@ BOOL flag_VPN = FALSE;
 int active_physical_adapter_Win10 = -1; //-1: No active adapter, 0: Ether, 1: WiFi, 2: LTE
 
 extern char strSoftEtherKeyword[];
-extern char strVPN_Keyword1[];
-extern char strVPN_Keyword2[];
-extern char strVPN_Keyword3[];
-extern char strVPN_Keyword4[];
-extern char strVPN_Keyword5[];
-
-extern char strVPN_Exclude1[];
-extern char strVPN_Exclude2[];
-extern char strVPN_Exclude3[];
-extern char strVPN_Exclude4[];
-extern char strVPN_Exclude5[];
-
-
-extern char strEthernet_Keyword1[];
-extern char strEthernet_Keyword2[];
-extern char strEthernet_Keyword3[];
-extern char strEthernet_Keyword4[];
-extern char strEthernet_Keyword5[];
+extern char strVPN_Keywords[];
+extern char strVPN_Excludes[];
+extern char strEthernet_Keywords[];
 
 // IP addresses added by TTTT
 extern char ipLTE[];
@@ -87,6 +72,44 @@ double recv_old, send_old;
 
 int number_ActiveNet;
 int number_ActiveNet_old;
+
+static BOOL HasKeyword(const char* text, const char* keyword)
+{
+	return (text != NULL && keyword != NULL && keyword[0] != '\0' && strstr(text, keyword) != NULL) ? TRUE : FALSE;
+}
+
+static BOOL HasKeywordCsv(const char* text, const char* csv)
+{
+	const char* token;
+	const char* end;
+	const char* start;
+	int len;
+	char keyword[128];
+
+	if (text == NULL || csv == NULL || csv[0] == '\0') return FALSE;
+
+	token = csv;
+	while (*token != '\0') {
+		end = token;
+		while (*end != '\0' && *end != ',') end++;
+
+		start = token;
+		while (start < end && (*start == ' ' || *start == '\t')) start++;
+		while (end > start && (*(end - 1) == ' ' || *(end - 1) == '\t')) end--;
+
+		len = (int)(end - start);
+		if (len > 0) {
+			if (len >= (int)sizeof(keyword)) len = (int)sizeof(keyword) - 1;
+			CopyMemory(keyword, start, len);
+			keyword[len] = '\0';
+			if (strstr(text, keyword) != NULL) return TRUE;
+		}
+
+		token = (*end == ',') ? (end + 1) : end;
+	}
+
+	return FALSE;
+}
 
 
 typedef DWORD(WINAPI *pfnGetIpAddrTable)(PMIB_IPADDRTABLE, PULONG, BOOL);
@@ -470,11 +493,7 @@ void Net_getRecvSend_Win10(double* recv, double* send, double* recvWAN, double* 
 						|| (strstr(ifDescr, "Buffalo") != NULL)
 						|| (strstr(ifDescr, "I-O DATA") != NULL)
 						|| (strstr(ifDescr, "Qualcomm") != NULL)
-						|| (strstr(ifDescr, strEthernet_Keyword1) != NULL)
-						|| (strstr(ifDescr, strEthernet_Keyword2) != NULL)
-						|| (strstr(ifDescr, strEthernet_Keyword3) != NULL)
-						|| (strstr(ifDescr, strEthernet_Keyword4) != NULL)
-						|| (strstr(ifDescr, strEthernet_Keyword5) != NULL)
+						|| HasKeywordCsv(ifDescr, strEthernet_Keywords)
 						) &&
 					(strstr(ifDescr, "Virtual") == NULL) &&
 					(strstr(ifDescr, "Scheduler") == NULL) &&
@@ -507,17 +526,9 @@ void Net_getRecvSend_Win10(double* recv, double* send, double* recvWAN, double* 
 				//		|| (ifr->dwType == MIB_IF_TYPE_PPP))
 				//	&&
 				if (
-					((strstr(ifDescr, strSoftEtherKeyword) != NULL) 
-						|| (strstr(ifDescr, strVPN_Keyword1) != NULL)
-						|| (strstr(ifDescr, strVPN_Keyword2) != NULL)
-						|| (strstr(ifDescr, strVPN_Keyword3) != NULL)
-						|| (strstr(ifDescr, strVPN_Keyword4) != NULL)
-						|| (strstr(ifDescr, strVPN_Keyword5) != NULL)) &&
-					((strstr(ifDescr, strVPN_Exclude1) == NULL)
-						&& (strstr(ifDescr, strVPN_Exclude2) == NULL)
-						&& (strstr(ifDescr, strVPN_Exclude3) == NULL)
-						&& (strstr(ifDescr, strVPN_Exclude4) == NULL)
-						&& (strstr(ifDescr, strVPN_Exclude5) == NULL)) &&
+					((HasKeyword(ifDescr, strSoftEtherKeyword))
+						|| HasKeywordCsv(ifDescr, strVPN_Keywords)) &&
+					(!HasKeywordCsv(ifDescr, strVPN_Excludes)) &&
 						(ifr->dwOperStatus == IF_OPER_STATUS_OPERATIONAL))
 				{
 					flag_VPNCheck = TRUE;
@@ -525,7 +536,7 @@ void Net_getRecvSend_Win10(double* recv, double* send, double* recvWAN, double* 
 
 
 					flag_VPN = TRUE;
-					if (strstr(ifDescr, strSoftEtherKeyword) != NULL) flag_SoftEther = TRUE;
+					if (HasKeyword(ifDescr, strSoftEtherKeyword)) flag_SoftEther = TRUE;
 
 					ifIndex_VPN = (int)ifr->dwIndex;
 

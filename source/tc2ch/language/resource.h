@@ -344,6 +344,11 @@
 #define IDC_VPN_EXCLUDE4                1081
 #define IDC_VPN_EXCLUDE5                1082
 #define IDC_SPIN_THERMALZONE            1083
+#define IDC_GIP_ENABLE                  1084
+#define IDC_GIP_INTERVAL                1085
+#define IDC_SPIN_GIP_INTERVAL           1086
+#define IDC_GIP_PROVIDER                1087
+#define IDC_GIP_RESULT                  1088
 #define IDS_FILELIST2                   1089
 #define IDS_TICONNO2                    1090
 #define IDS_TICONINFO2                  1091

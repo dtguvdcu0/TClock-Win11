@@ -2382,9 +2382,17 @@ static BOOL tc_scan_cpu_token_w(const WCHAR** psp)
 	else if (*p == L'e' && tc_is_digit_ascii_w(*(p + 1)) && tc_is_digit_ascii_w(*(p + 2))) {
 		p += 3;
 	}
+	if (*p == L'M' || *p == L'G') {
+		p += 1;
+	}
 	q = p;
 	if (tc_parse_num_format_w(&q, NULL, NULL, NULL)) {
 		p = q;
+	}
+	if (*p == L'.') {
+		p++;
+		q = p;
+		if (tc_parse_num_format_w(&q, NULL, NULL, NULL)) p = q;
 	}
 	*psp = p;
 	return TRUE;
@@ -2746,8 +2754,8 @@ static BOOL tc_scan_hdd_token_w(const WCHAR** psp)
 	if (*p != L'H') return FALSE;
 	if (*(p + 1) != L'A' && *(p + 1) != L'U' && *(p + 1) != L'T') return FALSE;
 	if (!tc_hdd_token_dv_w(*(p + 2), &dv)) return FALSE;
-	if (*(p + 3) != L'M' && *(p + 3) != L'G' && *(p + 3) != L'P') return FALSE;
-	if (*(p + 1) == L'T' && *(p + 3) == L'P') return FALSE;
+	if (*(p + 3) != L'M' && *(p + 3) != L'G' && *(p + 3) != L'T' && *(p + 3) != L'P') return FALSE;
+	if (*(p + 3) == L'P' && *(p + 1) == L'T') return FALSE;
 	p += 4;
 	q = p;
 	if (tc_parse_num_format_w(&q, NULL, NULL, NULL)) p = q;
@@ -2780,16 +2788,18 @@ static BOOL tc_emit_hdd_token_w(WCHAR** dp, int* remain, const WCHAR** psp)
 	unit = *(p + 3);
 	if (mode != L'A' && mode != L'U' && mode != L'T') return FALSE;
 	if (!tc_hdd_token_dv_w(*(p + 2), &dv)) return FALSE;
-	if (unit != L'M' && unit != L'G' && unit != L'P') return FALSE;
-	if (mode == L'T' && unit == L'P') return FALSE;
+	if (unit != L'M' && unit != L'G' && unit != L'T' && unit != L'P') return FALSE;
+	if (unit == L'P' && mode == L'T') return FALSE;
 
 	if (mode == L'T') {
 		if (unit == L'M') dsk = diskAll[dv];
 		else if (unit == L'G') dsk = diskAll[dv + 36];
+		else if (unit == L'T') dsk = diskAll[dv + 36] / 1024.0;
 	}
 	else if (mode == L'A') {
 		if (unit == L'M') dsk = diskFree[dv];
 		else if (unit == L'G') dsk = diskFree[dv + 36];
+		else if (unit == L'T') dsk = diskFree[dv + 36] / 1024.0;
 		else if (unit == L'P') {
 			if (diskAll[dv] != 0.0) dsk = (diskFree[dv] / diskAll[dv]) * 100.0;
 			else dsk = 0.0;
@@ -2798,6 +2808,7 @@ static BOOL tc_emit_hdd_token_w(WCHAR** dp, int* remain, const WCHAR** psp)
 	else {
 		if (unit == L'M') dsk = diskAll[dv] - diskFree[dv];
 		else if (unit == L'G') dsk = diskAll[dv + 36] - diskFree[dv + 36];
+		else if (unit == L'T') dsk = (diskAll[dv + 36] - diskFree[dv + 36]) / 1024.0;
 		else if (unit == L'P') {
 			if (diskAll[dv] != 0.0) dsk = ((diskAll[dv] - diskFree[dv]) / diskAll[dv]) * 100.0;
 			else dsk = 0.0;
@@ -3127,6 +3138,8 @@ static BOOL tc_wfmt_core(WCHAR* s, int sCch, char* s_info, SYSTEMTIME* pt, int b
 					BOOL isClock = (*(sp + 1) == L'C') ? TRUE : FALSE;
 					const WCHAR* pnum = sp + 2;
 					int value = 0;
+					WCHAR clockUnit = L'M';
+					double dvalue = 0.0;
 					if (!isClock) {
 						if (tc_is_digit_ascii_w(*pnum)) {
 							int processorNum = (int)(*pnum - L'0');
@@ -3158,20 +3171,55 @@ static BOOL tc_wfmt_core(WCHAR* s, int sCch, char* s_info, SYSTEMTIME* pt, int b
 						else {
 							value = b_EnableClock2 ? CPUClock2Ave : iCPUClock[0];
 						}
+						if (*pnum == L'M' || *pnum == L'G') {
+							clockUnit = *pnum;
+							pnum += 1;
+						}
 					}
 					if (value < 0) value = 0;
+					if (isClock) {
+						dvalue = (double)value;
+						if (clockUnit == L'G') dvalue /= 1000.0;
+					}
 					{
 						int len;
 						int slen;
 						BOOL bComma = FALSE;
 						const WCHAR* p2 = pnum;
 						if (tc_parse_num_format_w(&p2, &len, &slen, &bComma)) {
-							tc_wappend_num_format(&dp, &remain, value, len, slen, bComma);
+							if (isClock && clockUnit == L'G') {
+								int clockInt = (int)dvalue;
+								tc_wappend_num_format(&dp, &remain, clockInt, len, slen, bComma);
+								dvalue -= (double)clockInt;
+								if (*p2 == L'.') {
+									int dlen;
+									int dslen;
+									BOOL dComma = FALSE;
+									const WCHAR* p3 = p2 + 1;
+									if (tc_parse_num_format_w(&p3, &dlen, &dslen, &dComma)) {
+										int fmtLen = dlen;
+										int frac;
+										if (fmtLen > 3) fmtLen = 3;
+										tc_wappend_char(&dp, &remain, L'.');
+										while (fmtLen-- > 0) dvalue *= 10.0;
+										frac = (int)dvalue;
+										if (frac < 0) frac = 0;
+										tc_wappend_num_format(&dp, &remain, frac, dlen > 3 ? 3 : dlen, 0, FALSE);
+										p2 = p3;
+									}
+								}
+							}
+							else {
+								tc_wappend_num_format(&dp, &remain, value, len, slen, bComma);
+							}
 							pnum = p2;
 						}
 						else if (!isClock) {
 							if (value > 99) tc_wappend_uint_fixed(&dp, &remain, value, 3);
 							else tc_wappend_uint_fixed(&dp, &remain, value, 2);
+						}
+						else if (clockUnit == L'G') {
+							tc_wappend_uint_var(&dp, &remain, (int)dvalue);
 						}
 						else {
 							tc_wappend_num_format(&dp, &remain, value, 3, 0, FALSE);
@@ -3819,7 +3867,7 @@ DWORD FindFormatW(const WCHAR* fmt)
 					sp += 4;
 					ret |= FORMAT_NET;
 				}
-				else if (*sp == L'H' && (*(sp + 1) == L'A' || *(sp + 1) == L'U' || *(sp + 1) == L'T') && (*(sp + 2) >= L'A' && *(sp + 2) <= L'Z') && (*(sp + 3) == L'M' || *(sp + 3) == L'G' || *(sp + 3) == L'P'))
+				else if (*sp == L'H' && (*(sp + 1) == L'A' || *(sp + 1) == L'U' || *(sp + 1) == L'T') && (*(sp + 2) >= L'A' && *(sp + 2) <= L'Z') && (*(sp + 3) == L'M' || *(sp + 3) == L'G' || *(sp + 3) == L'T' || *(sp + 3) == L'P'))
 				{
 					int dv;
 					dv = (int)(*(sp + 2) - L'A');
@@ -3827,7 +3875,7 @@ DWORD FindFormatW(const WCHAR* fmt)
 					sp += 4;
 					ret |= FORMAT_HDD;
 				}
-				else if (*sp == L'H' && (*(sp + 1) == L'A' || *(sp + 1) == L'U' || *(sp + 1) == L'T') && (*(sp + 2) >= L'0' && *(sp + 2) <= L'9') && (*(sp + 3) == L'M' || *(sp + 3) == L'G' || *(sp + 3) == L'P'))
+				else if (*sp == L'H' && (*(sp + 1) == L'A' || *(sp + 1) == L'U' || *(sp + 1) == L'T') && (*(sp + 2) >= L'0' && *(sp + 2) <= L'9') && (*(sp + 3) == L'M' || *(sp + 3) == L'G' || *(sp + 3) == L'T' || *(sp + 3) == L'P'))
 				{
 					int dv;
 					extern char strAdditionalMountPath;

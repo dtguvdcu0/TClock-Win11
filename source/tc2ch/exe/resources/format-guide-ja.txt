@@ -18,7 +18,7 @@ TClock 使える書式ガイド
   TOKEN___x                       さらに広い桁幅を確保します。
   TOKEN_x.xx                      整数部と小数部の桁数を指定します。
 
-・日付と時刻:
+日付と時刻:
   yy / yyyy                       2 桁年 / 4 桁年
   m / mm                          月 / 0 埋めした月
   mmm / mmmm                      ロケールに従う短い月名 / 長い月名
@@ -37,25 +37,25 @@ TClock 使える書式ガイド
   DATE / LDATE / TIME             Windows の短い日付 / 長い日付 / 24 時間表記時刻
   g, gg... / Y, YY...             元号文字列 / 和暦年などの代替カレンダー表記
 
-・時差とワールドクロック:
+時差とワールドクロック:
   td+HH:MM / td-HH:MM             固定の時差を指定します。
   tu+HH:MM / tu-HH:MM             US DST を考慮した時差を指定します。
   te+HH:MM / te-HH:MM             Europe DST を考慮した時差を指定します。
   StU / StE                       US / Europe DST の状態を "*" または空白で表示します。
   w+HH / w-HH                     時だけをずらして表示します。
 
-・稼働時間:
+稼働時間:
   ST                              稼働時間を HH:MM:SS で表示します。
   Sd / Sa / Sh / Sn / Ss          稼働日数 / 総時間 / 時 / 分 / 秒
 
-・CPU:
+CPU:
   CU                              CPU 使用率
   CU0 .. CU9 / CUe00 .. CUe99     論理プロセッサごとの使用率
   CC / CC0 .. CC9                 CPU クロック / 論理プロセッサごとのクロック
   CCe00 .. CCe99                  2 桁番号の論理プロセッサごとのクロック
   PCORE / LPROC                   物理コア数 / 論理プロセッサ数
 
-・メモリ:
+メモリ:
   MK / MM / MG                    空き物理メモリを KB / MB / GB で表示します。
   MTPK / MTPM / MTPG              総物理メモリを KB / MB / GB で表示します。
   MAPK / MAPM / MAPG              空き物理メモリを KB / MB / GB で表示します。
@@ -67,28 +67,28 @@ TClock 使える書式ガイド
   MAVK / MAVM / MAVG              空き仮想メモリを KB / MB / GB で表示します。
   MUVK / MUVM / MUVG              使用中の仮想メモリを KB / MB / GB で表示します。
 
-・バッテリと音量:
+バッテリと音量:
   BL                              バッテリ残量
   AD / ad                         AC/DC/不明 の電源状態を長短表記で表示します。
   BCS                             充電中を "*" または空白で表示します。
   Bh / Bn / Bs                    バッテリ見込み時間の 時 / 分 / 秒
   VL / VM                         音量 / ミュート表示
 
-・ディスク:
+ディスク:
   HAxM / HAxG / HAxP              ドライブ x の空き容量を MB / GB / % で表示します。
   HUxM / HUxG / HUxP              ドライブ x の使用量を MB / GB / % で表示します。
   HTxM / HTxG                     ドライブ x の総容量を MB / GB で表示します。
   x = A..Z                        *補足:ドライブレターを直接指定します。
   x = 0..9                        *補足: AdditionalMountPath0..9 を参照します。
 
-・ネットワーク:
+ネットワーク:
   NRAK / NRAM / NRAG              総受信量を KB / MB / GB で表示します。
   NSAK / NSAM / NSAG              総送信量を KB / MB / GB で表示します。
   NRSB / NRSK / NRSM              受信速度を B / KB / MB で表示します。
   NSSB / NSSK / NSSM              送信速度を B / KB / MB で表示します。
   NRAA / NSAA                     自動単位で総受信量 / 総送信量を表示します。
 
-・接続状態と IP:
+接続状態と IP:
   LTE / WiFi / EthS / EthL        各接続種別の状態文字列
   NMX1 / NMX2                     アクティブな接続に応じて自動切替する表示
   SSID / APN / VPNS               Wi-Fi SSID / LTE APN / VPN 状態
@@ -96,13 +96,13 @@ TClock 使える書式ガイド
   WANP / AIPF                     LTE WAN / アクティブ回線プロファイル番号
   IPE / IPW / IPL / IPV / IPA     各回線の IP アドレス
 
-・GPU:
+GPU:
   GU / GI                         GPU 使用率 / GPU インスタンス数
  
-・温度:
+温度:
   TEMP                            取得できた温度を表示します。
 
-・その他:
+その他:
   VerTC                           TClock のバージョン文字列
   FTA                             タスクバー配置フラグ
   CUSTOM1, CUSTOM2, ...           CustomVars で定義した文字列を表示します。

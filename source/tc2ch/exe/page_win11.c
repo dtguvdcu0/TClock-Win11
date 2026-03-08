@@ -293,7 +293,7 @@ static void OnInit(HWND hDlg)
 
 	b_exe_Win11Main = GetMyRegLong("Status_DoNotEdit", "Win11TClockMain", 9);
 
-	autoBackAlpha = (int)GetMyRegLong("Color_Font", "AutoBackAlpha", 96);
+	autoBackAlpha = (int)GetMyRegLong("Color_Font", "AutoBackAlpha", 255);
 	if (autoBackAlpha < 0) autoBackAlpha = 0;
 	if (autoBackAlpha > 255) autoBackAlpha = 255;
 

@@ -547,24 +547,10 @@ int WinBuildNumber = 0;
 
 char g_mydir_dll[MAX_PATH]; // path to tclock.exe
 
-char strSoftEtherKeyword[32];
-char strVPN_Keyword1[32];
-char strVPN_Keyword2[32];
-char strVPN_Keyword3[32];
-char strVPN_Keyword4[32];
-char strVPN_Keyword5[32];
-
-char strVPN_Exclude1[32];
-char strVPN_Exclude2[32];
-char strVPN_Exclude3[32];
-char strVPN_Exclude4[32];
-char strVPN_Exclude5[32];
-
-char strEthernet_Keyword1[32];
-char strEthernet_Keyword2[32];
-char strEthernet_Keyword3[32];
-char strEthernet_Keyword4[32];
-char strEthernet_Keyword5[32];
+char strSoftEtherKeyword[64];
+char strVPN_Keywords[256];
+char strVPN_Excludes[256];
+char strEthernet_Keywords[256];
 
 BOOL b_CompactMode = TRUE;
 BOOL b_SafeMode = FALSE;
@@ -2685,6 +2671,47 @@ void BuildMainFormatWrapped(const char* raw, char* out, int outLen, BOOL logMalf
 	}
 }
 
+static void AppendKeywordCsv(char* out, int cch_out, const char* value)
+{
+	int out_len;
+	int value_len;
+
+	if (value == NULL || value[0] == '\0') return;
+
+	out_len = (int)strlen(out);
+	value_len = (int)strlen(value);
+	if (out_len >= cch_out - 1) return;
+
+	if (out_len > 0) {
+		if (out_len + 1 >= cch_out - 1) return;
+		out[out_len++] = ',';
+		out[out_len] = '\0';
+	}
+
+	if (out_len + value_len >= cch_out) {
+		value_len = cch_out - out_len - 1;
+	}
+	if (value_len > 0) {
+		lstrcpyn(out + out_len, value, value_len + 1);
+	}
+}
+
+static void LoadKeywordCsv(char* out, int cch_out, const char* section, const char* combined_entry, const char* legacy_prefix)
+{
+	int index;
+	char entry[64];
+	char value[64];
+
+	GetMyRegStr(section, combined_entry, out, cch_out, "");
+	if (out[0] != '\0') return;
+
+	for (index = 1; index <= 5; index++) {
+		wsprintf(entry, "%s%d", legacy_prefix, index);
+		GetMyRegStr(section, entry, value, (int)sizeof(value), "");
+		AppendKeywordCsv(out, cch_out, value);
+	}
+}
+
 void ReadData()
 {
 	int i;
@@ -2971,76 +2998,17 @@ void ReadData()
 
 
 
-	GetMyRegStr("VPN", "SoftEtherKeyword", strSoftEtherKeyword, 32, "VPN Client Adapter");
+	GetMyRegStr("VPN", "SoftEtherKeyword", strSoftEtherKeyword, (int)sizeof(strSoftEtherKeyword), "VPN Client Adapter");
 	SetMyRegStr("VPN", "SoftEtherKeyword", strSoftEtherKeyword);
 
+	LoadKeywordCsv(strVPN_Keywords, (int)sizeof(strVPN_Keywords), "VPN", "VPNKeywords", "VPN_Keyword");
+	SetMyRegStr("VPN", "VPNKeywords", strVPN_Keywords);
 
+	LoadKeywordCsv(strVPN_Excludes, (int)sizeof(strVPN_Excludes), "VPN", "VPNExcludeKeywords", "VPN_Exclude");
+	SetMyRegStr("VPN", "VPNExcludeKeywords", strVPN_Excludes);
 
-	GetMyRegStr("VPN", "VPN_Keyword1", strVPN_Keyword1, 32, "");
-	SetMyRegStr("VPN", "VPN_Keyword1", strVPN_Keyword1);
-	if (strlen(strVPN_Keyword1) == 0) strcpy(strVPN_Keyword1, "VPN Adapter Keyword1");
-
-	GetMyRegStr("VPN", "VPN_Keyword2", strVPN_Keyword2, 32, "");
-	SetMyRegStr("VPN", "VPN_Keyword2", strVPN_Keyword2);
-	if (strlen(strVPN_Keyword2) == 0) strcpy(strVPN_Keyword2, "VPN Adapter Keyword2");
-
-
-	GetMyRegStr("VPN", "VPN_Keyword3", strVPN_Keyword3, 32, "");
-	SetMyRegStr("VPN", "VPN_Keyword3", strVPN_Keyword3);
-	if (strlen(strVPN_Keyword3) == 0) strcpy(strVPN_Keyword3, "VPN Adapter Keyword3");
-
-	GetMyRegStr("VPN", "VPN_Keyword4", strVPN_Keyword4, 32, "");
-	SetMyRegStr("VPN", "VPN_Keyword4", strVPN_Keyword4);
-	if (strlen(strVPN_Keyword4) == 0) strcpy(strVPN_Keyword4, "VPN Adapter Keyword4");
-
-	GetMyRegStr("VPN", "VPN_Keyword5", strVPN_Keyword5, 32, "");
-	SetMyRegStr("VPN", "VPN_Keyword5", strVPN_Keyword5);
-	if (strlen(strVPN_Keyword5) == 0) strcpy(strVPN_Keyword5, "VPN Adapter Keyword5");
-
-	GetMyRegStr("VPN", "VPN_Exclude1", strVPN_Exclude1, 32, "");
-	SetMyRegStr("VPN", "VPN_Exclude1", strVPN_Exclude1);
-	if (strlen(strVPN_Exclude1) == 0) strcpy(strVPN_Exclude1, "VPN Adapter Exclude1");
-
-	GetMyRegStr("VPN", "VPN_Exclude2", strVPN_Exclude2, 32, "");
-	SetMyRegStr("VPN", "VPN_Exclude2", strVPN_Exclude2);
-	if (strlen(strVPN_Exclude2) == 0) strcpy(strVPN_Exclude2, "VPN Adapter Exclude2");
-
-
-	GetMyRegStr("VPN", "VPN_Exclude3", strVPN_Exclude3, 32, "");
-	SetMyRegStr("VPN", "VPN_Exclude3", strVPN_Exclude3);
-	if (strlen(strVPN_Exclude3) == 0) strcpy(strVPN_Exclude3, "VPN Adapter Exclude3");
-
-	GetMyRegStr("VPN", "VPN_Exclude4", strVPN_Exclude4, 32, "");
-	SetMyRegStr("VPN", "VPN_Exclude4", strVPN_Exclude4);
-	if (strlen(strVPN_Exclude4) == 0) strcpy(strVPN_Exclude4, "VPN Adapter Exclude4");
-
-	GetMyRegStr("VPN", "VPN_Exclude5", strVPN_Exclude5, 32, "");
-	SetMyRegStr("VPN", "VPN_Exclude5", strVPN_Exclude5);
-	if (strlen(strVPN_Exclude5) == 0) strcpy(strVPN_Exclude5, "VPN Adapter Exclude5");
-
-
-
-
-
-	GetMyRegStr("ETC", "Ethernet_Keyword1", strEthernet_Keyword1, 32, "");
-	SetMyRegStr("ETC", "Ethernet_Keyword1", strEthernet_Keyword1);
-	if (strlen(strEthernet_Keyword1) == 0) strcpy(strEthernet_Keyword1, "Ethernet Adapter Keyword1");
-
-	GetMyRegStr("ETC", "Ethernet_Keyword2", strEthernet_Keyword2, 32, "");
-	SetMyRegStr("ETC", "Ethernet_Keyword2", strEthernet_Keyword2);
-	if (strlen(strEthernet_Keyword2) == 0) strcpy(strEthernet_Keyword2, "Ethernet Adapter Keyword2");
-
-	GetMyRegStr("ETC", "Ethernet_Keyword3", strEthernet_Keyword3, 32, "");
-	SetMyRegStr("ETC", "Ethernet_Keyword3", strEthernet_Keyword3);
-	if (strlen(strEthernet_Keyword3) == 0) strcpy(strEthernet_Keyword3, "Ethernet Adapter Keyword3");
-
-	GetMyRegStr("ETC", "Ethernet_Keyword4", strEthernet_Keyword4, 32, "");
-	SetMyRegStr("ETC", "Ethernet_Keyword4", strEthernet_Keyword4);
-	if (strlen(strEthernet_Keyword4) == 0) strcpy(strEthernet_Keyword4, "Ethernet Adapter Keyword4");
-
-	GetMyRegStr("ETC", "Ethernet_Keyword5", strEthernet_Keyword5, 32, "");
-	SetMyRegStr("ETC", "Ethernet_Keyword5", strEthernet_Keyword5);
-	if (strlen(strEthernet_Keyword5) == 0) strcpy(strEthernet_Keyword5, "Ethernet Adapter Keyword5");
+	LoadKeywordCsv(strEthernet_Keywords, (int)sizeof(strEthernet_Keywords), "ETC", "EthernetKeywords", "Ethernet_Keyword");
+	SetMyRegStr("ETC", "EthernetKeywords", strEthernet_Keywords);
 
 	//CompactMode Added by TTTT
 	b_CompactMode = GetMyRegLong(NULL, "CompactMode", TRUE);
@@ -3483,7 +3451,9 @@ void ReadData()
 		bGraphTimerStart = SetTimer(hwndClockMain, IDTIMERDLL_GRAPH, graphInterval*1000, NULL) != 0;
 
 	CustomFormatVarsReadSettings();
+	GipRead();
 	CustomFormatVarsPreloadIfEnabled();
+	GipTick();
 
 	{
 		char fmt_raw[1024];
@@ -3850,6 +3820,7 @@ void OnTimer_Win10(void)
 
 	GetDisplayTime(&t, nDispBeat ? (&beat100) : NULL);
 	CustomFormatVarsTick();
+	GipTick();
 
 	if (b_DebugLog)
 	{

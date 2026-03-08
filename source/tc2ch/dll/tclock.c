@@ -3062,29 +3062,29 @@ void ReadData()
 
 	
 	b_BarMeterVL_Horizontal = GetMyRegLong("BarMeter", "BarMeterVL_Horizontal", FALSE);
-	SetMyRegLong("BarMeter", "BarMeterVL_Horizontal", b_BarMeterVL_Horizontal);
+	if (GetMyRegLong("BarMeter", "UseBarMeterVL", 0)) SetMyRegLong("BarMeter", "BarMeterVL_Horizontal", b_BarMeterVL_Horizontal);
 
 	b_BarMeterBL_Horizontal = GetMyRegLong("BarMeter", "BarMeterBL_Horizontal", FALSE);
-	SetMyRegLong("BarMeter", "BarMeterBL_Horizontal", b_BarMeterBL_Horizontal);
+	if (GetMyRegLong("BarMeter", "UseBarMeterBL", 0)) SetMyRegLong("BarMeter", "BarMeterBL_Horizontal", b_BarMeterBL_Horizontal);
 	
 	b_BarMeterCU_Horizontal = GetMyRegLong("BarMeter", "BarMeterCU_Horizontal", FALSE);
 	SetMyRegLong("BarMeter", "BarMeterCU_Horizontal", b_BarMeterCU_Horizontal);
 	
 	b_BarMeterNet_Horizontal = GetMyRegLong("BarMeter", "BarMeterNet_Horizontal", FALSE);
-	SetMyRegLong("BarMeter", "BarMeterNet_Horizontal", b_BarMeterNet_Horizontal);
+	if (GetMyRegLong("BarMeter", "UseBarMeterNet", 0)) SetMyRegLong("BarMeter", "BarMeterNet_Horizontal", b_BarMeterNet_Horizontal);
 
 	
 	b_BarMeterVL_HorizontalToLeft = GetMyRegLong("BarMeter", "BarMeterVL_HorizontalToLeft", FALSE);
-	SetMyRegLong("BarMeter", "BarMeterVL_HorizontalToLeft", b_BarMeterVL_HorizontalToLeft);
+	if (GetMyRegLong("BarMeter", "UseBarMeterVL", 0)) SetMyRegLong("BarMeter", "BarMeterVL_HorizontalToLeft", b_BarMeterVL_HorizontalToLeft);
 
 	b_BarMeterBL_HorizontalToLeft = GetMyRegLong("BarMeter", "BarMeterBL_HorizontalToLeft", FALSE);
-	SetMyRegLong("BarMeter", "BarMeterBL_HorizontalToLeft", b_BarMeterBL_HorizontalToLeft);
+	if (GetMyRegLong("BarMeter", "UseBarMeterBL", 0)) SetMyRegLong("BarMeter", "BarMeterBL_HorizontalToLeft", b_BarMeterBL_HorizontalToLeft);
 
 	b_BarMeterCU_HorizontalToLeft = GetMyRegLong("BarMeter", "BarMeterCU_HorizontalToLeft", FALSE);
 	SetMyRegLong("BarMeter", "BarMeterCU_HorizontalToLeft", b_BarMeterCU_HorizontalToLeft);
 
 	b_BarMeterNet_HorizontalToLeft = GetMyRegLong("BarMeter", "BarMeterNet_HorizontalToLeft", FALSE);
-	SetMyRegLong("BarMeter", "BarMeterNet_HorizontalToLeft", b_BarMeterNet_HorizontalToLeft);
+	if (GetMyRegLong("BarMeter", "UseBarMeterNet", 0)) SetMyRegLong("BarMeter", "BarMeterNet_HorizontalToLeft", b_BarMeterNet_HorizontalToLeft);
 
 
 
@@ -3093,26 +3093,26 @@ void ReadData()
 
 
 	ColorBarMeterVL = (COLORREF)GetMyRegLong("BarMeter", "ColorBarMeterVL", RGB(0, 255, 0));
-	SetMyRegLong("BarMeter", "ColorBarMeterVL", ColorBarMeterVL);
+	if (b_UseBarMeterVL) SetMyRegLong("BarMeter", "ColorBarMeterVL", ColorBarMeterVL);
 
 	ColorBarMeterVL_Mute = (COLORREF)GetMyRegLong("BarMeter", "ColorBarMeterVL_Mute", RGB(255, 0, 0));
-	SetMyRegLong("BarMeter", "ColorBarMeterVL_Mute", ColorBarMeterVL_Mute);
+	if (b_UseBarMeterVL) SetMyRegLong("BarMeter", "ColorBarMeterVL_Mute", ColorBarMeterVL_Mute);
 
 	BarMeterVL_Right = (int)(short)GetMyRegLong("BarMeter", "BarMeterVL_Right", 290);
-	SetMyRegLong("BarMeter", "BarMeterVL_Right", BarMeterVL_Right);
+	if (b_UseBarMeterVL) SetMyRegLong("BarMeter", "BarMeterVL_Right", BarMeterVL_Right);
 
 	BarMeterWidth = (int)(short)GetMyRegLong("BarMeter", "BarMeterVL_Width", 5);
 	if (BarMeterWidth <= 0) BarMeterWidth = 5;
 	BarMeterVL_Left = BarMeterVL_Right + BarMeterWidth;
-	SetMyRegLong("BarMeter", "BarMeterVL_Width", BarMeterWidth);
+	if (b_UseBarMeterVL) SetMyRegLong("BarMeter", "BarMeterVL_Width", BarMeterWidth);
 
 	BarMeterVL_Bottom = (int)(short)GetMyRegLong("BarMeter", "BarMeterVL_Bottom", 0);
 	if (BarMeterVL_Bottom < 0) BarMeterVL_Bottom = 0;
-	SetMyRegLong("BarMeter", "BarMeterVL_Bottom", BarMeterVL_Bottom);
+	if (b_UseBarMeterVL) SetMyRegLong("BarMeter", "BarMeterVL_Bottom", BarMeterVL_Bottom);
 
 	BarMeterVL_Top = (int)(short)GetMyRegLong("BarMeter", "BarMeterVL_Top", 0);
 	if (BarMeterVL_Top < 0) BarMeterVL_Top = 0;
-	SetMyRegLong("BarMeter", "BarMeterVL_Top", BarMeterVL_Top);
+	if (b_UseBarMeterVL) SetMyRegLong("BarMeter", "BarMeterVL_Top", BarMeterVL_Top);
 
 
 
@@ -3121,44 +3121,44 @@ void ReadData()
 
 
 	ColorBarMeterBL_Charge = (COLORREF)GetMyRegLong("BarMeter", "ColorBarMeterBL_Charge", RGB(255, 165, 0));
-	SetMyRegLong("BarMeter", "ColorBarMeterBL_Charge", ColorBarMeterBL_Charge);
+	if (b_UseBarMeterBL) SetMyRegLong("BarMeter", "ColorBarMeterBL_Charge", ColorBarMeterBL_Charge);
 
 	ColorBarMeterBL_High = (COLORREF)GetMyRegLong("BarMeter", "ColorBarMeterBL_High", RGB(0, 255, 0));
-	SetMyRegLong("BarMeter", "ColorBarMeterBL_High", ColorBarMeterBL_High);
+	if (b_UseBarMeterBL) SetMyRegLong("BarMeter", "ColorBarMeterBL_High", ColorBarMeterBL_High);
 
 	ColorBarMeterBL_Mid = (COLORREF)GetMyRegLong("BarMeter", "ColorBarMeterBL_Mid", RGB(255, 255, 0));
-	SetMyRegLong("BarMeter", "ColorBarMeterBL_Mid", ColorBarMeterBL_Mid);
+	if (b_UseBarMeterBL) SetMyRegLong("BarMeter", "ColorBarMeterBL_Mid", ColorBarMeterBL_Mid);
 
 	ColorBarMeterBL_Low = (COLORREF)GetMyRegLong("BarMeter", "ColorBarMeterBL_Low", RGB(255, 0, 0));
-	SetMyRegLong("BarMeter", "ColorBarMeterBL_Low", ColorBarMeterBL_Low);
+	if (b_UseBarMeterBL) SetMyRegLong("BarMeter", "ColorBarMeterBL_Low", ColorBarMeterBL_Low);
 
 	BarMeterBL_Right = (int)(short)GetMyRegLong("BarMeter", "BarMeterBL_Right", 210);
-	SetMyRegLong("BarMeter", "BarMeterBL_Right", BarMeterBL_Right);	
+	if (b_UseBarMeterBL) SetMyRegLong("BarMeter", "BarMeterBL_Right", BarMeterBL_Right);	
 	
 	BarMeterWidth = (int)(short)GetMyRegLong("BarMeter", "BarMeterBL_Width", 5);
 	if (BarMeterWidth <= 0) BarMeterWidth = 5;
 	BarMeterBL_Left = BarMeterBL_Right + BarMeterWidth;
-	SetMyRegLong("BarMeter", "BarMeterBL_Width", BarMeterWidth);
+	if (b_UseBarMeterBL) SetMyRegLong("BarMeter", "BarMeterBL_Width", BarMeterWidth);
 
 
 	BarMeterBL_Bottom = (int)(short)GetMyRegLong("BarMeter", "BarMeterBL_Bottom", 0);
 	if (BarMeterBL_Bottom < 0) BarMeterBL_Bottom = 0;
-	SetMyRegLong("BarMeter", "BarMeterBL_Bottom", BarMeterBL_Bottom);
+	if (b_UseBarMeterBL) SetMyRegLong("BarMeter", "BarMeterBL_Bottom", BarMeterBL_Bottom);
 
 	BarMeterBL_Top = (int)(short)GetMyRegLong("BarMeter", "BarMeterBL_Top", 0);
 	if (BarMeterBL_Top < 0) BarMeterBL_Top = 0;
-	SetMyRegLong("BarMeter", "BarMeterBL_Top", BarMeterBL_Top);
+	if (b_UseBarMeterBL) SetMyRegLong("BarMeter", "BarMeterBL_Top", BarMeterBL_Top);
 
 
 	BarMeterBL_Threshold_High = (int)(short)GetMyRegLong("BarMeter", "BarMeterBL_Threshold_High", 50);
 	if (BarMeterBL_Threshold_High < 0) BarMeterBL_Threshold_High = 0;
 	if (BarMeterBL_Threshold_High > 101) BarMeterBL_Threshold_High = 101;
-	SetMyRegLong("BarMeter", "BarMeterBL_Threshold_High", BarMeterBL_Threshold_High);
+	if (b_UseBarMeterBL) SetMyRegLong("BarMeter", "BarMeterBL_Threshold_High", BarMeterBL_Threshold_High);
 
 	BarMeterBL_Threshold_Mid = (int)(short)GetMyRegLong("BarMeter", "BarMeterBL_Threshold_Mid", 20);
 	if (BarMeterBL_Threshold_Mid < 0) BarMeterBL_Threshold_Mid = 0;
 	if (BarMeterBL_Threshold_Mid > 101) BarMeterBL_Threshold_Mid = 101;
-	SetMyRegLong("BarMeter", "BarMeterBL_Threshold_Mid", BarMeterBL_Threshold_Mid);
+	if (b_UseBarMeterBL) SetMyRegLong("BarMeter", "BarMeterBL_Threshold_Mid", BarMeterBL_Threshold_Mid);
 
 
 
@@ -3166,41 +3166,41 @@ void ReadData()
 	SetMyRegLong("BarMeter", "UseBarMeterCU", b_UseBarMeterCU);
 
 	ColorBarMeterCU_High = (COLORREF)GetMyRegLong("BarMeter", "ColorBarMeterCU_High", RGB(255, 0, 0));
-	SetMyRegLong("BarMeter", "ColorBarMeterCU_High", ColorBarMeterCU_High);
+	if (b_UseBarMeterCU) SetMyRegLong("BarMeter", "ColorBarMeterCU_High", ColorBarMeterCU_High);
 
 	ColorBarMeterCU_Mid = (COLORREF)GetMyRegLong("BarMeter", "ColorBarMeterCU_Mid", RGB(255, 255, 0));
-	SetMyRegLong("BarMeter", "ColorBarMeterCU_Mid", ColorBarMeterCU_Mid);
+	if (b_UseBarMeterCU) SetMyRegLong("BarMeter", "ColorBarMeterCU_Mid", ColorBarMeterCU_Mid);
 
 	ColorBarMeterCU_Low = (COLORREF)GetMyRegLong("BarMeter", "ColorBarMeterCU_Low", RGB(0, 255, 0));
-	SetMyRegLong("BarMeter", "ColorBarMeterCU_Low", ColorBarMeterCU_Low);
+	if (b_UseBarMeterCU) SetMyRegLong("BarMeter", "ColorBarMeterCU_Low", ColorBarMeterCU_Low);
 
 
 	BarMeterCU_Right = (int)(short)GetMyRegLong("BarMeter", "BarMeterCU_Right", 170);
-	SetMyRegLong("BarMeter", "BarMeterCU_Right", BarMeterCU_Right);
+	if (b_UseBarMeterCU) SetMyRegLong("BarMeter", "BarMeterCU_Right", BarMeterCU_Right);
 
 	BarMeterWidth = (int)(short)GetMyRegLong("BarMeter", "BarMeterCU_Width", 5);
 	if (BarMeterWidth <= 0) BarMeterWidth = 5;
 	BarMeterCU_Left = BarMeterCU_Right + BarMeterWidth;
-	SetMyRegLong("BarMeter", "BarMeterCU_Width", BarMeterWidth);
+	if (b_UseBarMeterCU) SetMyRegLong("BarMeter", "BarMeterCU_Width", BarMeterWidth);
 
 	BarMeterCU_Bottom = (int)(short)GetMyRegLong("BarMeter", "BarMeterCU_Bottom", 0);
 	if (BarMeterCU_Bottom < 0) BarMeterCU_Bottom = 0;
-	SetMyRegLong("BarMeter", "BarMeterCU_Bottom", BarMeterCU_Bottom);
+	if (b_UseBarMeterCU) SetMyRegLong("BarMeter", "BarMeterCU_Bottom", BarMeterCU_Bottom);
 
 	BarMeterCU_Top = (int)(short)GetMyRegLong("BarMeter", "BarMeterCU_Top", 0);
 	if (BarMeterCU_Top < 0) BarMeterCU_Top = 0;
-	SetMyRegLong("BarMeter", "BarMeterCU_Top", BarMeterCU_Top);
+	if (b_UseBarMeterCU) SetMyRegLong("BarMeter", "BarMeterCU_Top", BarMeterCU_Top);
 
 
 	BarMeterCU_Threshold_High = (int)(short)GetMyRegLong("BarMeter", "BarMeterCU_Threshold_High", 70);
 	if (BarMeterCU_Threshold_High < 0) BarMeterCU_Threshold_High = 0;
 	if (BarMeterCU_Threshold_High > 101) BarMeterCU_Threshold_High = 101;
-	SetMyRegLong("BarMeter", "BarMeterCU_Threshold_High", BarMeterCU_Threshold_High);
+	if (b_UseBarMeterCU) SetMyRegLong("BarMeter", "BarMeterCU_Threshold_High", BarMeterCU_Threshold_High);
 
 	BarMeterCU_Threshold_Mid = (int)(short)GetMyRegLong("BarMeter", "BarMeterCU_Threshold_Mid", 50);
 	if (BarMeterCU_Threshold_Mid < 0) BarMeterCU_Threshold_Mid = 0;
 	if (BarMeterCU_Threshold_Mid > 101) BarMeterCU_Threshold_Mid = 101;
-	SetMyRegLong("BarMeter", "BarMeterCU_Threshold_Mid", BarMeterCU_Threshold_Mid);
+	if (b_UseBarMeterCU) SetMyRegLong("BarMeter", "BarMeterCU_Threshold_Mid", BarMeterCU_Threshold_Mid);
 
 
 
@@ -3209,22 +3209,22 @@ void ReadData()
 	SetMyRegLong("BarMeter", "UseBarMeterGU", b_UseBarMeterGU);
 
 	BarMeterGU_Right = (int)(short)GetMyRegLong("BarMeter", "BarMeterGU_Right", 175);
-	SetMyRegLong("BarMeter", "BarMeterGU_Right", BarMeterGU_Right);
+	if (b_UseBarMeterGU) SetMyRegLong("BarMeter", "BarMeterGU_Right", BarMeterGU_Right);
 
 	BarMeterWidth = (int)(short)GetMyRegLong("BarMeter", "BarMeterCU_Width", 5);
 	BarMeterGU_Left = BarMeterGU_Right + BarMeterWidth;
 
 	BarMeterGU_Bottom = (int)(short)GetMyRegLong("BarMeter", "BarMeterGU_Bottom", 0);
 	if (BarMeterGU_Bottom < 0) BarMeterGU_Bottom = 0;
-	SetMyRegLong("BarMeter", "BarMeterGU_Bottom", BarMeterGU_Bottom);
+	if (b_UseBarMeterGU) SetMyRegLong("BarMeter", "BarMeterGU_Bottom", BarMeterGU_Bottom);
 
 	BarMeterGU_Top = (int)(short)GetMyRegLong("BarMeter", "BarMeterGU_Top", 0);
 	if (BarMeterGU_Top < 0) BarMeterGU_Top = 0;
-	SetMyRegLong("BarMeter", "BarMeterGU_Top", BarMeterGU_Top);
+	if (b_UseBarMeterGU) SetMyRegLong("BarMeter", "BarMeterGU_Top", BarMeterGU_Top);
 
 
 	ColorBarMeterGPU = (COLORREF)GetMyRegLong("BarMeter", "ColorBarMeterGPU", ColorGPUGraph);
-	SetMyRegLong("BarMeter", "ColorBarMeterGPU", ColorBarMeterGPU);
+	if (b_UseBarMeterGU) SetMyRegLong("BarMeter", "ColorBarMeterGPU", ColorBarMeterGPU);
 
 
 
@@ -3287,45 +3287,45 @@ void ReadData()
 	SetMyRegLong("BarMeter", "UseBarMeterNet", b_UseBarMeterNet);
 
 	b_BarMeterNet_LogGraph = GetMyRegLong("BarMeter", "BarMeterNet_LogGraph", 0);
-	SetMyRegLong("BarMeter", "BarMeterNet_LogGraph", b_BarMeterNet_LogGraph);
+	if (b_UseBarMeterNet) SetMyRegLong("BarMeter", "BarMeterNet_LogGraph", b_BarMeterNet_LogGraph);
 
 	ColorBarMeterNet_Send = (COLORREF)GetMyRegLong("BarMeter", "ColorBarMeterNet_Send", ColSend);
-	SetMyRegLong("BarMeter", "ColorBarMeterNet_Send", ColorBarMeterNet_Send);
+	if (b_UseBarMeterNet) SetMyRegLong("BarMeter", "ColorBarMeterNet_Send", ColorBarMeterNet_Send);
 
 
 	ColorBarMeterNet_Recv = (COLORREF)GetMyRegLong("BarMeter", "ColorBarMeterNet_Recv", ColRecv);
-	SetMyRegLong("BarMeter", "ColorBarMeterNet_Recv", ColorBarMeterNet_Recv);
+	if (b_UseBarMeterNet) SetMyRegLong("BarMeter", "ColorBarMeterNet_Recv", ColorBarMeterNet_Recv);
 
 	BarMeterNetRecv_Right = (int)(short)GetMyRegLong("BarMeter", "BarMeterNetRecv_Right", 300);
-	SetMyRegLong("BarMeter", "BarMeterNetRecv_Right", BarMeterNetRecv_Right);
+	if (b_UseBarMeterNet) SetMyRegLong("BarMeter", "BarMeterNetRecv_Right", BarMeterNetRecv_Right);
 
 
 	BarMeterNetRecv_Bottom = (int)(short)GetMyRegLong("BarMeter", "BarMeterNetRecv_Bottom", 0);
 	if (BarMeterNetRecv_Bottom < 0) BarMeterNetRecv_Bottom = 0;
-	SetMyRegLong("BarMeter", "BarMeterNetRecv_Bottom", BarMeterNetRecv_Bottom);
+	if (b_UseBarMeterNet) SetMyRegLong("BarMeter", "BarMeterNetRecv_Bottom", BarMeterNetRecv_Bottom);
 
 	BarMeterNetSend_Right = (int)(short)GetMyRegLong("BarMeter", "BarMeterNetSend_Right", 310);
-	SetMyRegLong("BarMeter", "BarMeterNetSend_Right", BarMeterNetSend_Right);
+	if (b_UseBarMeterNet) SetMyRegLong("BarMeter", "BarMeterNetSend_Right", BarMeterNetSend_Right);
 
 
 	BarMeterNetSend_Bottom = (int)(short)GetMyRegLong("BarMeter", "BarMeterNetSend_Bottom", 0);
 	if (BarMeterNetSend_Bottom < 0) BarMeterNetSend_Bottom = 0;
-	SetMyRegLong("BarMeter", "BarMeterNetSend_Bottom", BarMeterNetSend_Bottom);
+	if (b_UseBarMeterNet) SetMyRegLong("BarMeter", "BarMeterNetSend_Bottom", BarMeterNetSend_Bottom);
 
 	BarMeterWidth = (int)(short)GetMyRegLong("BarMeter", "BarMeterNet_Width", 5);
 	if (BarMeterWidth <= 0) BarMeterWidth = 5;
 	BarMeterNetRecv_Left = BarMeterNetRecv_Right + BarMeterWidth;
 	BarMeterNetSend_Left = BarMeterNetSend_Right + BarMeterWidth;
-	SetMyRegLong("BarMeter", "BarMeterNet_Width", BarMeterWidth);
+	if (b_UseBarMeterNet) SetMyRegLong("BarMeter", "BarMeterNet_Width", BarMeterWidth);
 
 	BarMeterNetRecv_Top = (int)(short)GetMyRegLong("BarMeter", "BarMeterNetRecv_Top", 0);
 	if (BarMeterNetRecv_Top < 0) BarMeterNetRecv_Top = 0;
-	SetMyRegLong("BarMeter", "BarMeterNetRecv_Top", BarMeterNetRecv_Top);
+	if (b_UseBarMeterNet) SetMyRegLong("BarMeter", "BarMeterNetRecv_Top", BarMeterNetRecv_Top);
 
 
 	BarMeterNetSend_Top = (int)(short)GetMyRegLong("BarMeter", "BarMeterNetSend_Top", 0);
 	if (BarMeterNetSend_Top < 0) BarMeterNetSend_Top = 0;
-	SetMyRegLong("BarMeter", "BarMeterNetSend_Top", BarMeterNetSend_Top);
+	if (b_UseBarMeterNet) SetMyRegLong("BarMeter", "BarMeterNetSend_Top", BarMeterNetSend_Top);
 
 	SetMyRegLong("Status_DoNotEdit", "BatteryLifeAvailable", 1);
 

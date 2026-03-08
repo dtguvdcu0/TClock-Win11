@@ -1598,8 +1598,10 @@ static void tc_menu_ensure_ini_defaults(void)
 			SetMyRegStr(TC_MENU_SECTION, key, (char*)defaultLabel);
 			param[0] = '\0';
 			tc_menu_default_param_for_action(action, param, (int)sizeof(param));
-			wsprintf(key, "Item%dParam", i);
-			SetMyRegStr(TC_MENU_SECTION, key, param);
+			if (param[0]) {
+				wsprintf(key, "Item%dParam", i);
+				SetMyRegStr(TC_MENU_SECTION, key, param);
+			}
 		}
 	}
 	{

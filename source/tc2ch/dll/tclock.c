@@ -2991,7 +2991,9 @@ void ReadData()
 	SetMyRegLong("Status_DoNotEdit", "PreviousLTEProfNumber", previousLTEProfNum);
 
 	GetMyRegStr("Status_DoNotEdit", "PreviousLTEProfName", previousLTEProfName, 256, "");
-	SetMyRegStr("Status_DoNotEdit", "PreviousLTEProfName", previousLTEProfName);
+	if (previousLTEProfName[0]) {
+		SetMyRegStr("Status_DoNotEdit", "PreviousLTEProfName", previousLTEProfName);
+	}
 
 	megabytesInGigaByte = GetMyRegLong("ETC", "MegabytesInGigaByte", 1000);
 	if (megabytesInGigaByte != 1024) megabytesInGigaByte = 1000;
@@ -3004,13 +3006,19 @@ void ReadData()
 	SetMyRegStr("VPN", "SoftEtherKeyword", strSoftEtherKeyword);
 
 	LoadKeywordCsv(strVPN_Keywords, (int)sizeof(strVPN_Keywords), "VPN", "VPNKeywords", "VPN_Keyword");
-	SetMyRegStr("VPN", "VPNKeywords", strVPN_Keywords);
+	if (strVPN_Keywords[0]) {
+		SetMyRegStr("VPN", "VPNKeywords", strVPN_Keywords);
+	}
 
 	LoadKeywordCsv(strVPN_Excludes, (int)sizeof(strVPN_Excludes), "VPN", "VPNExcludeKeywords", "VPN_Exclude");
-	SetMyRegStr("VPN", "VPNExcludeKeywords", strVPN_Excludes);
+	if (strVPN_Excludes[0]) {
+		SetMyRegStr("VPN", "VPNExcludeKeywords", strVPN_Excludes);
+	}
 
 	LoadKeywordCsv(strEthernet_Keywords, (int)sizeof(strEthernet_Keywords), "ETC", "EthernetKeywords", "Ethernet_Keyword");
-	SetMyRegStr("ETC", "EthernetKeywords", strEthernet_Keywords);
+	if (strEthernet_Keywords[0]) {
+		SetMyRegStr("ETC", "EthernetKeywords", strEthernet_Keywords);
+	}
 
 	//CompactMode Added by TTTT
 	b_CompactMode = GetMyRegLong(NULL, "CompactMode", TRUE);
@@ -3336,14 +3344,11 @@ void ReadData()
 	//}
 	//ExtTXT_String[ExtTXT_Length] = '\0';
 
-	SetMyRegStr("ETC", "ExtTXT_String", "");
-
 	strAdditionalMountPath[10][64];
 
 	for (i = 0; i < 10; i++) {
 		sprintf(strTemp, "AdditionalMountPath%1d", i);
 		GetMyRegStr("ETC", strTemp, strAdditionalMountPath[i], 64, "");
-		SetMyRegStr("ETC", strTemp, strAdditionalMountPath[i]);
 	}
 
 

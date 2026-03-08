@@ -111,6 +111,8 @@
 #define IDD_FORMAT2                     123
 #define IDS_PROP_ABOUT                  124
 #define IDD_PAGEABOUT                   124
+#define IDD_FORMATGUIDE                 2000
+#define IDR_FORMATGUIDE_TEXT            2002
 #define IDS_ACLOCKLEFT                  125
 #define IDS_ACLOCKRIGHT                 126
 #define IDS_ACLOCKMIDDLE                127
@@ -408,6 +410,8 @@
 #define IDC_DATAPLANGB1000MB            1123
 #define IDS_PROP_MISC2                  1123
 #define IDD_PAGEABOUT_ENG               1124
+#define IDD_FORMATGUIDE_ENG             3000
+#define IDR_FORMATGUIDE_TEXT_ENG        3002
 #define IDC_SPINCWIDTH                  1124
 #define IDC_DATAPLANSUGGESTPROF         1124
 #define IDS_PROP_ABOUT2                 1124
@@ -517,6 +521,8 @@
 #define IDS_ABOUTRMVDRV2                1215
 #define IDC_FORMATDETAIL                1216
 #define IDS_OPENTCFOLDER2               1216
+#define IDC_FORMATGUIDE                 1810
+#define IDC_FORMATGUIDE_TEXT            1811
 #define IDC_SYSII                       1217
 #define IDS_RMVDRVHEAD2                 1217
 #define IDC_SYSIISPIN                   1218

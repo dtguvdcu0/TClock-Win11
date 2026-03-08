@@ -1,0 +1,108 @@
+TClock 使える書式ガイド
+
+● よく使う例:
+  yyyy/mm/dd(ddd) hh:nn:ss        日付と時刻を 1 行で表示します。
+  yyyy/mm/dd\nhh:nn:ss            日付と時刻を 2 行で表示します。
+  Japan <%tu+00:00%> <%hh:nn%>    時差を使った時刻表示の例です。
+  CPU CU__x%  MEM MAPG_x.xxGB     CPU 使用率と空きメモリを表示します。
+  C: HACP_x% free / HTCG___xGB    ディスク空き率と総容量を表示します。
+
+■ 基本ルール:
+  \n                              改行します。
+  <%TOKEN%>                       書式を明示的に埋め込むときに使います。
+  /                               Windows の日付区切り記号を使います。
+  :                               Windows の時刻区切り記号を使います。
+
+■ 数字の桁指定ルール:
+  TOKEN__x                        左側を空白で埋めて幅をそろえます。
+  TOKEN___x                       さらに広い桁幅を確保します。
+  TOKEN_x.xx                      整数部と小数部の桁数を指定します。
+
+・日付と時刻:
+  yy / yyyy                       2 桁年 / 4 桁年
+  m / mm                          月 / 0 埋めした月
+  mmm / mmmm                      ロケールに従う短い月名 / 長い月名
+  mme                             英語の短い月名
+  d / dd                          日 / 0 埋めした日
+  ddd / dddd                      ロケールに従う短い曜日名 / 長い曜日名
+  dde                             英語の短い曜日名
+  aaa / aaaa                      ロケールに従う曜日別名
+  h / hh                          時 / 0 埋めした時
+  n / nn                          分 / 0 埋めした分
+  s / ss                          秒 / 0 埋めした秒
+  tt                              ロケールに従う AM/PM 表示
+  AM/PM                           AM または PM
+  AMPM                            ロケールに従う AM/PM 表示
+  am/pm                           am または pm
+  DATE / LDATE / TIME             Windows の短い日付 / 長い日付 / 24 時間表記時刻
+  g, gg... / Y, YY...             元号文字列 / 和暦年などの代替カレンダー表記
+
+・時差とワールドクロック:
+  td+HH:MM / td-HH:MM             固定の時差を指定します。
+  tu+HH:MM / tu-HH:MM             US DST を考慮した時差を指定します。
+  te+HH:MM / te-HH:MM             Europe DST を考慮した時差を指定します。
+  StU / StE                       US / Europe DST の状態を "*" または空白で表示します。
+  w+HH / w-HH                     時だけをずらして表示します。
+
+・稼働時間:
+  ST                              稼働時間を HH:MM:SS で表示します。
+  Sd / Sa / Sh / Sn / Ss          稼働日数 / 総時間 / 時 / 分 / 秒
+
+・CPU:
+  CU                              CPU 使用率
+  CU0 .. CU9 / CUe00 .. CUe99     論理プロセッサごとの使用率
+  CC / CC0 .. CC9                 CPU クロック / 論理プロセッサごとのクロック
+  CCe00 .. CCe99                  2 桁番号の論理プロセッサごとのクロック
+  PCORE / LPROC                   物理コア数 / 論理プロセッサ数
+
+・メモリ:
+  MK / MM / MG                    空き物理メモリを KB / MB / GB で表示します。
+  MTPK / MTPM / MTPG              総物理メモリを KB / MB / GB で表示します。
+  MAPK / MAPM / MAPG              空き物理メモリを KB / MB / GB で表示します。
+  MUPK / MUPM / MUPG              使用中の物理メモリを KB / MB / GB で表示します。
+  MTFK / MTFM / MTFG              総ページファイルを KB / MB / GB で表示します。
+  MAFK / MAFM / MAFG              空きページファイルを KB / MB / GB で表示します。
+  MUFK / MUFM / MUFG              使用中のページファイルを KB / MB / GB で表示します。
+  MTVK / MTVM / MTVG              総仮想メモリを KB / MB / GB で表示します。
+  MAVK / MAVM / MAVG              空き仮想メモリを KB / MB / GB で表示します。
+  MUVK / MUVM / MUVG              使用中の仮想メモリを KB / MB / GB で表示します。
+
+・バッテリと音量:
+  BL                              バッテリ残量
+  AD / ad                         AC/DC/不明 の電源状態を長短表記で表示します。
+  BCS                             充電中を "*" または空白で表示します。
+  Bh / Bn / Bs                    バッテリ見込み時間の 時 / 分 / 秒
+  VL / VM                         音量 / ミュート表示
+
+・ディスク:
+  HAxM / HAxG / HAxP              ドライブ x の空き容量を MB / GB / % で表示します。
+  HUxM / HUxG / HUxP              ドライブ x の使用量を MB / GB / % で表示します。
+  HTxM / HTxG                     ドライブ x の総容量を MB / GB で表示します。
+  x = A..Z                        *補足:ドライブレターを直接指定します。
+  x = 0..9                        *補足: AdditionalMountPath0..9 を参照します。
+
+・ネットワーク:
+  NRAK / NRAM / NRAG              総受信量を KB / MB / GB で表示します。
+  NSAK / NSAM / NSAG              総送信量を KB / MB / GB で表示します。
+  NRSB / NRSK / NRSM              受信速度を B / KB / MB で表示します。
+  NSSB / NSSK / NSSM              送信速度を B / KB / MB で表示します。
+  NRAA / NSAA                     自動単位で総受信量 / 総送信量を表示します。
+
+・接続状態と IP:
+  LTE / WiFi / EthS / EthL        各接続種別の状態文字列
+  NMX1 / NMX2                     アクティブな接続に応じて自動切替する表示
+  SSID / APN / VPNS               Wi-Fi SSID / LTE APN / VPN 状態
+  EWLS / EWLL / ICP               接続状態やアクティブ回線の補助表示
+  WANP / AIPF                     LTE WAN / アクティブ回線プロファイル番号
+  IPE / IPW / IPL / IPV / IPA     各回線の IP アドレス
+
+・GPU:
+  GU / GI                         GPU 使用率 / GPU インスタンス数
+ 
+・温度:
+  TEMP                            取得できた温度を表示します。
+
+・その他:
+  VerTC                           TClock のバージョン文字列
+  FTA                             タスクバー配置フラグ
+  CUSTOM1, CUSTOM2, ...           CustomVars で定義した文字列を表示します。

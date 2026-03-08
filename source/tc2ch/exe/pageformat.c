@@ -13,7 +13,17 @@ static void OnLocale(HWND hDlg);
 static void OnCustom(HWND hDlg, BOOL bmouse);
 static void On12Hour(HWND hDlg);
 static void OnFormatCheck(HWND hDlg, WORD id);
+static void OnOpenFormatGuide(HWND hDlg);
 static void NormalizeFormatSettingUtf8InPlace(char* value, int valueBytes, const char* entry);
+static wchar_t* LoadFormatGuideTextW(int resId);
+static HFONT CreateGuideFont(HWND hDlg);
+static void ResizeGuide(HWND hDlg, int cx, int cy);
+
+typedef struct GuideState_tag {
+	HFONT hfont;
+	int minWidth;
+	int minHeight;
+} GuideState;
 
 static HWND hwndPage;
 static int ilang;  // language code. ex) 0x411 - Japanese
@@ -29,6 +39,7 @@ extern BOOL b_EnglishMenu;
 extern int Language_Offset;
 
 INT_PTR CALLBACK DlgProcFormat2(HWND, UINT, WPARAM, LPARAM);
+INT_PTR CALLBACK DlgProcFormatGuide(HWND, UINT, WPARAM, LPARAM);
 
 int exe_offsetClockMS = 0;
 
@@ -86,6 +97,9 @@ BOOL CALLBACK PageFormatProc(HWND hDlg, UINT message,
 				if(r == IDOK) SendPSChanged(hDlg);
 				break;
 				}
+			case IDC_FORMATGUIDE:
+				OnOpenFormatGuide(hDlg);
+				break;
 			// "year" -- "Internet Time"
 			default:
 				if(IDC_YEAR4 <= id && id <= IDC_AMPM)
@@ -107,6 +121,218 @@ BOOL CALLBACK PageFormatProc(HWND hDlg, UINT message,
 			break;
 	}
 	return FALSE;
+}
+
+static void OnOpenFormatGuide(HWND hDlg)
+{
+	DialogBoxParam(
+		GetLangModule(),
+		MAKEINTRESOURCE(Language_Offset + IDD_FORMATGUIDE),
+		hDlg,
+		DlgProcFormatGuide,
+		0);
+}
+
+static wchar_t* LoadFormatGuideTextW(int resId)
+{
+	HINSTANCE hInst;
+	HRSRC hrsrc;
+	HGLOBAL hglob;
+	const unsigned char* data;
+	DWORD size;
+	DWORD skip = 0;
+	char* utf8 = NULL;
+	wchar_t* wide = NULL;
+	wchar_t* normalized = NULL;
+	int wlen;
+	int i, outPos, extra = 0;
+
+	hInst = GetLangModule();
+	hrsrc = FindResourceW(hInst, MAKEINTRESOURCEW(resId), MAKEINTRESOURCEW(10));
+	if(!hrsrc) return NULL;
+	hglob = LoadResource(hInst, hrsrc);
+	if(!hglob) return NULL;
+	data = (const unsigned char*)LockResource(hglob);
+	size = SizeofResource(hInst, hrsrc);
+	if(!data || size == 0) return NULL;
+
+	if(size >= 3 && data[0] == 0xEF && data[1] == 0xBB && data[2] == 0xBF)
+		skip = 3;
+
+	utf8 = (char*)malloc((size_t)(size - skip + 1));
+	if(!utf8) return NULL;
+	memcpy(utf8, data + skip, size - skip);
+	utf8[size - skip] = '\0';
+
+	wlen = MultiByteToWideChar(CP_UTF8, 0, utf8, -1, NULL, 0);
+	if(wlen <= 0) {
+		free(utf8);
+		return NULL;
+	}
+
+	wide = (wchar_t*)malloc((size_t)wlen * sizeof(wchar_t));
+	if(!wide) {
+		free(utf8);
+		return NULL;
+	}
+	MultiByteToWideChar(CP_UTF8, 0, utf8, -1, wide, wlen);
+	free(utf8);
+
+	for(i = 0; wide[i] != L'\0'; ++i) {
+		if(wide[i] == L'\n' && (i == 0 || wide[i - 1] != L'\r')) extra++;
+	}
+
+	normalized = (wchar_t*)malloc((size_t)(wlen + extra) * sizeof(wchar_t));
+	if(!normalized) {
+		free(wide);
+		return NULL;
+	}
+
+	outPos = 0;
+	for(i = 0; wide[i] != L'\0'; ++i) {
+		if(wide[i] == L'\n' && (i == 0 || wide[i - 1] != L'\r'))
+			normalized[outPos++] = L'\r';
+		normalized[outPos++] = wide[i];
+	}
+	normalized[outPos] = L'\0';
+	free(wide);
+	return normalized;
+}
+
+static HFONT CreateGuideFont(HWND hDlg)
+{
+	HDC hdc;
+	int dpiY = 96;
+
+	if(hDlg) {
+		hdc = GetDC(hDlg);
+		if(hdc) {
+			dpiY = GetDeviceCaps(hdc, LOGPIXELSY);
+			ReleaseDC(hDlg, hdc);
+		}
+	}
+
+	return CreateFontW(
+		-MulDiv(9, dpiY, 72), 0, 0, 0,
+		FW_NORMAL, FALSE, FALSE, FALSE,
+		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+		DEFAULT_QUALITY, FIXED_PITCH | FF_MODERN, L"MS Gothic");
+}
+
+INT_PTR CALLBACK DlgProcFormatGuide(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
+{
+	UNREFERENCED_PARAMETER(lParam);
+
+	switch(message)
+	{
+		case WM_INITDIALOG:
+		{
+			GuideState* state;
+			HWND hText;
+			RECT rcWindow;
+			wchar_t* text;
+			int resId = (Language_Offset == 1000 || b_EnglishMenu) ? IDR_FORMATGUIDE_TEXT_ENG : IDR_FORMATGUIDE_TEXT;
+
+			state = (GuideState*)malloc(sizeof(GuideState));
+			if(state) {
+				ZeroMemory(state, sizeof(GuideState));
+				GetWindowRect(hDlg, &rcWindow);
+				state->minWidth = rcWindow.right - rcWindow.left;
+				state->minHeight = rcWindow.bottom - rcWindow.top;
+				SetWindowLongPtrW(hDlg, GWLP_USERDATA, (LONG_PTR)state);
+			}
+
+			text = LoadFormatGuideTextW(resId);
+			if(text) {
+				SetDlgItemTextW(hDlg, IDC_FORMATGUIDE_TEXT, text);
+				free(text);
+			}
+			else if(Language_Offset == 1000 || b_EnglishMenu) {
+				SetDlgItemTextW(hDlg, IDC_FORMATGUIDE_TEXT, L"Failed to load the format guide.");
+			}
+			else {
+				SetDlgItemTextW(hDlg, IDC_FORMATGUIDE_TEXT, L"書式ガイドを読み込めませんでした。");
+			}
+
+			if(state) {
+				state->hfont = CreateGuideFont(hDlg);
+				if(!state->hfont) state->hfont = (HFONT)GetStockObject(ANSI_FIXED_FONT);
+			}
+			if(state && state->hfont) {
+				SendDlgItemMessageW(hDlg, IDC_FORMATGUIDE_TEXT, WM_SETFONT, (WPARAM)state->hfont, 0);
+			}
+			hText = GetDlgItem(hDlg, IDC_FORMATGUIDE_TEXT);
+			if(hText) SendMessageW(hText, EM_SETSEL, 0, 0);
+			ResizeGuide(hDlg, 0, 0);
+			SetFocus(GetDlgItem(hDlg, IDOK));
+			return FALSE;
+		}
+		case WM_GETMINMAXINFO:
+		{
+			GuideState* state = (GuideState*)GetWindowLongPtrW(hDlg, GWLP_USERDATA);
+			if(state) {
+				MINMAXINFO* mmi = (MINMAXINFO*)lParam;
+				mmi->ptMinTrackSize.x = state->minWidth;
+				mmi->ptMinTrackSize.y = state->minHeight;
+			}
+			return TRUE;
+		}
+		case WM_SIZE:
+			ResizeGuide(hDlg, LOWORD(lParam), HIWORD(lParam));
+			return TRUE;
+		case WM_CTLCOLORSTATIC:
+		case WM_CTLCOLOREDIT:
+			if(GetDlgCtrlID((HWND)lParam) == IDC_FORMATGUIDE_TEXT) {
+				SetTextColor((HDC)wParam, RGB(0, 0, 0));
+				SetBkColor((HDC)wParam, RGB(255, 255, 255));
+				return (INT_PTR)GetStockObject(WHITE_BRUSH);
+			}
+			break;
+		case WM_COMMAND:
+			if(LOWORD(wParam) == IDOK || LOWORD(wParam) == IDCANCEL) {
+				EndDialog(hDlg, LOWORD(wParam));
+				return TRUE;
+			}
+			break;
+		case WM_DESTROY:
+		{
+			GuideState* state = (GuideState*)GetWindowLongPtrW(hDlg, GWLP_USERDATA);
+			if(state) {
+				if(state->hfont) DeleteObject(state->hfont);
+				free(state);
+			}
+			SetWindowLongPtrW(hDlg, GWLP_USERDATA, 0);
+			break;
+		}
+	}
+	return FALSE;
+}
+
+static void ResizeGuide(HWND hDlg, int cx, int cy)
+{
+	HWND hText;
+	HWND hClose;
+	RECT rcClient;
+	int width;
+	int height;
+
+	if(cx <= 0 || cy <= 0) {
+		GetClientRect(hDlg, &rcClient);
+		cx = rcClient.right;
+		cy = rcClient.bottom;
+	}
+
+	hText = GetDlgItem(hDlg, IDC_FORMATGUIDE_TEXT);
+	hClose = GetDlgItem(hDlg, IDOK);
+	if(!hText || !hClose) return;
+
+	width = cx - 14;
+	height = cy - 31;
+	if(width < 50) width = 50;
+	if(height < 50) height = 50;
+
+	MoveWindow(hText, 7, 7, width, height, TRUE);
+	MoveWindow(hClose, cx - 57, cy - 23, 50, 18, TRUE);
 }
 
 char *entrydate[] = { "Year4", "Year", "Month", "MonthS", "Day", "Weekday",
@@ -293,12 +519,13 @@ void OnInit(HWND hDlg)
 	}
 	CheckDlgButton(hDlg, IDC_KAIGYO, nKaigyo);
 
-	// "Internet Time" -- "Customize format"
-	for(i = IDC_INTERNETTIME; i <= IDC_CUSTOM; i++)
+	// "12 hour" -- "Customize format"
+	for(i = IDC_12HOUR; i <= IDC_CUSTOM; i++)
 	{
 		CheckDlgButton(hDlg, i,
 			GetMyRegLong("Format",  ENTRY(i), FALSE));
 	}
+	CheckDlgButton(hDlg, IDC_INTERNETTIME, FALSE);
 
 
 	GetMyRegStr("Format", "Format", s, 1024, "");
@@ -490,8 +717,7 @@ void InitFormat(void)
 	if(CHECKS(IDC_MONTH))  CHECKS(IDC_MONTHS) = FALSE;
 	if(CHECKS(IDC_MONTHS)) CHECKS(IDC_MONTH) = FALSE;
 
-	CHECKS(IDC_INTERNETTIME) = GetMyRegLong("Format",
-		ENTRY(IDC_INTERNETTIME), FALSE);
+	CHECKS(IDC_INTERNETTIME) = FALSE;
 
 	b = FALSE;
 	hwnd = FindWindowW(L"Shell_TrayWnd", NULL);

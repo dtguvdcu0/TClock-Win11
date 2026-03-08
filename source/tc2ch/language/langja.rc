@@ -170,15 +170,15 @@ BEGIN
     CONTROL         "時",IDC_HOUR,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,10,86,24,11
     CONTROL         "分",IDC_MINUTE,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,51,86,24,11
     CONTROL         "秒",IDC_SECOND,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,97,86,24,11
-    CONTROL         "インターネットタイム",IDC_INTERNETTIME,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,10,104,72,11
-    CONTROL         "12時間制",IDC_12HOUR,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,10,122,48,11
-    CONTROL         "午前/午後",IDC_AMPM,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,64,122,48,11
-    PUSHBUTTON      "詳細...",IDC_FORMATDETAIL,129,119,50,15
-    CONTROL         "自分で書式を入力する",IDC_CUSTOM,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,10,139,136,11
-    EDITTEXT        IDC_FORMAT,10,153,185,18,ES_AUTOHSCROLL
-    EDITTEXT        IDC_FORMAT_OFFSET_MS,151,175,35,13,ES_RIGHT | ES_AUTOHSCROLL
-    CONTROL         "",IDC_SPG_FORMAT_OFFSET_MS,"msctls_updown32",UDS_SETBUDDYINT | UDS_ALIGNRIGHT | UDS_AUTOBUDDY | UDS_ARROWKEYS,186,174,10,14
-    LTEXT           "表示時刻をずらす (ミリ秒, +：進み / -：遅れ)",IDC_STATIC,11,178,133,10,NOT WS_GROUP
+    PUSHBUTTON      "ガイド...",IDC_FORMATGUIDE,149,118,46,15
+    CONTROL         "12時間制",IDC_12HOUR,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,10,104,48,11
+    CONTROL         "午前/午後",IDC_AMPM,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,64,104,48,11
+    PUSHBUTTON      "詳細...",IDC_FORMATDETAIL,149,101,46,15
+    CONTROL         "自分で書式を入力する",IDC_CUSTOM,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,10,121,136,11
+    EDITTEXT        IDC_FORMAT,10,135,185,18,ES_AUTOHSCROLL
+    EDITTEXT        IDC_FORMAT_OFFSET_MS,151,157,35,13,ES_RIGHT | ES_AUTOHSCROLL
+    CONTROL         "",IDC_SPG_FORMAT_OFFSET_MS,"msctls_updown32",UDS_SETBUDDYINT | UDS_ALIGNRIGHT | UDS_AUTOBUDDY | UDS_ARROWKEYS,186,156,10,14
+    LTEXT           "表示時刻をずらす (ミリ秒, +：進み / -：遅れ)",IDC_STATIC,11,160,133,10,NOT WS_GROUP
 END
 
 IDD_PAGEFORMAT_ENG DIALOGEX 0, 0, 210, 200
@@ -197,15 +197,15 @@ BEGIN
     CONTROL         "Hour",IDC_HOUR,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,10,86,24,11
     CONTROL         "Min.",IDC_MINUTE,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,51,86,24,11
     CONTROL         "Sec.",IDC_SECOND,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,97,86,24,11
-    CONTROL         "Internet Time",IDC_INTERNETTIME,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,10,104,72,11
-    CONTROL         "12H",IDC_12HOUR,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,10,122,48,11
-    CONTROL         "AM/PM",IDC_AMPM,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,64,122,48,11
-    PUSHBUTTON      "Optional",IDC_FORMATDETAIL,129,119,50,15
-    CONTROL         "Custom Format",IDC_CUSTOM,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,10,139,136,11
-    EDITTEXT        IDC_FORMAT,10,153,185,18,ES_AUTOHSCROLL
-    EDITTEXT        IDC_FORMAT_OFFSET_MS,151,175,35,13,ES_RIGHT | ES_AUTOHSCROLL
-    CONTROL         "",IDC_SPG_FORMAT_OFFSET_MS,"msctls_updown32",UDS_SETBUDDYINT | UDS_ALIGNRIGHT | UDS_AUTOBUDDY | UDS_ARROWKEYS,186,174,10,14
-    LTEXT           "Offset Clock (ms, +：advance / -：delay)",IDC_STATIC,11,178,133,10,NOT WS_GROUP
+    PUSHBUTTON      "Guide...",IDC_FORMATGUIDE,149,118,46,15
+    CONTROL         "12H",IDC_12HOUR,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,10,104,48,11
+    CONTROL         "AM/PM",IDC_AMPM,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,64,104,48,11
+    PUSHBUTTON      "Optional",IDC_FORMATDETAIL,149,101,46,15
+    CONTROL         "Custom Format",IDC_CUSTOM,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,10,121,136,11
+    EDITTEXT        IDC_FORMAT,10,135,185,18,ES_AUTOHSCROLL
+    EDITTEXT        IDC_FORMAT_OFFSET_MS,151,157,35,13,ES_RIGHT | ES_AUTOHSCROLL
+    CONTROL         "",IDC_SPG_FORMAT_OFFSET_MS,"msctls_updown32",UDS_SETBUDDYINT | UDS_ALIGNRIGHT | UDS_AUTOBUDDY | UDS_ARROWKEYS,186,156,10,14
+    LTEXT           "Offset Clock (ms, +: advance / -: delay)",IDC_STATIC,11,160,133,10,NOT WS_GROUP
 END
 
 IDD_FORMAT2 DIALOG 0, 0, 162, 107
@@ -234,6 +234,24 @@ BEGIN
     CONTROL         "Represent 12H as 0",IDC_ZERO,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,12,58,80,11
     DEFPUSHBUTTON   "OK",IDOK,49,85,50,14
     PUSHBUTTON      "Cancel",IDCANCEL,106,85,50,14
+END
+
+IDD_FORMATGUIDE DIALOGEX 0, 0, 380, 260
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME
+CAPTION "使える書式"
+FONT 9, "MS UI Gothic", 0, 0, 0x0
+BEGIN
+    EDITTEXT        IDC_FORMATGUIDE_TEXT,7,7,366,229,ES_MULTILINE | ES_AUTOVSCROLL | ES_AUTOHSCROLL | ES_READONLY | WS_VSCROLL | WS_HSCROLL
+    DEFPUSHBUTTON   "閉じる",IDOK,323,237,50,18
+END
+
+IDD_FORMATGUIDE_ENG DIALOGEX 0, 0, 380, 260
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME
+CAPTION "Available Formats"
+FONT 9, "MS UI Gothic", 0, 0, 0x0
+BEGIN
+    EDITTEXT        IDC_FORMATGUIDE_TEXT,7,7,366,229,ES_MULTILINE | ES_AUTOVSCROLL | ES_AUTOHSCROLL | ES_READONLY | WS_VSCROLL | WS_HSCROLL
+    DEFPUSHBUTTON   "Close",IDOK,323,237,50,18
 END
 
 IDD_PAGEMOUSE DIALOGEX 0, 0, 210, 200
@@ -489,14 +507,11 @@ FONT 9, "MS UI Gothic", 0, 0, 0x0
 BEGIN
     ICON            0,IDC_ABOUTICON,10,2,20,20
     LTEXT           "TClock-Win11 Ver. x.x.x.x",IDC_STATIC_VersionText,40,8,158,8
-    RTEXT           "This program is a freeware.",IDC_STATIC,70,18,130,8
-    LTEXT           "This program works on Windows 10 Anniversary update (RS1) and later. The developer will not bear any responsibility for this software.",IDC_STATIC,10,29,181,36
-    LTEXT           "This is a subversion of TClock, which used to be inherited and revised into multiple subversions by Japanese netgeeks in early 2000s.",IDC_STATIC,10,59,189,30
-    LTEXT           "*""Clean Registry"" button clears registry entries made by older versions of TClock. If you have not used older TClock, it will fail, meaning 'No registry entry was found for TClock variations'.",IDC_STATIC,9,164,190,35
-    PUSHBUTTON      "Create a Shortcut in Startup",IDC_STARTUP,6,145,118,15
-    PUSHBUTTON      "*Clean Registry",IDC_DELREG,128,145,68,15
-    LTEXT           "This version is based on TClock2ch:\n　tclock-101021-analog (Kazubon -> Japanese Netgeeks)\nwith a revision referring\n　TClock Light kt160911 (Kazubon -> K.Takata)\nto comply with current Windows OS.",IDC_STATIC,10,88,194,46
-    LTEXT           "Refer readme_en.txt for further information.",IDC_STATIC,10,133,130,12
+    LTEXT           "This program is freeware.",IDC_STATIC,40,18,158,8
+    LTEXT           "The developer assumes no responsibility for any damages caused by using this program.",IDC_STATIC,10,29,190,16
+    LTEXT           "This program:\n  TClock (by Kazubon)\n  TClock2ch (by Japanese netgeeks)\n  TClockLight (by K. Takata)\n  TClock-Win10 (by Mantis Mountain Mobile)\nwas revised with reference to those versions for Windows 11 25H2 compatibility.",IDC_STATIC,10,52,190,68
+    PUSHBUTTON      "Create a Shortcut in Startup",IDC_STARTUP,6,181,136,15
+    PUSHBUTTON      "Clean Registry",IDC_DELREG,146,181,50,15
 END
 
 IDD_PAGEABOUT DIALOGEX 0, 0, 210, 200
@@ -1555,6 +1570,9 @@ IDD_PAGEFORMAT AFX_DIALOG_LAYOUT
 BEGIN
     0
 END
+
+IDR_FORMATGUIDE_TEXT RCDATA "..\\exe\\resources\\format-guide-ja.txt"
+IDR_FORMATGUIDE_TEXT_ENG RCDATA "..\\exe\\resources\\format-guide-en.txt"
 
 IDD_PAGE_KEYWORDS AFX_DIALOG_LAYOUT
 BEGIN

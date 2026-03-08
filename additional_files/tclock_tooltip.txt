@@ -1,45 +1,34 @@
- Physical Cores: <%PCORE%>
- Logical Processors: <%LPROC%>
- System Memory: <%MS%>GB
+﻿" 　　"<%ggY%>"年"<%mm%>"月"<%dd%>"日 "
 
- <%ST%> in Operation
+" 稼働時間 : "<%Sdx%>"日"<%Shx%>"時間"<%Snx%>"分"
 
- Available Memory: <%MAPP_x%>%
- <%MAPG_x.xx%>GB free in <%MTPG_x.xx%>GB
+" 💻 システム"
+"------------------------"
+"    CPU  :"<%CU__x%>"% / "<%CC___x%>"MHz"
+"thread 00:"<%CUe00__x%>"% / "<%CCe00___x%>"MHz"
+"thread 01:"<%CUe01__x%>"% / "<%CCe01___x%>"MHz"
+"thread 02:"<%CUe02__x%>"% / "<%CCe02___x%>"MHz"
+"thread 03:"<%CUe03__x%>"% / "<%CCe03___x%>"MHz"
+"thread 04:"<%CUe04__x%>"% / "<%CCe04___x%>"MHz"
+"thread 05:"<%CUe05__x%>"% / "<%CCe05___x%>"MHz"
+"thread 06:"<%CUe06__x%>"% / "<%CCe06___x%>"MHz"
+"thread 07:"<%CUe07__x%>"% / "<%CCe07___x%>"MHz"
 
-Available Page File: <%MAFP_x%>%
- <%MAFG_x.xx%>GB free in <%MTFG_x.xx%>GB
+" Memory : "<%MAPGx.x%>" / "<%MS%>"GB"
 
-Available DiskSpace: <%HACP_x%>%
-C: <%HACG___x%>GB free in <%HTCG___x%>GB
+" GPU :"<%GU_x%>"% / instance:"<%GI___x%>
 
- All CPU:<%CU__x%>% / <%CC___x%>MHz
-------------------------
-Thread 00:<%CUe00__x%>% / <%CCe00___x%>MHz
-Thread 01:<%CUe01__x%>% / <%CCe01___x%>MHz
-Thread 02:<%CUe02__x%>% / <%CCe02___x%>MHz
-Thread 03:<%CUe03__x%>% / <%CCe03___x%>MHz
-Thread 04:<%CUe04__x%>% / <%CCe04___x%>MHz
-Thread 05:<%CUe05__x%>% / <%CCe05___x%>MHz
-Thread 06:<%CUe06__x%>% / <%CCe06___x%>MHz
-Thread 07:<%CUe07__x%>% / <%CCe07___x%>MHz
+" 🧠 ストレージ"
+"------------------------"
+"Cドライブ : "<%HACG___x%>" / "<%HTCG___x%>"GB"
+"Dドライブ : "<%HADG___x%>" / "<%HTDG___x%>"GB"
+"Wドライブ : "<%HAWG___x%>" / "<%HTWG___x%>"GB"
 
- Total Send:     <%NSAA%>
- Total Received: <%NRAA%>
 
-      IP Addresses
-  Active:<%IPA%>
-------------------------
-Ethernet:<%IPE%>
-    WiFi:<%IPW%>
-     LTE:<%IPL%>
-     VPN:<%IPV%>
+" 📶 ネットワーク"
+"------------------------"
+"    LAN:"<%IPE%>
+"  Wi-Fi:"<%IPW%>
 
-       World Clock
-------------------------
-  Japan <%td+00:00 mmedd dde hh:nn%>
- <%te-09:00%><%StE%>UK     <%mmedd dde hh:nn%>
-  UTC   <%td-09:00%> <%mmedd dde hh:nn%>
- <%tu-14:00%><%StU%>NY     <%mmedd dde hh:nn%>
- <%tu-17:00%><%StU%>LA     <%mmedd dde hh:nn%>
-     (*:Summer Time)
+"   送信合計: "<%NSAA%>
+"   受信合計: "<%NRAA%>

@@ -1,0 +1,108 @@
+TClock Available Format Guide
+
+● Common examples:
+  yyyy/mm/dd(ddd) hh:nn:ss        Show date and time on one line.
+  yyyy/mm/dd\nhh:nn:ss            Show date and time on two lines.
+  Japan <%tu+00:00%> <%hh:nn%>    Example of a shifted world-clock display.
+  CPU CU__x%  MEM MAPG_x.xxGB     Show CPU usage and available memory.
+  C: HACP_x% free / HTCG___xGB    Show disk free percentage and total size.
+
+■ Basic rules:
+  \n                              Insert a line break.
+  <%TOKEN%>                       Use this when you want to embed a format token explicitly.
+  /                               Use the Windows locale date separator.
+  :                               Use the Windows locale time separator.
+
+■ Width and decimals:
+  TOKEN__x                        Pad on the left with blanks.
+  TOKEN___x                       Reserve a wider aligned field.
+  TOKEN_x.xx                      Specify integer width and decimal digits.
+
+・Date and time:
+  yy / yyyy                       2-digit year / 4-digit year
+  m / mm                          month / zero-padded month
+  mmm / mmmm                      localized short / long month name
+  mme                             English short month name
+  d / dd                          day / zero-padded day
+  ddd / dddd                      localized short / long weekday
+  dde                             English short weekday
+  aaa / aaaa                      localized weekday aliases
+  h / hh                          hour / zero-padded hour
+  n / nn                          minute / zero-padded minute
+  s / ss                          second / zero-padded second
+  tt                              localized AM/PM text
+  AM/PM                           AM or PM
+  AMPM                            localized AM/PM text
+  am/pm                           am or pm
+  DATE / LDATE / TIME             Windows short date / long date / 24-hour time
+  g, gg... / Y, YY...             era string / alternate-calendar year digits
+
+・Time difference and world clock:
+  td+HH:MM / td-HH:MM             Fixed time offset.
+  tu+HH:MM / tu-HH:MM             Time offset with US DST adjustment.
+  te+HH:MM / te-HH:MM             Time offset with Europe DST adjustment.
+  StU / StE                       Show "*" or blank for US / Europe DST state.
+  w+HH / w-HH                     Shift the displayed hour only.
+
+・Uptime:
+  ST                              Uptime as HH:MM:SS.
+  Sd / Sa / Sh / Sn / Ss          Days / total hours / hour / minute / second.
+
+・CPU:
+  CU                              Total CPU usage.
+  CU0 .. CU9 / CUe00 .. CUe99     Per logical-processor usage.
+  CC / CC0 .. CC9                 CPU clock / per logical-processor clock.
+  CCe00 .. CCe99                  Per logical-processor clock for 2-digit indexes.
+  PCORE / LPROC                   Physical core count / logical processor count.
+
+・Memory:
+  MK / MM / MG                    Available physical memory in KB / MB / GB.
+  MTPK / MTPM / MTPG              Total physical memory in KB / MB / GB.
+  MAPK / MAPM / MAPG              Available physical memory in KB / MB / GB.
+  MUPK / MUPM / MUPG              Used physical memory in KB / MB / GB.
+  MTFK / MTFM / MTFG              Total page file in KB / MB / GB.
+  MAFK / MAFM / MAFG              Available page file in KB / MB / GB.
+  MUFK / MUFM / MUFG              Used page file in KB / MB / GB.
+  MTVK / MTVM / MTVG              Total virtual memory in KB / MB / GB.
+  MAVK / MAVM / MAVG              Available virtual memory in KB / MB / GB.
+  MUVK / MUVM / MUVG              Used virtual memory in KB / MB / GB.
+
+・Battery and volume:
+  BL                              Battery level.
+  AD / ad                         AC/DC/unknown power mode in long or short form.
+  BCS                             Charging indicator as "*" or blank.
+  Bh / Bn / Bs                    Battery time fields: hour / minute / second.
+  VL / VM                         Volume level / mute text.
+
+・Disk:
+  HAxM / HAxG / HAxP              Available disk space for drive x in MB / GB / percent.
+  HUxM / HUxG / HUxP              Used disk space for drive x in MB / GB / percent.
+  HTxM / HTxG                     Total disk size for drive x in MB / GB.
+  x = A..Z                        *Note: use a drive letter directly.
+  x = 0..9                        *Note: refer to AdditionalMountPath0..9.
+
+・Network traffic:
+  NRAK / NRAM / NRAG              Total received in KB / MB / GB.
+  NSAK / NSAM / NSAG              Total sent in KB / MB / GB.
+  NRSB / NRSK / NRSM              Receive speed in B / KB / MB.
+  NSSB / NSSK / NSSM              Send speed in B / KB / MB.
+  NRAA / NSAA                     Auto-unit total receive / send.
+
+・Connection state and IP:
+  LTE / WiFi / EthS / EthL        Connection-state strings.
+  NMX1 / NMX2                     Auto-switched active-network text.
+  SSID / APN / VPNS               Wi-Fi SSID / LTE APN / VPN state.
+  EWLS / EWLL / ICP               Connection and active-route helper text.
+  WANP / AIPF                     LTE WAN / active-route profile number.
+  IPE / IPW / IPL / IPV / IPA     IP address for each route.
+
+・GPU:
+  GU / GI                         GPU usage / GPU instance count.
+
+・Temperature:
+  TEMP                            Display an available temperature reading.
+
+・Other:
+  VerTC                           TClock version string.
+  FTA                             Taskbar alignment flag.
+  CUSTOM1, CUSTOM2, ...           Text supplied through CustomVars.

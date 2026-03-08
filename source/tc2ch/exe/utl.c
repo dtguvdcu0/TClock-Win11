@@ -1047,7 +1047,6 @@ int GetMyRegStr(const char* section, const char* entry, char* val, int cbData,
 	int r = 0;
 	BOOL isUtf8 = FALSE;
 	BOOL isUtf8Target = FALSE;
-	BOOL needsHexBackfill = FALSE;
 	BOOL isMenuCustomSection = (section && lstrcmpi(section, "MenuCustom") == 0);
 	char hexEntry[128];
 	const char missingSentinel[] = "\x1D";
@@ -1109,9 +1108,6 @@ int GetMyRegStr(const char* section, const char* entry, char* val, int cbData,
 							goto getmyregstr_done;
 						}
 					}
-					else {
-						needsHexBackfill = TRUE;
-					}
 				}
 			}
 			r = tc_ini_utf8_read_string(g_inifile, key, entry, defval ? defval : "", val, cbData);
@@ -1133,14 +1129,6 @@ int GetMyRegStr(const char* section, const char* entry, char* val, int cbData,
 			r = lstrlen(val);
 		}
 	}
-	if (isUtf8 && needsHexBackfill && r > 0) {
-		char hexbuf[4096];
-		if (isUtf8Target ? tc_encode_hex_from_utf8_bytes(val, hexbuf, (int)sizeof(hexbuf))
-		                 : tc_encode_utf8_hex_from_ansi(val, hexbuf, (int)sizeof(hexbuf))) {
-			tc_ini_utf8_write_string(g_inifile, key, hexEntry, hexbuf);
-		}
-	}
-
 getmyregstr_done:
 
 	extern BOOL b_DebugLog_RegAccess;
@@ -1280,18 +1268,13 @@ BOOL SetMyRegStr(const char* section, const char* entry, const char* val)
 			BOOL rHex = FALSE;
 			BOOL rLegacy = FALSE;
 			if (tc_build_utf8_hex_entry_name(entry, hexEntry, (int)sizeof(hexEntry))) {
-				if (val[0] == '\0') {
-					rHex = tc_ini_utf8_write_string(g_inifile, key, hexEntry, "") ? TRUE : FALSE;
-				}
-				else if (tc_is_valid_utf8_bytes(val) && tc_encode_hex_from_utf8_bytes(val, hexbuf, (int)sizeof(hexbuf))) {
-					rHex = tc_ini_utf8_write_string(g_inifile, key, hexEntry, hexbuf) ? TRUE : FALSE;
-				}
-				else if (!isMenuCustomSection && tc_encode_utf8_hex_from_ansi(val, hexbuf, (int)sizeof(hexbuf))) {
+				if (val[0] != '\0' && !tc_is_valid_utf8_bytes(val) &&
+					!isMenuCustomSection &&
+					tc_encode_utf8_hex_from_ansi(val, hexbuf, (int)sizeof(hexbuf))) {
 					rHex = tc_ini_utf8_write_string(g_inifile, key, hexEntry, hexbuf) ? TRUE : FALSE;
 				}
 				else {
-					/* Keep both keys in sync even when encoding fails. */
-					rHex = tc_ini_utf8_write_string(g_inifile, key, hexEntry, "") ? TRUE : FALSE;
+					rHex = tc_ini_utf8_delete_key(g_inifile, key, hexEntry) ? TRUE : FALSE;
 				}
 			}
 			rLegacy = tc_ini_utf8_write_string(g_inifile, key, entry, val) ? TRUE : FALSE;

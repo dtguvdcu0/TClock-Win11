@@ -134,7 +134,6 @@ static BOOL tc_menu_match_token(const char* p, const char* token);
 static BOOL tc_menu_should_keep_utf8_value(const char* key);
 static void tc_menu_prepare_utf8_arg(const char* src, char* dst, int dstBytes);
 static BOOL tc_menu_try_decode_utf8_hex(const char* hex, char* out, int outBytes);
-static BOOL tc_menu_encode_hex_from_utf8_bytes(const char* utf8, char* outHex, int outHexBytes);
 static BOOL tc_menu_is_valid_utf8_text(const char* text);
 static const char* tc_menu_alarm_message_utf8_or_default(const TC_MENU_ALARM_ENTRY* e);
 
@@ -1267,26 +1266,6 @@ static const char* tc_menu_section_cache_find(const TC_MENU_SECTION_CACHE* cache
 	return NULL;
 }
 
-static BOOL tc_menu_encode_hex_from_utf8_bytes(const char* utf8, char* outHex, int outHexBytes)
-{
-	int i;
-	int n;
-	static const char hex[] = "0123456789ABCDEF";
-	WCHAR wtmp[1024];
-	if (!utf8 || !outHex || outHexBytes <= 0) return FALSE;
-	if (utf8[0] == '\0') { outHex[0] = '\0'; return TRUE; }
-	if (tc_utf8_to_utf16(utf8, wtmp, (int)(sizeof(wtmp) / sizeof(wtmp[0]))) <= 0) return FALSE;
-	n = lstrlen(utf8);
-	if (n * 2 + 1 > outHexBytes) return FALSE;
-	for (i = 0; i < n; ++i) {
-		unsigned char b = (unsigned char)utf8[i];
-		outHex[i * 2] = hex[(b >> 4) & 0x0F];
-		outHex[i * 2 + 1] = hex[b & 0x0F];
-	}
-	outHex[n * 2] = '\0';
-	return TRUE;
-}
-
 static BOOL tc_menu_try_get_utf8hex_value(const TC_MENU_SECTION_CACHE* cache, const char* key, char* out, int outBytes)
 {
 	char hexKey[128];
@@ -1333,49 +1312,6 @@ static void tc_menu_section_cache_get_str(const TC_MENU_SECTION_CACHE* cache, co
 	} else {
 		lstrcpyn(out, defval ? defval : "", outBytes);
 	}
-}
-
-static BOOL tc_menu_backfill_label_utf8hex(TC_MENU_SECTION_CACHE* cache)
-{
-	static const char* kLabelFields[] = {
-		"Label",
-		"AlarmLabelIdle",
-		"AlarmLabelRun",
-		"AlarmLabelPause",
-		"AlarmLabelDone",
-		"AlarmMessage"
-	};
-	int count;
-	int i;
-	int f;
-	BOOL changed = FALSE;
-	if (!cache) return FALSE;
-	count = tc_menu_section_cache_get_long(cache, "ItemCount", 0);
-	if (count < 0) count = 0;
-	if (count > TC_MENU_CUSTOM_MAX_ITEMS) count = TC_MENU_CUSTOM_MAX_ITEMS;
-	for (i = 1; i <= count; ++i) {
-		for (f = 0; f < (int)(sizeof(kLabelFields) / sizeof(kLabelFields[0])); ++f) {
-			char key[96];
-			char hexKey[120];
-			const char* raw;
-			const char* rawHex;
-			char hexBuf[512];
-			wsprintf(key, "Item%d%s", i, kLabelFields[f]);
-			raw = tc_menu_section_cache_find(cache, key);
-			if (!raw || !raw[0]) continue;
-			wsprintf(hexKey, "%sUtf8Hex", key);
-			rawHex = tc_menu_section_cache_find(cache, hexKey);
-			if (rawHex && rawHex[0]) continue;
-			if (tc_menu_encode_hex_from_utf8_bytes(raw, hexBuf, (int)sizeof(hexBuf))) {
-				SetMyRegStr(TC_MENU_SECTION, hexKey, hexBuf);
-				changed = TRUE;
-			}
-		}
-	}
-	if (changed) {
-		tc_menu_section_cache_load(cache);
-	}
-	return changed;
 }
 
 static BOOL tc_menu_is_custom_enabled(void)
@@ -1631,7 +1567,6 @@ static void tc_menu_apply_custom_from_ini(HMENU hMenu)
 	int count;
 	int removeDriveEnabledByCustom;
 	tc_menu_section_cache_load(&cache);
-	tc_menu_backfill_label_utf8hex(&cache);
 	globalLabelUpdateSec = tc_menu_section_cache_get_long(&cache, "LabelFormatUpdateSec", 1);
 	count = tc_menu_section_cache_get_long(&cache, "ItemCount", 0);
 	if (globalLabelUpdateSec < 0) globalLabelUpdateSec = 0;

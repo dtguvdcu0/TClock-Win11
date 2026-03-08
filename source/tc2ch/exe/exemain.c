@@ -1939,7 +1939,6 @@ void CreateDefaultIniFile_Win10(const wchar_t* fnameW)
 		SetMyRegLong("Color_Font", "AutoBackRefreshSec", 1);
 		SetMyRegLong("Color_Font", "AutoBackSampleClockOffset", 2);
 		SetMyRegLong("Color_Font", "AutoBackSampleShowDesktopOffset", 0);
-		SetMyRegStr("Color_Font", "FontUtf8Hex", "4D5320476F74686963");
 		SetMyRegLong("Color_Font", "AutoBackSnapshotColor", 15000804);
 		SetMyRegLong("Color_Font", "AutoBackSnapshotColor2", 12895428);
 		SetMyRegLong("Format", "Locale", 1041);
@@ -1962,8 +1961,6 @@ void CreateDefaultIniFile_Win10(const wchar_t* fnameW)
 		SetMyRegLong("Format", "Custom", 1);
 		SetMyRegStr("Format", "Format", "yyyy/mm/dd ddd tt hh:nn:ss");
 		SetMyRegStr("Format", "CustomFormat", "yyyy/mm/dd ddd tt hh:nn:ss");
-		SetMyRegStr("Format", "FormatUtf8Hex", "797979792F6D6D2F6464206464642074742068683A6E6E3A7373");
-		SetMyRegStr("Format", "CustomFormatUtf8Hex", "797979792F6D6D2F6464206464642074742068683A6E6E3A7373");
 		SetMyRegLong("Mouse", "DropFiles", 0);
 		SetMyRegLong("Mouse", "RightClickMenu", 1);
 		SetMyRegLong("Mouse", "01", 208);
@@ -2016,10 +2013,6 @@ void CreateDefaultIniFile_Win10(const wchar_t* fnameW)
 		SetMyRegLong("Tooltip", "TipFontColor", 0);
 		SetMyRegLong("Tooltip", "TipTitleColor", 16711680);
 		SetMyRegLong("Tooltip", "TipBakColor", 16777215);
-		SetMyRegStr("Tooltip", "TipFontUtf8Hex", "4D5320476F74686963");
-		SetMyRegStr("Tooltip", "TooltipUtf8Hex", "66696C653A74636C6F636B5F746F6F6C7469702E747874");
-		SetMyRegStr("Tooltip", "Tooltip2Utf8Hex", "222254436C6F636B203C254C44415445253E2222");
-		SetMyRegStr("Tooltip", "Tooltip3Utf8Hex", "222254436C6F636B203C254C44415445253E2222");
 		SetMyRegLong("BarMeter", "UseBarMeterVL", 1);
 		SetMyRegLong("BarMeter", "BarMeterVL_Horizontal", 0);
 		SetMyRegLong("BarMeter", "ColorBarMeterVL", 65280);

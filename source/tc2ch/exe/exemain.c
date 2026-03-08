@@ -2083,7 +2083,9 @@ void CreateDefaultIniFile_Win10(const wchar_t* fnameW)
 		SetMyRegLong("BarMeter", "BarMeterGU_Bottom", 0);
 		SetMyRegLong("BarMeter", "BarMeterGU_Top", 0);
 		SetMyRegLong("BarMeter", "ColorBarMeterGPU", 16711935);
-		SetMyRegStr("VPN", "SoftEtherKeyword", "\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"\"");
+		SetMyRegStr("VPN", "SoftEtherKeyword", "VPN Client Adapter");
+		SetMyRegStr("VPN", "VPNKeywords", "");
+		SetMyRegStr("VPN", "VPNExcludeKeywords", "");
 		SetMyRegStr("VPN", "VPN_Keyword1", "");
 		SetMyRegStr("VPN", "VPN_Keyword2", "");
 		SetMyRegStr("VPN", "VPN_Keyword3", "");
@@ -2101,6 +2103,7 @@ void CreateDefaultIniFile_Win10(const wchar_t* fnameW)
 		SetMyRegStr("ETC", "2chHelpURL", "http://tclock2ch.no.land.to/");
 		SetMyRegLong("ETC", "NetMIX_Length", 10);
 		SetMyRegLong("ETC", "SSID_AP_Length", 10);
+		SetMyRegStr("ETC", "EthernetKeywords", "");
 		SetMyRegStr("ETC", "Ethernet_Keyword1", "");
 		SetMyRegStr("ETC", "Ethernet_Keyword2", "");
 		SetMyRegStr("ETC", "Ethernet_Keyword3", "");
@@ -2119,6 +2122,12 @@ void CreateDefaultIniFile_Win10(const wchar_t* fnameW)
 		SetMyRegLong("ETC", "MegabytesInGigaByte", 1000);
 		SetMyRegStr("ETC", "ExtTXT_String", "");
 		SetMyRegLong("ETC", "SelectedThermalZone", 0);
+		SetMyRegLong("ETC", "GipEnabled", 0);
+		SetMyRegLong("ETC", "GipRefreshHours", 6);
+		SetMyRegStr("ETC", "GipProvider", "ipify");
+		SetMyRegStr("ETC", "GipUrl", "");
+		SetMyRegStr("ETC", "GipJsonField", "ip");
+		SetMyRegStr("ETC", "GipLastValue", "N/A");
 		SetMyRegLong("ETC", "UseHideClockPolicyFlow", 1);
 		SetMyRegLong("TCapture", "Enable", 0);
 		SetMyRegStr("TCapture", "Path", "plugins\\TCapture.exe");

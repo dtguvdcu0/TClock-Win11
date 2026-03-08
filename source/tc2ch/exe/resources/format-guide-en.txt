@@ -63,9 +63,9 @@ Memory:
   MTFK / MTFM / MTFG              Total page file in KB / MB / GB.
   MAFK / MAFM / MAFG              Available page file in KB / MB / GB.
   MUFK / MUFM / MUFG              Used page file in KB / MB / GB.
-  MTVK / MTVM / MTVG              Total virtual memory in KB / MB / GB.
-  MAVK / MAVM / MAVG              Available virtual memory in KB / MB / GB.
-  MUVK / MUVM / MUVG              Used virtual memory in KB / MB / GB.
+  MTVK / MTVM / MTVG              **Total virtual memory in KB / MB / GB. Not a practical reading.
+  MAVK / MAVM / MAVG              **Available virtual memory in KB / MB / GB. Not a practical reading.
+  MUVK / MUVM / MUVG              **Used virtual memory in KB / MB / GB. Not a practical reading.
 
 Battery and volume:
   BL                              Battery level.

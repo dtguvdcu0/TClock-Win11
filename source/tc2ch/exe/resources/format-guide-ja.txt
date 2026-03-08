@@ -63,9 +63,9 @@ CPU:
   MTFK / MTFM / MTFG              総ページファイルを KB / MB / GB で表示します。
   MAFK / MAFM / MAFG              空きページファイルを KB / MB / GB で表示します。
   MUFK / MUFM / MUFG              使用中のページファイルを KB / MB / GB で表示します。
-  MTVK / MTVM / MTVG              総仮想メモリを KB / MB / GB で表示します。
-  MAVK / MAVM / MAVG              空き仮想メモリを KB / MB / GB で表示します。
-  MUVK / MUVM / MUVG              使用中の仮想メモリを KB / MB / GB で表示します。
+  MTVK / MTVM / MTVG              **総仮想メモリを KB / MB / GB で表示します。実用的表示と異なります。
+  MAVK / MAVM / MAVG              **空き仮想メモリを KB / MB / GB で表示します。実用的表示と異なります。
+  MUVK / MUVM / MUVG              **使用中の仮想メモリを KB / MB / GB で表示します。実用的表示と異なります。
 
 バッテリと音量:
   BL                              バッテリ残量
@@ -94,6 +94,7 @@ CPU:
   SSID / APN / VPNS               Wi-Fi SSID / LTE APN / VPN 状態
   EWLS / EWLL / ICP               接続状態やアクティブ回線の補助表示
   WANP / AIPF                     LTE WAN / アクティブ回線プロファイル番号
+  GIP                             グローバル IP アドレス (オプション有効時のみ)
   IPE / IPW / IPL / IPV / IPA     各回線の IP アドレス
 
 GPU:

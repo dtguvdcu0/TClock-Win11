@@ -50,14 +50,12 @@ Uptime:
 
 CPU:
   CU                              Total CPU usage.
-  CU0 .. CU9 / CUe00 .. CUe99     Per logical-processor usage.
-  CC / CC0 .. CC9                 CPU clock in MHz / per logical-processor clock in MHz.
-  CCe00 .. CCe99                  Per logical-processor clock in MHz for 2-digit indexes.
-  CCM / CC0M .. CC9M              Explicit MHz CPU clock / per logical-processor clock.
-  CCe00M .. CCe99M                Explicit MHz per logical-processor clock for 2-digit indexes.
-  CCG / CC0G .. CC9G              CPU clock in GHz / per logical-processor clock in GHz.
-  CCe00G .. CCe99G                Per logical-processor clock in GHz for 2-digit indexes.
-  TOKEN_x.xx                      Add decimal digits only when numeric format is specified.
+  CU0-CU9 / CUe00-CUe99           Per logical-processor usage.
+  CC                              CPU clock (MHz).
+  CC0 - CC9 / CCe00 - CCe99       Per logical-processor clock (MHz).
+  CCM / CCG                       Show CPU clock in MHz / GHz.
+  CC0M - CC9M / CCe00M - CCe99M   Show per logical-processor clock in MHz.
+  CC0G - CC9G / CCe00G - CCe99G   Show per logical-processor clock in GHz.
   PCORE / LPROC                   Physical core count / logical processor count.
 
 Memory:
@@ -108,6 +106,5 @@ Temperature:
   TEMP                            Display an available temperature reading.
 
 Other:
-  VerTC                           TClock version string.
   FTA                             Taskbar alignment flag.
   CUSTOM1, CUSTOM2, ...           Text supplied through CustomVars.

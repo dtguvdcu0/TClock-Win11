@@ -1,5 +1,5 @@
 ***********************************************
-***  tclock-win11 Ver 0.2.3.0 (2026/03/08)  ***
+***  tclock-win11 Ver 0.2.3.1 (2026/03/08)  ***
 ***       by ID:DTgUvdcU0                   ***
 ***********************************************
 
@@ -283,6 +283,13 @@ LPROC: Number of logical processors (threads)
 ***************
 Version history
 ***************
+
+2026/03/08 Main changes (v0.2.3.1)
+Added a guide button to the format property page so the list of available formats can be reviewed
+Added dedicated handling for loading ASCII art files (..AA.txt) in tooltips
+Extended format support for CPU GHz and storage TB units
+Added an option to retrieve the global IP address [GIP]
+Other minor fixes
 
 2026/03/07 Main changes (v0.2.3.0)
 Experimental WinUI introduction

@@ -1747,8 +1747,6 @@ extern int active_physical_adapter_Win10;
 
 
 
-extern char Ver_TClockWin10[];
-
 extern BOOL b_SafeMode;
 extern BOOL b_ExcessNetProfiles;
 

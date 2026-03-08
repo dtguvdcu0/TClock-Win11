@@ -18,7 +18,7 @@ TClock Available Format Guide
   TOKEN___x                       Reserve a wider aligned field.
   TOKEN_x.xx                      Specify integer width and decimal digits.
 
-・Date and time:
+Date and time:
   yy / yyyy                       2-digit year / 4-digit year
   m / mm                          month / zero-padded month
   mmm / mmmm                      localized short / long month name
@@ -37,25 +37,25 @@ TClock Available Format Guide
   DATE / LDATE / TIME             Windows short date / long date / 24-hour time
   g, gg... / Y, YY...             era string / alternate-calendar year digits
 
-・Time difference and world clock:
+Time difference and world clock:
   td+HH:MM / td-HH:MM             Fixed time offset.
   tu+HH:MM / tu-HH:MM             Time offset with US DST adjustment.
   te+HH:MM / te-HH:MM             Time offset with Europe DST adjustment.
   StU / StE                       Show "*" or blank for US / Europe DST state.
   w+HH / w-HH                     Shift the displayed hour only.
 
-・Uptime:
+Uptime:
   ST                              Uptime as HH:MM:SS.
   Sd / Sa / Sh / Sn / Ss          Days / total hours / hour / minute / second.
 
-・CPU:
+CPU:
   CU                              Total CPU usage.
   CU0 .. CU9 / CUe00 .. CUe99     Per logical-processor usage.
   CC / CC0 .. CC9                 CPU clock / per logical-processor clock.
   CCe00 .. CCe99                  Per logical-processor clock for 2-digit indexes.
   PCORE / LPROC                   Physical core count / logical processor count.
 
-・Memory:
+Memory:
   MK / MM / MG                    Available physical memory in KB / MB / GB.
   MTPK / MTPM / MTPG              Total physical memory in KB / MB / GB.
   MAPK / MAPM / MAPG              Available physical memory in KB / MB / GB.
@@ -67,28 +67,28 @@ TClock Available Format Guide
   MAVK / MAVM / MAVG              Available virtual memory in KB / MB / GB.
   MUVK / MUVM / MUVG              Used virtual memory in KB / MB / GB.
 
-・Battery and volume:
+Battery and volume:
   BL                              Battery level.
   AD / ad                         AC/DC/unknown power mode in long or short form.
   BCS                             Charging indicator as "*" or blank.
   Bh / Bn / Bs                    Battery time fields: hour / minute / second.
   VL / VM                         Volume level / mute text.
 
-・Disk:
+Disk:
   HAxM / HAxG / HAxP              Available disk space for drive x in MB / GB / percent.
   HUxM / HUxG / HUxP              Used disk space for drive x in MB / GB / percent.
   HTxM / HTxG                     Total disk size for drive x in MB / GB.
   x = A..Z                        *Note: use a drive letter directly.
   x = 0..9                        *Note: refer to AdditionalMountPath0..9.
 
-・Network traffic:
+Network traffic:
   NRAK / NRAM / NRAG              Total received in KB / MB / GB.
   NSAK / NSAM / NSAG              Total sent in KB / MB / GB.
   NRSB / NRSK / NRSM              Receive speed in B / KB / MB.
   NSSB / NSSK / NSSM              Send speed in B / KB / MB.
   NRAA / NSAA                     Auto-unit total receive / send.
 
-・Connection state and IP:
+Connection state and IP:
   LTE / WiFi / EthS / EthL        Connection-state strings.
   NMX1 / NMX2                     Auto-switched active-network text.
   SSID / APN / VPNS               Wi-Fi SSID / LTE APN / VPN state.
@@ -96,13 +96,13 @@ TClock Available Format Guide
   WANP / AIPF                     LTE WAN / active-route profile number.
   IPE / IPW / IPL / IPV / IPA     IP address for each route.
 
-・GPU:
+GPU:
   GU / GI                         GPU usage / GPU instance count.
 
-・Temperature:
+Temperature:
   TEMP                            Display an available temperature reading.
 
-・Other:
+Other:
   VerTC                           TClock version string.
   FTA                             Taskbar alignment flag.
   CUSTOM1, CUSTOM2, ...           Text supplied through CustomVars.

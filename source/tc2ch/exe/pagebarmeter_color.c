@@ -151,10 +151,10 @@ void OnInit(HWND hDlg)
 			b_ShowThresholds = TRUE;
 
 			SendDlgItemMessage(hDlg, IDC_SPGBARMETER_THRESHOLD_H, UDM_SETPOS, 0,
-				(int)(short)GetMyRegLong("BarMeter", "BarMeterBL_Threshold_High", 70));
+				(int)(short)GetMyRegLong("BarMeter", "BarMeterBL_Threshold_High", 50));
 
 			SendDlgItemMessage(hDlg, IDC_SPGBARMETER_THRESHOLD_M, UDM_SETPOS, 0,
-				(int)(short)GetMyRegLong("BarMeter", "BarMeterBL_Threshold_Mid", 50));
+				(int)(short)GetMyRegLong("BarMeter", "BarMeterBL_Threshold_Mid", 20));
 
 			combocolor[0].colname = "ColorBarMeterBL_High";
 			combocolor[1].colname = "ColorBarMeterBL_Mid";

@@ -153,7 +153,7 @@ static void OnInit(HWND hDlg)
 	SendDlgItemMessage(hDlg, IDC_SPGBARVOLBOTTOM, UDM_SETRANGE, 0,
 		MAKELONG(tempHeight, 0));
 	SendDlgItemMessage(hDlg, IDC_SPGBARVOLBOTTOM, UDM_SETPOS, 0,
-		(int)(short)GetMyRegLong("BarMeter", "BarMeterVL_Bottom", 290));
+		(int)(short)GetMyRegLong("BarMeter", "BarMeterVL_Bottom", 0));
 	SendDlgItemMessage(hDlg, IDC_SPGBARVOLHEIGHT, UDM_SETRANGE, 0,
 		MAKELONG(tempHeight, 0));
 	SendDlgItemMessage(hDlg, IDC_SPGBARVOLHEIGHT, UDM_SETPOS, 0,
@@ -169,7 +169,7 @@ static void OnInit(HWND hDlg)
 	SendDlgItemMessage(hDlg, IDC_SPGBARCPURIGHT, UDM_SETRANGE, 0,
 		MAKELONG(tempWidth, 0));
 	SendDlgItemMessage(hDlg, IDC_SPGBARCPURIGHT, UDM_SETPOS, 0,
-		(int)(short)GetMyRegLong("BarMeter", "BarMeterCU_Right", 290));
+		(int)(short)GetMyRegLong("BarMeter", "BarMeterCU_Right", 170));
 	SendDlgItemMessage(hDlg, IDC_SPGBARCPUWIDTH, UDM_SETRANGE, 0,
 		MAKELONG(tempWidth, 0));
 	SendDlgItemMessage(hDlg, IDC_SPGBARCPUWIDTH, UDM_SETPOS, 0,
@@ -177,7 +177,7 @@ static void OnInit(HWND hDlg)
 	SendDlgItemMessage(hDlg, IDC_SPGBARCPUBOTTOM, UDM_SETRANGE, 0,
 		MAKELONG(tempHeight, 0));
 	SendDlgItemMessage(hDlg, IDC_SPGBARCPUBOTTOM, UDM_SETPOS, 0,
-		(int)(short)GetMyRegLong("BarMeter", "BarMeterCU_Bottom", 290));
+		(int)(short)GetMyRegLong("BarMeter", "BarMeterCU_Bottom", 0));
 	SendDlgItemMessage(hDlg, IDC_SPGBARCPUHEIGHT, UDM_SETRANGE, 0,
 		MAKELONG(tempHeight, 0));
 	SendDlgItemMessage(hDlg, IDC_SPGBARCPUHEIGHT, UDM_SETPOS, 0,
@@ -190,11 +190,11 @@ static void OnInit(HWND hDlg)
 	SendDlgItemMessage(hDlg, IDC_SPGBARCPURIGHT2, UDM_SETRANGE, 0,
 		MAKELONG(tempWidth, 0));
 	SendDlgItemMessage(hDlg, IDC_SPGBARCPURIGHT2, UDM_SETPOS, 0,
-		(int)(short)GetMyRegLong("BarMeter", "BarMeterGU_Right", 290));
+		(int)(short)GetMyRegLong("BarMeter", "BarMeterGU_Right", 175));
 	SendDlgItemMessage(hDlg, IDC_SPGBARCPUBOTTOM2, UDM_SETRANGE, 0,
 		MAKELONG(tempHeight, 0));
 	SendDlgItemMessage(hDlg, IDC_SPGBARCPUBOTTOM2, UDM_SETPOS, 0,
-		(int)(short)GetMyRegLong("BarMeter", "BarMeterGU_Bottom", 290));
+		(int)(short)GetMyRegLong("BarMeter", "BarMeterGU_Bottom", 0));
 	SendDlgItemMessage(hDlg, IDC_SPGBARCPUHEIGHT2, UDM_SETRANGE, 0,
 		MAKELONG(tempHeight, 0));
 	SendDlgItemMessage(hDlg, IDC_SPGBARCPUHEIGHT2, UDM_SETPOS, 0,
@@ -225,7 +225,7 @@ static void OnInit(HWND hDlg)
 	SendDlgItemMessage(hDlg, IDC_SPGBARBATRIGHT, UDM_SETRANGE, 0,
 		MAKELONG(tempWidth, 0));
 	SendDlgItemMessage(hDlg, IDC_SPGBARBATRIGHT, UDM_SETPOS, 0,
-		(int)(short)GetMyRegLong("BarMeter", "BarMeterBL_Right", 290));
+		(int)(short)GetMyRegLong("BarMeter", "BarMeterBL_Right", 210));
 	SendDlgItemMessage(hDlg, IDC_SPGBARBATWIDTH, UDM_SETRANGE, 0,
 		MAKELONG(tempWidth, 0));
 	SendDlgItemMessage(hDlg, IDC_SPGBARBATWIDTH, UDM_SETPOS, 0,
@@ -233,7 +233,7 @@ static void OnInit(HWND hDlg)
 	SendDlgItemMessage(hDlg, IDC_SPGBARBATBOTTOM, UDM_SETRANGE, 0,
 		MAKELONG(tempHeight, 0));
 	SendDlgItemMessage(hDlg, IDC_SPGBARBATBOTTOM, UDM_SETPOS, 0,
-		(int)(short)GetMyRegLong("BarMeter", "BarMeterBL_Bottom", 290));
+		(int)(short)GetMyRegLong("BarMeter", "BarMeterBL_Bottom", 0));
 	SendDlgItemMessage(hDlg, IDC_SPGBARBATHEIGHT, UDM_SETRANGE, 0,
 		MAKELONG(tempHeight, 0));
 	SendDlgItemMessage(hDlg, IDC_SPGBARBATHEIGHT, UDM_SETPOS, 0,
@@ -255,20 +255,20 @@ static void OnInit(HWND hDlg)
 	SendDlgItemMessage(hDlg, IDC_SPGBARNETSENDRIGHT, UDM_SETRANGE, 0,
 		MAKELONG(tempWidth, 0));
 	SendDlgItemMessage(hDlg, IDC_SPGBARNETSENDRIGHT, UDM_SETPOS, 0,
-		(int)(short)GetMyRegLong("BarMeter", "BarMeterNetSend_Right", 300));
+		(int)(short)GetMyRegLong("BarMeter", "BarMeterNetSend_Right", 310));
 	SendDlgItemMessage(hDlg, IDC_SPGBARNETSENDBOTTOM, UDM_SETRANGE, 0,
 		MAKELONG(tempHeight, 0));
 	SendDlgItemMessage(hDlg, IDC_SPGBARNETSENDBOTTOM, UDM_SETPOS, 0,
-		(int)(short)GetMyRegLong("BarMeter", "BarMeterNetSend_Bottom", 300));
+		(int)(short)GetMyRegLong("BarMeter", "BarMeterNetSend_Bottom", 0));
 
 	SendDlgItemMessage(hDlg, IDC_SPGBARNETRCVRIGHT, UDM_SETRANGE, 0,
 		MAKELONG(tempWidth, 0));
 	SendDlgItemMessage(hDlg, IDC_SPGBARNETRCVRIGHT, UDM_SETPOS, 0,
-		(int)(short)GetMyRegLong("BarMeter", "BarMeterNetRecv_Right", 310));
+		(int)(short)GetMyRegLong("BarMeter", "BarMeterNetRecv_Right", 300));
 	SendDlgItemMessage(hDlg, IDC_SPGBARNETRCVBOTTOM, UDM_SETRANGE, 0,
 		MAKELONG(tempHeight, 0));
 	SendDlgItemMessage(hDlg, IDC_SPGBARNETRCVBOTTOM, UDM_SETPOS, 0,
-		(int)(short)GetMyRegLong("BarMeter", "BarMeterNetRecv_Bottom", 310));
+		(int)(short)GetMyRegLong("BarMeter", "BarMeterNetRecv_Bottom", 0));
 
 	SendDlgItemMessage(hDlg, IDC_SPGBARNETWIDTH, UDM_SETRANGE, 0,
 		MAKELONG(tempWidth, 0));

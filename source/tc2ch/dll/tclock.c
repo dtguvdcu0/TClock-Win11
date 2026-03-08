@@ -343,6 +343,7 @@ static BOOL g_wuiPulseOn = FALSE;
 static BOOL g_wuiLocalViewOn = FALSE;
 static BOOL g_wuiLocalResOn = FALSE;
 static BOOL g_wuiBgOnly = FALSE;
+static BOOL g_wuiSubOnly = FALSE;
 static SIZE g_wuiLocalSize = { 0, 0 };
 static DWORD g_wuiLocalGen = 0;
 static DWORD g_wuiResGen = 0;
@@ -1840,8 +1841,12 @@ static void wui_draw_body(HDC hdc, SYSTEMTIME* pt, int beat100)
 	}
 	wui_push_text(pt, beat100);
 	g_wuiBgOnly = TRUE;
+	g_wuiSubOnly = FALSE;
 	DrawClockSub(hdc, pt, beat100);
 	g_wuiBgOnly = FALSE;
+	g_wuiSubOnly = TRUE;
+	DrawClockSub(hdc, pt, beat100);
+	g_wuiSubOnly = FALSE;
 }
 
 static void wui_draw_main(HDC hdc, SYSTEMTIME* pt, int beat100)
@@ -5633,17 +5638,19 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
 
 
 	//点滅処理は、フォントのみ反転として、TextColorFromInfoVal()の機能として実装
-	if (!fillbackcolor) {
-		BLENDFUNCTION blend;
-		blend.BlendOp = 0;
-		blend.BlendFlags = 0;
-		blend.SourceConstantAlpha = 255;
-		blend.AlphaFormat = AC_SRC_ALPHA;
-		MyAlphaBlend(hdc, 0, 0, widthMainClockFrame, heightMainClockFrame,
-			hdcClock, 0, 0, widthMainClockFrame, heightMainClockFrame, blend);
-	}
-	else {
-		BitBlt(hdc, 0, 0, widthMainClockFrame, heightMainClockFrame, hdcClock, 0, 0, SRCCOPY);
+	if (!g_wuiSubOnly) {
+		if (!fillbackcolor) {
+			BLENDFUNCTION blend;
+			blend.BlendOp = 0;
+			blend.BlendFlags = 0;
+			blend.SourceConstantAlpha = 255;
+			blend.AlphaFormat = AC_SRC_ALPHA;
+			MyAlphaBlend(hdc, 0, 0, widthMainClockFrame, heightMainClockFrame,
+				hdcClock, 0, 0, widthMainClockFrame, heightMainClockFrame, blend);
+		}
+		else {
+			BitBlt(hdc, 0, 0, widthMainClockFrame, heightMainClockFrame, hdcClock, 0, 0, SRCCOPY);
+		}
 	}
 
 	if (g_wuiBgOnly) return;
@@ -5703,10 +5710,12 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
 
 					SelectObject(hdcSubBuffer, hbm_tempDIBSection);
 					SetStretchBltMode(hdcSubBuffer, HALFTONE);
+					SetBrushOrgEx(hdcSubBuffer, 0, 0, NULL);
 					StretchBlt(hdcSubBuffer, 0, 0, widthSubClock[i], heightSubClock[i], hdcClock_work, 0, 0, widthMainClockFrame, heightMainClockFrame, SRCCOPY);
 
 					SelectObject(hdcSubBuffer, hbm_tempDIBSection2);
 					SetStretchBltMode(hdcSubBuffer, HALFTONE);
+					SetBrushOrgEx(hdcSubBuffer, 0, 0, NULL);
 					StretchBlt(hdcSubBuffer, 0, 0, widthSubClock[i], heightSubClock[i], hdcClock, 0, 0, widthMainClockFrame, heightMainClockFrame, SRCCOPY);
 
 					for (color = temp_m_color_start, color_work = temp_m_color_start2; color < temp_m_color_end; ++color, ++color_work)

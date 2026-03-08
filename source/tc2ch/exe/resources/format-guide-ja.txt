@@ -50,7 +50,7 @@ TClock 使える書式ガイド
 
 CPU:
   CU                              CPU 使用率
-  CU0-CU9 / CUe00-CUe99           論理プロセッサごとの使用率
+  CU0 - CU9 / CUe00 - CUe99       論理プロセッサごとの使用率
   CC                              CPU クロック(MHz)
   CC0 - CC9 / CCe00 - CCe99       論理プロセッサごとのクロック(MHz)
   CCM / CCG                       CPU クロックを MHz / GHz で表示

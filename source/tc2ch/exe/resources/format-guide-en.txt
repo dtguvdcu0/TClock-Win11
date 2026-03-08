@@ -51,8 +51,13 @@ Uptime:
 CPU:
   CU                              Total CPU usage.
   CU0 .. CU9 / CUe00 .. CUe99     Per logical-processor usage.
-  CC / CC0 .. CC9                 CPU clock / per logical-processor clock.
-  CCe00 .. CCe99                  Per logical-processor clock for 2-digit indexes.
+  CC / CC0 .. CC9                 CPU clock in MHz / per logical-processor clock in MHz.
+  CCe00 .. CCe99                  Per logical-processor clock in MHz for 2-digit indexes.
+  CCM / CC0M .. CC9M              Explicit MHz CPU clock / per logical-processor clock.
+  CCe00M .. CCe99M                Explicit MHz per logical-processor clock for 2-digit indexes.
+  CCG / CC0G .. CC9G              CPU clock in GHz / per logical-processor clock in GHz.
+  CCe00G .. CCe99G                Per logical-processor clock in GHz for 2-digit indexes.
+  TOKEN_x.xx                      Add decimal digits only when numeric format is specified.
   PCORE / LPROC                   Physical core count / logical processor count.
 
 Memory:
@@ -75,9 +80,9 @@ Battery and volume:
   VL / VM                         Volume level / mute text.
 
 Disk:
-  HAxM / HAxG / HAxP              Available disk space for drive x in MB / GB / percent.
-  HUxM / HUxG / HUxP              Used disk space for drive x in MB / GB / percent.
-  HTxM / HTxG                     Total disk size for drive x in MB / GB.
+  HAxM / HAxG / HAxT / HAxP       Available disk space for drive x in MB / GB / TB / percent.
+  HUxM / HUxG / HUxT / HUxP       Used disk space for drive x in MB / GB / TB / percent.
+  HTxM / HTxG / HTxT              Total disk size for drive x in MB / GB / TB.
   x = A..Z                        *Note: use a drive letter directly.
   x = 0..9                        *Note: refer to AdditionalMountPath0..9.
 

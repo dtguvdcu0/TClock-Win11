@@ -51,8 +51,12 @@ TClock 使える書式ガイド
 CPU:
   CU                              CPU 使用率
   CU0 .. CU9 / CUe00 .. CUe99     論理プロセッサごとの使用率
-  CC / CC0 .. CC9                 CPU クロック / 論理プロセッサごとのクロック
-  CCe00 .. CCe99                  2 桁番号の論理プロセッサごとのクロック
+  CC / CC0 .. CC9                 CPU クロック(MHz) / 論理プロセッサごとのクロック(MHz)
+  CCe00 .. CCe99                  2 桁番号の論理プロセッサごとのクロック(MHz)
+  CCM / CC0M .. CC9M              CPU クロックを MHz で表示 / 論理プロセッサごとのクロックを MHz で表示
+  CCe00M .. CCe99M                2 桁番号の論理プロセッサごとのクロックを MHz で表示
+  CCG / CC0G .. CC9G              CPU クロックを GHz で表示 / 論理プロセッサごとのクロックを GHz で表示
+  CCe00G .. CCe99G                2 桁番号の論理プロセッサごとのクロックを GHz で表示
   PCORE / LPROC                   物理コア数 / 論理プロセッサ数
 
 メモリ:
@@ -75,9 +79,9 @@ CPU:
   VL / VM                         音量 / ミュート表示
 
 ディスク:
-  HAxM / HAxG / HAxP              ドライブ x の空き容量を MB / GB / % で表示します。
-  HUxM / HUxG / HUxP              ドライブ x の使用量を MB / GB / % で表示します。
-  HTxM / HTxG                     ドライブ x の総容量を MB / GB で表示します。
+  HAxM / HAxG / HAxT / HAxP       ドライブ x の空き容量を MB / GB / TB / % で表示します。
+  HUxM / HUxG / HUxT / HUxP       ドライブ x の使用量を MB / GB / TB / % で表示します。
+  HTxM / HTxG / HTxT              ドライブ x の総容量を MB / GB / TB で表示します。
   x = A..Z                        *補足:ドライブレターを直接指定します。
   x = 0..9                        *補足: AdditionalMountPath0..9 を参照します。
 

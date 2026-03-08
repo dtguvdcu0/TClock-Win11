@@ -68,6 +68,7 @@ static BOOL bTooltipBalloon = FALSE;
 static BOOL bTooltipHasTitle = FALSE;
 
 static HFONT hFonTooltip = NULL;
+static HFONT hFonTooltipAA = NULL;
 
 static HFONT hFonTooltipTitle = NULL;
 
@@ -89,6 +90,7 @@ static int nTooltipHtmlDispCount = 0;
 static HWND hwndHTMLParent = NULL;
 static ATOM atomHTMLParent = 0;
 static BOOL bEmbedBrowserObject = FALSE;
+static BOOL bTooltipUseAAFont = FALSE;
 
 extern char g_mydir_dll[];	//added by TTTT
 
@@ -102,16 +104,32 @@ char tiptitle[300];
 
 extern BOOL bWin11Main;
 
+static BOOL TooltipIsAAPath(const char* path)
+{
+	size_t len;
+
+	if (!path) return FALSE;
+	len = strlen(path);
+	if (len < 6) return FALSE;
+	return lstrcmpi(path + len - 6, "AA.txt") == 0;
+}
+
+static HFONT TooltipGetBodyFont(void)
+{
+	if (bTooltipUseAAFont && hFonTooltipAA) return hFonTooltipAA;
+	return hFonTooltip;
+}
 
 static void TooltipApplySetting(void)
 {
+	HFONT hfontBody = TooltipGetBodyFont();
 
 	if (hwndTooltip)
 	{
 		//LONG_PTR exstyle;
 		//exstyle = GetWindowLongPtr(hwndTooltip, GWL_EXSTYLE) & ~WS_EX_COMPOSITED;
 		//SetWindowLongPtr(hwndTooltip, GWL_EXSTYLE, exstyle);
-		if (hFonTooltip) SendMessage(hwndTooltip, WM_SETFONT, (WPARAM)hFonTooltip, TRUE);
+		if (hfontBody) SendMessage(hwndTooltip, WM_SETFONT, (WPARAM)hfontBody, TRUE);
 
 		//以下の行(TTM_SETTIPBKCOLOR等は実際には効いていない…
 		SendMessage(hwndTooltip, TTM_SETTIPBKCOLOR, colTooltipBack, 0);
@@ -354,6 +372,8 @@ void TooltipDeleteRes(void)
 {
 	if(hFonTooltip) DeleteObject(hFonTooltip);
 	hFonTooltip = NULL;
+	if (hFonTooltipAA) DeleteObject(hFonTooltipAA);
+	hFonTooltipAA = NULL;
 	if (hFonTooltipTitle) DeleteObject(hFonTooltipTitle);
 	hFonTooltipTitle = NULL;
 }
@@ -505,6 +525,7 @@ Ver4.1以降。
 static void TooltipUpdate2(HDC hdc, LPRECT lprcDraw, LPRECT lprect, UINT uDrawFlags)
 {
 	HBRUSH hBrushTooltipBack = NULL;
+	HFONT hfontBody = TooltipGetBodyFont();
 	RECT rc, rcall;
 	LPWSTR pszText;
 	int width = 0, height, len;
@@ -581,7 +602,9 @@ static void TooltipUpdate2(HDC hdc, LPRECT lprcDraw, LPRECT lprect, UINT uDrawFl
 			top += height;
 		}
 
-		SelectObject(hdcTemp, hFonTooltip);
+		if (hfontBody) {
+			SelectObject(hdcTemp, hfontBody);
+		}
 		SetTextColor(hdcTemp, colTooltipText);
 
 		pszText = formatTooltipW;
@@ -666,10 +689,12 @@ static void TooltipUpdateText(void)
 	DWORD dw;
 	RECT rcClock;
 	int clLen, mPos;
+	const char* filePath = NULL;
 
 
-	if (hFonTooltip) {
-		SendMessage(hwndTooltip, WM_SETFONT, (WPARAM)hFonTooltip, TRUE);	//アップデートのたびにフォントを設定しなおす。(2022/3/14 5ch指摘対応)
+	bTooltipUseAAFont = FALSE;
+	if (TooltipGetBodyFont()) {
+		SendMessage(hwndTooltip, WM_SETFONT, (WPARAM)TooltipGetBodyFont(), TRUE);	//アップデートのたびにフォントを設定しなおす。(2022/3/14 5ch指摘対応)
 	}
 
 	bTooltipUpdated = TRUE;
@@ -725,6 +750,11 @@ static void TooltipUpdateText(void)
 
 	if(fmt[0] == 'f' && fmt[1] == 'i' && fmt[2] == 'l' && fmt[3] == 'e' && fmt[4] == ':')
 	{
+		filePath = fmt + 5;
+		bTooltipUseAAFont = TooltipIsAAPath(filePath);
+		if (TooltipGetBodyFont()) {
+			SendMessage(hwndTooltip, WM_SETFONT, (WPARAM)TooltipGetBodyFont(), TRUE);
+		}
 		memmove( fmt, fmt + 5, (size_t)((strchr(fmt,'\0')-1)-fmt));
 		if(!GetTooltipText(fmt)){
 			strcpy(fmt, "ファイル取得失敗");
@@ -834,6 +864,8 @@ void TooltipReadData(void)
 
 	if(hFonTooltip) DeleteObject(hFonTooltip);
 	hFonTooltip = CreateMyFont(fontname, fontsize, weight, italic);
+	if (hFonTooltipAA) DeleteObject(hFonTooltipAA);
+	hFonTooltipAA = CreateMyFont("MS UI Gothic", fontsize, weight, italic);
 
 	if (hFonTooltipTitle) DeleteObject(hFonTooltipTitle);
 	hFonTooltipTitle = CreateMyFont("Yu Gothic UI", 12, FW_REGULAR, 0);

@@ -50,13 +50,12 @@ TClock 使える書式ガイド
 
 CPU:
   CU                              CPU 使用率
-  CU0 .. CU9 / CUe00 .. CUe99     論理プロセッサごとの使用率
-  CC / CC0 .. CC9                 CPU クロック(MHz) / 論理プロセッサごとのクロック(MHz)
-  CCe00 .. CCe99                  2 桁番号の論理プロセッサごとのクロック(MHz)
-  CCM / CC0M .. CC9M              CPU クロックを MHz で表示 / 論理プロセッサごとのクロックを MHz で表示
-  CCe00M .. CCe99M                2 桁番号の論理プロセッサごとのクロックを MHz で表示
-  CCG / CC0G .. CC9G              CPU クロックを GHz で表示 / 論理プロセッサごとのクロックを GHz で表示
-  CCe00G .. CCe99G                2 桁番号の論理プロセッサごとのクロックを GHz で表示
+  CU0-CU9 / CUe00-CUe99           論理プロセッサごとの使用率
+  CC                              CPU クロック(MHz)
+  CC0 - CC9 / CCe00 - CCe99       論理プロセッサごとのクロック(MHz)
+  CCM / CCG                       CPU クロックを MHz / GHz で表示
+  CC0M - CC9M / CCe00M - CCe99M   論理プロセッサごとのクロックを MHz で表示
+  CC0G - CC9G / CCe00G - CCe99G   論理プロセッサごとのクロックを GHz で表示
   PCORE / LPROC                   物理コア数 / 論理プロセッサ数
 
 メモリ:
@@ -108,6 +107,5 @@ GPU:
   TEMP                            取得できた温度を表示します。
 
 その他:
-  VerTC                           TClock のバージョン文字列
   FTA                             タスクバー配置フラグ
   CUSTOM1, CUSTOM2, ...           CustomVars で定義した文字列を表示します。

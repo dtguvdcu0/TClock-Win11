@@ -29,7 +29,6 @@
 #define OFFSETMS_TIMER_SYSINFO	200
 #define OFFSETMS_TIMER_NETSTAT	500
 
-char Ver_TClockWin10[16];
 extern PSTR CreateFullPathName(HINSTANCE hmod, PSTR fname);
 LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
 
@@ -2791,8 +2790,6 @@ void ReadData()
 
 	//LogLineCount = AutoClearLogLines;
 	LogLineCount = 0;
-
-	lstrcpyn(Ver_TClockWin10, TCLOCK_VER_FILE_STR, sizeof(Ver_TClockWin10));
 
 	b_ExistLTEProfile = GetMyRegLong("Status_DoNotEdit", "ExistLTEProfile", FALSE);
 

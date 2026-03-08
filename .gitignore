@@ -43,3 +43,4 @@ source/gate_tcalendar.bat
 source/tc2ch/winuidll/x64/
 additional_files/tclock_customtip.txt
 *.jpg
+UPDATE.md

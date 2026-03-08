@@ -45,13 +45,26 @@ bool ReadAllBytes(const std::wstring& path, std::vector<unsigned char>& out) {
 
 bool BytesToWideBestEffort(const std::vector<unsigned char>& bytes, std::wstring& out) {
     out.clear();
-    std::vector<unsigned char> buf = bytes;
-    buf.erase(std::remove(buf.begin(), buf.end(), 0), buf.end());
+    if (bytes.size() >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE) {
+        const size_t chars = (bytes.size() - 2) / 2;
+        out.resize(chars);
+        for (size_t i = 0; i < chars; ++i) {
+            out[i] = static_cast<wchar_t>(bytes[2 + i * 2] | (bytes[3 + i * 2] << 8));
+        }
+        return true;
+    }
+    if (bytes.size() >= 2 && bytes[0] == 0xFE && bytes[1] == 0xFF) {
+        const size_t chars = (bytes.size() - 2) / 2;
+        out.resize(chars);
+        for (size_t i = 0; i < chars; ++i) {
+            out[i] = static_cast<wchar_t>((bytes[2 + i * 2] << 8) | bytes[3 + i * 2]);
+        }
+        return true;
+    }
 
-    int offset = 0;
-    if (buf.size() >= 3 && buf[0] == 0xEF && buf[1] == 0xBB && buf[2] == 0xBF) offset = 3;
-    const char* p = reinterpret_cast<const char*>(buf.data() + offset);
-    const int n = static_cast<int>(buf.size() - offset);
+    const int offset = (bytes.size() >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF) ? 3 : 0;
+    const char* p = reinterpret_cast<const char*>(bytes.data() + offset);
+    const int n = static_cast<int>(bytes.size() - offset);
     if (n <= 0) return true;
 
     int wlen = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, p, n, nullptr, 0);
@@ -60,12 +73,7 @@ bool BytesToWideBestEffort(const std::vector<unsigned char>& bytes, std::wstring
         MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, p, n, out.data(), wlen);
         return true;
     }
-
-    wlen = MultiByteToWideChar(CP_ACP, 0, p, n, nullptr, 0);
-    if (wlen <= 0) return false;
-    out.resize(static_cast<size_t>(wlen));
-    MultiByteToWideChar(CP_ACP, 0, p, n, out.data(), wlen);
-    return true;
+    return false;
 }
 
 bool WideToUtf8(const std::wstring& s, std::string& out) {

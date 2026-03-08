@@ -153,12 +153,13 @@ void CleanSettingFile(void);
 
 // FORMAT.C
 void InitFormat(SYSTEMTIME* lt);
-void MakeFormat(char* s, char* s_info, SYSTEMTIME* pt, int beat100, char* fmt);
 void MakeFormatW(WCHAR* s, int sCch, char* s_info, SYSTEMTIME* pt, int beat100, const WCHAR* fmt);
 void CustomFormatVarsReadSettings(void);
+void GipRead(void);
 void CustomFormatVarsPreloadIfEnabled(void);
 void CustomFormatVarsSuppressNextPreload(void);
 void CustomFormatVarsTick(void);
+void GipTick(void);
 void CustomFormatVarsInvalidateSettings(void);
 //void MakeFormat_Colored(char* s, COLORREF* s_col,  SYSTEMTIME* pt, int beat100, char* fmt);
 #define FORMAT_SECOND    0x0001

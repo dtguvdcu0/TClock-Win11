@@ -2013,11 +2013,11 @@ void CreateDefaultIniFile_Win10(const wchar_t* fnameW)
 		SetMyRegLong("Tooltip", "TipFontColor", 0);
 		SetMyRegLong("Tooltip", "TipTitleColor", 16711680);
 		SetMyRegLong("Tooltip", "TipBakColor", 16777215);
-		SetMyRegLong("BarMeter", "UseBarMeterVL", 1);
+		SetMyRegLong("BarMeter", "UseBarMeterVL", 0);
 		SetMyRegLong("BarMeter", "BarMeterVL_Horizontal", 0);
 		SetMyRegLong("BarMeter", "ColorBarMeterVL", 65280);
 		SetMyRegLong("BarMeter", "ColorBarMeterVL_Mute", 255);
-		SetMyRegLong("BarMeter", "BarMeterVL_Right", 150);
+		SetMyRegLong("BarMeter", "BarMeterVL_Right", 290);
 		SetMyRegLong("BarMeter", "BarMeterVL_Width", 5);
 		SetMyRegLong("BarMeter", "BarMeterVL_Bottom", 0);
 		SetMyRegLong("BarMeter", "BarMeterVL_Top", 0);
@@ -2027,7 +2027,7 @@ void CreateDefaultIniFile_Win10(const wchar_t* fnameW)
 		SetMyRegLong("BarMeter", "ColorBarMeterBL_High", 65280);
 		SetMyRegLong("BarMeter", "ColorBarMeterBL_Mid", 65535);
 		SetMyRegLong("BarMeter", "ColorBarMeterBL_Low", 255);
-		SetMyRegLong("BarMeter", "BarMeterBL_Right", 130);
+		SetMyRegLong("BarMeter", "BarMeterBL_Right", 210);
 		SetMyRegLong("BarMeter", "BarMeterBL_Width", 5);
 		SetMyRegLong("BarMeter", "BarMeterBL_Bottom", 0);
 		SetMyRegLong("BarMeter", "BarMeterBL_Top", 0);
@@ -2036,7 +2036,7 @@ void CreateDefaultIniFile_Win10(const wchar_t* fnameW)
 		SetMyRegLong("BarMeter", "ColorBarMeterCU_High", 255);
 		SetMyRegLong("BarMeter", "ColorBarMeterCU_Mid", 65535);
 		SetMyRegLong("BarMeter", "ColorBarMeterCU_Low", 65280);
-		SetMyRegLong("BarMeter", "BarMeterCU_Right", 110);
+		SetMyRegLong("BarMeter", "BarMeterCU_Right", 170);
 		SetMyRegLong("BarMeter", "BarMeterCU_Width", 5);
 		SetMyRegLong("BarMeter", "BarMeterCU_Bottom", 0);
 		SetMyRegLong("BarMeter", "BarMeterCU_Top", 0);
@@ -2054,10 +2054,10 @@ void CreateDefaultIniFile_Win10(const wchar_t* fnameW)
 		SetMyRegLong("BarMeter", "ColorBarMeterNet_Send", 255);
 		SetMyRegLong("BarMeter", "BarMeterNet_Width", 5);
 		SetMyRegLong("BarMeter", "BarMeterNetRecv_Top", 0);
-		SetMyRegLong("BarMeter", "BarMeterNetRecv_Right", 160);
+		SetMyRegLong("BarMeter", "BarMeterNetRecv_Right", 300);
 		SetMyRegLong("BarMeter", "BarMeterNetRecv_Bottom", 0);
 		SetMyRegLong("BarMeter", "BarMeterNetSend_Top", 0);
-		SetMyRegLong("BarMeter", "BarMeterNetSend_Right", 170);
+		SetMyRegLong("BarMeter", "BarMeterNetSend_Right", 310);
 		SetMyRegLong("BarMeter", "BarMeterNetSend_Bottom", 0);
 		SetMyRegLong("BarMeter", "BarMeterNet_Horizontal", 0);
 		SetMyRegLong("BarMeter", "BarMeterVL_HorizontalToLeft", 0);

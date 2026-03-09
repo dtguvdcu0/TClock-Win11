@@ -116,7 +116,7 @@ static pfnGetIpAddrTable pGetIpAddrTable;
 
 char  strNetworkAdapterDescriptor[MAXLEN_IFDESCR];
 
-extern int megabytesInGigaByte;
+extern const int kMegabytesPerGigabyte;
 int bytesInGigaByte;
 
 static BOOL IsUnsetIP(const char* s)
@@ -284,7 +284,7 @@ void Net_start(void)
 
 
 
-	bytesInGigaByte = 1024 * 1024 * megabytesInGigaByte;
+	bytesInGigaByte = 1024 * 1024 * kMegabytesPerGigabyte;
 
 
 

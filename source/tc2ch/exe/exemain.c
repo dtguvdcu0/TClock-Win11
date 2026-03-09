@@ -1884,14 +1884,6 @@ void CreateDefaultIniFile_Win10(const wchar_t* fnameW)
 		SetMyRegLong("Color_Font", "FontSize", 12);
 		SetMyRegLong("Color_Font", "TextPos", 0);
 		SetMyRegLong("Color_Font", "UseAllColor", 0);
-		SetMyRegLong("Color_Font", "UseDateColor", 0);
-		SetMyRegLong("Color_Font", "UseDowColor", 0);
-		SetMyRegLong("Color_Font", "UseTimeColor", 0);
-		SetMyRegLong("Color_Font", "UseVPNColor", 0);
-		SetMyRegLong("Color_Font", "Saturday_TextColor", 13172680);
-		SetMyRegLong("Color_Font", "Sunday_TextColor", 13158655);
-		SetMyRegLong("Color_Font", "Holiday_TextColor", 13158655);
-		SetMyRegLong("Color_Font", "VPN_TextColor", 16776960);
 		SetMyRegLong("Color_Font", "AutoBackMatchTaskbar", 1);
 		SetMyRegLong("Color_Font", "AutoBackAlpha", 255);
 		SetMyRegLong("Color_Font", "AutoBackBlendRatio", 50);
@@ -1990,6 +1982,8 @@ void CreateDefaultIniFile_Win10(const wchar_t* fnameW)
 		SetMyRegLong("TCalendar", "Enable", 0);
 		SetMyRegLong("TCalendar", "Alart", 1);
 		SetMyRegStr("TCalendar", "Path", "plugins\\TCalendar.exe");
+		SetMyRegLong("TCycle", "Enable", 0);
+		SetMyRegStr("TCycle", "Path", "plugins\\TCycle.exe");
 		SetMyRegLong("Chime", "EnableChime", 0);
 		SetMyRegLong("Chime", "OffsetChimeSec", 0);
 		SetMyRegLong("Chime", "ChimeHourStart", 0);

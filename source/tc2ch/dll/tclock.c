@@ -2920,34 +2920,26 @@ void ReadData()
 
 	ColorSaturdayText = (COLORREF)GetMyRegLong("Color_Font", "Saturday_TextColor", 0x00C8FFC8);
 	//if (ColorSaturdayText & 0x80000000) ColorSaturdayText = GetSysColor(ColorSaturdayText & 0x00ffffff);
-	SetMyRegLong("Color_Font", "Saturday_TextColor", ColorSaturdayText);
 
 	ColorSundayText = (COLORREF)GetMyRegLong("Color_Font", "Sunday_TextColor", 0x00C8C8FF);
 	//if (ColorSundayText & 0x80000000) ColorSundayText = GetSysColor(ColorSundayText & 0x00ffffff);
-	SetMyRegLong("Color_Font", "Sunday_TextColor", ColorSundayText);
 
 	ColorHolidayText = (COLORREF)GetMyRegLong("Color_Font", "Holiday_TextColor", 0x00C8C8FF);
 	//if (ColorHolidayText & 0x80000000) ColorHolidayText = GetSysColor(ColorHolidayText & 0x00ffffff);
-	SetMyRegLong("Color_Font", "Holiday_TextColor", ColorHolidayText);
 
 	ColorVPNText = (COLORREF)GetMyRegLong("Color_Font", "VPN_TextColor", 0x00FFFF00);
 	//if (ColorVPNText & 0x80000000) ColorVPNText = GetSysColor(ColorVPNText & 0x00ffffff);
-	SetMyRegLong("Color_Font", "VPN_TextColor", ColorVPNText);
 
 	bUseAllColor = GetMyRegLong("Color_Font", "UseAllColor", FALSE);
 	SetMyRegLong("Color_Font", "UseAllColor", bUseAllColor);
 
 	bUseVPNColor = GetMyRegLong("Color_Font", "UseVPNColor", FALSE);
-	SetMyRegLong("Color_Font", "UseVPNColor", bUseVPNColor);
 
 	bUseDateColor = GetMyRegLong("Color_Font", "UseDateColor", FALSE);
-	SetMyRegLong("Color_Font", "UseDateColor", bUseDateColor);
 
 	bUseDowColor = GetMyRegLong("Color_Font", "UseDowColor", FALSE);
-	SetMyRegLong("Color_Font", "UseDowColor", bUseDowColor);
 
 	bUseTimeColor = GetMyRegLong("Color_Font", "UseTimeColor", FALSE);
-	SetMyRegLong("Color_Font", "UseTimeColor", bUseTimeColor);
 
 
 	bGraph = GetMyRegLong("Graph", "BackNet", FALSE);

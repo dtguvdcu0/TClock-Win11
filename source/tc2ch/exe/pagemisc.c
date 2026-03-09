@@ -54,9 +54,6 @@ BOOL CALLBACK PageMiscProc(HWND hDlg, UINT message,
 				}
 				break;
 				//  readme.txtを開く
-			case IDC_README1:
-				My2chHelp(GetParent(hDlg));
-				break;
 			}
 			return TRUE;
 		}
@@ -64,7 +61,6 @@ BOOL CALLBACK PageMiscProc(HWND hDlg, UINT message,
 			switch(((NMHDR *)lParam)->code)
 			{
 				case PSN_APPLY: OnApply(hDlg); break;
-				case PSN_HELP: My2chHelp(GetParent(hDlg)); break;
 			}
 			return TRUE;
 	}

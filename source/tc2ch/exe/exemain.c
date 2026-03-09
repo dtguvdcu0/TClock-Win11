@@ -1778,31 +1778,6 @@ BOOL CheckDLL(const char *fname)
 }
 
 
-void My2chHelp(HWND hwnd)
-{
-	char helpurl[1024];
-	char helpurlUtf8[1024];
-
-	GetMyRegStr("ETC", "2chHelpURL", helpurl, 1024, "");
-	if (helpurl[0] == 0)
-	{
-		strcpy(helpurl, MyStringUTF8(IDS_HELP2CH));
-		SetMyRegStr("ETC", "2chHelpURL", helpurl);
-	}
-
-	lstrcpyn(helpurlUtf8, helpurl, (int)sizeof(helpurlUtf8));
-	{
-		char before[1024];
-		lstrcpyn(before, helpurlUtf8, (int)sizeof(before));
-		NormalizeSettingUtf8InPlace(helpurlUtf8, (int)sizeof(helpurlUtf8));
-		if (lstrcmp(before, helpurlUtf8) != 0) {
-			SetMyRegStr("ETC", "2chHelpURL", helpurlUtf8);
-		}
-	}
-
-	ShellExecuteUtf8Strict(hwnd, NULL, helpurlUtf8, NULL, "", SW_SHOW);
-}
-
 
 
 
@@ -1883,14 +1858,8 @@ void CreateDefaultIniFile_Win10(const wchar_t* fnameW)
 		SetMyRegLong(NULL, "OffsetClockMS", 0);
 		SetMyRegLong(NULL, "ShowTrayIcon", 1);
 		SetMyRegLong("Status_DoNotEdit", "SafeMode", 0);
-		SetMyRegLong("Status_DoNotEdit", "LastLaunchTimeStamp", 0);
-		SetMyRegLong("Status_DoNotEdit", "ExcessNetProfiles", 0);
-		SetMyRegLong("Status_DoNotEdit", "ExistLTEProfile", 0);
-		SetMyRegLong("Status_DoNotEdit", "ExistMeteredProfile", 0);
 		SetMyRegLong("Status_DoNotEdit", "PreviousLTEProfNumber", 0);
 		SetMyRegLong("Status_DoNotEdit", "BatteryLifeAvailable", 1);
-		SetMyRegLong("Status_DoNotEdit", "CurrentInternetProfileNumber", 2);
-		SetMyRegLong("Status_DoNotEdit", "NumberOfProfiles", 5);
 		SetMyRegLong("Status_DoNotEdit", "TimerCountForSec", 985);
 		SetMyRegLong("Status_DoNotEdit", "ModernStandbySupported", 1);
 		SetMyRegLong("Status_DoNotEdit", "CountAutoRestart", 0);
@@ -1913,7 +1882,7 @@ void CreateDefaultIniFile_Win10(const wchar_t* fnameW)
 		SetMyRegLong("Color_Font", "ShadowColor", 0);
 		SetMyRegStr("Color_Font", "Font", "MS Gothic");
 		SetMyRegLong("Color_Font", "FontSize", 12);
-		SetMyRegLong("Color_Font", "TextPos", 2);
+		SetMyRegLong("Color_Font", "TextPos", 0);
 		SetMyRegLong("Color_Font", "UseAllColor", 0);
 		SetMyRegLong("Color_Font", "UseDateColor", 0);
 		SetMyRegLong("Color_Font", "UseDowColor", 0);
@@ -1925,9 +1894,9 @@ void CreateDefaultIniFile_Win10(const wchar_t* fnameW)
 		SetMyRegLong("Color_Font", "VPN_TextColor", 16776960);
 		SetMyRegLong("Color_Font", "AutoBackMatchTaskbar", 1);
 		SetMyRegLong("Color_Font", "AutoBackAlpha", 255);
-		SetMyRegLong("Color_Font", "AutoBackBlendRatio", 30);
+		SetMyRegLong("Color_Font", "AutoBackBlendRatio", 50);
 		SetMyRegLong("Color_Font", "AutoBackRefreshSec", 1);
-		SetMyRegLong("Color_Font", "AutoBackSampleClockOffset", 2);
+		SetMyRegLong("Color_Font", "AutoBackSampleClockOffset", 0);
 		SetMyRegLong("Color_Font", "AutoBackSampleShowDesktopOffset", 0);
 		SetMyRegLong("Color_Font", "AutoBackSnapshotColor", 15000804);
 		SetMyRegLong("Color_Font", "AutoBackSnapshotColor2", 12895428);
@@ -2006,7 +1975,6 @@ void CreateDefaultIniFile_Win10(const wchar_t* fnameW)
 		SetMyRegStr("ETC", "LTEString", "LTE");
 		SetMyRegStr("ETC", "LTEChar", "L");
 		SetMyRegStr("ETC", "MuteString", "*");
-		SetMyRegStr("ETC", "2chHelpURL", "http://tclock2ch.no.land.to/");
 		SetMyRegLong("ETC", "NetMIX_Length", 10);
 		SetMyRegLong("ETC", "SSID_AP_Length", 10);
 		SetMyRegLong("ETC", "MegabytesInGigaByte", 1000);

@@ -1740,8 +1740,6 @@ extern int internetConnectProfNum;
 
 extern int megabytesInGigaByte;
 
-
-extern BOOL flag_SoftEther;
 extern BOOL flag_VPN;
 extern int active_physical_adapter_Win10;
 

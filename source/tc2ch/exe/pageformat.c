@@ -112,7 +112,6 @@ BOOL CALLBACK PageFormatProc(HWND hDlg, UINT message,
 			switch(((NMHDR *)lParam)->code)
 			{
 				case PSN_APPLY: OnApply(hDlg); break;
-				case PSN_HELP: My2chHelp(GetParent(hDlg)); break;
 			}
 			return TRUE;
 		case WM_DESTROY:

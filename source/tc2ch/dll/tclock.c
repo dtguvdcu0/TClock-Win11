@@ -547,7 +547,6 @@ int WinBuildNumber = 0;
 
 char g_mydir_dll[MAX_PATH]; // path to tclock.exe
 
-char strSoftEtherKeyword[64];
 char strVPN_Keywords[256];
 char strVPN_Excludes[256];
 char strEthernet_Keywords[256];
@@ -2716,6 +2715,14 @@ static void LoadKeywordCsv(char* out, int cch_out, const char* section, const ch
 	}
 }
 
+static void LoadVpnKeywordCsv(char* out, int cch_out)
+{
+	LoadKeywordCsv(out, cch_out, "VPN", "VPNKeywords", "VPN_Keyword");
+	if (out[0] != '\0') return;
+
+	AppendKeywordCsv(out, cch_out, "VPN");
+}
+
 void ReadData()
 {
 	int i;
@@ -2998,14 +3005,7 @@ void ReadData()
 	megabytesInGigaByte = GetMyRegLong("ETC", "MegabytesInGigaByte", 1000);
 	if (megabytesInGigaByte != 1024) megabytesInGigaByte = 1000;
 	SetMyRegLong("ETC", "MegabytesInGigaByte", megabytesInGigaByte);
-
-
-
-
-	GetMyRegStr("VPN", "SoftEtherKeyword", strSoftEtherKeyword, (int)sizeof(strSoftEtherKeyword), "VPN Client Adapter");
-	SetMyRegStr("VPN", "SoftEtherKeyword", strSoftEtherKeyword);
-
-	LoadKeywordCsv(strVPN_Keywords, (int)sizeof(strVPN_Keywords), "VPN", "VPNKeywords", "VPN_Keyword");
+	LoadVpnKeywordCsv(strVPN_Keywords, (int)sizeof(strVPN_Keywords));
 	if (strVPN_Keywords[0]) {
 		SetMyRegStr("VPN", "VPNKeywords", strVPN_Keywords);
 	}

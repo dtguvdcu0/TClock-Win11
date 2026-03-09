@@ -39,12 +39,10 @@ extern LONG GetMyRegLong(const char* section, const char* entry, LONG defval);
 //extern BOOL b_UseDataPlanFunction;
 
 BOOL flag_Ether, flag_WiFi, flag_LTE, flag_VPNCheck;
-BOOL flag_SoftEther = FALSE;
 BOOL flag_VPN = FALSE;
 
 int active_physical_adapter_Win10 = -1; //-1: No active adapter, 0: Ether, 1: WiFi, 2: LTE
 
-extern char strSoftEtherKeyword[];
 extern char strVPN_Keywords[];
 extern char strVPN_Excludes[];
 extern char strEthernet_Keywords[];
@@ -258,7 +256,7 @@ void Net_clear_Win10(void)
 	net[18] = 0;
 
 	flag_Ether = flag_WiFi = flag_LTE = flag_VPNCheck = FALSE;
-	flag_SoftEther = flag_VPN = FALSE;
+	flag_VPN = FALSE;
 
 	active_physical_adapter_Win10 = -1;
 
@@ -413,7 +411,7 @@ void Net_getRecvSend_Win10(double* recv, double* send, double* recvWAN, double* 
 {
 
 	flag_Ether = flag_WiFi = flag_LTE = flag_VPNCheck = FALSE;
-	flag_SoftEther = flag_VPN = FALSE;
+	flag_VPN = FALSE;
 	number_ActiveNet = 0;
 
 
@@ -526,17 +524,14 @@ void Net_getRecvSend_Win10(double* recv, double* send, double* recvWAN, double* 
 				//		|| (ifr->dwType == MIB_IF_TYPE_PPP))
 				//	&&
 				if (
-					((HasKeyword(ifDescr, strSoftEtherKeyword))
-						|| HasKeywordCsv(ifDescr, strVPN_Keywords)) &&
+					HasKeywordCsv(ifDescr, strVPN_Keywords) &&
 					(!HasKeywordCsv(ifDescr, strVPN_Excludes)) &&
 						(ifr->dwOperStatus == IF_OPER_STATUS_OPERATIONAL))
 				{
 					flag_VPNCheck = TRUE;
 					number_ActiveNet++;
 
-
 					flag_VPN = TRUE;
-					if (HasKeyword(ifDescr, strSoftEtherKeyword)) flag_SoftEther = TRUE;
 
 					ifIndex_VPN = (int)ifr->dwIndex;
 

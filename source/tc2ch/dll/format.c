@@ -1725,6 +1725,9 @@ extern int CPUUsage[];
 extern double net[];
 extern double diskFree[];
 extern double diskAll[];
+extern double diskRateRead[];
+extern double diskRateWrite[];
+extern double diskRateTotal[];
 extern int blt_h, blt_m, blt_s, pw_mode;
 extern BYTE bat_flag;	//added for charge status by TTTT
 extern BOOL b_Charging;
@@ -2598,6 +2601,51 @@ static void tc_net_auto_label_w(WCHAR* out, int outcch, double netk, double netm
 	}
 }
 
+static void tc_diskrate_auto_label_w(WCHAR* out, int outcch, double bytesPerSec)
+{
+	double kbytesPerSec;
+	double mbytesPerSec;
+	double gbytesPerSec;
+
+	if (!out || outcch <= 0) return;
+	if (bytesPerSec < 0.0) bytesPerSec = 0.0;
+
+	kbytesPerSec = bytesPerSec / 1024.0;
+	mbytesPerSec = kbytesPerSec / 1024.0;
+	gbytesPerSec = mbytesPerSec / 1024.0;
+
+	if (bytesPerSec < 1024.0) {
+		swprintf(out, outcch, L"%4.0fB/s", bytesPerSec);
+	}
+	else if (kbytesPerSec < 10.0) {
+		swprintf(out, outcch, L"%1.2fKB/s", kbytesPerSec);
+	}
+	else if (kbytesPerSec < 100.0) {
+		swprintf(out, outcch, L"%2.1fKB/s", kbytesPerSec);
+	}
+	else if (kbytesPerSec < 1024.0) {
+		swprintf(out, outcch, L"%4.0fKB/s", kbytesPerSec);
+	}
+	else if (mbytesPerSec < 10.0) {
+		swprintf(out, outcch, L"%1.2fMB/s", mbytesPerSec);
+	}
+	else if (mbytesPerSec < 100.0) {
+		swprintf(out, outcch, L"%2.1fMB/s", mbytesPerSec);
+	}
+	else if (mbytesPerSec < 1024.0) {
+		swprintf(out, outcch, L"%4.0fMB/s", mbytesPerSec);
+	}
+	else if (gbytesPerSec < 10.0) {
+		swprintf(out, outcch, L"%1.2fGB/s", gbytesPerSec);
+	}
+	else if (gbytesPerSec < 100.0) {
+		swprintf(out, outcch, L"%2.1fGB/s", gbytesPerSec);
+	}
+	else {
+		swprintf(out, outcch, L"%4.0fGB/s", gbytesPerSec);
+	}
+}
+
 static BOOL tc_scan_network_token_w(const WCHAR** psp)
 {
 	const WCHAR* p;
@@ -2764,6 +2812,31 @@ static BOOL tc_scan_hdd_token_w(const WCHAR** psp)
 	return TRUE;
 }
 
+static BOOL tc_scan_diskrate_token_w(const WCHAR** psp)
+{
+	const WCHAR* p;
+	const WCHAR* q;
+	int dv;
+
+	if (!psp || !*psp) return FALSE;
+	p = *psp;
+	if (*p != L'H') return FALSE;
+	if (*(p + 1) != L'R' && *(p + 1) != L'W' && *(p + 1) != L'D') return FALSE;
+	if (!tc_hdd_token_dv_w(*(p + 2), &dv)) return FALSE;
+	if (dv < 0 || dv >= 26) return FALSE;
+	if (*(p + 3) != L'B' && *(p + 3) != L'K' && *(p + 3) != L'M' && *(p + 3) != L'A') return FALSE;
+	p += 4;
+	q = p;
+	if (tc_parse_num_format_w(&q, NULL, NULL, NULL)) p = q;
+	if (*p == L'.') {
+		p++;
+		q = p;
+		if (tc_parse_num_format_w(&q, NULL, NULL, NULL)) p = q;
+	}
+	*psp = p;
+	return TRUE;
+}
+
 static BOOL tc_emit_hdd_token_w(WCHAR** dp, int* remain, const WCHAR** psp)
 {
 	const WCHAR* p;
@@ -2836,6 +2909,78 @@ static BOOL tc_emit_hdd_token_w(WCHAR** dp, int* remain, const WCHAR** psp)
 			p = p2;
 		}
 	}
+	*psp = p;
+	return TRUE;
+}
+
+static BOOL tc_emit_diskrate_token_w(WCHAR** dp, int* remain, const WCHAR** psp)
+{
+	const WCHAR* p;
+	const WCHAR* p2;
+	double rate = -1.0;
+	int dv;
+	int len = 1;
+	int slen = 0;
+	BOOL bComma = FALSE;
+	WCHAR mode;
+	WCHAR unit;
+
+	if (!dp || !*dp || !remain || !psp || !*psp) return FALSE;
+	p = *psp;
+	if (*p != L'H') return FALSE;
+	mode = *(p + 1);
+	unit = *(p + 3);
+	if (mode != L'R' && mode != L'W' && mode != L'D') return FALSE;
+	if (!tc_hdd_token_dv_w(*(p + 2), &dv)) return FALSE;
+	if (dv < 0 || dv >= 26) return FALSE;
+	if (unit != L'B' && unit != L'K' && unit != L'M' && unit != L'A') return FALSE;
+
+	if (mode == L'R') rate = diskRateRead[dv];
+	else if (mode == L'W') rate = diskRateWrite[dv];
+	else rate = diskRateTotal[dv];
+
+	if (rate < 0.0) rate = 0.0;
+
+	if (unit == L'A') {
+		WCHAR buf[32];
+		tc_diskrate_auto_label_w(buf, (int)(sizeof(buf) / sizeof(buf[0])), rate);
+		tc_wappend_text(dp, remain, buf);
+		*psp = p + 4;
+		return TRUE;
+	}
+
+	if (unit == L'K') rate /= 1024.0;
+	else if (unit == L'M') rate /= (1024.0 * 1024.0);
+
+	p += 4;
+	{
+		int ratei;
+		p2 = p;
+		if (tc_parse_num_format_w(&p2, &len, &slen, &bComma)) p = p2;
+		ratei = (int)rate;
+		if (ratei < 0) ratei = 0;
+		tc_wappend_num_format(dp, remain, ratei, len, slen, bComma);
+		rate = rate - (double)ratei;
+		if (*p == L'.') {
+			int dlen;
+			int dslen;
+			BOOL dComma = FALSE;
+			int frac;
+			p++;
+			p2 = p;
+			if (tc_parse_num_format_w(&p2, &dlen, &dslen, &dComma)) {
+				int fmtLen = dlen;
+				if (fmtLen > 3) fmtLen = 3;
+				tc_wappend_char(dp, remain, L'.');
+				while (fmtLen-- > 0) rate *= 10.0;
+				frac = (int)rate;
+				if (frac < 0) frac = 0;
+				tc_wappend_num_format(dp, remain, frac, dlen > 3 ? 3 : dlen, 0, FALSE);
+				p = p2;
+			}
+		}
+	}
+
 	*psp = p;
 	return TRUE;
 }
@@ -3229,6 +3374,7 @@ static BOOL tc_wfmt_core(WCHAR* s, int sCch, char* s_info, SYSTEMTIME* pt, int b
 				{ WCHAR* mark = dp; if (tc_emit_memory_token_w(&dp, &remain, &sp)) { tc_iappend_span(&ip, &infoRemain, mark, dp, 0x01); continue; } }
 				{ WCHAR* mark = dp; if (tc_emit_network_token_w(&dp, &remain, &sp)) { tc_iappend_span(&ip, &infoRemain, mark, dp, 0x01); continue; } }
 				{ WCHAR* mark = dp; if (tc_emit_hdd_token_w(&dp, &remain, &sp)) { tc_iappend_span(&ip, &infoRemain, mark, dp, 0x01); continue; } }
+				{ WCHAR* mark = dp; if (tc_emit_diskrate_token_w(&dp, &remain, &sp)) { tc_iappend_span(&ip, &infoRemain, mark, dp, 0x01); continue; } }
 				if (*sp == L'G' && *(sp + 1) == L'I' && *(sp + 2) == L'P') {
 					WCHAR* mark = dp;
 					char gipBuf[TC_GIP_VALUE_MAX];
@@ -3716,6 +3862,14 @@ DWORD FindFormat(char* fmt)
 					sp += 4;
 					ret |= FORMAT_NET;
 				}
+				else if(*sp == 'H' && (*(sp + 1) == 'R' || *(sp + 1) == 'W' || *(sp + 1) == 'D') && (*(sp + 2) >= 'A' && *(sp + 2) <= 'Z') && (*(sp + 3) == 'B' || *(sp + 3) == 'K' || *(sp + 3) == 'M' || *(sp + 3) == 'A'))
+				{
+					int dv;
+					dv = *(sp + 2) - 'A';
+					actdvl[dv] = 1;
+					sp += 4;
+					ret |= FORMAT_HDD;
+				}
 				else if(*sp == 'H' && (*(sp + 1) == 'A' || *(sp + 1) == 'U' || *(sp + 1) == 'T') && (*(sp + 2) >= 'A' && *(sp + 2) <= 'Z') && (*(sp + 3) == 'M' || *(sp + 3) == 'G' || *(sp + 3) == 'P'))
 				{
 					int dv;
@@ -3862,6 +4016,14 @@ DWORD FindFormatW(const WCHAR* fmt)
 				{
 					sp += 4;
 					ret |= FORMAT_NET;
+				}
+				else if (*sp == L'H' && (*(sp + 1) == L'R' || *(sp + 1) == L'W' || *(sp + 1) == L'D') && (*(sp + 2) >= L'A' && *(sp + 2) <= L'Z') && (*(sp + 3) == L'B' || *(sp + 3) == L'K' || *(sp + 3) == L'M' || *(sp + 3) == L'A'))
+				{
+					int dv;
+					dv = (int)(*(sp + 2) - L'A');
+					actdvl[dv] = 1;
+					sp += 4;
+					ret |= FORMAT_HDD;
 				}
 				else if (*sp == L'H' && (*(sp + 1) == L'A' || *(sp + 1) == L'U' || *(sp + 1) == L'T') && (*(sp + 2) >= L'A' && *(sp + 2) <= L'Z') && (*(sp + 3) == L'M' || *(sp + 3) == L'G' || *(sp + 3) == L'T' || *(sp + 3) == L'P'))
 				{

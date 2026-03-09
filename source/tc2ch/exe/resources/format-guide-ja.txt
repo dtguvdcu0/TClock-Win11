@@ -81,6 +81,10 @@ CPU:
   HAxM / HAxG / HAxT / HAxP       ドライブ x の空き容量を MB / GB / TB / % で表示します。
   HUxM / HUxG / HUxT / HUxP       ドライブ x の使用量を MB / GB / TB / % で表示します。
   HTxM / HTxG / HTxT              ドライブ x の総容量を MB / GB / TB で表示します。
+  HRxB / HRxK / HRxM              ドライブ x の読み込み速度を B/s / KB/s / MB/s で表示します。
+  HWxB / HWxK / HWxM              ドライブ x の書き込み速度を B/s / KB/s / MB/s で表示します。
+  HDxB / HDxK / HDxM              ドライブ x の合計転送速度を B/s / KB/s / MB/s で表示します。
+  HRxA / HWxA / HDxA              ドライブ x の転送速度を自動単位で表示します。
   x = A..Z                        *補足:ドライブレターを直接指定します。
   x = 0..9                        *補足: AdditionalMountPath0..9 を参照します。
 

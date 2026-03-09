@@ -313,6 +313,11 @@ void Net_UpdateInterfaceTable(void);
 // hdd.c
 void Hdd_get(void);
 
+// diskrate.c
+void DiskRate_start(void);
+int DiskRate_get(void);
+void DiskRate_end(void);
+
 /* tooltip.c */
 void TooltipInit(HWND hwnd);
 void TooltipReadData(void);

@@ -1205,6 +1205,7 @@ void InitClock()
 	GPUMoni_start(); // gpumon.c
 	TempMoni_start(); //tempmon.c
 	Net_start();     // net.c
+	DiskRate_start(); // diskrate.c
 
 	CheckBatteryAvailability();
 
@@ -2003,6 +2004,7 @@ void EndClock(void)
 	GPUMoni_end(); // gpumon.c
 	TempMoni_end();
 	Net_end();     // net.c
+	DiskRate_end(); // diskrate.c
 
 	if(hwndClockMain && IsWindow(hwndClockMain))
 	{
@@ -6730,6 +6732,7 @@ void UpdateSysRes(BOOL bbattery, BOOL bmem, BOOL bnet, BOOL bhdd, BOOL bcpu, BOO
 	if(bhdd)
 	{
 		Hdd_get();
+		DiskRate_get();
 	}
 
 	if (btemp)

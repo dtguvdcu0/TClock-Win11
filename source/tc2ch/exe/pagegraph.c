@@ -21,7 +21,7 @@ static HFONT hfontb;
 
 static COMBOCOLOR combocolor[3] = {
 	{ IDC_COLSEND, "BackNetColSend", RGB(192, 192, 255) }	,
-	{ IDC_COLSR, "BackNetColSR", RGB(255, 224, 255) }		,
+	{ IDC_COLSR, "BackNetColSR", RGB(128, 0, 128) }		,
 	{ IDC_COLRECV, "BackNetColRecv", RGB(255, 192, 192) }
 };
 
@@ -180,12 +180,12 @@ void OnInit(HWND hDlg)
 		GetMyRegLong("Graph", "BackNet", FALSE));
 
 	CheckDlgButton(hDlg, IDC_GPUGRAPH,
-		GetMyRegLong("Graph", "EnableGPUGraph", FALSE));
+		GetMyRegLong("Graph", "EnableGPUGraph", TRUE));
 
 	OnTrayGraph(hDlg);
 
-	SetDlgItemInt(hDlg, IDC_TBGGRAPHRATE, GetMyRegLong("Graph", "NetGraphScaleRecv", 1000), FALSE);
-	SetDlgItemInt(hDlg, IDC_TBGGRAPHRATE2, GetMyRegLong("Graph", "NetGraphScaleSend", 1000), FALSE);
+	SetDlgItemInt(hDlg, IDC_TBGGRAPHRATE, GetMyRegLong("Graph", "NetGraphScaleRecv", 100), FALSE);
+	SetDlgItemInt(hDlg, IDC_TBGGRAPHRATE2, GetMyRegLong("Graph", "NetGraphScaleSend", 100), FALSE);
 
 	tempWidth = (int)GetMyRegLong("Status_DoNotEdit", "ClockWidth", 0);
 	tempHeight = (int)GetMyRegLong("Status_DoNotEdit", "ClockHeight", 0);
@@ -207,7 +207,7 @@ void OnInit(HWND hDlg)
 	SendDlgItemMessage(hDlg, IDC_SPGRAPHTOP, UDM_SETPOS, 0,
 		(int)(short)dw);
 
-	dw = GetMyRegLong("Graph", "GraphRight", 0);
+	dw = GetMyRegLong("Graph", "GraphRight", 1);
 	if(dw > 1000) dw = 1000;
 	if(dw < 0  ) dw = 0;
 	SendDlgItemMessage(hDlg,IDC_SPGRAPHRIGHT,UDM_SETRANGE,0,
@@ -215,7 +215,7 @@ void OnInit(HWND hDlg)
 	SendDlgItemMessage(hDlg, IDC_SPGRAPHRIGHT, UDM_SETPOS, 0,
 		(int)(short)dw);
 
-	dw = GetMyRegLong("Graph", "GraphBottom", 0);
+	dw = GetMyRegLong("Graph", "GraphBottom", 1);
 	if(dw > 1000) dw = 1000;
 	if(dw < 0  ) dw = 0;
 	SendDlgItemMessage(hDlg,IDC_SPGRAPHBOTTOM,UDM_SETRANGE,0,

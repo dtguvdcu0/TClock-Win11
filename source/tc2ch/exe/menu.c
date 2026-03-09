@@ -1301,15 +1301,24 @@ static void tc_menu_section_cache_get_str(const TC_MENU_SECTION_CACHE* cache, co
 {
 	const char* s;
 	if (!out || outBytes <= 0) return;
-	if (tc_menu_try_get_utf8hex_value(cache, key, out, outBytes)) {
-		return;
-	}
 	s = tc_menu_section_cache_find(cache, key);
 	if (s) {
+		if (!tc_menu_should_keep_utf8_value(key) || !s[0] || tc_menu_is_valid_utf8_text(s)) {
+			lstrcpyn(out, s, outBytes);
+			/* Keep UTF-8 bytes from UTF-8 cache as-is; textual fields already use UTF-8-safe consumers,
+			 * and non-text control keys are ASCII-token contracts. */
+			return;
+		}
+		if (tc_menu_try_get_utf8hex_value(cache, key, out, outBytes)) {
+			return;
+		}
 		lstrcpyn(out, s, outBytes);
 		/* Keep UTF-8 bytes from UTF-8 cache as-is; textual fields already use UTF-8-safe consumers,
 		 * and non-text control keys are ASCII-token contracts. */
 	} else {
+		if (tc_menu_try_get_utf8hex_value(cache, key, out, outBytes)) {
+			return;
+		}
 		lstrcpyn(out, defval ? defval : "", outBytes);
 	}
 }

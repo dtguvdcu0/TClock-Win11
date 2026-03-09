@@ -159,7 +159,7 @@ static void ClearLegacyKeywordList(const char* section, const char* legacy_prefi
 
 	for (index = 1; index <= 5; index++) {
 		wsprintf(entry, "%s%d", legacy_prefix, index);
-		SetMyRegStr(section, entry, "");
+		DelMyReg(section, entry);
 	}
 }
 
@@ -216,15 +216,18 @@ void OnApply(HWND hDlg)
 	int sel;
 
 	GetDlgItemTextUTF8(hDlg, IDC_ETHERNET_KEYWORD1, str, (int)sizeof(str));
-	SetMyRegStr("ETC", "EthernetKeywords", str);
+	if (str[0]) SetMyRegStr("ETC", "EthernetKeywords", str);
+	else DelMyReg("ETC", "EthernetKeywords");
 	ClearLegacyKeywordList("ETC", "Ethernet_Keyword");
 
 	GetDlgItemTextUTF8(hDlg, IDC_VPN_KEYWORD1, str, (int)sizeof(str));
-	SetMyRegStr("VPN", "VPNKeywords", str);
+	if (str[0]) SetMyRegStr("VPN", "VPNKeywords", str);
+	else DelMyReg("VPN", "VPNKeywords");
 	ClearLegacyKeywordList("VPN", "VPN_Keyword");
 
 	GetDlgItemTextUTF8(hDlg, IDC_VPN_EXCLUDE1, str, (int)sizeof(str));
-	SetMyRegStr("VPN", "VPNExcludeKeywords", str);
+	if (str[0]) SetMyRegStr("VPN", "VPNExcludeKeywords", str);
+	else DelMyReg("VPN", "VPNExcludeKeywords");
 	ClearLegacyKeywordList("VPN", "VPN_Exclude");
 
 	SetMyRegLong("ETC", "GipEnabled", (IsDlgButtonChecked(hDlg, IDC_GIP_ENABLE) == BST_CHECKED) ? 1 : 0);

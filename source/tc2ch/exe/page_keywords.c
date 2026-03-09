@@ -73,9 +73,6 @@ INT_PTR CALLBACK PageKeywordProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
 			case PSN_APPLY: 
 				OnApply(hDlg); 
 				break;
-			case PSN_HELP:
-				My2chHelp(GetParent(hDlg));
-				break;
 			}
 			return TRUE;
 	}

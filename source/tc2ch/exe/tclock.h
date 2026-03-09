@@ -213,8 +213,6 @@ int GetMouseFuncCount(void);
 HINSTANCE LoadLanguageDLL(char *fname); // load language dll (compat: writable output buffer)
 HINSTANCE GetLangModule(void);      // instance handle of language dll
 
-void My2chHelp(HWND hDlg);  // show 2ch help
-
 //void CreateTClockTrayIcon(HWND hWnd, PNOTIFYICONDATA lp_notifyicon);	//20220323 Ver4.12, by MMM
 void CreateTClockTrayIcon(BOOL bCreate);	//20220323 Ver4.12, by MMM
 

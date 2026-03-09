@@ -2894,7 +2894,7 @@ void ReadData()
 
 	GetMyRegStr("Color_Font", "Font", fontname, 80, "");
 
-	fontsize = GetMyRegLong("Color_Font", "FontSize", 9);
+	fontsize = GetMyRegLong("Color_Font", "FontSize", 12);
 	weight = GetMyRegLong("Color_Font", "Bold", 0);
 	if(weight) weight = FW_BOLD;
 	else weight = 0;

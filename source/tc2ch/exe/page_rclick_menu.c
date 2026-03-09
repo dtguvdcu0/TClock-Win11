@@ -842,9 +842,6 @@ BOOL CALLBACK PageRClickMenuProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
         case PSN_APPLY:
             rm_on_apply(hDlg);
             return TRUE;
-        case PSN_HELP:
-            My2chHelp(GetParent(hDlg));
-            return TRUE;
         }
         break;
     }

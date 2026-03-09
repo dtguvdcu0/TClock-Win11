@@ -136,7 +136,6 @@ BOOL CALLBACK PageColorProc(HWND hDlg, UINT message,
 			switch(((NMHDR *)lParam)->code)
 			{
 				case PSN_APPLY: OnApply(hDlg); break;
-				case PSN_HELP: My2chHelp(GetParent(hDlg)); break;
 			}
 			return TRUE;
 		case WM_DESTROY:
@@ -345,7 +344,7 @@ void OnApply(HWND hDlg)
 	dw = GetDlgItemInt(hDlg, IDC_FONTSIZE, NULL, FALSE);
 	if(dw < 5)
 	{
-		dw = 9;
+		dw = 12;
 		SetDlgItemInt(hDlg, IDC_FONTSIZE, dw, FALSE);
 	}
 	SetMyRegLong("Color_Font", "FontSize", dw);
@@ -557,8 +556,8 @@ void SetComboFontSize(HWND hDlg, BOOL bInit)
 	//以前のsizeを保存
 	if(bInit) // WM_INITDIALOGのとき
 	{
-		size = GetMyRegLong("Color_Font", "FontSize", 9);
-		if(size == 0) size = 9;
+		size = GetMyRegLong("Color_Font", "FontSize", 12);
+		if(size == 0) size = 12;
 	}
 	else   // IDC_FONTが変更されたとき
 	{

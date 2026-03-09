@@ -1914,7 +1914,7 @@ void CreateDefaultIniFile_Win10(const wchar_t* fnameW)
 		SetMyRegStr("Format", "CustomFormat", "yyyy/mm/dd ddd tt hh:nn:ss");
 		SetMyRegLong("Mouse", "DropFiles", 0);
 		SetMyRegLong("Mouse", "RightClickMenu", 1);
-		SetMyRegLong("Mouse", "01", 208);
+		SetMyRegLong("Mouse", "01", (DWORD)MOUSEFUNC_NONE);
 		SetMyRegLong("Graph", "BackNet", 0);
 		SetMyRegLong("Graph", "EnableGPUGraph", 1);
 		SetMyRegLong("Graph", "UseBarMeterColForGraph", 0);

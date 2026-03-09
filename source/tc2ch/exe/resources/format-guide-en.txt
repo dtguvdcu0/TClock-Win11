@@ -81,6 +81,10 @@ Disk:
   HAxM / HAxG / HAxT / HAxP       Available disk space for drive x in MB / GB / TB / percent.
   HUxM / HUxG / HUxT / HUxP       Used disk space for drive x in MB / GB / TB / percent.
   HTxM / HTxG / HTxT              Total disk size for drive x in MB / GB / TB.
+  HRxB / HRxK / HRxM              Read speed for drive x in B/s / KB/s / MB/s.
+  HWxB / HWxK / HWxM              Write speed for drive x in B/s / KB/s / MB/s.
+  HDxB / HDxK / HDxM              Total transfer speed for drive x in B/s / KB/s / MB/s.
+  HRxA / HWxA / HDxA              Auto-unit read / write / total transfer speed for drive x.
   x = A..Z                        *Note: use a drive letter directly.
   x = 0..9                        *Note: refer to AdditionalMountPath0..9.
 

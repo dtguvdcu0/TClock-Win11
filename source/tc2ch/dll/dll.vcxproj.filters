@@ -30,6 +30,9 @@
     <ClCompile Include="hdd.c">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
+    <ClCompile Include="diskrate.c">
+      <Filter>ソース ファイル</Filter>
+    </ClCompile>
     <ClCompile Include="net.c">
       <Filter>ソース ファイル</Filter>
     </ClCompile>

@@ -422,6 +422,9 @@ void OnGraphMode(HWND hDlg)
 		combocolor[0].colname = "BackNetColSend";
 		combocolor[1].colname = "BackNetColSR";
 		combocolor[2].colname = "BackNetColRecv";
+		combocolor[0].defcol = RGB(255, 0, 0);
+		combocolor[1].defcol = RGB(128, 0, 128);
+		combocolor[2].defcol = RGB(0, 255, 0);
 
 		InitComboColor(hDlg, 3, combocolor, 16, FALSE);
 	
@@ -456,6 +459,9 @@ void OnGraphMode(HWND hDlg)
 		combocolor[0].colname = "ColorGPUGraph";
 		combocolor[1].colname = "ColorCPUGraph2";
 		combocolor[2].colname = "ColorCPUGraph";
+		combocolor[0].defcol = RGB(255, 0, 255);
+		combocolor[1].defcol = RGB(255, 0, 0);
+		combocolor[2].defcol = RGB(0, 255, 0);
 
 		InitComboColor(hDlg, 3, combocolor, 16, FALSE);
 

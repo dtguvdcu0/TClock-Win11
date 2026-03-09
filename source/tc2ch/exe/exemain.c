@@ -1969,7 +1969,6 @@ void CreateDefaultIniFile_Win10(const wchar_t* fnameW)
 		SetMyRegStr("ETC", "MuteString", "*");
 		SetMyRegLong("ETC", "NetMIX_Length", 10);
 		SetMyRegLong("ETC", "SSID_AP_Length", 10);
-		SetMyRegLong("ETC", "MegabytesInGigaByte", 1000);
 		SetMyRegLong("ETC", "SelectedThermalZone", 0);
 		SetMyRegLong("ETC", "GipEnabled", 0);
 		SetMyRegLong("ETC", "GipRefreshHours", 6);

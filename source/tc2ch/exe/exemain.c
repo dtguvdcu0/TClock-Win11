@@ -2001,7 +2001,7 @@ void CreateDefaultIniFile_Win10(const wchar_t* fnameW)
 		SetMyRegLong("BarMeter", "UseBarMeterNet", 0);
 		SetMyRegLong("BarMeter", "BarMeterCU_HorizontalToLeft", 0);
 		SetMyRegLong("BarMeter", "UseBarMeterGU", 0);
-		SetMyRegStr("VPN", "SoftEtherKeyword", "VPN Client Adapter");
+		SetMyRegStr("VPN", "VPNKeywords", "VPN");
 		SetMyRegLong("ETC", "ZombieCheckInterval", 10);
 		SetMyRegStr("ETC", "LTEString", "LTE");
 		SetMyRegStr("ETC", "LTEChar", "L");

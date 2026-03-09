@@ -1738,7 +1738,7 @@ extern int currentLTEProfNum;
 extern int internetConnectProfNum;
 
 
-extern int megabytesInGigaByte;
+extern const int kMegabytesPerGigabyte;
 
 extern BOOL flag_VPN;
 extern int active_physical_adapter_Win10;
@@ -2458,7 +2458,7 @@ static BOOL tc_emit_memory_token_w(WCHAR** dp, int* remain, const WCHAR** psp)
 	}
 	else if (*(p + 1) == L'S') {
 		p += 2;
-		ms = (ULONGLONG)((double)msMemory.ullTotalPhys / (1024.0 * 1024.0 * (double)megabytesInGigaByte));
+		ms = (ULONGLONG)((double)msMemory.ullTotalPhys / (1024.0 * 1024.0 * (double)kMegabytesPerGigabyte));
 	}
 	else if (*(p + 1) == L'T') {
 		if (*(p + 2) == L'P') ms = msMemory.ullTotalPhys;
@@ -2581,20 +2581,20 @@ static void tc_net_auto_label_w(WCHAR* out, int outcch, double netk, double netm
 	else if (netm < 100.0) {
 		swprintf(out, outcch, L"%2.1fMB", netm);
 	}
-	else if (netm < (double)megabytesInGigaByte) {
+	else if (netm < (double)kMegabytesPerGigabyte) {
 		swprintf(out, outcch, L"%4.0fMB", netm);
 	}
-	else if (netm < (10.0 * (double)megabytesInGigaByte)) {
-		swprintf(out, outcch, L"%1.2fGB", (netm / (double)megabytesInGigaByte));
+	else if (netm < (10.0 * (double)kMegabytesPerGigabyte)) {
+		swprintf(out, outcch, L"%1.2fGB", (netm / (double)kMegabytesPerGigabyte));
 	}
-	else if (netm < (100.0 * (double)megabytesInGigaByte)) {
-		swprintf(out, outcch, L"%2.1fGB", (netm / (double)megabytesInGigaByte));
+	else if (netm < (100.0 * (double)kMegabytesPerGigabyte)) {
+		swprintf(out, outcch, L"%2.1fGB", (netm / (double)kMegabytesPerGigabyte));
 	}
-	else if (netm < (10000.0 * (double)megabytesInGigaByte)) {
-		swprintf(out, outcch, L"%4.0fGB", (netm / (double)megabytesInGigaByte));
+	else if (netm < (10000.0 * (double)kMegabytesPerGigabyte)) {
+		swprintf(out, outcch, L"%4.0fGB", (netm / (double)kMegabytesPerGigabyte));
 	}
 	else {
-		swprintf(out, outcch, L"%dGB", (int)(netm / (double)megabytesInGigaByte));
+		swprintf(out, outcch, L"%dGB", (int)(netm / (double)kMegabytesPerGigabyte));
 	}
 }
 
@@ -2673,7 +2673,7 @@ static BOOL tc_emit_network_token_w(WCHAR** dp, int* remain, const WCHAR** psp)
 				if (u == L'B') ntd = net[0];
 				else if (u == L'K') ntd = net[4];
 				else if (u == L'M') ntd = net[8];
-				else if (u == L'G') ntd = (int)(net[8] / megabytesInGigaByte);
+				else if (u == L'G') ntd = (int)(net[8] / kMegabytesPerGigabyte);
 			}
 			else {
 				if (u == L'B') ntd = net[2];
@@ -2686,7 +2686,7 @@ static BOOL tc_emit_network_token_w(WCHAR** dp, int* remain, const WCHAR** psp)
 				if (u == L'B') ntd = net[1];
 				else if (u == L'K') ntd = net[5];
 				else if (u == L'M') ntd = net[9];
-				else if (u == L'G') ntd = (int)(net[9] / megabytesInGigaByte);
+				else if (u == L'G') ntd = (int)(net[9] / kMegabytesPerGigabyte);
 			}
 			else {
 				if (u == L'B') ntd = net[3];

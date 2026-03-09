@@ -534,7 +534,7 @@ int previousLTEProfNum = 0;
 int internetConnectProfNum = -1;
 int profileNumber_WiFi = -1;
 int profileNumber_Ethernet = -1;
-int megabytesInGigaByte = 1000;
+const int kMegabytesPerGigabyte = 1000;
 BOOL b_DebugLog = FALSE;
 BOOL b_DebugLog_RegAccess = FALSE;
 BOOL b_DebugLog_Specific = FALSE;
@@ -2961,13 +2961,8 @@ void ReadData()
 	ColSR = GetMyRegLong("Graph", "BackNetColSR", 0x00800080);
 
 	ColorCPUGraph = GetMyRegLong("Graph", "ColorCPUGraph", RGB(0, 255, 0));
-	SetMyRegLong("Graph", "ColorCPUGraph", ColorCPUGraph);
-
 	ColorCPUGraph2 = GetMyRegLong("Graph", "ColorCPUGraph2", RGB(255, 0, 0));
-	SetMyRegLong("Graph", "ColorCPUGraph2", ColorCPUGraph2);
-
 	ColorGPUGraph = GetMyRegLong("Graph", "ColorGPUGraph", RGB(255, 0, 255));
-	SetMyRegLong("Graph", "ColorGPUGraph", ColorGPUGraph);
 
 
 	graphInterval = 1;
@@ -2994,9 +2989,6 @@ void ReadData()
 		SetMyRegStr("Status_DoNotEdit", "PreviousLTEProfName", previousLTEProfName);
 	}
 
-	megabytesInGigaByte = GetMyRegLong("ETC", "MegabytesInGigaByte", 1000);
-	if (megabytesInGigaByte != 1024) megabytesInGigaByte = 1000;
-	SetMyRegLong("ETC", "MegabytesInGigaByte", megabytesInGigaByte);
 	LoadVpnKeywordCsv(strVPN_Keywords, (int)sizeof(strVPN_Keywords));
 	if (strVPN_Keywords[0]) {
 		SetMyRegStr("VPN", "VPNKeywords", strVPN_Keywords);

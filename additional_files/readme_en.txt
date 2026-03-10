@@ -1,5 +1,5 @@
 ***********************************************
-***  tclock-win11 Ver 0.2.3.1 (2026/03/08)  ***
+***  tclock-win11 Ver 0.2.4.0 (2026/03/10)  ***
 ***       by ID:DTgUvdcU0                   ***
 ***********************************************
 
@@ -283,6 +283,11 @@ LPROC: Number of logical processors (threads)
 ***************
 Version history
 ***************
+
+2026/03/10 Main changes (v0.2.4.0)
+Added format tokens for storage transfer read, write, and total throughput
+Adjusted INI-related behavior, limited the temporary Utf8Hex handling, and cleaned up items emitted at first run
+Other minor fixes
 
 2026/03/08 Main changes (v0.2.3.1)
 Added a guide button to the format property page so the list of available formats can be reviewed

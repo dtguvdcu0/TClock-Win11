@@ -16,12 +16,15 @@ static void OnMouseButton(HWND hDlg);
 static void OnMouseClickTime(HWND hDlg, int id);
 static void OnMouseFunc(HWND hDlg);
 static void OnMouseFileChange(HWND hDlg);
+static void OnMouseWorkDirChange(HWND hDlg);
 static BOOL GetZoneSel(HWND hDlg, int *button, int *click);
 static BOOL IsZoneButton(int button);
 static BOOL IsZoneContext(HWND hDlg);
 static void OnZoneCount(HWND hDlg);
 static void OnZoneOrient(HWND hDlg);
 static void OnZoneFunc(HWND hDlg, WORD id);
+static void OnZoneFileChange(HWND hDlg, WORD id);
+static void OnZoneWorkDirChange(HWND hDlg, WORD id);
 static void LoadZoneCurrent(HWND hDlg);
 static void SaveZoneCurrent(HWND hDlg);
 
@@ -36,6 +39,7 @@ static LONG GetZoneCountValue(int button, int click);
 static BOOL GetZoneVerticalValue(int button, int click);
 static LONG GetZoneFuncValue(int button, int click, int zone_number);
 static void GetZoneFileValue(int button, int click, int zone_number, char *dst, int dst_count);
+static void GetZoneWorkDirValue(int button, int click, int zone_number, char *dst, int dst_count);
 static void MoveDlgItemY(HWND hDlg, int ctrlId, int y);
 static void LayoutMouseRows(HWND hDlg);
 static void LayoutZoneRows(HWND hDlg, BOOL show_zone, BOOL show_file, BOOL show_workdir, BOOL show_zone2, BOOL show_zone3);
@@ -57,9 +61,13 @@ static CLICKDATA *pData = NULL;
 static int zone_count_map[28][4];
 static BOOL zone_vertical_map[28][4];
 static int zone_func_map[28][4][3];
+static char zone_file_map[28][4][3][256];
+static char zone_workdir_map[28][4][3][256];
 static int zone_count = 1;
 static BOOL zone_vertical = FALSE;
 static int zone_func[3] = { MOUSEFUNC_NONE, MOUSEFUNC_NONE, MOUSEFUNC_NONE };
+static char zone_file[3][256];
+static char zone_workdir[3][256];
 
 //#define SendPSChanged(hDlg) SendMessage(GetParent(hDlg),PSM_CHANGED,(WPARAM)(hDlg),0)
 
@@ -98,6 +106,14 @@ static void ShowZoneFuncRow(HWND hDlg, int labelId, int comboId, BOOL show)
 	ShowDlgItem(hDlg, comboId, show);
 }
 
+static void ShowZoneEditRow(HWND hDlg, int labelId, int editId, int browseId, BOOL show)
+{
+	ShowDlgItem(hDlg, labelId, show);
+	ShowDlgItem(hDlg, editId, show);
+	if (browseId)
+		ShowDlgItem(hDlg, browseId, show);
+}
+
 static BOOL IsMousePathFunc(int func)
 {
 	return (func == MOUSEFUNC_OPENFILE || func == MOUSEFUNC_FILELIST || func == MOUSEFUNC_CUSTOMPROGRAM) ? TRUE : FALSE;
@@ -121,17 +137,17 @@ static void UpdateMainFuncLabel(HWND hDlg, BOOL show_zone)
 		SetDlgItemTextUTF8Strict(hDlg, IDC_LABZONE1FUNC, "機能");
 }
 
-static void UpdateMousePathLabel(HWND hDlg, int func)
+static void UpdatePathLabel(HWND hDlg, int labelId, int func)
 {
 	if (func == MOUSEFUNC_CUSTOMPROGRAM)
 	{
 		if (b_EnglishMenu)
-			SetDlgItemTextUTF8Strict(hDlg, IDC_LABMOUSEFILE, "Program");
+			SetDlgItemTextUTF8Strict(hDlg, labelId, "Program");
 		else
-			SetDlgItemTextUTF8Strict(hDlg, IDC_LABMOUSEFILE, "プログラム");
+			SetDlgItemTextUTF8Strict(hDlg, labelId, "プログラム");
 		return;
 	}
-	SetDlgItemTextUTF8Strict(hDlg, IDC_LABMOUSEFILE, MyStringUTF8(IDS_FILE));
+	SetDlgItemTextUTF8Strict(hDlg, labelId, MyStringUTF8(IDS_FILE));
 }
 
 static void SetMouseFuncComboValue(HWND hDlg, int ctrlId, int func)
@@ -236,6 +252,33 @@ static void GetZoneFileValue(int button, int click, int zone_number, char *dst, 
 	NormalizeUtf8InPlaceNoWriteback(dst, dst_count);
 }
 
+static void GetZoneWorkDirValue(int button, int click, int zone_number, char *dst, int dst_count)
+{
+	char entry[32];
+	char missing[2] = { 1, 0 };
+
+	if (!dst || dst_count <= 0) return;
+	dst[0] = 0;
+	if (zone_number < 1 || zone_number > 3) return;
+	wsprintf(entry, "%d%dZone%dWorkDir", button, click + 1, zone_number);
+	GetMyRegStr(reg_section, entry, dst, dst_count, missing);
+	if (dst[0] == missing[0] && dst[1] == 0 && button == 0 && click == 0)
+	{
+		wsprintf(entry, "LeftClickZone%dWorkDir", zone_number);
+		GetMyRegStr(reg_section, entry, dst, dst_count, missing);
+	}
+	if (dst[0] == missing[0] && dst[1] == 0 && zone_number == 1)
+	{
+		wsprintf(entry, "%d%dWorkDir", button, click + 1);
+		GetMyRegStr(reg_section, entry, dst, dst_count, "");
+	}
+	else if (dst[0] == missing[0] && dst[1] == 0)
+	{
+		dst[0] = 0;
+	}
+	NormalizeUtf8InPlaceNoWriteback(dst, dst_count);
+}
+
 static BOOL GetZoneSel(HWND hDlg, int *button, int *click)
 {
 	int current_button;
@@ -277,8 +320,13 @@ static void LoadZoneCurrent(HWND hDlg)
 	zone_count = zone_count_map[button][click];
 	zone_vertical = zone_vertical_map[button][click];
 	for (i = 0; i < 3; i++)
+	{
 		zone_func[i] = zone_func_map[button][click][i];
+		lstrcpyn(zone_file[i], zone_file_map[button][click][i], (int)sizeof(zone_file[i]));
+		lstrcpyn(zone_workdir[i], zone_workdir_map[button][click][i], (int)sizeof(zone_workdir[i]));
+	}
 	pData[button].func[click] = zone_func[0];
+	lstrcpyn(pData[button].fname[click], zone_file[0], (int)sizeof(pData[button].fname[click]));
 }
 
 static void SaveZoneCurrent(HWND hDlg)
@@ -291,8 +339,13 @@ static void SaveZoneCurrent(HWND hDlg)
 	zone_count_map[button][click] = zone_count;
 	zone_vertical_map[button][click] = zone_vertical;
 	for (i = 0; i < 3; i++)
+	{
 		zone_func_map[button][click][i] = zone_func[i];
+		lstrcpyn(zone_file_map[button][click][i], zone_file[i], (int)sizeof(zone_file_map[button][click][i]));
+		lstrcpyn(zone_workdir_map[button][click][i], zone_workdir[i], (int)sizeof(zone_workdir_map[button][click][i]));
+	}
 	pData[button].func[click] = zone_func[0];
+	lstrcpyn(pData[button].fname[click], zone_file[0], (int)sizeof(pData[button].fname[click]));
 }
 
 static void MoveDlgItemY(HWND hDlg, int ctrlId, int y)
@@ -336,9 +389,9 @@ static void LayoutMouseRows(HWND hDlg)
 	int radio_y;
 	int zone_row_y;
 	const int checkbox_gap = 18;
-	const int combo_gap = 15;
-	const int radio_gap = 16;
-	const int zone_gap = 15;
+	const int combo_gap = 22;
+	const int radio_gap = 22;
+	const int zone_gap = 20;
 
 	program_y = GetDlgItemY(hDlg, IDC_DROPFILESAPP);
 	checkbox_y = program_y + checkbox_gap;
@@ -368,8 +421,10 @@ static void LayoutZoneRows(HWND hDlg, BOOL show_zone, BOOL show_file, BOOL show_
 	int zone_row_y;
 	const int row_pitch = 15;
 	const int file_gap = 2;
-
-	(void)show_zone3;
+	BOOL show_zone2_file = show_zone2 && IsMousePathFunc(zone_func[1]);
+	BOOL show_zone2_workdir = show_zone2 && IsMouseWorkDirFunc(zone_func[1]);
+	BOOL show_zone3_file = show_zone3 && IsMousePathFunc(zone_func[2]);
+	BOOL show_zone3_workdir = show_zone3 && IsMouseWorkDirFunc(zone_func[2]);
 
 	zone_row_y = GetDlgItemY(hDlg, IDC_ZONECOUNT);
 	next_y = zone_row_y + row_pitch;
@@ -411,11 +466,44 @@ static void LayoutZoneRows(HWND hDlg, BOOL show_zone, BOOL show_file, BOOL show_
 		MoveDlgItemY(hDlg, IDC_MOUSEWORKDIR, next_y);
 		next_y += row_pitch + file_gap;
 	}
-	MoveDlgItemY(hDlg, IDC_LABZONE2FUNC, next_y + 2);
-	MoveDlgItemY(hDlg, IDC_ZONE2FUNC, next_y);
-	next_y += show_zone2 ? row_pitch : 0;
-	MoveDlgItemY(hDlg, IDC_LABZONE3FUNC, next_y + 2);
-	MoveDlgItemY(hDlg, IDC_ZONE3FUNC, next_y);
+	if (show_zone2)
+	{
+		MoveDlgItemY(hDlg, IDC_LABZONE2FUNC, next_y + 2);
+		MoveDlgItemY(hDlg, IDC_ZONE2FUNC, next_y);
+		next_y += row_pitch;
+		if (show_zone2_file)
+		{
+			MoveDlgItemY(hDlg, IDC_LABZONE2FILE, next_y + 2);
+			MoveDlgItemY(hDlg, IDC_ZONE2FILE, next_y);
+			MoveDlgItemY(hDlg, IDC_ZONE2FILESANSHO, next_y);
+			next_y += row_pitch + file_gap;
+		}
+		if (show_zone2_workdir)
+		{
+			MoveDlgItemY(hDlg, IDC_LABZONE2WORKDIR, next_y + 2);
+			MoveDlgItemY(hDlg, IDC_ZONE2WORKDIR, next_y);
+			next_y += row_pitch + file_gap;
+		}
+	}
+	if (show_zone3)
+	{
+		MoveDlgItemY(hDlg, IDC_LABZONE3FUNC, next_y + 2);
+		MoveDlgItemY(hDlg, IDC_ZONE3FUNC, next_y);
+		next_y += row_pitch;
+		if (show_zone3_file)
+		{
+			MoveDlgItemY(hDlg, IDC_LABZONE3FILE, next_y + 2);
+			MoveDlgItemY(hDlg, IDC_ZONE3FILE, next_y);
+			MoveDlgItemY(hDlg, IDC_ZONE3FILESANSHO, next_y);
+			next_y += row_pitch + file_gap;
+		}
+		if (show_zone3_workdir)
+		{
+			MoveDlgItemY(hDlg, IDC_LABZONE3WORKDIR, next_y + 2);
+			MoveDlgItemY(hDlg, IDC_ZONE3WORKDIR, next_y);
+			next_y += row_pitch + file_gap;
+		}
+	}
 }
 
 static BOOL IsZoneContext(HWND hDlg)
@@ -434,6 +522,10 @@ static void RefreshZoneControls(HWND hDlg)
 	BOOL show_workdir = IsMouseWorkDirFunc(func);
 	BOOL show_zone2 = (zone_count >= 2) ? TRUE : FALSE;
 	BOOL show_zone3 = (zone_count >= 3) ? TRUE : FALSE;
+	BOOL show_zone2_file = show_zone2 && IsMousePathFunc(zone_func[1]);
+	BOOL show_zone2_workdir = show_zone2 && IsMouseWorkDirFunc(zone_func[1]);
+	BOOL show_zone3_file = show_zone3 && IsMousePathFunc(zone_func[2]);
+	BOOL show_zone3_workdir = show_zone3 && IsMouseWorkDirFunc(zone_func[2]);
 
 	CBSetCurSel(hDlg, IDC_ZONECOUNT, zone_count - 1);
 	CBSetCurSel(hDlg, IDC_ZONEORIENT, zone_vertical ? 1 : 0);
@@ -450,12 +542,30 @@ static void RefreshZoneControls(HWND hDlg)
 	ShowZoneFuncRow(hDlg, IDC_LABZONE2FUNC, IDC_ZONE2FUNC, show_zone && show_zone2);
 	ShowZoneFuncRow(hDlg, IDC_LABZONE3FUNC, IDC_ZONE3FUNC, show_zone && show_zone3);
 	UpdateMainFuncLabel(hDlg, show_zone);
-	UpdateMousePathLabel(hDlg, func);
+	UpdatePathLabel(hDlg, IDC_LABMOUSEFILE, func);
+	UpdatePathLabel(hDlg, IDC_LABZONE2FILE, zone_func[1]);
+	UpdatePathLabel(hDlg, IDC_LABZONE3FILE, zone_func[2]);
 	ShowDlgItem(hDlg, IDC_LABMOUSEFILE, show_file);
 	ShowDlgItem(hDlg, IDC_MOUSEFILE, show_file);
 	ShowDlgItem(hDlg, IDC_MOUSEFILESANSHO, show_file);
 	ShowDlgItem(hDlg, IDC_LABMOUSEWORKDIR, show_workdir);
 	ShowDlgItem(hDlg, IDC_MOUSEWORKDIR, show_workdir);
+	ShowZoneEditRow(hDlg, IDC_LABZONE2FILE, IDC_ZONE2FILE, IDC_ZONE2FILESANSHO, show_zone && show_zone2_file);
+	ShowZoneEditRow(hDlg, IDC_LABZONE2WORKDIR, IDC_ZONE2WORKDIR, 0, show_zone && show_zone2_workdir);
+	ShowZoneEditRow(hDlg, IDC_LABZONE3FILE, IDC_ZONE3FILE, IDC_ZONE3FILESANSHO, show_zone && show_zone3_file);
+	ShowZoneEditRow(hDlg, IDC_LABZONE3WORKDIR, IDC_ZONE3WORKDIR, 0, show_zone && show_zone3_workdir);
+	if (show_file)
+		SetDlgItemTextUTF8Strict(hDlg, IDC_MOUSEFILE, zone_file[0]);
+	if (show_workdir)
+		SetDlgItemTextUTF8Strict(hDlg, IDC_MOUSEWORKDIR, zone_workdir[0]);
+	if (show_zone2_file)
+		SetDlgItemTextUTF8Strict(hDlg, IDC_ZONE2FILE, zone_file[1]);
+	if (show_zone2_workdir)
+		SetDlgItemTextUTF8Strict(hDlg, IDC_ZONE2WORKDIR, zone_workdir[1]);
+	if (show_zone3_file)
+		SetDlgItemTextUTF8Strict(hDlg, IDC_ZONE3FILE, zone_file[2]);
+	if (show_zone3_workdir)
+		SetDlgItemTextUTF8Strict(hDlg, IDC_ZONE3WORKDIR, zone_workdir[2]);
 	LayoutMouseRows(hDlg);
 	LayoutZoneRows(hDlg, show_zone, show_file, show_workdir, show_zone2, show_zone3);
 }
@@ -491,6 +601,8 @@ BOOL CALLBACK PageMouseProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
 			// "..."
 			case IDC_DROPFILESAPPSANSHO:
 			case IDC_MOUSEFILESANSHO:
+			case IDC_ZONE2FILESANSHO:
+			case IDC_ZONE3FILESANSHO:
 				OnSansho(hDlg, id);
 				break;
 			case IDC_ZONECOUNT:
@@ -543,6 +655,29 @@ BOOL CALLBACK PageMouseProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
 					SendPSChanged(hDlg);
 				}
 				break;
+			case IDC_MOUSEWORKDIR:
+				if(code == EN_CHANGE)
+				{
+					OnMouseWorkDirChange(hDlg);
+					SendPSChanged(hDlg);
+				}
+				break;
+			case IDC_ZONE2FILE:
+			case IDC_ZONE3FILE:
+				if(code == EN_CHANGE)
+				{
+					OnZoneFileChange(hDlg, id);
+					SendPSChanged(hDlg);
+				}
+				break;
+			case IDC_ZONE2WORKDIR:
+			case IDC_ZONE3WORKDIR:
+				if(code == EN_CHANGE)
+				{
+					OnZoneWorkDirChange(hDlg, id);
+					SendPSChanged(hDlg);
+				}
+				break;
 			case IDC_RCLICKMENU:
 				g_bApplyClock = TRUE;
 				SendPSChanged(hDlg);
@@ -584,7 +719,7 @@ void OnInit(HWND hDlg)
 {
 	char s[256];
 	char entry[20];
-	int i, j, n;
+	int i, j, k, n;
 	HFONT hfont;
 
 	hfont = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
@@ -595,6 +730,14 @@ void OnInit(HWND hDlg)
 		SendDlgItemMessage(hDlg, IDC_MOUSEFILE,
 			WM_SETFONT, (WPARAM)hfont, 0);
 		SendDlgItemMessage(hDlg, IDC_MOUSEWORKDIR,
+			WM_SETFONT, (WPARAM)hfont, 0);
+		SendDlgItemMessage(hDlg, IDC_ZONE2FILE,
+			WM_SETFONT, (WPARAM)hfont, 0);
+		SendDlgItemMessage(hDlg, IDC_ZONE2WORKDIR,
+			WM_SETFONT, (WPARAM)hfont, 0);
+		SendDlgItemMessage(hDlg, IDC_ZONE3FILE,
+			WM_SETFONT, (WPARAM)hfont, 0);
+		SendDlgItemMessage(hDlg, IDC_ZONE3WORKDIR,
 			WM_SETFONT, (WPARAM)hfont, 0);
 		SendDlgItemMessage(hDlg, IDC_TOOLTIP,
 			WM_SETFONT, (WPARAM)hfont, 0);
@@ -635,10 +778,13 @@ void OnInit(HWND hDlg)
 			}
 			zone_count_map[i][j] = (int)GetZoneCountValue(i, j);
 			zone_vertical_map[i][j] = GetZoneVerticalValue(i, j);
-			for (n = 0; n < 3; n++)
+			for (n = 0; n < 3; n++) {
 				zone_func_map[i][j][n] = (int)GetZoneFuncValue(i, j, n + 1);
+				GetZoneFileValue(i, j, n + 1, zone_file_map[i][j][n], (int)sizeof(zone_file_map[i][j][n]));
+				GetZoneWorkDirValue(i, j, n + 1, zone_workdir_map[i][j][n], (int)sizeof(zone_workdir_map[i][j][n]));
+			}
 			pData[i].func[j] = zone_func_map[i][j][0];
-			GetZoneFileValue(i, j, 1, pData[i].fname[j], (int)sizeof(pData[i].fname[j]));
+			lstrcpyn(pData[i].fname[j], zone_file_map[i][j][0], (int)sizeof(pData[i].fname[j]));
 		}
 	}
 
@@ -663,6 +809,11 @@ void OnInit(HWND hDlg)
 	else {
 		CBAddStringUTF8Compat(hDlg, IDC_ZONEORIENT, "横");
 		CBAddStringUTF8Compat(hDlg, IDC_ZONEORIENT, "縦");
+	}
+	for (k = 0; k < 3; k++)
+	{
+		zone_file[k][0] = 0;
+		zone_workdir[k][0] = 0;
 	}
 	RefreshZoneControls(hDlg);
 
@@ -719,11 +870,16 @@ void OnApply(HWND hDlg)
 					DelMyReg(reg_section, entry);
 				wsprintf(entry, "%d%dZone%d", i, j + 1, k + 1);
 				DelMyReg(reg_section, entry);
-			}
-			if (has_zone_extras &&
-				IsMousePathFunc(zone_func_map[i][j][0])) {
-				wsprintf(entry, "%d%dZone1File", i, j + 1);
-				SetMyRegStr(reg_section, entry, pData[i].fname[j]);
+				wsprintf(entry, "%d%dZone%dFile", i, j + 1, k + 1);
+				if (has_zone_extras && IsMousePathFunc(zone_func_map[i][j][k]))
+					SetMyRegStr(reg_section, entry, zone_file_map[i][j][k]);
+				else
+					DelMyReg(reg_section, entry);
+				wsprintf(entry, "%d%dZone%dWorkDir", i, j + 1, k + 1);
+				if (has_zone_extras && IsMouseWorkDirFunc(zone_func_map[i][j][k]))
+					SetMyRegStr(reg_section, entry, zone_workdir_map[i][j][k]);
+				else
+					DelMyReg(reg_section, entry);
 			}
 
 			wsprintf(entry, "%d%d", i, j+1);
@@ -742,6 +898,21 @@ void OnApply(HWND hDlg)
 				wsprintf(entry, "%d%dFile", i, j+1);
 				SetMyRegStr(reg_section, entry, pData[i].fname[j]);
 			}
+			else
+			{
+				wsprintf(entry, "%d%dFile", i, j+1);
+				DelMyReg(reg_section, entry);
+			}
+			if(IsMouseWorkDirFunc(pData[i].func[j]))
+			{
+				wsprintf(entry, "%d%dWorkDir", i, j+1);
+				SetMyRegStr(reg_section, entry, zone_workdir_map[i][j][0]);
+			}
+			else
+			{
+				wsprintf(entry, "%d%dWorkDir", i, j+1);
+				DelMyReg(reg_section, entry);
+			}
 		}
 	}
 	SetMyRegLong(reg_section, "LeftClickZoneCount", zone_count_map[0][0]);
@@ -755,9 +926,17 @@ void OnApply(HWND hDlg)
 			DelMyReg(reg_section, entry);
 		wsprintf(entry, "LeftClickZone%d", k + 1);
 		DelMyReg(reg_section, entry);
+		wsprintf(entry, "LeftClickZone%dFile", k + 1);
+		if (IsMousePathFunc(zone_func_map[0][0][k]))
+			SetMyRegStr(reg_section, entry, zone_file_map[0][0][k]);
+		else
+			DelMyReg(reg_section, entry);
+		wsprintf(entry, "LeftClickZone%dWorkDir", k + 1);
+		if (IsMouseWorkDirFunc(zone_func_map[0][0][k]))
+			SetMyRegStr(reg_section, entry, zone_workdir_map[0][0][k]);
+		else
+			DelMyReg(reg_section, entry);
 	}
-	if (IsMousePathFunc(zone_func_map[0][0][0]))
-		SetMyRegStr(reg_section, "LeftClickZone1File", pData[0].fname[0]);
 	ResetHotkey(g_hwndMain);
 }
 
@@ -905,9 +1084,13 @@ void OnMouseFunc(HWND hDlg)
 
 	if(IsMousePathFunc(func))
 	{
-		NormalizeUtf8InPlaceNoWriteback(pData[button].fname[click], (int)sizeof(pData[button].fname[click]));
-		UpdateMousePathLabel(hDlg, func);
-		SetDlgItemTextUTF8Strict(hDlg, IDC_MOUSEFILE, pData[button].fname[click]);
+		NormalizeUtf8InPlaceNoWriteback(zone_file[0], (int)sizeof(zone_file[0]));
+		SetDlgItemTextUTF8Strict(hDlg, IDC_MOUSEFILE, zone_file[0]);
+	}
+	if (IsMouseWorkDirFunc(func))
+	{
+		NormalizeUtf8InPlaceNoWriteback(zone_workdir[0], (int)sizeof(zone_workdir[0]));
+		SetDlgItemTextUTF8Strict(hDlg, IDC_MOUSEWORKDIR, zone_workdir[0]);
 	}
 	RefreshZoneControls(hDlg);
 }
@@ -938,7 +1121,33 @@ void OnMouseFileChange(HWND hDlg)
 	if (func == CB_ERR) return;
 
 	if(IsMousePathFunc(func))
-		GetDlgItemTextUTF8(hDlg, IDC_MOUSEFILE, pData[button].fname[click], (int)sizeof(pData[button].fname[click]));
+	{
+		GetDlgItemTextUTF8(hDlg, IDC_MOUSEFILE, zone_file[0], (int)sizeof(zone_file[0]));
+		lstrcpyn(pData[button].fname[click], zone_file[0], (int)sizeof(pData[button].fname[click]));
+		SaveZoneCurrent(hDlg);
+	}
+}
+
+void OnMouseWorkDirChange(HWND hDlg)
+{
+	int n, button, j;
+	int click;
+
+	n = CBGetCurSel(hDlg, IDC_MOUSEBUTTON);
+	button = n;
+	if (!pData || button < 0 || button >= 28) return;
+
+	for(j = 0; j < 4; j++)
+	{
+		if(IsDlgButtonChecked(hDlg, IDC_RADSINGLE + j))
+			break;
+	}
+	if(j == 4) return;
+	click = j;
+	(void)click;
+
+	GetDlgItemTextUTF8(hDlg, IDC_MOUSEWORKDIR, zone_workdir[0], (int)sizeof(zone_workdir[0]));
+	SaveZoneCurrent(hDlg);
 }
 
 void OnZoneCount(HWND hDlg)
@@ -978,6 +1187,35 @@ void OnZoneFunc(HWND hDlg, WORD id)
 	if (func == CB_ERR) return;
 	zone_func[zone_index] = func;
 	SaveZoneCurrent(hDlg);
+	RefreshZoneControls(hDlg);
+}
+
+void OnZoneFileChange(HWND hDlg, WORD id)
+{
+	int zone_index;
+
+	if (id == IDC_ZONE2FILE)
+		zone_index = 1;
+	else if (id == IDC_ZONE3FILE)
+		zone_index = 2;
+	else
+		return;
+	GetDlgItemTextUTF8(hDlg, id, zone_file[zone_index], (int)sizeof(zone_file[zone_index]));
+	SaveZoneCurrent(hDlg);
+}
+
+void OnZoneWorkDirChange(HWND hDlg, WORD id)
+{
+	int zone_index;
+
+	if (id == IDC_ZONE2WORKDIR)
+		zone_index = 1;
+	else if (id == IDC_ZONE3WORKDIR)
+		zone_index = 2;
+	else
+		return;
+	GetDlgItemTextUTF8(hDlg, id, zone_workdir[zone_index], (int)sizeof(zone_workdir[zone_index]));
+	SaveZoneCurrent(hDlg);
 }
 
 /*------------------------------------------------
@@ -1013,7 +1251,10 @@ void OnSansho(HWND hDlg, WORD id)
 	}
 
 	filter[0] = 0;
-	if(id == IDC_DROPFILESAPPSANSHO)
+	if(id == IDC_DROPFILESAPPSANSHO ||
+		(id == IDC_MOUSEFILESANSHO && zone_func[0] == MOUSEFUNC_CUSTOMPROGRAM) ||
+		(id == IDC_ZONE2FILESANSHO && zone_func[1] == MOUSEFUNC_CUSTOMPROGRAM) ||
+		(id == IDC_ZONE3FILESANSHO && zone_func[2] == MOUSEFUNC_CUSTOMPROGRAM))
 	{
 		str0cat(filter, MyStringUTF8(IDS_PROGRAMFILE));
 		str0cat(filter, "*.exe");
@@ -1029,6 +1270,10 @@ void OnSansho(HWND hDlg, WORD id)
 	NormalizeUtf8InPlaceNoWriteback(fname, (int)sizeof(fname));
 	SetDlgItemTextUTF8Strict(hDlg, id - 1, fname);
 	PostMessage(hDlg, WM_NEXTDLGCTL, 1, FALSE);
+	if (id == IDC_MOUSEFILESANSHO)
+		OnMouseFileChange(hDlg);
+	else if (id == IDC_ZONE2FILESANSHO || id == IDC_ZONE3FILESANSHO)
+		OnZoneFileChange(hDlg, id - 1);
 	SendPSChanged(hDlg);
 }
 

@@ -725,9 +725,9 @@ void showUserMenu(HWND hwnd, HWND hwndClicked, int xPos, int yPos, int btn, int 
 		UINT uID;
 		PLISTIDL pScan;
 		char fname[1024];
-		char entry[20];
+		char entry[32];
 
-		wsprintf(entry, "%d%dFile", btn, clk);
+		GetMouseFileEntry(btn, clk, entry, (int)sizeof(entry));
 		GetMyRegStr("Mouse", entry, fname, 1024, "");
 		del_title(fname);
 		NormalizeUtf8InPlaceNoWriteback(fname, (int)sizeof(fname));

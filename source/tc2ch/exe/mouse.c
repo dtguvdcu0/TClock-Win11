@@ -26,8 +26,17 @@ static DWORD last_tickcount;
 static int num_click = 0;
 static int exec_button = -1;
 static BOOL timer = FALSE;
+static BOOL exec_zone_active = FALSE;
+static int exec_zone_entry = 0;
+static LONG exec_zone_func = -1;
 
 static int GetMouseFuncNum(int button, int nclick);
+static void mouse_zone_reset(void);
+static int mouse_zone_count(void);
+static BOOL mouse_zone_vertical(void);
+static int mouse_zone_hit_test(POINT pt_client, const RECT* rc_client, int zone_count, BOOL vertical);
+static LONG mouse_zone_read_func(int zone_number, BOOL* found);
+static BOOL mouse_zone_resolve_pending(LPARAM lParam, LONG* fnc_out);
 
 static ATOM atomHotkey[4] = { 0,0,0,0 };
 static UINT idTCaptureHotkey[32] = { 0 };
@@ -59,6 +68,130 @@ static LONG GetTCaptureEnableConfigMouse(void)
 	SetMyRegLong("TCapture", "Enable", (v != 0) ? 1 : 0);
 	DelMyReg("ETC", "TCaptureEnable");
 	return (v != 0) ? 1 : 0;
+}
+
+static void mouse_zone_reset(void)
+{
+	exec_zone_active = FALSE;
+	exec_zone_entry = 0;
+	exec_zone_func = -1;
+}
+
+static int mouse_zone_count(void)
+{
+	LONG count = GetMyRegLong(reg_section, "LeftClickZoneCount", 1);
+	if (count < 1) count = 1;
+	if (count > 3) count = 3;
+	return (int)count;
+}
+
+static BOOL mouse_zone_vertical(void)
+{
+	return GetMyRegLong(reg_section, "LeftClickZoneVertical", 0) ? TRUE : FALSE;
+}
+
+static int mouse_zone_hit_test(POINT pt_client, const RECT* rc_client, int zone_count, BOOL vertical)
+{
+	int axis;
+	int length;
+
+	if (!rc_client || zone_count < 2) return -1;
+	if (pt_client.x < rc_client->left || pt_client.x >= rc_client->right ||
+		pt_client.y < rc_client->top || pt_client.y >= rc_client->bottom) {
+		return -1;
+	}
+
+	if (vertical) {
+		axis = pt_client.y - rc_client->top;
+		length = rc_client->bottom - rc_client->top;
+	}
+	else {
+		axis = pt_client.x - rc_client->left;
+		length = rc_client->right - rc_client->left;
+	}
+	if (length <= 0) return -1;
+
+	if (zone_count >= 3) {
+		if (axis >= (2 * length / 3)) return 2;
+		if (axis >= (length / 3)) return 1;
+		return 0;
+	}
+	if (axis >= (length / 2)) return 1;
+	return 0;
+}
+
+static LONG mouse_zone_read_func(int zone_number, BOOL* found)
+{
+	char entry[32];
+	LONG value;
+	const LONG missing = -32768;
+
+	if (found) *found = FALSE;
+	if (zone_number < 1 || zone_number > 3) return missing;
+
+	wsprintf(entry, "LeftClickZone%dFunc", zone_number);
+	value = GetMyRegLong(reg_section, entry, missing);
+	if (value == missing) {
+		wsprintf(entry, "LeftClickZone%d", zone_number);
+		value = GetMyRegLong(reg_section, entry, missing);
+	}
+	if (value != missing && found) *found = TRUE;
+	return value;
+}
+
+static BOOL mouse_zone_resolve_pending(LPARAM lParam, LONG* fnc_out)
+{
+	RECT rc_client;
+	POINT pt_client;
+	int zone_count;
+	int zone_index;
+	int source_zone = 0;
+	BOOL found = FALSE;
+	LONG fnc;
+
+	if (!fnc_out) return FALSE;
+	*fnc_out = GetMouseFuncNum(0, 1);
+	mouse_zone_reset();
+
+	zone_count = mouse_zone_count();
+	if (zone_count <= 1) {
+		fnc = mouse_zone_read_func(1, &found);
+		if (!found) return FALSE;
+
+		*fnc_out = fnc;
+		exec_zone_active = TRUE;
+		exec_zone_entry = 1;
+		exec_zone_func = fnc;
+		return TRUE;
+	}
+	if (!g_hwndClock || !IsWindow(g_hwndClock)) return FALSE;
+	if (!GetClientRect(g_hwndClock, &rc_client)) return FALSE;
+
+	pt_client.x = GET_X_LPARAM(lParam);
+	pt_client.y = GET_Y_LPARAM(lParam);
+	zone_index = mouse_zone_hit_test(pt_client, &rc_client, zone_count, mouse_zone_vertical());
+	if (zone_index < 0) return FALSE;
+
+	fnc = mouse_zone_read_func(zone_index + 1, &found);
+	if (found) {
+		source_zone = zone_index + 1;
+	}
+	else if (zone_index != 0) {
+		fnc = mouse_zone_read_func(1, &found);
+		if (found) source_zone = 1;
+	}
+
+	if (!found) {
+		fnc = GetMouseFuncNum(0, 1);
+	}
+
+	*fnc_out = fnc;
+	if (source_zone <= 0) return FALSE;
+
+	exec_zone_active = TRUE;
+	exec_zone_entry = source_zone;
+	exec_zone_func = fnc;
+	return TRUE;
 }
 
 static LONG GetTCalendarEnableConfigMouse(void)
@@ -580,6 +713,7 @@ void OnMouseMsg(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 	if(timer) KillTimer(hwnd, IDTIMER_MOUSE);
 	timer = FALSE;
+	mouse_zone_reset();
 
 	switch(message)
 	{
@@ -708,25 +842,41 @@ void OnMouseMsg(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 	if(bDown)
 	{
-		n_func = GetMouseFuncNum(button, num_click + 1);
+		if (button == 0 && (num_click + 1) == 1)
+			mouse_zone_resolve_pending(lParam, &n_func);
+		else
+			n_func = GetMouseFuncNum(button, num_click + 1);
 		if(n_func >= 0 )
 		{
 			for(i = num_click + 2; i <= 4; i++)
 			{
 				n_func = GetMouseFuncNum(button, i);
-				if(n_func >= 0) return;
+				if(n_func >= 0) {
+					mouse_zone_reset();
+					return;
+				}
 			}
 			num_click++;
 			exec_button = button;
 			OnTimerMouse(hwnd);
+		}
+		else
+		{
+			mouse_zone_reset();
 		}
 		return;
 	}
 
 	num_click++;
 
-	n_func = GetMouseFuncNum(button, num_click);
-	if(n_func < 0) return;
+	if (button == 0 && num_click == 1)
+		mouse_zone_resolve_pending(lParam, &n_func);
+	else
+		n_func = GetMouseFuncNum(button, num_click);
+	if(n_func < 0) {
+		mouse_zone_reset();
+		return;
+	}
 
 	for(i = num_click + 1; i <= 4; i++)
 	{
@@ -793,8 +943,8 @@ void ExecuteMouseFunction(HWND hwnd, LONG fnc, int btn, int clk)
 		case MOUSEFUNC_OPENFILE:
 		{
 			char fname[1024];
-			char entry[20];
-			wsprintf(entry, "%d%dFile", btn, clk);
+			char entry[32];
+			GetMouseFileEntry(btn, clk, entry, (int)sizeof(entry));
 			GetMyRegStr(reg_section, entry, fname, 1024, "");
 			if(fname[0]) ExecFile(hwnd, fname);
 			break;
@@ -911,11 +1061,14 @@ void ExecuteMouseFunction(HWND hwnd, LONG fnc, int btn, int clk)
 void OnTimerMouse(HWND hwnd)
 {
 	int button;
+	LONG fnc;
 
 	button = exec_button;
 	if(timer) KillTimer(hwnd, IDTIMER_MOUSE); timer = FALSE;
+	fnc = exec_zone_active ? exec_zone_func : -1;
 
-	ExecuteMouseFunction(hwnd, -1, button, num_click);
+	ExecuteMouseFunction(hwnd, fnc, button, num_click);
+	mouse_zone_reset();
 }
 
 int GetMouseFuncNum(int button, int nclick)
@@ -923,6 +1076,19 @@ int GetMouseFuncNum(int button, int nclick)
 	char entry[20];
 	wsprintf(entry, "%d%d", button, nclick);
 	return GetMyRegLong(reg_section, entry, -1);
+}
+
+void GetMouseFileEntry(int btn, int clk, char* entry, int cch)
+{
+	char full_entry[32];
+
+	if (!entry || cch <= 0) return;
+	entry[0] = '\0';
+	if (exec_zone_active && exec_zone_entry >= 1 && exec_zone_entry <= 3 && btn == 0 && clk == 1)
+		wsprintf(full_entry, "LeftClickZone%dFile", exec_zone_entry);
+	else
+		wsprintf(full_entry, "%d%dFile", btn, clk);
+	lstrcpyn(entry, full_entry, cch);
 }
 
 void PushKeybd(LPKEYEVENT lpkey)

@@ -257,6 +257,7 @@ void ExecuteMouseFunction(HWND hwnd, LONG fnc, int btn, int clk);
 void OnDropFiles(HWND hwnd, HDROP hdrop);
 void OnMouseMsg(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
 void OnTimerMouse(HWND hwnd);
+void GetMouseFileEntry(int btn, int clk, char* entry, int cch);
 void PushKeybd(LPKEYEVENT lpkey);
 
 // utl.c

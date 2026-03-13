@@ -602,6 +602,16 @@
 #define IDC_ZONE3FUNC                   1427
 #define IDC_LABMOUSEWORKDIR             1428
 #define IDC_MOUSEWORKDIR                1429
+#define IDC_LABZONE2FILE                1430
+#define IDC_ZONE2FILE                   1431
+#define IDC_ZONE2FILESANSHO             1432
+#define IDC_LABZONE2WORKDIR             1433
+#define IDC_ZONE2WORKDIR                1434
+#define IDC_LABZONE3FILE                1435
+#define IDC_ZONE3FILE                   1436
+#define IDC_ZONE3FILESANSHO             1437
+#define IDC_LABZONE3WORKDIR             1438
+#define IDC_ZONE3WORKDIR                1439
 #define IDC_TOOLTIP                     1450
 #define IDC_SANSHOTIP                   1451
 #define IDC_TIP2                        1452

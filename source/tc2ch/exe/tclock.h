@@ -177,6 +177,7 @@ int r_strcmp(const char* d, const char* s);
 #define MOUSEFUNC_PULLBACK			210		//Introduced from TClock Light in 2022
 #define MOUSEFUNC_TCALENDAR_OPEN		211		//Open TCalendar when enabled
 #define MOUSEFUNC_TCAPTURE_SETTINGS	212		//Open TCapture settings when enabled
+#define MOUSEFUNC_CUSTOMPROGRAM	213		//Layout-first custom program placeholder
 
 
 

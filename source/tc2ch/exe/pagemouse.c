@@ -21,7 +21,6 @@ static BOOL GetZoneSel(HWND hDlg, int *button, int *click);
 static BOOL IsZoneButton(int button);
 static BOOL IsZoneContext(HWND hDlg);
 static void OnZoneCount(HWND hDlg);
-static void OnZoneOrient(HWND hDlg);
 static void OnZoneFunc(HWND hDlg, WORD id);
 static void OnZoneFileChange(HWND hDlg, WORD id);
 static void OnZoneWorkDirChange(HWND hDlg, WORD id);
@@ -41,7 +40,6 @@ static LONG GetTCalendarEnableForMousePage(void);
 static void ShowZoneFuncRow(HWND hDlg, int labelId, int comboId, BOOL show);
 static void SetMouseFuncComboValue(HWND hDlg, int ctrlId, int func);
 static LONG GetZoneCountValue(int button, int click);
-static BOOL GetZoneVerticalValue(int button, int click);
 static LONG GetZoneFuncValue(int button, int click, int zone_number);
 static void GetZoneFileValue(int button, int click, int zone_number, char *dst, int dst_count);
 static void GetZoneWorkDirValue(int button, int click, int zone_number, char *dst, int dst_count);
@@ -71,12 +69,10 @@ typedef struct {
 static CLICKDATA *pData = NULL;
 
 static int zone_count_map[28][4];
-static BOOL zone_vertical_map[28][4];
 static int zone_func_map[28][4][3];
 static char zone_file_map[28][4][3][256];
 static char zone_workdir_map[28][4][3][256];
 static int zone_count = 1;
-static BOOL zone_vertical = FALSE;
 static int zone_func[3] = { MOUSEFUNC_NONE, MOUSEFUNC_NONE, MOUSEFUNC_NONE };
 static char zone_file[3][256];
 static char zone_workdir[3][256];
@@ -199,20 +195,6 @@ static LONG GetZoneCountValue(int button, int click)
 	if (count < 1) count = 1;
 	if (count > 3) count = 3;
 	return count;
-}
-
-static BOOL GetZoneVerticalValue(int button, int click)
-{
-	char entry[32];
-	LONG value;
-	const LONG missing = -32768;
-
-	wsprintf(entry, "%d%dZoneVertical", button, click + 1);
-	value = GetMyRegLong(reg_section, entry, missing);
-	if (value == missing && button == 0 && click == 0) {
-		value = GetMyRegLong(reg_section, "LeftClickZoneVertical", 0);
-	}
-	return (value != 0) ? TRUE : FALSE;
 }
 
 static LONG GetZoneFuncValue(int button, int click, int zone_number)
@@ -385,7 +367,6 @@ static void LoadZoneCurrent(HWND hDlg)
 
 	if (!GetZoneSel(hDlg, &button, &click)) return;
 	zone_count = zone_count_map[button][click];
-	zone_vertical = zone_vertical_map[button][click];
 	for (i = 0; i < 3; i++)
 	{
 		zone_func[i] = zone_func_map[button][click][i];
@@ -405,7 +386,6 @@ static void SaveZoneCurrent(HWND hDlg)
 
 	if (!GetZoneSel(hDlg, &button, &click)) return;
 	if (zone_count_map[button][click] != zone_count) changed = TRUE;
-	if (zone_vertical_map[button][click] != zone_vertical) changed = TRUE;
 	for (i = 0; i < 3; i++)
 	{
 		if (zone_func_map[button][click][i] != zone_func[i]) changed = TRUE;
@@ -418,7 +398,6 @@ static void SaveZoneCurrent(HWND hDlg)
 	if (pData[button].func[click] != zone_func[0]) changed = TRUE;
 	if (lstrcmp(pData[button].fname[click], zone_file[0]) != 0) changed = TRUE;
 	zone_count_map[button][click] = zone_count;
-	zone_vertical_map[button][click] = zone_vertical;
 	pData[button].func[click] = zone_func[0];
 	lstrcpyn(pData[button].fname[click], zone_file[0], (int)sizeof(pData[button].fname[click]));
 	if (changed) zone_dirty_map[button][click] = TRUE;
@@ -441,9 +420,6 @@ static BOOL HasRawZoneKeys(int button, int click)
 	int k;
 
 	wsprintf(entry, "%d%dZoneCount", button, click + 1);
-	value = GetMyRegLong(reg_section, entry, missing);
-	if (value != missing) return TRUE;
-	wsprintf(entry, "%d%dZoneVertical", button, click + 1);
 	value = GetMyRegLong(reg_section, entry, missing);
 	if (value != missing) return TRUE;
 	for (k = 2; k <= 3; k++)
@@ -491,8 +467,6 @@ static BOOL HasLegacyLeftClickZoneKeys(void)
 	int k;
 
 	value = GetMyRegLong(reg_section, "LeftClickZoneCount", missing);
-	if (value != missing) return TRUE;
-	value = GetMyRegLong(reg_section, "LeftClickZoneVertical", missing);
 	if (value != missing) return TRUE;
 	for (k = 1; k <= 3; k++)
 	{
@@ -694,7 +668,6 @@ static void RefreshZoneControls(HWND hDlg)
 	BOOL show_zone3_file = show_zone3 && IsMousePathFunc(zone_func[2]);
 
 	CBSetCurSel(hDlg, IDC_ZONECOUNT, zone_count - 1);
-	CBSetCurSel(hDlg, IDC_ZONEORIENT, zone_vertical ? 1 : 0);
 	if (show_zone)
 		SetMouseFuncComboValue(hDlg, IDC_MOUSEFUNC, zone_func[0]);
 	SetMouseFuncComboValue(hDlg, IDC_ZONE2FUNC, zone_func[1]);
@@ -702,8 +675,6 @@ static void RefreshZoneControls(HWND hDlg)
 	ShowDlgItem(hDlg, IDC_LABZONEBLOCK, show_zone);
 	ShowDlgItem(hDlg, IDC_LABZONECOUNT, FALSE);
 	ShowDlgItem(hDlg, IDC_ZONECOUNT, show_zone);
-	ShowDlgItem(hDlg, IDC_LABZONEORIENT, FALSE);
-	ShowDlgItem(hDlg, IDC_ZONEORIENT, FALSE);
 	ShowDlgItem(hDlg, IDC_LABZONE1FUNC, TRUE);
 	ShowZoneFuncRow(hDlg, IDC_LABZONE2FUNC, IDC_ZONE2FUNC, show_zone && show_zone2);
 	ShowZoneFuncRow(hDlg, IDC_LABZONE3FUNC, IDC_ZONE3FUNC, show_zone && show_zone3);
@@ -770,13 +741,6 @@ BOOL CALLBACK PageMouseProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
 				if(code == CBN_SELCHANGE)
 				{
 					OnZoneCount(hDlg);
-					SendPSChanged(hDlg);
-				}
-				break;
-			case IDC_ZONEORIENT:
-				if(code == CBN_SELCHANGE)
-				{
-					OnZoneOrient(hDlg);
 					SendPSChanged(hDlg);
 				}
 				break;
@@ -926,7 +890,6 @@ void OnInit(HWND hDlg)
 				NormalizeUtf8InPlaceNoWriteback(pData[i].fname[j], (int)sizeof(pData[i].fname[j]));
 			}
 			zone_count_map[i][j] = (int)GetZoneCountValue(i, j);
-			zone_vertical_map[i][j] = GetZoneVerticalValue(i, j);
 			for (n = 0; n < 3; n++) {
 				zone_func_map[i][j][n] = (int)GetZoneFuncValue(i, j, n + 1);
 				GetZoneFileValue(i, j, n + 1, zone_file_map[i][j][n], (int)sizeof(zone_file_map[i][j][n]));
@@ -960,14 +923,6 @@ void OnInit(HWND hDlg)
 	CBAddStringUTF8Compat(hDlg, IDC_ZONECOUNT, "1");
 	CBAddStringUTF8Compat(hDlg, IDC_ZONECOUNT, "2");
 	CBAddStringUTF8Compat(hDlg, IDC_ZONECOUNT, "3");
-	if (b_EnglishMenu) {
-		CBAddStringUTF8Compat(hDlg, IDC_ZONEORIENT, "Horizontal");
-		CBAddStringUTF8Compat(hDlg, IDC_ZONEORIENT, "Vertical");
-	}
-	else {
-		CBAddStringUTF8Compat(hDlg, IDC_ZONEORIENT, "横");
-		CBAddStringUTF8Compat(hDlg, IDC_ZONEORIENT, "縦");
-	}
 	for (k = 0; k < 3; k++)
 	{
 		zone_file[k][0] = 0;
@@ -997,11 +952,6 @@ static void WriteMouseEntry(int button, int click)
 	wsprintf(entry, "%d%dZoneCount", button, click + 1);
 	if (has_zone_extras)
 		SetMyRegLong(reg_section, entry, effective_zone_count);
-	else
-		DelMyReg(reg_section, entry);
-	wsprintf(entry, "%d%dZoneVertical", button, click + 1);
-	if (has_zone_extras && zone_vertical_map[button][click])
-		SetMyRegLong(reg_section, entry, 1);
 	else
 		DelMyReg(reg_section, entry);
 	for (k = 0; k < 3; k++)
@@ -1072,7 +1022,6 @@ static void WriteMouseEntry(int button, int click)
 	if (button == 0 && click == 0)
 	{
 		DelMyReg(reg_section, "LeftClickZoneCount");
-		DelMyReg(reg_section, "LeftClickZoneVertical");
 		for (k = 0; k < 3; k++)
 		{
 			wsprintf(entry, "LeftClickZone%dFunc", k + 1);
@@ -1326,14 +1275,6 @@ void OnZoneCount(HWND hDlg)
 	if (zone_count > 3) zone_count = 3;
 	SaveZoneCurrent(hDlg);
 	RefreshZoneControls(hDlg);
-}
-
-void OnZoneOrient(HWND hDlg)
-{
-	int n = CBGetCurSel(hDlg, IDC_ZONEORIENT);
-	if (n == CB_ERR) return;
-	zone_vertical = (n != 0) ? TRUE : FALSE;
-	SaveZoneCurrent(hDlg);
 }
 
 void OnZoneFunc(HWND hDlg, WORD id)

@@ -592,8 +592,6 @@
 #define IDC_LABZONEBLOCK                1417
 #define IDC_LABZONECOUNT                1418
 #define IDC_ZONECOUNT                   1419
-#define IDC_LABZONEORIENT               1420
-#define IDC_ZONEORIENT                  1421
 #define IDC_LABZONE1FUNC                1422
 #define IDC_ZONE1FUNC                   1423
 #define IDC_LABZONE2FUNC                1424

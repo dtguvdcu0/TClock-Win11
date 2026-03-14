@@ -97,10 +97,11 @@ Network traffic:
 
 Connection state and IP:
   LTE / WiFi / EthS / EthL        Connection-state strings.
-  NMX1 / NMX2                     Auto-switched active-network text.
+  NMX1 / NMX2                     Auto-switched active-network text. (Only when the option is enabled)
   SSID / APN / VPNS               Wi-Fi SSID / LTE APN / VPN state.
   EWLS / EWLL / ICP               Connection and active-route helper text.
   WANP / AIPF                     LTE WAN / active-route profile number.
+  GIP                             Global IP address. (Only when the option is enabled)
   IPE / IPW / IPL / IPV / IPA     IP address for each route.
 
 GPU:

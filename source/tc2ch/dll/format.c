@@ -36,6 +36,7 @@ static int AltYear;
 static int ilang;
 static BOOL tc_gip_align(const char* src, char* out, int outCch);
 static void tc_gip_emit(char** dp, char** infop, const char* src);
+static void tc_emit_net_mix_w(WCHAR** dp, int* remain);
 
 extern BOOL bHour12, bHourZero;
 extern BOOL b_DebugLog;
@@ -2217,7 +2218,20 @@ static void tc_get_locale_stime_w(WCHAR* buf, int cch)
 static void tc_get_locale_ampm_w(BOOL isAm, WCHAR* buf, int cch)
 {
 	int lctype = isAm ? LOCALE_S1159 : LOCALE_S2359;
+	const char* entry = isAm ? "AMsymbol" : "PMsymbol";
+	char value[80];
 	if (!buf || cch <= 0) return;
+
+	value[0] = 0;
+
+	GetMyRegStr("Format", entry, value, (int)sizeof(value), "");
+
+	if (value[0] != 0 && MultiByteToWideChar(CP_UTF8, 0, value, -1, buf, cch) > 0) {
+
+		return;
+
+	}
+
 	if (GetLocaleInfoW(MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), lctype, buf, cch) <= 0) {
 		lstrcpynW(buf, isAm ? L"AM" : L"PM", cch);
 	}
@@ -2654,6 +2668,15 @@ static BOOL tc_scan_network_token_w(const WCHAR** psp)
 	p = *psp;
 	if (*p != L'N') return FALSE;
 
+	if (_wcsnicmp(p, L"NMX1", 4) == 0 || _wcsnicmp(p, L"NMX2", 4) == 0) {
+
+		*psp = p + 4;
+
+		return TRUE;
+
+	}
+
+
 	if (_wcsnicmp(p, L"NRAA", 4) == 0 || _wcsnicmp(p, L"NSAA", 4) == 0) {
 		*psp = p + 4;
 		return TRUE;
@@ -2690,6 +2713,17 @@ static BOOL tc_emit_network_token_w(WCHAR** dp, int* remain, const WCHAR** psp)
 	if (!dp || !*dp || !remain || !psp || !*psp) return FALSE;
 	p = *psp;
 	if (*p != L'N') return FALSE;
+
+	if (_wcsnicmp(p, L"NMX1", 4) == 0 || _wcsnicmp(p, L"NMX2", 4) == 0) {
+
+		tc_emit_net_mix_w(dp, remain);
+
+		*psp = p + 4;
+
+		return TRUE;
+
+	}
+
 
 	if (_wcsnicmp(p, L"NRAA", 4) == 0) {
 		WCHAR buf[32];
@@ -3026,6 +3060,53 @@ static void tc_wappend_ansi_fixed_w(WCHAR** dp, int* remain, const char* src, in
 	for (i = 0; i < len; ++i) tc_wappend_char(dp, remain, wbuf[i]);
 	for (; i < fixed; ++i) tc_wappend_char(dp, remain, L' ');
 }
+
+static void tc_emit_net_mix_w(WCHAR** dp, int* remain)
+
+{
+
+	char label[64];
+
+	if (!dp || !*dp || !remain) return;
+
+	label[0] = '\0';
+
+	if (g_InternetConnectStat_Win10 == 0 && net[18] == 2) {
+
+		lstrcpyn(label, "Ethernet*", (int)sizeof(label));
+
+	}
+
+	else if (g_InternetConnectStat_Win10 == 0 && net[18] == 1) {
+
+		lstrcpyn(label, "Ethernet", (int)sizeof(label));
+
+	}
+
+	else if (g_InternetConnectStat_Win10 == 1 || g_InternetConnectStat_Win10 == 4 ||
+
+		active_physical_adapter_Win10 == 1) {
+
+		lstrcpyn(label, activeSSID, (int)sizeof(label));
+
+		if (label[0] == '\0') lstrcpyn(label, "SSID:N/A", (int)sizeof(label));
+
+	}
+
+	else if (g_InternetConnectStat_Win10 == 2 ||
+
+		active_physical_adapter_Win10 == 2) {
+
+		lstrcpyn(label, activeAPName, (int)sizeof(label));
+
+		if (label[0] == '\0') lstrcpyn(label, "APN: N/A", (int)sizeof(label));
+
+	}
+
+	tc_wappend_ansi_fixed_w(dp, remain, label, NetMIX_Length);
+
+}
+
 
 static BOOL tc_gip_align(const char* src, char* out, int outCch)
 {

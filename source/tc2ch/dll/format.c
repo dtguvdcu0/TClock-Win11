@@ -37,6 +37,7 @@ static int ilang;
 static BOOL tc_gip_align(const char* src, char* out, int outCch);
 static void tc_gip_emit(char** dp, char** infop, const char* src);
 static void tc_emit_net_mix_w(WCHAR** dp, int* remain);
+static void tc_wappend_utf8_fixed_w(WCHAR** dp, int* remain, const char* src, int fixed);
 
 extern BOOL bHour12, bHourZero;
 extern BOOL b_DebugLog;
@@ -2666,6 +2667,42 @@ static BOOL tc_scan_network_token_w(const WCHAR** psp)
 	const WCHAR* q;
 	if (!psp || !*psp) return FALSE;
 	p = *psp;
+	if (_wcsnicmp(p, L"SSID", 4) == 0) {
+		*psp = p + 4;
+		return TRUE;
+	}
+	if (_wcsnicmp(p, L"WiFi", 4) == 0) {
+		*psp = p + 4;
+		return TRUE;
+	}
+	if (_wcsnicmp(p, L"EthS", 4) == 0 || _wcsnicmp(p, L"EthL", 4) == 0) {
+		*psp = p + 4;
+		return TRUE;
+	}
+	if (_wcsnicmp(p, L"EWLL", 4) == 0 || _wcsnicmp(p, L"EWLS", 4) == 0) {
+		*psp = p + 4;
+		return TRUE;
+	}
+	if (_wcsnicmp(p, L"ICP", 3) == 0) {
+		*psp = p + 3;
+		return TRUE;
+	}
+	if (_wcsnicmp(p, L"LTE", 3) == 0) {
+		*psp = p + 3;
+		return TRUE;
+	}
+	if (_wcsnicmp(p, L"VPNS", 4) == 0) {
+		*psp = p + 4;
+		return TRUE;
+	}
+	if (_wcsnicmp(p, L"WANP", 4) == 0) {
+		*psp = p + 4;
+		return TRUE;
+	}
+	if (_wcsnicmp(p, L"APN", 3) == 0) {
+		*psp = p + 3;
+		return TRUE;
+	}
 	if (*p != L'N') return FALSE;
 
 	if (_wcsnicmp(p, L"NMX1", 4) == 0 || _wcsnicmp(p, L"NMX2", 4) == 0) {
@@ -2712,6 +2749,118 @@ static BOOL tc_emit_network_token_w(WCHAR** dp, int* remain, const WCHAR** psp)
 	const WCHAR* p;
 	if (!dp || !*dp || !remain || !psp || !*psp) return FALSE;
 	p = *psp;
+	if (_wcsnicmp(p, L"SSID", 4) == 0) {
+		tc_wappend_utf8_fixed_w(dp, remain, activeSSID, SSID_AP_Length);
+		*psp = p + 4;
+		return TRUE;
+	}
+	if (_wcsnicmp(p, L"WiFi", 4) == 0) {
+		if (net[15] == 2) tc_wappend_text(dp, remain, L"WiFi*");
+		else if (net[15] == 1) tc_wappend_text(dp, remain, L"WiFi ");
+		else tc_wappend_text(dp, remain, L"     ");
+		*psp = p + 4;
+		return TRUE;
+	}
+	if (_wcsnicmp(p, L"EthS", 4) == 0) {
+		if (net[18] == 2) tc_wappend_text(dp, remain, L"Eth*");
+		else if (net[18] == 1) tc_wappend_text(dp, remain, L"Eth ");
+		else tc_wappend_text(dp, remain, L"    ");
+		*psp = p + 4;
+		return TRUE;
+	}
+	if (_wcsnicmp(p, L"EthL", 4) == 0) {
+		if (net[18] == 2) tc_wappend_text(dp, remain, L"Ethernet*");
+		else if (net[18] == 1) tc_wappend_text(dp, remain, L"Ethernet ");
+		else tc_wappend_text(dp, remain, L"         ");
+		*psp = p + 4;
+		return TRUE;
+	}
+	if (_wcsnicmp(p, L"EWLL", 4) == 0 || _wcsnicmp(p, L"EWLS", 4) == 0) {
+		WCHAR lteBuf[8];
+		WCHAR lteCh = L'L';
+		BOOL spaced = (_wcsnicmp(p, L"EWLL", 4) == 0) ? TRUE : FALSE;
+		if (tc_custom_utf8_to_utf16(charLTE, lteBuf, (int)(sizeof(lteBuf) / sizeof(lteBuf[0]))) && lteBuf[0] != L'\0') {
+			lteCh = lteBuf[0];
+		}
+		tc_wappend_char(dp, remain, (net[18] > 0) ? L'E' : L' ');
+		tc_wappend_char(dp, remain, (net[18] == 2) ? L'*' : L' ');
+		if (spaced) tc_wappend_char(dp, remain, L' ');
+		tc_wappend_char(dp, remain, (net[15] > 0) ? L'W' : L' ');
+		tc_wappend_char(dp, remain, (net[15] == 2) ? L'*' : L' ');
+		if (spaced) tc_wappend_char(dp, remain, L' ');
+		tc_wappend_char(dp, remain, (net[12] > 0) ? lteCh : L' ');
+		tc_wappend_char(dp, remain, (net[12] == 2) ? L'*' : L' ');
+		*psp = p + 4;
+		return TRUE;
+	}
+	if (_wcsnicmp(p, L"ICP", 3) == 0) {
+		WCHAR lteBuf[8];
+		WCHAR lteCh = L'L';
+		if (tc_custom_utf8_to_utf16(charLTE, lteBuf, (int)(sizeof(lteBuf) / sizeof(lteBuf[0]))) && lteBuf[0] != L'\0') {
+			lteCh = lteBuf[0];
+		}
+		if (g_InternetConnectStat_Win10 == 0 && active_physical_adapter_Win10 == 0) {
+			tc_wappend_char(dp, remain, L'E');
+		}
+		else if (g_InternetConnectStat_Win10 == 1) {
+			tc_wappend_char(dp, remain, L'W');
+		}
+		else if (g_InternetConnectStat_Win10 == 2) {
+			tc_wappend_char(dp, remain, lteCh);
+		}
+		else if (g_InternetConnectStat_Win10 == 4 || b_MeteredNetNow) {
+			tc_wappend_char(dp, remain, L'M');
+		}
+		else {
+			tc_wappend_char(dp, remain, L'-');
+		}
+		*psp = p + 3;
+		return TRUE;
+	}
+	if (_wcsnicmp(p, L"LTE", 3) == 0) {
+		WCHAR wbuf[64];
+		int len;
+		int i;
+		if (!tc_custom_utf8_to_utf16(strLTE, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0])))) {
+			wbuf[0] = L'\0';
+		}
+		len = (int)lstrlenW(wbuf);
+		if (net[12] == 2) {
+			tc_wappend_text(dp, remain, wbuf);
+			tc_wappend_char(dp, remain, L'*');
+		}
+		else if (net[12] == 1) {
+			tc_wappend_text(dp, remain, wbuf);
+			tc_wappend_char(dp, remain, L' ');
+		}
+		else {
+			for (i = 0; i < len + 1; ++i) tc_wappend_char(dp, remain, L' ');
+		}
+		*psp = p + 3;
+		return TRUE;
+	}
+	if (_wcsnicmp(p, L"VPNS", 4) == 0) {
+		tc_wappend_text(dp, remain, flag_VPN ? L"VPN" : L"   ");
+		*psp = p + 4;
+		return TRUE;
+	}
+	if (_wcsnicmp(p, L"WANP", 4) == 0) {
+		WCHAR wbuf[16];
+		if (currentLTEProfNum != -1) {
+			wsprintfW(wbuf, L"%2d", currentLTEProfNum);
+		}
+		else {
+			lstrcpyW(wbuf, L"N/A");
+		}
+		tc_wappend_text(dp, remain, wbuf);
+		*psp = p + 4;
+		return TRUE;
+	}
+	if (_wcsnicmp(p, L"APN", 3) == 0) {
+		tc_wappend_utf8_fixed_w(dp, remain, activeAPName, SSID_AP_Length);
+		*psp = p + 3;
+		return TRUE;
+	}
 	if (*p != L'N') return FALSE;
 
 	if (_wcsnicmp(p, L"NMX1", 4) == 0 || _wcsnicmp(p, L"NMX2", 4) == 0) {
@@ -3053,6 +3202,21 @@ static void tc_wappend_ansi_fixed_w(WCHAR** dp, int* remain, const char* src, in
 	if (!dp || !*dp || !remain || !src || fixed <= 0) return;
 	/* ※ 表示トークンは codepage 指定互換入力を許可（Shift-JIS 経路維持） */
 	if (tc_ansi_to_utf16_compat((UINT)codepage, src, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) <= 0) {
+		wbuf[0] = L'\0';
+	}
+	len = (int)lstrlenW(wbuf);
+	if (len > fixed) len = fixed;
+	for (i = 0; i < len; ++i) tc_wappend_char(dp, remain, wbuf[i]);
+	for (; i < fixed; ++i) tc_wappend_char(dp, remain, L' ');
+}
+
+static void tc_wappend_utf8_fixed_w(WCHAR** dp, int* remain, const char* src, int fixed)
+{
+	WCHAR wbuf[128];
+	int len = 0;
+	int i;
+	if (!dp || !*dp || !remain || !src || fixed <= 0) return;
+	if (!tc_custom_utf8_to_utf16(src, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0])))) {
 		wbuf[0] = L'\0';
 	}
 	len = (int)lstrlenW(wbuf);

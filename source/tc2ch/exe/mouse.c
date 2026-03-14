@@ -37,10 +37,9 @@ void GetMouseFileEntry(int btn, int clk, char* entry, int cch);
 static void GetMouseWorkDirEntry(int btn, int clk, char* entry, int cch);
 static void mouse_zone_reset(void);
 static int mouse_zone_count(int button, int nclick);
-static BOOL mouse_zone_vertical(int button, int nclick);
 static BOOL mouse_has_text(const char* entry);
 static void mouse_pick_text(int button, int nclick, int zone_number, const char* suffix, char* entry, int cch);
-static int mouse_zone_hit_test(POINT pt_client, const RECT* rc_client, int zone_count, BOOL vertical);
+static int mouse_zone_hit_test(POINT pt_client, const RECT* rc_client, int zone_count);
 static LONG mouse_zone_read_func(int button, int nclick, int zone_number, BOOL* found);
 static BOOL mouse_zone_has_action(int button, int nclick);
 static BOOL mouse_zone_resolve_pending(int button, int nclick, LPARAM lParam, LONG* fnc_out);
@@ -102,21 +101,6 @@ static int mouse_zone_count(int button, int nclick)
 	return (int)count;
 }
 
-static BOOL mouse_zone_vertical(int button, int nclick)
-{
-	char entry[32];
-	LONG value;
-	const LONG missing = -32768;
-
-	wsprintf(entry, "%d%dZoneVertical", button, nclick);
-	value = GetMyRegLong(reg_section, entry, missing);
-	if (value == missing && button == 0 && nclick == 1)
-		value = GetMyRegLong(reg_section, "LeftClickZoneVertical", 0);
-	if (value == missing)
-		value = 0;
-	return (value != 0) ? TRUE : FALSE;
-}
-
 static BOOL mouse_has_text(const char* entry)
 {
 	char missing[2] = { 1, 0 };
@@ -162,7 +146,7 @@ static void mouse_pick_text(int button, int nclick, int zone_number, const char*
 	lstrcpyn(entry, candidate, cch);
 }
 
-static int mouse_zone_hit_test(POINT pt_client, const RECT* rc_client, int zone_count, BOOL vertical)
+static int mouse_zone_hit_test(POINT pt_client, const RECT* rc_client, int zone_count)
 {
 	int axis;
 	int length;
@@ -173,14 +157,8 @@ static int mouse_zone_hit_test(POINT pt_client, const RECT* rc_client, int zone_
 		return -1;
 	}
 
-	if (vertical) {
-		axis = pt_client.y - rc_client->top;
-		length = rc_client->bottom - rc_client->top;
-	}
-	else {
-		axis = pt_client.x - rc_client->left;
-		length = rc_client->right - rc_client->left;
-	}
+	axis = pt_client.x - rc_client->left;
+	length = rc_client->right - rc_client->left;
 	if (length <= 0) return -1;
 
 	if (zone_count >= 3) {
@@ -275,7 +253,7 @@ static BOOL mouse_zone_resolve_pending(int button, int nclick, LPARAM lParam, LO
 
 	pt_client.x = GET_X_LPARAM(lParam);
 	pt_client.y = GET_Y_LPARAM(lParam);
-	zone_index = mouse_zone_hit_test(pt_client, &rc_client, zone_count, mouse_zone_vertical(button, nclick));
+	zone_index = mouse_zone_hit_test(pt_client, &rc_client, zone_count);
 	if (zone_index < 0) return FALSE;
 
 	fnc = mouse_zone_read_func(button, nclick, zone_index + 1, &found);

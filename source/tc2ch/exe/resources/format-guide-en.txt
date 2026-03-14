@@ -50,7 +50,7 @@ Uptime:
 
 CPU:
   CU                              Total CPU usage.
-  CU0-CU9 / CUe00-CUe99           Per logical-processor usage.
+  CU0 - CU9 / CUe00 - CUe99           Per logical-processor usage.
   CC                              CPU clock (MHz).
   CC0 - CC9 / CCe00 - CCe99       Per logical-processor clock (MHz).
   CCM / CCG                       Show CPU clock in MHz / GHz.

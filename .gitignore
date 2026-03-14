@@ -45,3 +45,4 @@ additional_files/tclock_customtip.txt
 *.jpg
 UPDATE.md
 source/x64/
+*.org

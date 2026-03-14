@@ -95,12 +95,14 @@ Network traffic:
   NSSB / NSSK / NSSM              Send speed in B / KB / MB.
   NRAA / NSAA                     Auto-unit total receive / send.
 
-Connection state and IP:
-  LTE / WiFi / EthS / EthL        Connection-state strings.
-  NMX1 / NMX2                     Auto-switched active-network text. (Only when the option is enabled)
+Connection and route display:
+  LTE / WiFi / EthS / EthL        Connection-state strings by connection type (EthS: 4 chars / EthL: 9 chars).
+  NMX1 / NMX2                     Automatically switches Ethernet / SSID / APN based on the active connection.
   SSID / APN / VPNS               Wi-Fi SSID / LTE APN / VPN state.
-  EWLS / EWLL / ICP               Connection and active-route helper text.
-  WANP / AIPF                     LTE WAN / active-route profile number.
+  EWLS / EWLL / ICP               Simplified display of connection state and route (6 chars / 8 chars / 1 char).
+  WANP                            LTE WAN profile number.
+
+IP addresses:
   GIP                             Global IP address. (Only when the option is enabled)
   IPE / IPW / IPL / IPV / IPA     IP address for each route.
 

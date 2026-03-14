@@ -97,7 +97,7 @@ CPU:
 
 接続状態と IP:
   LTE / WiFi / EthS / EthL        各接続種別の状態文字列
-  NMX1 / NMX2                     アクティブな接続に応じて自動切替する表示
+  NMX1 / NMX2                     アクティブな接続に応じて自動切替する表示 (オプション有効時のみ)
   SSID / APN / VPNS               Wi-Fi SSID / LTE APN / VPN 状態
   EWLS / EWLL / ICP               接続状態やアクティブ回線の補助表示
   WANP / AIPF                     LTE WAN / アクティブ回線プロファイル番号

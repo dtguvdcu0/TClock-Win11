@@ -40,7 +40,14 @@ static BOOL GetZoneVerticalValue(int button, int click);
 static LONG GetZoneFuncValue(int button, int click, int zone_number);
 static void GetZoneFileValue(int button, int click, int zone_number, char *dst, int dst_count);
 static void GetZoneWorkDirValue(int button, int click, int zone_number, char *dst, int dst_count);
+static BOOL UseRightClickMenuConfig(void);
+static BOOL IsRightClickRelatedButton(int button);
+static int GetMouseButtonSel(HWND hDlg);
+static void SetMouseButtonSel(HWND hDlg, int button);
 static void MoveDlgItemY(HWND hDlg, int ctrlId, int y);
+static int GetDlgItemHeight(HWND hDlg, int ctrlId);
+static int DlgYFromDlu(HWND hDlg, int dlu_y);
+static int AlignLabelY(HWND hDlg, int label_id, int row_id, int row_y);
 static void LayoutMouseRows(HWND hDlg);
 static void LayoutZoneRows(HWND hDlg, BOOL show_zone, BOOL show_file, BOOL show_workdir, BOOL show_zone2, BOOL show_zone3);
 static void RefreshZoneControls(HWND hDlg);
@@ -284,7 +291,7 @@ static BOOL GetZoneSel(HWND hDlg, int *button, int *click)
 	int current_button;
 	int current_click;
 
-	current_button = CBGetCurSel(hDlg, IDC_MOUSEBUTTON);
+	current_button = GetMouseButtonSel(hDlg);
 	if (!pData || current_button < 0 || current_button >= 28) return FALSE;
 	for (current_click = 0; current_click < 4; current_click++)
 	{
@@ -294,6 +301,48 @@ static BOOL GetZoneSel(HWND hDlg, int *button, int *click)
 	if (button) *button = current_button;
 	if (click) *click = current_click;
 	return TRUE;
+}
+
+static BOOL UseRightClickMenuConfig(void)
+{
+	return GetMyRegLong("Mouse", "RightClickMenu", TRUE) ? TRUE : FALSE;
+}
+
+static BOOL IsRightClickRelatedButton(int button)
+{
+	if (button == (IDS_RIGHTBUTTON - IDS_LEFTBUTTON)) return TRUE;
+	if (button == (IDS_CRIGHTBUTTON - IDS_LEFTBUTTON)) return TRUE;
+	if (button == (IDS_SRIGHTBUTTON - IDS_LEFTBUTTON)) return TRUE;
+	return FALSE;
+}
+
+static int GetMouseButtonSel(HWND hDlg)
+{
+	int index;
+	int button;
+
+	index = CBGetCurSel(hDlg, IDC_MOUSEBUTTON);
+	if (index == CB_ERR) return CB_ERR;
+	button = (int)(INT_PTR)CBGetItemData(hDlg, IDC_MOUSEBUTTON, index);
+	if (button == CB_ERR) return CB_ERR;
+	return button;
+}
+
+static void SetMouseButtonSel(HWND hDlg, int button)
+{
+	int count;
+	int index;
+
+	count = CBGetCount(hDlg, IDC_MOUSEBUTTON);
+	for (index = 0; index < count; index++)
+	{
+		if ((int)(INT_PTR)CBGetItemData(hDlg, IDC_MOUSEBUTTON, index) == button)
+		{
+			CBSetCurSel(hDlg, IDC_MOUSEBUTTON, index);
+			return;
+		}
+	}
+	CBSetCurSel(hDlg, IDC_MOUSEBUTTON, 0);
 }
 
 static BOOL IsZoneButton(int button)
@@ -380,47 +429,76 @@ static int GetDlgItemY(HWND hDlg, int ctrlId)
 	return pt.y;
 }
 
+static int GetDlgItemHeight(HWND hDlg, int ctrlId)
+{
+	HWND hCtrl;
+	RECT rc;
+
+	hCtrl = GetDlgItem(hDlg, ctrlId);
+	if (!hCtrl) return 0;
+	GetWindowRect(hCtrl, &rc);
+	return rc.bottom - rc.top;
+}
+
+static int DlgYFromDlu(HWND hDlg, int dlu_y)
+{
+	RECT rc;
+
+	rc.left = 0;
+	rc.top = 0;
+	rc.right = 0;
+	rc.bottom = dlu_y;
+	MapDialogRect(hDlg, &rc);
+	return rc.bottom;
+}
+
+static int AlignLabelY(HWND hDlg, int label_id, int row_id, int row_y)
+{
+	int label_h;
+	int row_h;
+
+	label_h = GetDlgItemHeight(hDlg, label_id);
+	row_h = GetDlgItemHeight(hDlg, row_id);
+	if (label_h <= 0 || row_h <= 0) return row_y;
+	return row_y + ((row_h - label_h) / 2);
+}
+
 static void LayoutMouseRows(HWND hDlg)
 {
-	int program_y;
-	int checkbox_y;
-	int button_combo_y;
-	int button_label_y;
+	BOOL show_program;
+	int button_y_dlu;
+	int radio_y_dlu;
+	int zone_y_dlu;
+	int button_y;
 	int radio_y;
-	int zone_row_y;
-	const int checkbox_gap = 18;
-	const int combo_gap = 22;
-	const int radio_gap = 22;
-	const int zone_gap = 20;
+	int zone_y;
 
-	program_y = GetDlgItemY(hDlg, IDC_DROPFILESAPP);
-	checkbox_y = program_y + checkbox_gap;
-	button_combo_y = checkbox_y + combo_gap;
-	button_label_y = button_combo_y + 3;
-	radio_y = button_combo_y + radio_gap;
-	zone_row_y = radio_y + zone_gap;
+	show_program = IsWindowVisible(GetDlgItem(hDlg, IDC_DROPFILESAPP));
+	button_y_dlu = show_program ? 51 : 35;
+	radio_y_dlu = show_program ? 67 : 51;
+	zone_y_dlu = show_program ? 83 : 67;
+	button_y = DlgYFromDlu(hDlg, button_y_dlu);
+	radio_y = DlgYFromDlu(hDlg, radio_y_dlu);
+	zone_y = DlgYFromDlu(hDlg, zone_y_dlu);
 
-	MoveDlgItemY(hDlg, IDC_RCLICKMENU, checkbox_y);
-	MoveDlgItemY(hDlg, IDC_LABMOUSEBUTTON, button_label_y);
-	MoveDlgItemY(hDlg, IDC_MOUSEBUTTON, button_combo_y);
-	MoveDlgItemY(hDlg, IDC_HOTKEY, button_combo_y);
+	MoveDlgItemY(hDlg, IDC_LABMOUSEBUTTON, AlignLabelY(hDlg, IDC_LABMOUSEBUTTON, IDC_MOUSEBUTTON, button_y));
+	MoveDlgItemY(hDlg, IDC_MOUSEBUTTON, button_y);
+	MoveDlgItemY(hDlg, IDC_HOTKEY, button_y);
 	MoveDlgItemY(hDlg, IDC_RADSINGLE, radio_y);
 	MoveDlgItemY(hDlg, IDC_RADDOUBLE, radio_y);
 	MoveDlgItemY(hDlg, IDC_RADTRIPLE, radio_y);
 	MoveDlgItemY(hDlg, IDC_RADQUADRUPLE, radio_y);
-	MoveDlgItemY(hDlg, IDC_LABZONEBLOCK, zone_row_y + 2);
-	MoveDlgItemY(hDlg, IDC_LABZONECOUNT, zone_row_y + 2);
-	MoveDlgItemY(hDlg, IDC_ZONECOUNT, zone_row_y);
-	MoveDlgItemY(hDlg, IDC_LABZONEORIENT, zone_row_y + 2);
-	MoveDlgItemY(hDlg, IDC_ZONEORIENT, zone_row_y);
+	MoveDlgItemY(hDlg, IDC_LABZONEBLOCK, AlignLabelY(hDlg, IDC_LABZONEBLOCK, IDC_ZONECOUNT, zone_y));
+	MoveDlgItemY(hDlg, IDC_LABZONECOUNT, AlignLabelY(hDlg, IDC_LABZONECOUNT, IDC_ZONECOUNT, zone_y));
+	MoveDlgItemY(hDlg, IDC_ZONECOUNT, zone_y);
 }
 
 static void LayoutZoneRows(HWND hDlg, BOOL show_zone, BOOL show_file, BOOL show_workdir, BOOL show_zone2, BOOL show_zone3)
 {
 	int next_y;
 	int zone_row_y;
-	const int row_pitch = 15;
-	const int file_gap = 2;
+	const int row_pitch = DlgYFromDlu(hDlg, 16);
+	const int file_gap = 0;
 	BOOL show_zone2_file = show_zone2 && IsMousePathFunc(zone_func[1]);
 	BOOL show_zone2_workdir = show_zone2 && IsMouseWorkDirFunc(zone_func[1]);
 	BOOL show_zone3_file = show_zone3 && IsMousePathFunc(zone_func[2]);
@@ -431,75 +509,75 @@ static void LayoutZoneRows(HWND hDlg, BOOL show_zone, BOOL show_file, BOOL show_
 
 	if (!show_zone)
 	{
-		MoveDlgItemY(hDlg, IDC_LABZONE1FUNC, next_y + 2);
+		MoveDlgItemY(hDlg, IDC_LABZONE1FUNC, AlignLabelY(hDlg, IDC_LABZONE1FUNC, IDC_MOUSEFUNC, next_y));
 		MoveDlgItemY(hDlg, IDC_MOUSEFUNC, next_y);
 		next_y += row_pitch;
 		if (show_file)
 		{
-			MoveDlgItemY(hDlg, IDC_LABMOUSEFILE, next_y + 2);
+			MoveDlgItemY(hDlg, IDC_LABMOUSEFILE, AlignLabelY(hDlg, IDC_LABMOUSEFILE, IDC_MOUSEFILE, next_y));
 			MoveDlgItemY(hDlg, IDC_MOUSEFILE, next_y);
 			MoveDlgItemY(hDlg, IDC_MOUSEFILESANSHO, next_y);
 			next_y += row_pitch + file_gap;
 		}
 		if (show_workdir)
 		{
-			MoveDlgItemY(hDlg, IDC_LABMOUSEWORKDIR, next_y + 2);
+			MoveDlgItemY(hDlg, IDC_LABMOUSEWORKDIR, AlignLabelY(hDlg, IDC_LABMOUSEWORKDIR, IDC_MOUSEWORKDIR, next_y));
 			MoveDlgItemY(hDlg, IDC_MOUSEWORKDIR, next_y);
 			next_y += row_pitch + file_gap;
 		}
 		return;
 	}
 
-	MoveDlgItemY(hDlg, IDC_LABZONE1FUNC, next_y + 2);
+	MoveDlgItemY(hDlg, IDC_LABZONE1FUNC, AlignLabelY(hDlg, IDC_LABZONE1FUNC, IDC_MOUSEFUNC, next_y));
 	MoveDlgItemY(hDlg, IDC_MOUSEFUNC, next_y);
 	next_y += row_pitch;
 	if (show_file)
 	{
-		MoveDlgItemY(hDlg, IDC_LABMOUSEFILE, next_y + 2);
+		MoveDlgItemY(hDlg, IDC_LABMOUSEFILE, AlignLabelY(hDlg, IDC_LABMOUSEFILE, IDC_MOUSEFILE, next_y));
 		MoveDlgItemY(hDlg, IDC_MOUSEFILE, next_y);
 		MoveDlgItemY(hDlg, IDC_MOUSEFILESANSHO, next_y);
 		next_y += row_pitch + file_gap;
 	}
 	if (show_workdir)
 	{
-		MoveDlgItemY(hDlg, IDC_LABMOUSEWORKDIR, next_y + 2);
+		MoveDlgItemY(hDlg, IDC_LABMOUSEWORKDIR, AlignLabelY(hDlg, IDC_LABMOUSEWORKDIR, IDC_MOUSEWORKDIR, next_y));
 		MoveDlgItemY(hDlg, IDC_MOUSEWORKDIR, next_y);
 		next_y += row_pitch + file_gap;
 	}
 	if (show_zone2)
 	{
-		MoveDlgItemY(hDlg, IDC_LABZONE2FUNC, next_y + 2);
+		MoveDlgItemY(hDlg, IDC_LABZONE2FUNC, AlignLabelY(hDlg, IDC_LABZONE2FUNC, IDC_ZONE2FUNC, next_y));
 		MoveDlgItemY(hDlg, IDC_ZONE2FUNC, next_y);
 		next_y += row_pitch;
 		if (show_zone2_file)
 		{
-			MoveDlgItemY(hDlg, IDC_LABZONE2FILE, next_y + 2);
+			MoveDlgItemY(hDlg, IDC_LABZONE2FILE, AlignLabelY(hDlg, IDC_LABZONE2FILE, IDC_ZONE2FILE, next_y));
 			MoveDlgItemY(hDlg, IDC_ZONE2FILE, next_y);
 			MoveDlgItemY(hDlg, IDC_ZONE2FILESANSHO, next_y);
 			next_y += row_pitch + file_gap;
 		}
 		if (show_zone2_workdir)
 		{
-			MoveDlgItemY(hDlg, IDC_LABZONE2WORKDIR, next_y + 2);
+			MoveDlgItemY(hDlg, IDC_LABZONE2WORKDIR, AlignLabelY(hDlg, IDC_LABZONE2WORKDIR, IDC_ZONE2WORKDIR, next_y));
 			MoveDlgItemY(hDlg, IDC_ZONE2WORKDIR, next_y);
 			next_y += row_pitch + file_gap;
 		}
 	}
 	if (show_zone3)
 	{
-		MoveDlgItemY(hDlg, IDC_LABZONE3FUNC, next_y + 2);
+		MoveDlgItemY(hDlg, IDC_LABZONE3FUNC, AlignLabelY(hDlg, IDC_LABZONE3FUNC, IDC_ZONE3FUNC, next_y));
 		MoveDlgItemY(hDlg, IDC_ZONE3FUNC, next_y);
 		next_y += row_pitch;
 		if (show_zone3_file)
 		{
-			MoveDlgItemY(hDlg, IDC_LABZONE3FILE, next_y + 2);
+			MoveDlgItemY(hDlg, IDC_LABZONE3FILE, AlignLabelY(hDlg, IDC_LABZONE3FILE, IDC_ZONE3FILE, next_y));
 			MoveDlgItemY(hDlg, IDC_ZONE3FILE, next_y);
 			MoveDlgItemY(hDlg, IDC_ZONE3FILESANSHO, next_y);
 			next_y += row_pitch + file_gap;
 		}
 		if (show_zone3_workdir)
 		{
-			MoveDlgItemY(hDlg, IDC_LABZONE3WORKDIR, next_y + 2);
+			MoveDlgItemY(hDlg, IDC_LABZONE3WORKDIR, AlignLabelY(hDlg, IDC_LABZONE3WORKDIR, IDC_ZONE3WORKDIR, next_y));
 			MoveDlgItemY(hDlg, IDC_ZONE3WORKDIR, next_y);
 			next_y += row_pitch + file_gap;
 		}
@@ -536,8 +614,8 @@ static void RefreshZoneControls(HWND hDlg)
 	ShowDlgItem(hDlg, IDC_LABZONEBLOCK, show_zone);
 	ShowDlgItem(hDlg, IDC_LABZONECOUNT, show_zone);
 	ShowDlgItem(hDlg, IDC_ZONECOUNT, show_zone);
-	ShowDlgItem(hDlg, IDC_LABZONEORIENT, show_zone);
-	ShowDlgItem(hDlg, IDC_ZONEORIENT, show_zone);
+	ShowDlgItem(hDlg, IDC_LABZONEORIENT, FALSE);
+	ShowDlgItem(hDlg, IDC_ZONEORIENT, FALSE);
 	ShowDlgItem(hDlg, IDC_LABZONE1FUNC, TRUE);
 	ShowZoneFuncRow(hDlg, IDC_LABZONE2FUNC, IDC_ZONE2FUNC, show_zone && show_zone2);
 	ShowZoneFuncRow(hDlg, IDC_LABZONE3FUNC, IDC_ZONE3FUNC, show_zone && show_zone3);
@@ -678,10 +756,6 @@ BOOL CALLBACK PageMouseProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
 					SendPSChanged(hDlg);
 				}
 				break;
-			case IDC_RCLICKMENU:
-				g_bApplyClock = TRUE;
-				SendPSChanged(hDlg);
-				break;
 			case IDC_HOTKEY:
 				OnMouseFunc(hDlg);
 				SendPSChanged(hDlg);
@@ -790,11 +864,16 @@ void OnInit(HWND hDlg)
 
 
 	for(i = IDS_LEFTBUTTON; i <= IDS_SWHEEL2; i++)
-		CBAddStringUTF8Compat(hDlg, IDC_MOUSEBUTTON, MyStringUTF8(i));
-	AdjustDlgConboBoxDropDown(hDlg, IDC_MOUSEBUTTON, 22);
+	{
+		int button;
+		int index;
 
-	CheckDlgButton(hDlg, IDC_RCLICKMENU,
-		GetMyRegLong("Mouse", "RightClickMenu", TRUE));
+		button = i - IDS_LEFTBUTTON;
+		if (UseRightClickMenuConfig() && IsRightClickRelatedButton(button)) continue;
+		index = CBAddStringUTF8Compat(hDlg, IDC_MOUSEBUTTON, MyStringUTF8(i));
+		CBSetItemData(hDlg, IDC_MOUSEBUTTON, index, button);
+	}
+	AdjustDlgConboBoxDropDown(hDlg, IDC_MOUSEBUTTON, 22);
 	// set mouse functions to combo box
 	InitMouseFuncList(hDlg);
 	InitMouseFuncCombo(hDlg, IDC_ZONE2FUNC);
@@ -817,8 +896,8 @@ void OnInit(HWND hDlg)
 	}
 	RefreshZoneControls(hDlg);
 
+	SetMouseButtonSel(hDlg, 0);
 	OnDropFilesChange(hDlg);
-	CBSetCurSel(hDlg, IDC_MOUSEBUTTON, 0);
 	OnMouseButton(hDlg);
 }
 
@@ -838,8 +917,6 @@ void OnApply(HWND hDlg)
 	GetDlgItemTextUTF8(hDlg, IDC_DROPFILESAPP, s, 256);
 	SetMyRegStr(reg_section, "DropFilesApp", s);
 
-	SetMyRegLong("Mouse", "RightClickMenu",
-		IsDlgButtonChecked(hDlg, IDC_RCLICKMENU));
 	SaveZoneCurrent(hDlg);
 
 	for(i = 0; i < 28; i++)
@@ -961,6 +1038,7 @@ void OnDropFilesChange(HWND hDlg)
 	for(i = IDC_LABDROPFILESAPP; i <= IDC_DROPFILESAPPSANSHO; i++)
 		ShowDlgItem(hDlg, i, (2 <= n && n <= 4));
 
+	RefreshZoneControls(hDlg);
 	SendPSChanged(hDlg);
 }
 
@@ -969,10 +1047,9 @@ void OnDropFilesChange(HWND hDlg)
 --------------------------------------------------*/
 void OnMouseButton(HWND hDlg)
 {
-	int n, button, j;
+	int button, j;
 
-	n = CBGetCurSel(hDlg, IDC_MOUSEBUTTON);
-	button = n;
+	button = GetMouseButtonSel(hDlg);
 	if (!pData || button < 0 || button >= 28) return;
 	//if(n > 0) button = n + 1;
 
@@ -1015,11 +1092,10 @@ void OnMouseButton(HWND hDlg)
 --------------------------------------------------*/
 void OnMouseClickTime(HWND hDlg, int id)
 {
-	int n, button;
+	int button;
 	int click, i, count, func;
 
-	n = CBGetCurSel(hDlg, IDC_MOUSEBUTTON);
-	button = n;
+	button = GetMouseButtonSel(hDlg);
 	if (!pData || button < 0 || button >= 28) return;
 
 	click = id - IDC_RADSINGLE;
@@ -1050,11 +1126,10 @@ void OnMouseClickTime(HWND hDlg, int id)
 --------------------------------------------------*/
 void OnMouseFunc(HWND hDlg)
 {
-	int n, button, j;
+	int button, j;
 	int click, index, func;
 
-	n = CBGetCurSel(hDlg, IDC_MOUSEBUTTON);
-	button = n;
+	button = GetMouseButtonSel(hDlg);
 	if (!pData || button < 0 || button >= 28) return;
 
 	for(j = 0; j < 4; j++)
@@ -1100,11 +1175,10 @@ void OnMouseFunc(HWND hDlg)
 --------------------------------------------------*/
 void OnMouseFileChange(HWND hDlg)
 {
-	int n, button, j;
+	int button, j;
 	int click, index, func;
 
-	n = CBGetCurSel(hDlg, IDC_MOUSEBUTTON);
-	button = n;
+	button = GetMouseButtonSel(hDlg);
 	if (!pData || button < 0 || button >= 28) return;
 
 	for(j = 0; j < 4; j++)
@@ -1130,11 +1204,10 @@ void OnMouseFileChange(HWND hDlg)
 
 void OnMouseWorkDirChange(HWND hDlg)
 {
-	int n, button, j;
+	int button, j;
 	int click;
 
-	n = CBGetCurSel(hDlg, IDC_MOUSEBUTTON);
-	button = n;
+	button = GetMouseButtonSel(hDlg);
 	if (!pData || button < 0 || button >= 28) return;
 
 	for(j = 0; j < 4; j++)

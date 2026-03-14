@@ -95,12 +95,14 @@ CPU:
   NSSB / NSSK / NSSM              送信速度を B / KB / MB で表示します。
   NRAA / NSAA                     自動単位で総受信量 / 総送信量を表示します。
 
-接続状態と IP:
-  LTE / WiFi / EthS / EthL        各接続種別の状態文字列
-  NMX1 / NMX2                     アクティブな接続に応じて自動切替する表示 (オプション有効時のみ)
+接続状態・回線表示:
+  LTE / WiFi / EthS / EthL        各接続種別の状態文字列 (EthS: 4文字 / EthL: 9文字)
+  NMX1 / NMX2                     アクティブな回線に応じて Ethernet / SSID / APN を自動切替表示
   SSID / APN / VPNS               Wi-Fi SSID / LTE APN / VPN 状態
-  EWLS / EWLL / ICP               接続状態やアクティブ回線の補助表示
-  WANP / AIPF                     LTE WAN / アクティブ回線プロファイル番号
+  EWLS / EWLL / ICP               接続状態・接続経路を簡易表示 (6文字 / 8文字 / 1文字)
+  WANP                            LTE WAN プロファイル番号
+
+IP アドレス:
   GIP                             グローバル IP アドレス (オプション有効時のみ)
   IPE / IPW / IPL / IPV / IPA     各回線の IP アドレス
 

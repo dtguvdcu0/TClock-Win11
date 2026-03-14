@@ -518,13 +518,12 @@ void OnInit(HWND hDlg)
 	}
 	CheckDlgButton(hDlg, IDC_KAIGYO, nKaigyo);
 
-	// "12 hour" -- "Customize format"
-	for(i = IDC_12HOUR; i <= IDC_CUSTOM; i++)
+	// "Internet Time" -- "Customize format"
+	for(i = IDC_INTERNETTIME; i <= IDC_CUSTOM; i++)
 	{
 		CheckDlgButton(hDlg, i,
 			GetMyRegLong("Format",  ENTRY(i), FALSE));
 	}
-	CheckDlgButton(hDlg, IDC_INTERNETTIME, FALSE);
 
 
 	GetMyRegStr("Format", "Format", s, 1024, "");
@@ -716,7 +715,8 @@ void InitFormat(void)
 	if(CHECKS(IDC_MONTH))  CHECKS(IDC_MONTHS) = FALSE;
 	if(CHECKS(IDC_MONTHS)) CHECKS(IDC_MONTH) = FALSE;
 
-	CHECKS(IDC_INTERNETTIME) = FALSE;
+	CHECKS(IDC_INTERNETTIME) = GetMyRegLong("Format",
+		ENTRY(IDC_INTERNETTIME), FALSE);
 
 	b = FALSE;
 	hwnd = FindWindowW(L"Shell_TrayWnd", NULL);

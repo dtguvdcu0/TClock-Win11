@@ -1999,7 +1999,7 @@ void CreateDefaultIniFile_Win10(const wchar_t* fnameW)
 		SetMyRegLong(NULL, "AutoClearLogLines", 1000);
 		SetMyRegLong(NULL, "EnableOnSubDisplay", 1);
 		SetMyRegLong(NULL, "OffsetClockMS", 0);
-		SetMyRegLong(NULL, "CompactMode", 1);
+		SetMyRegLong(NULL, "CompactMode", 0);
 		SetMyRegLong(NULL, "AdjustThreshold", 200);
 		SetMyRegLong(NULL, "NormalLog", 1);
 		SetMyRegLong(NULL, "AutoRestart", 1);

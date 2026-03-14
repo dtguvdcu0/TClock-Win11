@@ -12,6 +12,7 @@ static DWORD ReadPolicyDword(const char* subkey, const char* valueName, DWORD de
 static void WritePolicyDword(const char* subkey, const char* valueName, DWORD value);
 static BOOL ApplyHideClockActionElevated(HWND hDlg, DWORD hideClock);
 static void EnsureHideClockActionButtons(HWND hDlg);
+static int MapDluY(HWND hDlg, int dluY);
 
 __inline void SendPSChanged(HWND hDlg)
 {
@@ -61,6 +62,17 @@ static BOOL ApplyHideClockActionElevated(HWND hDlg, DWORD hideClock)
 	return ((INT_PTR)hRet > 32) ? TRUE : FALSE;
 }
 
+static int MapDluY(HWND hDlg, int dluY)
+{
+	RECT rc;
+	rc.left = 0;
+	rc.top = 0;
+	rc.right = 0;
+	rc.bottom = dluY;
+	MapDialogRect(hDlg, &rc);
+	return rc.bottom;
+}
+
 static void EnsureHideClockActionButtons(HWND hDlg)
 {
 	HWND hCheck;
@@ -74,7 +86,7 @@ static void EnsureHideClockActionButtons(HWND hDlg)
 	HWND hBtnShow;
 	HFONT hFont;
 	int gap;
-	int vGap;
+	int rowPitch;
 	int btnWidth;
 	int rowLeft;
 	int rowWidth;
@@ -82,6 +94,7 @@ static void EnsureHideClockActionButtons(HWND hDlg)
 	int btnTop;
 	int alignHeight;
 	int alignTop;
+	int experimentalTop;
 	const wchar_t* hideLabel;
 	const wchar_t* showLabel;
 	const wchar_t* experimentalLabel;
@@ -102,16 +115,17 @@ static void EnsureHideClockActionButtons(HWND hDlg)
 	rowLeft = rcSave.left;
 	rowWidth = rcSave.right - rcSave.left;
 	if (rowWidth <= 0) rowWidth = rcAlign.right - rcAlign.left;
-	vGap = 5;
 	gap = 6;
+	rowPitch = MapDluY(hDlg, 16);
 	btnWidth = (rowWidth - gap) / 2;
 	if (btnWidth < 80) btnWidth = 80;
 	btnHeight = rcSave.bottom - rcSave.top;
 	if (btnHeight <= 0) btnHeight = 14;
-	btnTop = rcSave.bottom + vGap;
+	btnTop = rcSave.top + (rowPitch * 2);
 	alignHeight = rcAlign.bottom - rcAlign.top;
 	if (alignHeight <= 0) alignHeight = 11;
-	alignTop = btnTop + btnHeight + vGap;
+	alignTop = btnTop + rowPitch;
+	experimentalTop = alignTop + (rowPitch * 2);
 	hideLabel = b_EnglishMenu ? L"Hide native clock" : L"純正時計を非表示にする";
 	showLabel = b_EnglishMenu ? L"Show native clock" : L"純正時計を表示する";
 	experimentalLabel = b_EnglishMenu ? L"Display with WinUI (experimental)" : L"WinUIで表示(実験的)";
@@ -130,12 +144,12 @@ static void EnsureHideClockActionButtons(HWND hDlg)
 		hExperimental = CreateWindowExW(0, L"BUTTON",
 			experimentalLabel,
 			WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX,
-			rowLeft, alignTop + alignHeight + vGap, rowWidth, alignHeight,
+			rowLeft, experimentalTop, rowWidth, alignHeight,
 			hDlg, (HMENU)(INT_PTR)IDC_WIN11_EXPERIMENTAL_DISPLAY_WINUI, g_hInst, NULL);
 	}
 	SetWindowPos(hAlign, NULL, rowLeft, alignTop, rowWidth, alignHeight, SWP_NOZORDER);
 	if (hExperimental) {
-		SetWindowPos(hExperimental, NULL, rowLeft, alignTop + alignHeight + vGap, rowWidth, alignHeight, SWP_NOZORDER);
+		SetWindowPos(hExperimental, NULL, rowLeft, experimentalTop, rowWidth, alignHeight, SWP_NOZORDER);
 	}
 
 	hFont = (HFONT)SendMessage(hCheck, WM_GETFONT, 0, 0);

@@ -12,6 +12,7 @@ static void OnInit(HWND hDlg);
 static void OnApply(HWND hDlg);
 static void OnUpdate(HWND hDlg);
 static void LaunchTCycleRuntimeFromEtcIfEnabled(HWND hDlg);
+static int MapDluY(HWND hDlg, int dluY);
 
 __inline void SendPSChanged(HWND hDlg)
 {
@@ -35,6 +36,17 @@ static HFONT hfontb;
 
 BOOL b_TempAvailable = TRUE;
 
+static int MapDluY(HWND hDlg, int dluY)
+{
+	RECT rc;
+	rc.left = 0;
+	rc.top = 0;
+	rc.right = 0;
+	rc.bottom = dluY;
+	MapDialogRect(hDlg, &rc);
+	return rc.bottom;
+}
+
 static void EnsureExitExtensionsOnExitControl(HWND hDlg)
 {
 	HWND hCtrl = GetDlgItem(hDlg, IDC_ETC_EXIT_EXTENSIONS_ON_EXIT);
@@ -54,6 +66,7 @@ static void EnsureExitExtensionsOnExitControl(HWND hDlg)
 		HWND h1 = GetDlgItem(hDlg, IDC_ETC_TCYCLE_INTEGRATION);
 		HWND h2 = GetDlgItem(hDlg, IDC_ETC_TCALENDAR_INTEGRATION);
 		HWND h3 = GetDlgItem(hDlg, IDC_ETC_TCAPTURE_INTEGRATION);
+		int rowPitch = MapDluY(hDlg, 16);
 		int x = 9, y = 188, w = 210;
 		GetClientRect(hDlg, &rcClient);
 		if (h1 && GetWindowRect(h1, &rcBase))
@@ -68,7 +81,7 @@ static void EnsureExitExtensionsOnExitControl(HWND hDlg)
 				MapWindowPoints(NULL, hDlg, (POINT*)&rc3, 2);
 				if (rc3.bottom > rcBase.bottom) rcBase.bottom = rc3.bottom;
 			}
-			y = rcBase.bottom + 6;
+			y = rcBase.top + rowPitch;
 			w = rcClient.right - x - 6;
 			if (w < 120) w = 120;
 		}

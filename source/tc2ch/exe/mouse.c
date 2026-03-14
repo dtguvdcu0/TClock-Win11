@@ -112,6 +112,8 @@ static BOOL mouse_zone_vertical(int button, int nclick)
 	value = GetMyRegLong(reg_section, entry, missing);
 	if (value == missing && button == 0 && nclick == 1)
 		value = GetMyRegLong(reg_section, "LeftClickZoneVertical", 0);
+	if (value == missing)
+		value = 0;
 	return (value != 0) ? TRUE : FALSE;
 }
 

@@ -27,6 +27,11 @@ static void OnZoneFileChange(HWND hDlg, WORD id);
 static void OnZoneWorkDirChange(HWND hDlg, WORD id);
 static void LoadZoneCurrent(HWND hDlg);
 static void SaveZoneCurrent(HWND hDlg);
+static void WriteMouseEntry(int button, int click);
+static BOOL HasZoneStringEntry(const char* entry);
+static BOOL HasRawZoneKeys(int button, int click);
+static BOOL HasCompatZoneKeys(int button, int click);
+static BOOL HasLegacyLeftClickZoneKeys(void);
 
 static void OnSansho(HWND hDlg, WORD id);
 static void InitMouseFuncList(HWND hDlg);
@@ -75,6 +80,11 @@ static BOOL zone_vertical = FALSE;
 static int zone_func[3] = { MOUSEFUNC_NONE, MOUSEFUNC_NONE, MOUSEFUNC_NONE };
 static char zone_file[3][256];
 static char zone_workdir[3][256];
+static BOOL zone_dirty_map[28][4];
+static int dropfiles_initial = 0;
+static char dropfiles_app_initial[256];
+static BOOL dropfiles_dirty = FALSE;
+static BOOL dropfiles_app_dirty = FALSE;
 
 //#define SendPSChanged(hDlg) SendMessage(GetParent(hDlg),PSM_CHANGED,(WPARAM)(hDlg),0)
 
@@ -135,7 +145,7 @@ static void UpdateMainFuncLabel(HWND hDlg, BOOL show_zone)
 {
 	if (show_zone)
 	{
-		SetDlgItemTextUTF8Strict(hDlg, IDC_LABZONE1FUNC, "Zone 1");
+		SetDlgItemTextUTF8Strict(hDlg, IDC_LABZONE1FUNC, b_EnglishMenu ? "Area 1" : "エリア1");
 		return;
 	}
 	if (b_EnglishMenu)
@@ -210,8 +220,18 @@ static LONG GetZoneFuncValue(int button, int click, int zone_number)
 	const LONG missing = -32768;
 
 	if (zone_number < 1 || zone_number > 3) return MOUSEFUNC_NONE;
-	wsprintf(entry, "%d%dZone%dFunc", button, click + 1, zone_number);
-	value = GetMyRegLong(reg_section, entry, missing);
+	if (zone_number == 1) {
+		wsprintf(entry, "%d%d", button, click + 1);
+		value = GetMyRegLong(reg_section, entry, missing);
+	}
+	else {
+		wsprintf(entry, "%d%dFunc%d", button, click + 1, zone_number);
+		value = GetMyRegLong(reg_section, entry, missing);
+	}
+	if (value == missing) {
+		wsprintf(entry, "%d%dZone%dFunc", button, click + 1, zone_number);
+		value = GetMyRegLong(reg_section, entry, missing);
+	}
 	if (value == missing) {
 		wsprintf(entry, "%d%dZone%d", button, click + 1, zone_number);
 		value = GetMyRegLong(reg_section, entry, missing);
@@ -224,10 +244,7 @@ static LONG GetZoneFuncValue(int button, int click, int zone_number)
 			value = GetMyRegLong(reg_section, entry, missing);
 		}
 	}
-	if (value == missing && zone_number == 1) {
-		wsprintf(entry, "%d%d", button, click + 1);
-		value = GetMyRegLong(reg_section, entry, MOUSEFUNC_NONE);
-	}
+	if (value == missing) value = MOUSEFUNC_NONE;
 	return value;
 }
 
@@ -239,23 +256,22 @@ static void GetZoneFileValue(int button, int click, int zone_number, char *dst, 
 	if (!dst || dst_count <= 0) return;
 	dst[0] = 0;
 	if (zone_number < 1 || zone_number > 3) return;
-	wsprintf(entry, "%d%dZone%dFile", button, click + 1, zone_number);
+	if (zone_number == 1)
+		wsprintf(entry, "%d%dFile", button, click + 1);
+	else
+		wsprintf(entry, "%d%dFile%d", button, click + 1, zone_number);
 	GetMyRegStr(reg_section, entry, dst, dst_count, missing);
+	if (dst[0] == missing[0] && dst[1] == 0)
+	{
+		wsprintf(entry, "%d%dZone%dFile", button, click + 1, zone_number);
+		GetMyRegStr(reg_section, entry, dst, dst_count, missing);
+	}
 	if (dst[0] == missing[0] && dst[1] == 0 && button == 0 && click == 0)
 	{
 		wsprintf(entry, "LeftClickZone%dFile", zone_number);
 		GetMyRegStr(reg_section, entry, dst, dst_count, missing);
 	}
-	if (dst[0] == missing[0] && dst[1] == 0)
-	{
-		if (zone_number == 1)
-		{
-			wsprintf(entry, "%d%dFile", button, click + 1);
-			GetMyRegStr(reg_section, entry, dst, dst_count, "");
-		}
-		else
-			dst[0] = 0;
-	}
+	if (dst[0] == missing[0] && dst[1] == 0) dst[0] = 0;
 	NormalizeUtf8InPlaceNoWriteback(dst, dst_count);
 }
 
@@ -267,22 +283,22 @@ static void GetZoneWorkDirValue(int button, int click, int zone_number, char *ds
 	if (!dst || dst_count <= 0) return;
 	dst[0] = 0;
 	if (zone_number < 1 || zone_number > 3) return;
-	wsprintf(entry, "%d%dZone%dWorkDir", button, click + 1, zone_number);
+	if (zone_number == 1)
+		wsprintf(entry, "%d%dWorkDir", button, click + 1);
+	else
+		wsprintf(entry, "%d%dWorkDir%d", button, click + 1, zone_number);
 	GetMyRegStr(reg_section, entry, dst, dst_count, missing);
+	if (dst[0] == missing[0] && dst[1] == 0)
+	{
+		wsprintf(entry, "%d%dZone%dWorkDir", button, click + 1, zone_number);
+		GetMyRegStr(reg_section, entry, dst, dst_count, missing);
+	}
 	if (dst[0] == missing[0] && dst[1] == 0 && button == 0 && click == 0)
 	{
 		wsprintf(entry, "LeftClickZone%dWorkDir", zone_number);
 		GetMyRegStr(reg_section, entry, dst, dst_count, missing);
 	}
-	if (dst[0] == missing[0] && dst[1] == 0 && zone_number == 1)
-	{
-		wsprintf(entry, "%d%dWorkDir", button, click + 1);
-		GetMyRegStr(reg_section, entry, dst, dst_count, "");
-	}
-	else if (dst[0] == missing[0] && dst[1] == 0)
-	{
-		dst[0] = 0;
-	}
+	if (dst[0] == missing[0] && dst[1] == 0) dst[0] = 0;
 	NormalizeUtf8InPlaceNoWriteback(dst, dst_count);
 }
 
@@ -383,18 +399,113 @@ static void SaveZoneCurrent(HWND hDlg)
 	int button;
 	int click;
 	int i;
+	BOOL changed = FALSE;
 
 	if (!GetZoneSel(hDlg, &button, &click)) return;
-	zone_count_map[button][click] = zone_count;
-	zone_vertical_map[button][click] = zone_vertical;
+	if (zone_count_map[button][click] != zone_count) changed = TRUE;
+	if (zone_vertical_map[button][click] != zone_vertical) changed = TRUE;
 	for (i = 0; i < 3; i++)
 	{
+		if (zone_func_map[button][click][i] != zone_func[i]) changed = TRUE;
+		if (lstrcmp(zone_file_map[button][click][i], zone_file[i]) != 0) changed = TRUE;
+		if (lstrcmp(zone_workdir_map[button][click][i], zone_workdir[i]) != 0) changed = TRUE;
 		zone_func_map[button][click][i] = zone_func[i];
 		lstrcpyn(zone_file_map[button][click][i], zone_file[i], (int)sizeof(zone_file_map[button][click][i]));
 		lstrcpyn(zone_workdir_map[button][click][i], zone_workdir[i], (int)sizeof(zone_workdir_map[button][click][i]));
 	}
+	if (pData[button].func[click] != zone_func[0]) changed = TRUE;
+	if (lstrcmp(pData[button].fname[click], zone_file[0]) != 0) changed = TRUE;
+	zone_count_map[button][click] = zone_count;
+	zone_vertical_map[button][click] = zone_vertical;
 	pData[button].func[click] = zone_func[0];
 	lstrcpyn(pData[button].fname[click], zone_file[0], (int)sizeof(pData[button].fname[click]));
+	if (changed) zone_dirty_map[button][click] = TRUE;
+}
+
+static BOOL HasZoneStringEntry(const char* entry)
+{
+	char value[4];
+	char missing[2] = { 1, 0 };
+
+	GetMyRegStr(reg_section, entry, value, (int)sizeof(value), missing);
+	return !(value[0] == missing[0] && value[1] == 0);
+}
+
+static BOOL HasRawZoneKeys(int button, int click)
+{
+	char entry[32];
+	LONG value;
+	const LONG missing = -32768;
+	int k;
+
+	wsprintf(entry, "%d%dZoneCount", button, click + 1);
+	value = GetMyRegLong(reg_section, entry, missing);
+	if (value != missing) return TRUE;
+	wsprintf(entry, "%d%dZoneVertical", button, click + 1);
+	value = GetMyRegLong(reg_section, entry, missing);
+	if (value != missing) return TRUE;
+	for (k = 2; k <= 3; k++)
+	{
+		wsprintf(entry, "%d%dFunc%d", button, click + 1, k);
+		value = GetMyRegLong(reg_section, entry, missing);
+		if (value != missing) return TRUE;
+		wsprintf(entry, "%d%dFile%d", button, click + 1, k);
+		if (HasZoneStringEntry(entry)) return TRUE;
+		wsprintf(entry, "%d%dWorkDir%d", button, click + 1, k);
+		if (HasZoneStringEntry(entry)) return TRUE;
+	}
+	if (HasCompatZoneKeys(button, click)) return TRUE;
+	return FALSE;
+}
+
+static BOOL HasCompatZoneKeys(int button, int click)
+{
+	char entry[32];
+	LONG value;
+	const LONG missing = -32768;
+	int k;
+
+	for (k = 1; k <= 3; k++)
+	{
+		wsprintf(entry, "%d%dZone%dFunc", button, click + 1, k);
+		value = GetMyRegLong(reg_section, entry, missing);
+		if (value != missing) return TRUE;
+		wsprintf(entry, "%d%dZone%d", button, click + 1, k);
+		value = GetMyRegLong(reg_section, entry, missing);
+		if (value != missing) return TRUE;
+		wsprintf(entry, "%d%dZone%dFile", button, click + 1, k);
+		if (HasZoneStringEntry(entry)) return TRUE;
+		wsprintf(entry, "%d%dZone%dWorkDir", button, click + 1, k);
+		if (HasZoneStringEntry(entry)) return TRUE;
+	}
+	return FALSE;
+}
+
+static BOOL HasLegacyLeftClickZoneKeys(void)
+{
+	char entry[32];
+	LONG value;
+	const LONG missing = -32768;
+	int k;
+
+	value = GetMyRegLong(reg_section, "LeftClickZoneCount", missing);
+	if (value != missing) return TRUE;
+	value = GetMyRegLong(reg_section, "LeftClickZoneVertical", missing);
+	if (value != missing) return TRUE;
+	for (k = 1; k <= 3; k++)
+	{
+		wsprintf(entry, "LeftClickZone%dFunc", k);
+		value = GetMyRegLong(reg_section, entry, missing);
+		if (value != missing) return TRUE;
+		wsprintf(entry, "LeftClickZone%d", k);
+		value = GetMyRegLong(reg_section, entry, missing);
+		if (value != missing) return TRUE;
+		wsprintf(entry, "LeftClickZone%dFile", k);
+		if (HasZoneStringEntry(entry)) return TRUE;
+		wsprintf(entry, "LeftClickZone%dWorkDir", k);
+		if (HasZoneStringEntry(entry)) return TRUE;
+	}
+	return FALSE;
 }
 
 static void MoveDlgItemY(HWND hDlg, int ctrlId, int y)
@@ -612,7 +723,7 @@ static void RefreshZoneControls(HWND hDlg)
 	SetMouseFuncComboValue(hDlg, IDC_ZONE2FUNC, zone_func[1]);
 	SetMouseFuncComboValue(hDlg, IDC_ZONE3FUNC, zone_func[2]);
 	ShowDlgItem(hDlg, IDC_LABZONEBLOCK, show_zone);
-	ShowDlgItem(hDlg, IDC_LABZONECOUNT, show_zone);
+	ShowDlgItem(hDlg, IDC_LABZONECOUNT, FALSE);
 	ShowDlgItem(hDlg, IDC_ZONECOUNT, show_zone);
 	ShowDlgItem(hDlg, IDC_LABZONEORIENT, FALSE);
 	ShowDlgItem(hDlg, IDC_ZONEORIENT, FALSE);
@@ -674,7 +785,12 @@ BOOL CALLBACK PageMouseProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
 				break;
 			case IDC_DROPFILESAPP:
 				if(code == EN_CHANGE)
+				{
+					char s[256];
+					GetDlgItemTextUTF8(hDlg, IDC_DROPFILESAPP, s, 256);
+					dropfiles_app_dirty = (lstrcmp(s, dropfiles_app_initial) != 0);
 					SendPSChanged(hDlg);
+				}
 				break;
 			// "..."
 			case IDC_DROPFILESAPPSANSHO:
@@ -824,8 +940,13 @@ void OnInit(HWND hDlg)
 	GetMyRegStr(reg_section, "DropFilesApp", s, 256, "");
 	NormalizeUtf8InPlaceNoWriteback(s, (int)sizeof(s));
 	SetDlgItemTextUTF8Strict(hDlg, IDC_DROPFILESAPP, s);
+	dropfiles_initial = CBGetCurSel(hDlg, IDC_DROPFILES);
+	lstrcpyn(dropfiles_app_initial, s, (int)sizeof(dropfiles_app_initial));
+	dropfiles_dirty = FALSE;
+	dropfiles_app_dirty = FALSE;
 
 	pData = malloc(sizeof(CLICKDATA) * 28);
+	ZeroMemory(zone_dirty_map, sizeof(zone_dirty_map));
 
 	for(i = 0; i < 28; i++)
 	{
@@ -859,6 +980,10 @@ void OnInit(HWND hDlg)
 			}
 			pData[i].func[j] = zone_func_map[i][j][0];
 			lstrcpyn(pData[i].fname[j], zone_file_map[i][j][0], (int)sizeof(pData[i].fname[j]));
+			if ((zone_count_map[i][j] <= 1 && HasRawZoneKeys(i, j)) ||
+				(zone_count_map[i][j] > 1 && HasCompatZoneKeys(i, j)) ||
+				(i == 0 && j == 0 && HasLegacyLeftClickZoneKeys()))
+				zone_dirty_map[i][j] = TRUE;
 		}
 	}
 
@@ -901,118 +1026,149 @@ void OnInit(HWND hDlg)
 	OnMouseButton(hDlg);
 }
 
+static void WriteMouseEntry(int button, int click)
+{
+	char entry[32];
+	int k;
+	BOOL has_zone_extras;
+	int effective_zone_count;
+
+	if (button < 0 || button >= 28 || click < 0 || click >= 4) return;
+
+	effective_zone_count = zone_count_map[button][click];
+	if (effective_zone_count < 1) effective_zone_count = 1;
+	if (effective_zone_count > 3) effective_zone_count = 3;
+	has_zone_extras = (effective_zone_count > 1) ? TRUE : FALSE;
+
+	wsprintf(entry, "%d%dZoneCount", button, click + 1);
+	if (has_zone_extras)
+		SetMyRegLong(reg_section, entry, effective_zone_count);
+	else
+		DelMyReg(reg_section, entry);
+	wsprintf(entry, "%d%dZoneVertical", button, click + 1);
+	if (has_zone_extras && zone_vertical_map[button][click])
+		SetMyRegLong(reg_section, entry, 1);
+	else
+		DelMyReg(reg_section, entry);
+	for (k = 0; k < 3; k++)
+	{
+		wsprintf(entry, "%d%dZone%dFunc", button, click + 1, k + 1);
+		DelMyReg(reg_section, entry);
+		wsprintf(entry, "%d%dZone%d", button, click + 1, k + 1);
+		DelMyReg(reg_section, entry);
+		wsprintf(entry, "%d%dZone%dFile", button, click + 1, k + 1);
+		DelMyReg(reg_section, entry);
+		wsprintf(entry, "%d%dZone%dWorkDir", button, click + 1, k + 1);
+		DelMyReg(reg_section, entry);
+	}
+
+	wsprintf(entry, "%d%d", button, click + 1);
+	if (zone_func_map[button][click][0] >= 0)
+		SetMyRegLong(reg_section, entry, zone_func_map[button][click][0]);
+	else
+		DelMyReg(reg_section, entry);
+	if (button == IDS_HOTKEY - IDS_LEFTBUTTON)
+	{
+		wsprintf(entry, "%d%dHotkey", button, click + 1);
+		if (pData[button].hotkey[click])
+			SetMyRegLong(reg_section, entry, pData[button].hotkey[click]);
+		else
+			DelMyReg(reg_section, entry);
+	}
+	if (IsMousePathFunc(zone_func_map[button][click][0]))
+	{
+		wsprintf(entry, "%d%dFile", button, click + 1);
+		SetMyRegStr(reg_section, entry, zone_file_map[button][click][0]);
+	}
+	else
+	{
+		wsprintf(entry, "%d%dFile", button, click + 1);
+		DelMyReg(reg_section, entry);
+	}
+	if (IsMouseWorkDirFunc(zone_func_map[button][click][0]))
+	{
+		wsprintf(entry, "%d%dWorkDir", button, click + 1);
+		SetMyRegStr(reg_section, entry, zone_workdir_map[button][click][0]);
+	}
+	else
+	{
+		wsprintf(entry, "%d%dWorkDir", button, click + 1);
+		DelMyReg(reg_section, entry);
+	}
+
+	for (k = 2; k <= 3; k++)
+	{
+		wsprintf(entry, "%d%dFunc%d", button, click + 1, k);
+		if (has_zone_extras && effective_zone_count >= k && zone_func_map[button][click][k - 1] >= 0)
+			SetMyRegLong(reg_section, entry, zone_func_map[button][click][k - 1]);
+		else
+			DelMyReg(reg_section, entry);
+		wsprintf(entry, "%d%dFile%d", button, click + 1, k);
+		if (has_zone_extras && effective_zone_count >= k && IsMousePathFunc(zone_func_map[button][click][k - 1]))
+			SetMyRegStr(reg_section, entry, zone_file_map[button][click][k - 1]);
+		else
+			DelMyReg(reg_section, entry);
+		wsprintf(entry, "%d%dWorkDir%d", button, click + 1, k);
+		if (has_zone_extras && effective_zone_count >= k && IsMouseWorkDirFunc(zone_func_map[button][click][k - 1]))
+			SetMyRegStr(reg_section, entry, zone_workdir_map[button][click][k - 1]);
+		else
+			DelMyReg(reg_section, entry);
+	}
+
+	if (button == 0 && click == 0)
+	{
+		DelMyReg(reg_section, "LeftClickZoneCount");
+		DelMyReg(reg_section, "LeftClickZoneVertical");
+		for (k = 0; k < 3; k++)
+		{
+			wsprintf(entry, "LeftClickZone%dFunc", k + 1);
+			DelMyReg(reg_section, entry);
+			wsprintf(entry, "LeftClickZone%d", k + 1);
+			DelMyReg(reg_section, entry);
+			wsprintf(entry, "LeftClickZone%dFile", k + 1);
+			DelMyReg(reg_section, entry);
+			wsprintf(entry, "LeftClickZone%dWorkDir", k + 1);
+			DelMyReg(reg_section, entry);
+		}
+	}
+
+	zone_dirty_map[button][click] = FALSE;
+}
+
 /*------------------------------------------------
 　更新
 --------------------------------------------------*/
 void OnApply(HWND hDlg)
 {
-	char s[256], entry[32];
+	char s[256];
 	int n;
-	int i, j;
-	int k;
-	BOOL has_zone_extras;
+	int i;
+	int j;
 
 	n = CBGetCurSel(hDlg, IDC_DROPFILES);
-	SetMyRegLong(reg_section, "DropFiles", n);
+	if (dropfiles_dirty)
+	{
+		SetMyRegLong(reg_section, "DropFiles", n);
+		dropfiles_initial = n;
+		dropfiles_dirty = FALSE;
+	}
 	GetDlgItemTextUTF8(hDlg, IDC_DROPFILESAPP, s, 256);
-	SetMyRegStr(reg_section, "DropFilesApp", s);
+	if (dropfiles_app_dirty)
+	{
+		SetMyRegStr(reg_section, "DropFilesApp", s);
+		lstrcpyn(dropfiles_app_initial, s, (int)sizeof(dropfiles_app_initial));
+		dropfiles_app_dirty = FALSE;
+	}
 
 	SaveZoneCurrent(hDlg);
 
-	for(i = 0; i < 28; i++)
+	for (i = 0; i < 28; i++)
 	{
-		for(j = 0; j < 4; j++)
+		for (j = 0; j < 4; j++)
 		{
-			has_zone_extras = (zone_count_map[i][j] > 1) ||
-				zone_vertical_map[i][j] ||
-				(zone_func_map[i][j][1] >= 0) ||
-				(zone_func_map[i][j][2] >= 0);
-
-			wsprintf(entry, "%d%dZoneCount", i, j + 1);
-			if (has_zone_extras)
-				SetMyRegLong(reg_section, entry, zone_count_map[i][j]);
-			else
-				DelMyReg(reg_section, entry);
-			wsprintf(entry, "%d%dZoneVertical", i, j + 1);
-			if (has_zone_extras && zone_vertical_map[i][j])
-				SetMyRegLong(reg_section, entry, 1);
-			else
-				DelMyReg(reg_section, entry);
-			for (k = 0; k < 3; k++)
-			{
-				wsprintf(entry, "%d%dZone%dFunc", i, j + 1, k + 1);
-				if (has_zone_extras && zone_func_map[i][j][k] >= 0)
-					SetMyRegLong(reg_section, entry, zone_func_map[i][j][k]);
-				else
-					DelMyReg(reg_section, entry);
-				wsprintf(entry, "%d%dZone%d", i, j + 1, k + 1);
-				DelMyReg(reg_section, entry);
-				wsprintf(entry, "%d%dZone%dFile", i, j + 1, k + 1);
-				if (has_zone_extras && IsMousePathFunc(zone_func_map[i][j][k]))
-					SetMyRegStr(reg_section, entry, zone_file_map[i][j][k]);
-				else
-					DelMyReg(reg_section, entry);
-				wsprintf(entry, "%d%dZone%dWorkDir", i, j + 1, k + 1);
-				if (has_zone_extras && IsMouseWorkDirFunc(zone_func_map[i][j][k]))
-					SetMyRegStr(reg_section, entry, zone_workdir_map[i][j][k]);
-				else
-					DelMyReg(reg_section, entry);
-			}
-
-			wsprintf(entry, "%d%d", i, j+1);
-			if(pData[i].func[j] >= 0)
-				SetMyRegLong(reg_section, entry, pData[i].func[j]);
-			else DelMyReg(reg_section, entry);
-			if(i == IDS_HOTKEY - IDS_LEFTBUTTON)
-			{
-				wsprintf(entry, "%d%dHotkey", i, j+1);
-				if (pData[i].hotkey[j])
-					SetMyRegLong(reg_section, entry, pData[i].hotkey[j]);
-				else DelMyReg(reg_section, entry);
-			}
-			if(IsMousePathFunc(pData[i].func[j]))
-			{
-				wsprintf(entry, "%d%dFile", i, j+1);
-				SetMyRegStr(reg_section, entry, pData[i].fname[j]);
-			}
-			else
-			{
-				wsprintf(entry, "%d%dFile", i, j+1);
-				DelMyReg(reg_section, entry);
-			}
-			if(IsMouseWorkDirFunc(pData[i].func[j]))
-			{
-				wsprintf(entry, "%d%dWorkDir", i, j+1);
-				SetMyRegStr(reg_section, entry, zone_workdir_map[i][j][0]);
-			}
-			else
-			{
-				wsprintf(entry, "%d%dWorkDir", i, j+1);
-				DelMyReg(reg_section, entry);
-			}
+			if (!zone_dirty_map[i][j]) continue;
+			WriteMouseEntry(i, j);
 		}
-	}
-	SetMyRegLong(reg_section, "LeftClickZoneCount", zone_count_map[0][0]);
-	SetMyRegLong(reg_section, "LeftClickZoneVertical", zone_vertical_map[0][0] ? 1 : 0);
-	for (k = 0; k < 3; k++)
-	{
-		wsprintf(entry, "LeftClickZone%dFunc", k + 1);
-		if (zone_func_map[0][0][k] >= 0)
-			SetMyRegLong(reg_section, entry, zone_func_map[0][0][k]);
-		else
-			DelMyReg(reg_section, entry);
-		wsprintf(entry, "LeftClickZone%d", k + 1);
-		DelMyReg(reg_section, entry);
-		wsprintf(entry, "LeftClickZone%dFile", k + 1);
-		if (IsMousePathFunc(zone_func_map[0][0][k]))
-			SetMyRegStr(reg_section, entry, zone_file_map[0][0][k]);
-		else
-			DelMyReg(reg_section, entry);
-		wsprintf(entry, "LeftClickZone%dWorkDir", k + 1);
-		if (IsMouseWorkDirFunc(zone_func_map[0][0][k]))
-			SetMyRegStr(reg_section, entry, zone_workdir_map[0][0][k]);
-		else
-			DelMyReg(reg_section, entry);
 	}
 	ResetHotkey(g_hwndMain);
 }
@@ -1033,6 +1189,7 @@ void OnDropFilesChange(HWND hDlg)
 {
 	int i, n;
 	n = CBGetCurSel(hDlg, IDC_DROPFILES);
+	dropfiles_dirty = (n != dropfiles_initial);
 	SetDlgItemTextUTF8Strict(hDlg, IDC_LABDROPFILESAPP,
 		MyStringUTF8(n >= 3?IDS_LABFOLDER:IDS_LABPROGRAM));
 	for(i = IDC_LABDROPFILESAPP; i <= IDC_DROPFILESAPPSANSHO; i++)
@@ -1149,7 +1306,11 @@ void OnMouseFunc(HWND hDlg)
 	SaveZoneCurrent(hDlg);
 
 	if (button == (IDS_HOTKEY - IDS_LEFTBUTTON))
-		pData[button].hotkey[click] = (WORD)SendDlgItemMessage(hDlg, IDC_HOTKEY, HKM_GETHOTKEY, 0, 0);
+	{
+		WORD hotkey = (WORD)SendDlgItemMessage(hDlg, IDC_HOTKEY, HKM_GETHOTKEY, 0, 0);
+		if (pData[button].hotkey[click] != hotkey) zone_dirty_map[button][click] = TRUE;
+		pData[button].hotkey[click] = hotkey;
+	}
 
 	ShowDlgItem(hDlg, IDC_LABMOUSEFILE, IsMousePathFunc(func));
 	ShowDlgItem(hDlg, IDC_MOUSEFILE, IsMousePathFunc(func));

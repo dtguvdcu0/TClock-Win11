@@ -551,7 +551,7 @@ char strVPN_Keywords[256];
 char strVPN_Excludes[256];
 char strEthernet_Keywords[256];
 
-BOOL b_CompactMode = TRUE;
+BOOL b_CompactMode = FALSE;
 BOOL b_SafeMode = FALSE;
 BOOL b_ExcessNetProfiles = FALSE;
 BOOL muteStatus = FALSE;	//added by TTTT for volume
@@ -3007,7 +3007,7 @@ void ReadData()
 	}
 
 	//CompactMode Added by TTTT
-	b_CompactMode = GetMyRegLong(NULL, "CompactMode", TRUE);
+	b_CompactMode = GetMyRegLong(NULL, "CompactMode", FALSE);
 	SetMyRegLong(NULL, "CompactMode", b_CompactMode);
 
 

@@ -738,7 +738,8 @@ extern "C" BOOL updateConnectProfsInfo_Win10(BOOL b_Detail)	// return value: 1 =
 	auto th1 = std::thread([] {connectProfs = NetworkInformation::GetConnectionProfiles(); });
 	th1.join();
 
-
+	String^ currentInternetConnecProfName = nullptr;
+	if (internetConnectProf != nullptr) currentInternetConnecProfName = internetConnectProf->ProfileName;
 
 	connectedWiFiProfNum = -1;
 	connectedLTEProfNum = -1;
@@ -785,7 +786,8 @@ extern "C" BOOL updateConnectProfsInfo_Win10(BOOL b_Detail)	// return value: 1 =
 				connectProfConnectLevel[i] = -1;
 
 				connectProfName[i] = connectProf_work->ProfileName;
-
+				BOOL b_CurrentInternetProf = FALSE;
+				if (currentInternetConnecProfName != nullptr && connectProfName[i] == currentInternetConnecProfName) b_CurrentInternetProf = TRUE;
 
 				NetworkConnectivityLevel tempConnectLevel;
 				std::thread th2;
@@ -849,6 +851,12 @@ extern "C" BOOL updateConnectProfsInfo_Win10(BOOL b_Detail)	// return value: 1 =
 					{
 						adapterIDforProf[i] = connectProf_work->NetworkAdapter->NetworkAdapterId;
 						connectProfConnectLevel[i] = 3;
+					}
+					else
+						connectProfConnectLevel[i] = 999;
+
+					if ((tempConnectLevel == NetworkConnectivityLevel::InternetAccess) || b_CurrentInternetProf)
+					{
 						if (b_WiFiProf[i]) connectedWiFiProfNum = i;
 						if (b_LTEProf[i] && !b_WiFiProf[i])
 						{
@@ -867,8 +875,6 @@ extern "C" BOOL updateConnectProfsInfo_Win10(BOOL b_Detail)	// return value: 1 =
 							}
 						}
 					}
-					else
-						connectProfConnectLevel[i] = 999;
 
 				}
 

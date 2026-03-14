@@ -1,5 +1,5 @@
 ***********************************************
-***  tclock-win11 Ver 0.2.4.0 (2026/03/10)  ***
+***  tclock-win11 Ver 0.2.4.1 (2026/03/14)  ***
 ***       by ID:DTgUvdcU0                   ***
 ***********************************************
 
@@ -314,7 +314,7 @@ Added support for missing formats such as Japanese calendar era formats
 Added a property settings menu for custom format
 
 2026/02/24 Main changes (v0.1.9.0)
-Completed the internal Unicode migration and added support for special characters such as αφ€
+Completed the internal Unicode migration and added support for special characters such as the sun symbol
 Added the calendar feature (beta)
 
 2026/02/21 Main changes (v0.1.8.0)

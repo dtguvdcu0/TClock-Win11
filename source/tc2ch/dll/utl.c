@@ -511,17 +511,64 @@ LONG GetMyRegLong(const char* section, const char* entry, LONG defval)
 		wsprintf(defbuf, "%ld", defval);
 		if (tc_ini_utf8_detect_file(g_inifile, &isUtf8, NULL) && isUtf8) {
 			if (tc_ini_utf8_read_string(g_inifile, key, entry, defbuf, numbuf, (int)sizeof(numbuf)) > 0) {
-				{
 				char* pnum = numbuf;
-				LONG sign = 1;
-				LONG v = 0;
-				if (*pnum == '-') { sign = -1; pnum++; }
-				while (*pnum >= '0' && *pnum <= '9') {
-					v = v * 10 + (LONG)(*pnum - '0');
-					pnum++;
+				int rgb[3];
+				int idx;
+				while (*pnum == ' ' || *pnum == '\t') pnum++;
+				if ((pnum[0] == 'R' || pnum[0] == 'r') &&
+					(pnum[1] == 'G' || pnum[1] == 'g') &&
+					(pnum[2] == 'B' || pnum[2] == 'b')) {
+					char* prgb = pnum + 3;
+					BOOL ok = TRUE;
+					while (*prgb == ' ' || *prgb == '\t') prgb++;
+					if (*prgb != '(') ok = FALSE;
+					else prgb++;
+					for (idx = 0; ok && idx < 3; idx++) {
+						int value = 0;
+						BOOL hasDigit = FALSE;
+						while (*prgb == ' ' || *prgb == '\t') prgb++;
+						while (*prgb >= '0' && *prgb <= '9') {
+							value = value * 10 + (int)(*prgb - '0');
+							hasDigit = TRUE;
+							prgb++;
+						}
+						if (!hasDigit || value < 0 || value > 255) ok = FALSE;
+						rgb[idx] = value;
+						while (*prgb == ' ' || *prgb == '\t') prgb++;
+						if (idx < 2) {
+							if (*prgb != ',') ok = FALSE;
+							else prgb++;
+						}
+					}
+					while (ok && (*prgb == ' ' || *prgb == '\t')) prgb++;
+					if (!ok || *prgb != ')') ok = FALSE;
+					if (ok) {
+						prgb++;
+						while (*prgb == ' ' || *prgb == '\t') prgb++;
+						if (*prgb != '\0') ok = FALSE;
+					}
+					if (ok) r = (LONG)RGB(rgb[0], rgb[1], rgb[2]);
+					else {
+						LONG sign = 1;
+						LONG v = 0;
+						if (*pnum == '-') { sign = -1; pnum++; }
+						while (*pnum >= '0' && *pnum <= '9') {
+							v = v * 10 + (LONG)(*pnum - '0');
+							pnum++;
+						}
+						r = v * sign;
+					}
 				}
-				r = v * sign;
-			}
+				else {
+					LONG sign = 1;
+					LONG v = 0;
+					if (*pnum == '-') { sign = -1; pnum++; }
+					while (*pnum >= '0' && *pnum <= '9') {
+						v = v * 10 + (LONG)(*pnum - '0');
+						pnum++;
+					}
+					r = v * sign;
+				}
 			}
 			else {
 				/* Compatibility boundary: keep Win32 profile fallback for legacy non-UTF8 INI. */

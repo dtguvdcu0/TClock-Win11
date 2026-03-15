@@ -100,6 +100,7 @@ static BOOL WaitExplorerReady(DWORD timeoutMs);
 static void RestartExplorerForHideClock(void);
 static void ApplyHideClockPolicyFlow(void);
 static void RestoreHideClockPolicyFlow(void);
+static BOOL GetMinimalModeConfig(void);
 static LONG GetTCycleEnableConfig(void);
 static void GetTCyclePathConfig(char* outPath, int outPathLen);
 static void LaunchTCycleAgentIfEnabled(void);
@@ -344,10 +345,16 @@ static void RestoreHideClockPolicyFlow(void)
     b_HideClockPolicyApplied = FALSE;
 }
 
+static BOOL GetMinimalModeConfig(void)
+{
+    return GetMyRegLong("ETC", "MinimalMode", FALSE) ? TRUE : FALSE;
+}
+
 static LONG GetTCycleEnableConfig(void)
 {
     LONG v = GetMyRegLong("TCycle", "Enable", -1);
     if (v == -1) {
+        if (GetMinimalModeConfig()) return 0;
         SetMyRegLong("TCycle", "Enable", 0);
         return 0;
     }
@@ -371,6 +378,7 @@ static void GetTCyclePathConfig(char* outPath, int outPathLen)
 
     lstrcpyn(before, outPath, (int)sizeof(before));
     NormalizeSettingUtf8InPlace(outPath, outPathLen);
+    if (GetMinimalModeConfig()) return;
     if (wasMissing || lstrcmp(before, outPath) != 0) {
         SetMyRegStr("TCycle", "Path", outPath);
     }
@@ -411,6 +419,7 @@ static LONG GetTCaptureEnableConfig(void)
     if (v != -1) return (v != 0) ? 1 : 0;
 
     v = GetMyRegLong("ETC", "TCaptureEnable", 0);
+    if (GetMinimalModeConfig()) return (v != 0) ? 1 : 0;
     SetMyRegLong("TCapture", "Enable", (v != 0) ? 1 : 0);
     DelMyReg("ETC", "TCaptureEnable");
     return (v != 0) ? 1 : 0;
@@ -440,6 +449,7 @@ static void GetTCapturePathConfig(char* outPath, int outPathLen)
         }
         lstrcpyn(before, outPath, (int)sizeof(before));
         NormalizeSettingUtf8InPlace(outPath, outPathLen);
+        if (GetMinimalModeConfig()) return;
         if (lstrcmp(before, outPath) != 0) SetMyRegStr("TCapture", "Path", outPath);
         return;
     }
@@ -448,6 +458,7 @@ static void GetTCapturePathConfig(char* outPath, int outPathLen)
     if (legacyPath[0] == '\0') strcpy(legacyPath, "plugins\\TCapture.exe");
     NormalizeSettingUtf8InPlace(legacyPath, (int)sizeof(legacyPath));
     lstrcpyn(outPath, legacyPath, outPathLen);
+    if (GetMinimalModeConfig()) return;
     SetMyRegStr("TCapture", "Path", outPath);
     DelMyReg("ETC", "TCapturePath");
 }
@@ -475,6 +486,7 @@ static void SyncTCaptureIntegrationIniPath(const char* tcapExePath)
 static void EnsureTCalendarConfigDefaults(void)
 {
     char tcalPath[MAX_PATH];
+    if (GetMinimalModeConfig()) return;
     LONG enable = GetMyRegLong("TCalendar", "Enable", -1);
     LONG alart = GetMyRegLong("TCalendar", "Alart", -1);
     if (enable == -1) {
@@ -532,11 +544,13 @@ static LONG GetTCalendarAlertEnableConfig(void)
     LONG alart = GetMyRegLong("TCalendar", "Alart", -1);
 
     if (enable == -1) {
+        if (GetMinimalModeConfig()) return 0;
         enable = 0;
         SetMyRegLong("TCalendar", "Enable", 0);
 		SetMyRegLong("TCalendar", "Alart", 1);
     }
     if (alart == -1) {
+        if (GetMinimalModeConfig()) return 0;
         alart = 1;
         SetMyRegLong("TCalendar", "Alart", 1);
     }
@@ -560,6 +574,7 @@ static void GetTCalendarPathConfig(char* outPath, int outPathLen)
 
     lstrcpyn(before, outPath, (int)sizeof(before));
     NormalizeSettingUtf8InPlace(outPath, outPathLen);
+    if (GetMinimalModeConfig()) return;
     if (lstrcmp(before, outPath) != 0) {
         SetMyRegStr("TCalendar", "Path", outPath);
     }
@@ -1964,25 +1979,27 @@ void CreateDefaultIniFile_Win10(const wchar_t* fnameW)
 		SetMyRegLong("BarMeter", "UseBarMeterGU", 0);
 		SetMyRegStr("VPN", "VPNKeywords", "VPN");
 		SetMyRegLong("ETC", "ZombieCheckInterval", 10);
-		SetMyRegStr("ETC", "LTEString", "LTE");
-		SetMyRegStr("ETC", "LTEChar", "L");
-		SetMyRegStr("ETC", "MuteString", "*");
-		SetMyRegLong("ETC", "NetMIX_Length", 10);
-		SetMyRegLong("ETC", "SSID_AP_Length", 10);
-		SetMyRegLong("ETC", "SelectedThermalZone", 0);
-		SetMyRegLong("ETC", "GipEnabled", 0);
-		SetMyRegLong("ETC", "GipRefreshHours", 6);
-		SetMyRegStr("ETC", "GipProvider", "ipify");
-		SetMyRegStr("ETC", "GipJsonField", "ip");
-		SetMyRegStr("ETC", "GipLastValue", "N/A");
-		SetMyRegLong("ETC", "UseHideClockPolicyFlow", 1);
-		SetMyRegLong("TCapture", "Enable", 0);
-		SetMyRegStr("TCapture", "Path", "plugins\\TCapture.exe");
-		SetMyRegLong("TCalendar", "Enable", 0);
-		SetMyRegLong("TCalendar", "Alart", 1);
-		SetMyRegStr("TCalendar", "Path", "plugins\\TCalendar.exe");
-		SetMyRegLong("TCycle", "Enable", 0);
-		SetMyRegStr("TCycle", "Path", "plugins\\TCycle.exe");
+		if (!GetMinimalModeConfig()) {
+			SetMyRegStr("ETC", "LTEString", "LTE");
+			SetMyRegStr("ETC", "LTEChar", "L");
+			SetMyRegStr("ETC", "MuteString", "*");
+			SetMyRegLong("ETC", "NetMIX_Length", 10);
+			SetMyRegLong("ETC", "SSID_AP_Length", 10);
+			SetMyRegLong("ETC", "SelectedThermalZone", 0);
+			SetMyRegLong("ETC", "GipEnabled", 0);
+			SetMyRegLong("ETC", "GipRefreshHours", 6);
+			SetMyRegStr("ETC", "GipProvider", "ipify");
+			SetMyRegStr("ETC", "GipJsonField", "ip");
+			SetMyRegStr("ETC", "GipLastValue", "N/A");
+			SetMyRegLong("ETC", "UseHideClockPolicyFlow", 1);
+			SetMyRegLong("TCapture", "Enable", 0);
+			SetMyRegStr("TCapture", "Path", "plugins\\TCapture.exe");
+			SetMyRegLong("TCalendar", "Enable", 0);
+			SetMyRegLong("TCalendar", "Alart", 1);
+			SetMyRegStr("TCalendar", "Path", "plugins\\TCalendar.exe");
+			SetMyRegLong("TCycle", "Enable", 0);
+			SetMyRegStr("TCycle", "Path", "plugins\\TCycle.exe");
+		}
 		SetMyRegLong("Chime", "EnableChime", 0);
 		SetMyRegLong("Chime", "OffsetChimeSec", 0);
 		SetMyRegLong("Chime", "ChimeHourStart", 0);

@@ -369,6 +369,7 @@ extern "C" {
 	void initializeVolume_Win10(void); //added for new iVolume function
 	int CheckWinVersion_Win10(void);	//added for currently reliable versioncheck
 	BOOL WINAPI CheckModernStandbyCapability_Win10(void);
+	BOOL WINAPI IsMinimalMode(void);
 
 	void toggleBarMeterFunc_Win10(int f);
 	BOOL updateConnectProfsInfo_Win10(BOOL b_Detail);

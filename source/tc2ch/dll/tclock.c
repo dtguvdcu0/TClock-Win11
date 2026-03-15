@@ -4,6 +4,7 @@
   KAZUBON 1997-2001
 -------------------------------------------------------*/
 #include "tcdll.h"
+#include "minmode.h"
 #include "resource.h"
 #include "../version.h"
 #include "../common/text_codec.h"
@@ -76,6 +77,11 @@ static void NormalizeUtf8InPlaceNoWriteback(char* value, int valueBytes);
 static void RefreshAutoBackColors(BOOL force, const char* reason);
 static void RefreshClockWorkFont(void);
 static void StartupAutoAdjustPass(void);
+static void ReadDataMinimal(void);
+static void StartMinimalBackends(DWORD backendMask);
+static void InitSysInfoMinimal(DWORD sysMask);
+static void StartMinimalTimers(DWORD sysMask);
+static void RestartOnRefreshMinimal(void);
 
 extern BOOL b_DebugLog;
 extern HWND hwndTaskBarMain;
@@ -403,7 +409,7 @@ BOOL bGetBattery = FALSE, bGetMem = FALSE,
 bGetPm = FALSE, bGetNet = FALSE, bGetHdd = FALSE, bGetCpu = FALSE, bGetVol = FALSE, bGetGpu = FALSE, bGetTemp = FALSE;
 int iFreeRes[3] = {0,0,0}, totalCPUUsage = 0, iBatteryLife = 0, iVolume = 0, totalGPUUsage = 0;
 extern int CPUUsage[];
-BOOL b_SoundCapability = TRUE;
+BOOL b_SoundCapability = FALSE;
 int iCPUClock[MAX_PROCESSOR] = {0};
 MEMORYSTATUSEX msMemory;
 BOOL bClockShadow = FALSE;
@@ -1187,9 +1193,12 @@ void InitClock()
 
 	//SafeModeチェック
 	CheckSafeMode_Win10();
+	min_ensure_defaults();
+	min_read();
 
 	//レジストリ読み込み
-	ReadData();
+	if (b_MinimalMode) ReadDataMinimal();
+	else ReadData();
 
 
 	b_WININICHANGED = TRUE; //Win11Type2では通知アイコン更新のおまじない。
@@ -1201,19 +1210,22 @@ void InitClock()
 	}
 
 //	CpuMoni_start(); // cpu.c
-	PerMoni_start(); // permon.c
-	GPUMoni_start(); // gpumon.c
-	TempMoni_start(); //tempmon.c
-	Net_start();     // net.c
-	DiskRate_start(); // diskrate.c
-
-	CheckBatteryAvailability();
+	if (!b_MinimalMode) {
+		PerMoni_start(); // permon.c
+		GPUMoni_start(); // gpumon.c
+		TempMoni_start(); //tempmon.c
+		Net_start();     // net.c
+		DiskRate_start(); // diskrate.c
+		CheckBatteryAvailability();
+	}
 
 	//PostMessage(hwndTClockExeMain, WM_USER, 0, (LPARAM)hwnd);
 	PostMessage(hwndTClockExeMain, WM_USER, 0, (LPARAM)hwndClockMain);
 
 
-	InitAnalogClockData(hwndClockMain);
+	if (!b_MinimalMode) {
+		InitAnalogClockData(hwndClockMain);
+	}
 
 
 	GetTimeZoneBias_Win10();
@@ -1304,7 +1316,7 @@ void InitClock()
 
 
 
-	b = GetMyRegLong("Mouse", "DropFiles", FALSE);
+	b = b_MinimalMode ? FALSE : GetMyRegLong("Mouse", "DropFiles", FALSE);
 	DragAcceptFiles(hwndClockMain, b);
 
 	// Win11 startup can miss the initial tray relayout path depending on message timing.
@@ -1321,13 +1333,15 @@ void InitClock()
 	RedrawMainTaskbar();	//即時反映のために必要。必要があればWindowsのリサイズ処理を通してMainClockの再配置やサイズ更新、hdcClock再作成が実行される。
 
 	// Initialize tooltip after taskbar redraw/setup is complete.
-	TooltipInit(hwndClockMain);
+	if (!b_MinimalMode) {
+		TooltipInit(hwndClockMain);
+	}
 
 	//ツールチップ作成
 	b_Sleeping = FALSE;
 	PostMessage(hwndClockMain, CLOCKM_SLEEP_AWAKE, 0, 0);
 
-	if (bWin11Main || (bAutoBackMatchTaskbar && !fillbackcolor)) {
+	if (bWin11Main || (!b_MinimalMode && bAutoBackMatchTaskbar && !fillbackcolor)) {
 		StartupAutoAdjustPass();
 		startupAutoAdjustRetryRemaining = 3;
 		SetTimer(hwndClockMain, IDTIMERDLL_STARTUP_AUTOADJUST, 450, NULL);
@@ -1380,7 +1394,7 @@ static void StartupAutoAdjustPass(void)
 		PostMessage(hwndClockMain, CLOCKM_MOVEWIN11CONTENTBRIDGE, 1, 0);
 	}
 
-	if (bAutoBackMatchTaskbar && !fillbackcolor && !bAutoBackInitialized) {
+	if (!b_MinimalMode && bAutoBackMatchTaskbar && !fillbackcolor && !bAutoBackInitialized) {
 		bAutoBackInitialized = FALSE;
 		RefreshAutoBackColors(TRUE, "StartupAutoAdjust");
 	}
@@ -2054,11 +2068,17 @@ void EndClock(void)
 				SUBCLASSTRAY_ID);
 		}
 
-		PostMessage(hwndClockMain, WM_CLOSE, 0, 0);
+		if (IsWindow(hwndClockMain)) {
+			DestroyWindow(hwndClockMain);
+		}
+		hwndClockMain = NULL;
 		UnregisterClass("TClockMain", hmod);
 
-		SubclassWindow(hwndWin11Notify, DefWindowProc);	//これをしないと中継先のユーザインターフェースに行ってしまう。
-		PostMessage(hwndWin11Notify, WM_CLOSE, 0, 0);
+		if (IsWindow(hwndWin11Notify)) {
+			SubclassWindow(hwndWin11Notify, DefWindowProc);	//これをしないと中継先のユーザインターフェースに行ってしまう。
+			DestroyWindow(hwndWin11Notify);
+		}
+		hwndWin11Notify = NULL;
 		UnregisterClass("TClockNotify", hmod);
 
 //		if (Win11Type == 2) {
@@ -2078,7 +2098,6 @@ void EndClock(void)
 	//この後メインウィンドウを終了するのは: PostMessage(hwndTClockExeMain, WM_USER+2, 0, 0);を実行
 	//ただし、このEndClockがWndProcのWM_CLOSEで呼ばれた場合にはメインから呼ばれているので、メイン側で終了処理が行われる。
 	//そのため、PostMessageをここにコードしてはいけない。
-
 }
 
 /*------------------------------------------------
@@ -2251,6 +2270,12 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 		case WM_RBUTTONDOWN:
 		case WM_MBUTTONDOWN:
 		case WM_XBUTTONDOWN:
+			if (b_MinimalMode) {
+				if (message == WM_RBUTTONDOWN && (wParam & MK_LBUTTON || ((wParam&MK_CONTROL)&&(wParam&MK_SHIFT)) || bRClickMenu)) {
+					return 0;
+				}
+				return 0;
+			}
 			if (message == WM_RBUTTONDOWN && (wParam & MK_LBUTTON || ((wParam&MK_CONTROL)&&(wParam&MK_SHIFT)) || bRClickMenu))
 			{
 				return 0;
@@ -2263,6 +2288,14 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 		case WM_RBUTTONUP:
 		case WM_MBUTTONUP:
 		case WM_XBUTTONUP:
+			if (b_MinimalMode) {
+				if (message == WM_RBUTTONUP && (wParam & MK_LBUTTON || ((wParam&MK_CONTROL)&&(wParam&MK_SHIFT)) || bRClickMenu)) {
+					DWORD mp;
+					mp = GetMessagePos();
+					PostMessage(hwndTClockExeMain, WM_CONTEXTMENU, (WPARAM)tempHwnd, (LPARAM)mp);
+				}
+				return 0;
+			}
 			if (message == WM_RBUTTONUP && (wParam & MK_LBUTTON || ((wParam&MK_CONTROL)&&(wParam&MK_SHIFT)) || bRClickMenu))
 			{
 
@@ -2516,6 +2549,11 @@ void DelayedResponseToSyschange(void)
 
 void RestartOnRefresh(void)
 {
+	if (b_MinimalMode) {
+		RestartOnRefreshMinimal();
+		return;
+	}
+
 	if (InterlockedCompareExchange(&g_refresh_in_progress, 1, 0) != 0) {
 		InterlockedExchange(&g_refresh_pending, 1);
 				return;
@@ -2577,6 +2615,349 @@ void RestartOnRefresh(void)
 	RedrawTClock();
 
 	TooltipOnRefresh(hwndClockMain);
+
+	InterlockedExchange(&g_refresh_in_progress, 0);
+	if (InterlockedExchange(&g_refresh_pending, 0) != 0) {
+		PostMessage(hwndClockMain, CLOCKM_REFRESHCLOCK, 0, 0);
+	}
+}
+
+static void InitSysInfoMinimal(DWORD sysMask)
+{
+	bDispSysInfo = FALSE;
+	bTimerSysInfo = FALSE;
+	bGetBattery = FALSE;
+	bGetMem = FALSE;
+	bGetNet = FALSE;
+	bGetHdd = FALSE;
+	bGetCpu = FALSE;
+	bGetVol = FALSE;
+	bGetGpu = FALSE;
+	bGetTemp = FALSE;
+	memset(&msMemory, 0, sizeof(msMemory));
+
+	if ((sysMask & FORMAT_BATTERY) != 0) {
+		bGetBattery = TRUE;
+		bDispSysInfo = TRUE;
+	}
+	if ((sysMask & FORMAT_MEMORY) != 0) {
+		bGetMem = TRUE;
+		bDispSysInfo = TRUE;
+	}
+	if ((sysMask & FORMAT_NET) != 0) {
+		bGetNet = TRUE;
+		bDispSysInfo = TRUE;
+	}
+	if ((sysMask & FORMAT_HDD) != 0) {
+		bGetHdd = TRUE;
+		bDispSysInfo = TRUE;
+	}
+	if ((sysMask & FORMAT_CPU) != 0) {
+		bGetCpu = TRUE;
+		bDispSysInfo = TRUE;
+	}
+	if ((sysMask & FORMAT_VOL) != 0) {
+		bGetVol = TRUE;
+		bDispSysInfo = TRUE;
+	}
+	if ((sysMask & FORMAT_GPU) != 0) {
+		bGetGpu = TRUE;
+		bDispSysInfo = TRUE;
+	}
+	if ((sysMask & FORMAT_TEMP) != 0) {
+		bGetTemp = TRUE;
+		bDispSysInfo = TRUE;
+	}
+
+	if (sysMask != 0) {
+		UpdateSysRes(bGetBattery, bGetMem, bGetNet, bGetHdd, bGetCpu, bGetVol, bGetGpu, bGetTemp);
+	}
+}
+
+static void StartMinimalBackends(DWORD backendMask)
+{
+	if ((backendMask & MINBACK_PERMON) != 0) {
+		PerMoni_start();
+	}
+	if ((backendMask & MINBACK_GPU) != 0) {
+		GPUMoni_start();
+	}
+	if ((backendMask & MINBACK_TEMP) != 0) {
+		TempMoni_start();
+	}
+	if ((backendMask & MINBACK_NET) != 0) {
+		Net_start();
+	}
+	if ((backendMask & MINBACK_DISK) != 0) {
+		DiskRate_start();
+	}
+	if ((backendMask & MINBACK_BATTERY) != 0) {
+		CheckBatteryAvailability();
+	}
+}
+
+static void StartMinimalTimers(DWORD sysMask)
+{
+	KillTimer(hwndClockMain, IDTIMERDLL_SYSINFO);
+	KillTimer(hwndClockMain, IDTIMERDLL_CHECKNETSTAT);
+	KillTimer(hwndClockMain, IDTIMERDLL_GRAPH);
+	intervalTimerAdjust = 10;
+	b_InitialTimerAdjust = TRUE;
+	SetTimer(hwndClockMain, IDTIMERDLL_DLLMAIN, TimerCountForSec, NULL);
+	bTimer = TRUE;
+
+	if (sysMask != 0) {
+		SetTimer(hwndClockMain, IDTIMERDLL_SYSINFO, TimerCountForSec + OFFSETMS_TIMER_SYSINFO, NULL);
+		bTimerSysInfo = TRUE;
+		bTimerAdjust_SysInfo = TRUE;
+	}
+	else {
+		bTimerSysInfo = FALSE;
+		bTimerAdjust_SysInfo = FALSE;
+	}
+
+	bTimerCheckNetStat = FALSE;
+	bTimerAdjust_NetStat = FALSE;
+}
+
+static void ReadDataMinimal(void)
+{
+	char fontname[80];
+	char fmt_raw[1024];
+	int fontsize;
+	LONG weight, italic;
+	SYSTEMTIME lt;
+	DWORD dwInfoFormat;
+	DWORD autoBackSnapshotMain;
+	DWORD autoBackSnapshotEdge;
+	DWORD sysMask;
+	DWORD backendMask;
+	BOOL bAutoBackSnapshotExists;
+	LONG readDepth;
+
+	readDepth = InterlockedIncrement(&g_depth_ReadData);
+	if (readDepth > 1) {
+		InterlockedDecrement(&g_depth_ReadData);
+		return;
+	}
+
+	b_DebugLog = GetMyRegLong(NULL, "DebugLog", FALSE);
+	SetMyRegLong(NULL, "DebugLog", b_DebugLog);
+	if (b_DebugLog) writeDebugLog_Win10("[tclock.c] ReadDataMinimal called.", 999);
+
+	UpdateSettingFile();
+	SetMyRegLong("Status_DoNotEdit", "Win11TClockMain", bWin11Main);
+	SetMyRegLong("Status_DoNotEdit", "Win11LayoutDegraded", bWin11LayoutDegraded);
+
+	GetModuleFileName(hmod, g_mydir_dll, MAX_PATH);
+	del_title(g_mydir_dll);
+
+	b_NormalLog = GetMyRegLong(NULL, "NormalLog", TRUE);
+	bAutoRestart = GetMyRegLong(NULL, "AutoRestart", TRUE);
+	bEnableSubClks = GetMyRegLong(NULL, "EnableOnSubDisplay", TRUE);
+	SetMyRegLong(NULL, "EnableOnSubDisplay", bEnableSubClks);
+	offsetClockMS = (int)(short)GetMyRegLong(NULL, "OffsetClockMS", 0);
+	SetMyRegLong(NULL, "OffsetClockMS", (int)(short)offsetClockMS);
+	b_ModernStandbySupported = CheckModernStandbyCapability_Win10();
+	SetMyRegLong("Status_DoNotEdit", "ModernStandbySupported", b_ModernStandbySupported);
+
+	colfore = (COLORREF)GetMyRegLong("Color_Font", "ForeColor", GetSysColor(COLOR_BTNTEXT));
+	SetMyRegLong("Color_Font", "ForeColor", colfore);
+	ColorWeekdayText = colfore;
+	colWin11Notify = colfore;
+	colback = (COLORREF)GetMyRegLong("Color_Font", "BackColor", GetSysColor(COLOR_3DFACE));
+	SetMyRegLong("Color_Font", "BackColor", colback);
+	colback2 = (COLORREF)GetMyRegLong("Color_Font", "BackColor2", colback);
+	SetMyRegLong("Color_Font", "BackColor2", colback2);
+	if (!GetMyRegLong("Color_Font", "UseBackColor2", FALSE)) {
+		colback2 = colback;
+	}
+
+	fillbackcolor = GetMyRegLong("Color_Font", "UseBackColor", TRUE);
+	bAutoBackMatchTaskbar = GetMyRegLong("Color_Font", "AutoBackMatchTaskbar", TRUE);
+	SetMyRegLong("Color_Font", "AutoBackMatchTaskbar", bAutoBackMatchTaskbar);
+	autoBackAlpha = (int)GetMyRegLong("Color_Font", "AutoBackAlpha", 255);
+	autoBackAlpha = ClampInt(autoBackAlpha, 0, 255);
+	SetMyRegLong("Color_Font", "AutoBackAlpha", autoBackAlpha);
+	autoBackBlendRatio = (int)GetMyRegLong("Color_Font", "AutoBackBlendRatio", 50);
+	autoBackBlendRatio = ClampInt(autoBackBlendRatio, 0, 100);
+	SetMyRegLong("Color_Font", "AutoBackBlendRatio", autoBackBlendRatio);
+	autoBackRefreshSec = (int)GetMyRegLong("Color_Font", "AutoBackRefreshSec", 1);
+	autoBackRefreshSec = ClampInt(autoBackRefreshSec, 1, 120);
+	SetMyRegLong("Color_Font", "AutoBackRefreshSec", autoBackRefreshSec);
+	autoBackSampleClockOffset = (int)GetMyRegLong("Color_Font", "AutoBackSampleClockOffset", 0);
+	autoBackSampleClockOffset = ClampInt(autoBackSampleClockOffset, -200, 200);
+	SetMyRegLong("Color_Font", "AutoBackSampleClockOffset", autoBackSampleClockOffset);
+	autoBackSampleShowDesktopOffset = (int)GetMyRegLong("Color_Font", "AutoBackSampleShowDesktopOffset", 0);
+	autoBackSampleShowDesktopOffset = ClampInt(autoBackSampleShowDesktopOffset, -200, 200);
+	SetMyRegLong("Color_Font", "AutoBackSampleShowDesktopOffset", autoBackSampleShowDesktopOffset);
+	bAutoBackInitialized = FALSE;
+	if (!fillbackcolor) {
+		autoBackSnapshotMain = GetMyRegLong("Color_Font", "AutoBackSnapshotColor", 0xFFFFFFFF);
+		autoBackSnapshotEdge = GetMyRegLong("Color_Font", "AutoBackSnapshotColor2", 0xFFFFFFFF);
+		bAutoBackSnapshotExists = (autoBackSnapshotMain != 0xFFFFFFFF) && (autoBackSnapshotEdge != 0xFFFFFFFF);
+		autoBackColorMain = (COLORREF)(bAutoBackSnapshotExists ? autoBackSnapshotMain : (DWORD)colback);
+		autoBackColorEdge = (COLORREF)(bAutoBackSnapshotExists ? autoBackSnapshotEdge : (DWORD)colback2);
+		SetMyRegLong("Color_Font", "AutoBackSnapshotColor", autoBackColorMain);
+		SetMyRegLong("Color_Font", "AutoBackSnapshotColor2", autoBackColorEdge);
+		bAutoBackInitialized = TRUE;
+		tickAutoBackLastRefresh = GetTickCount();
+	}
+
+	grad = GetMyRegLong("Color_Font", "GradDir", GRADIENT_FILL_RECT_H);
+	bClockShadow = GetMyRegLong("Color_Font", "ForeColorShadow", FALSE);
+	bClockBorder = GetMyRegLong("Color_Font", "ForeColorBorder", FALSE);
+	colShadow = (COLORREF)GetMyRegLong("Color_Font", "ShadowColor", RGB(0, 0, 0));
+	SetMyRegLong("Color_Font", "ShadowColor", colShadow);
+	nShadowRange = (int)(short)GetMyRegLong("Color_Font", "ClockShadowRange", 1);
+	bRClickMenu = TRUE;
+
+	GetMyRegStr("Color_Font", "Font", fontname, 80, "");
+	fontsize = GetMyRegLong("Color_Font", "FontSize", 12);
+	weight = GetMyRegLong("Color_Font", "Bold", 0);
+	if (weight) weight = FW_BOLD;
+	else weight = 0;
+	italic = GetMyRegLong("Color_Font", "Italic", 0);
+	if (hFon) DeleteObject(hFon);
+	hFon = CreateMyFont(fontname, fontsize, weight, italic);
+	RefreshClockWorkFont();
+	SetTClockFont();
+	bEnableTooltip = FALSE;
+
+	nTextPos = GetMyRegLong("Color_Font", "TextPos", 0);
+	dwidth = (int)(short)GetMyRegLong("Color_Font", "ClockWidth", 0);
+	dvpos = (int)(short)GetMyRegLong("Color_Font", "VertPos", 0);
+	dlineheight = (int)(short)GetMyRegLong("Color_Font", "LineHeight", 0);
+	ColorSaturdayText = (COLORREF)GetMyRegLong("Color_Font", "Saturday_TextColor", 0x00C8FFC8);
+	ColorSundayText = (COLORREF)GetMyRegLong("Color_Font", "Sunday_TextColor", 0x00C8C8FF);
+	ColorHolidayText = (COLORREF)GetMyRegLong("Color_Font", "Holiday_TextColor", 0x00C8C8FF);
+	ColorVPNText = (COLORREF)GetMyRegLong("Color_Font", "VPN_TextColor", 0x00FFFF00);
+	bUseAllColor = GetMyRegLong("Color_Font", "UseAllColor", FALSE);
+	SetMyRegLong("Color_Font", "UseAllColor", bUseAllColor);
+	bUseVPNColor = GetMyRegLong("Color_Font", "UseVPNColor", FALSE);
+	bUseDateColor = GetMyRegLong("Color_Font", "UseDateColor", FALSE);
+	bUseDowColor = GetMyRegLong("Color_Font", "UseDowColor", FALSE);
+	bUseTimeColor = GetMyRegLong("Color_Font", "UseTimeColor", FALSE);
+
+	bGraph = FALSE;
+	if (bGraphTimerStart) KillTimer(hwndClockMain, IDTIMERDLL_GRAPH);
+	bGraphTimerStart = FALSE;
+	b_UseBarMeterBL = FALSE;
+	b_UseBarMeterCU = FALSE;
+	b_UseBarMeterGU = FALSE;
+	b_EnableChime = FALSE;
+	b_EnableBlinkOnChime = FALSE;
+	b_EnableSecondaryChime = FALSE;
+
+	b_CompactMode = GetMyRegLong(NULL, "CompactMode", FALSE);
+	SetMyRegLong(NULL, "CompactMode", b_CompactMode);
+	b_SafeMode = GetMyRegLong("Status_DoNotEdit", "SafeMode", FALSE);
+	if (b_SafeMode) {
+		b_CompactMode = TRUE;
+	}
+
+	GetMyRegStr("ETC", "LTEString", strLTE, 32, "LTE");
+	if (strlen(strLTE) == 0) strcpy(strLTE, "LTE");
+	if (!b_MinimalMode) SetMyRegStr("ETC", "LTEString", strLTE);
+	GetMyRegStr("ETC", "LTEChar", strBuf, 32, "L");
+	if (strlen(strBuf) == 0) strcpy(charLTE, "L");
+	else strncpy(charLTE, strBuf, 1);
+	if (!b_MinimalMode) SetMyRegStr("ETC", "LTEChar", charLTE);
+	NetMIX_Length = GetMyRegLong("ETC", "NetMIX_Length", 10);
+	if (!b_MinimalMode) SetMyRegLong("ETC", "NetMIX_Length", NetMIX_Length);
+	SSID_AP_Length = GetMyRegLong("ETC", "SSID_AP_Length", 10);
+	if (!b_MinimalMode) SetMyRegLong("ETC", "SSID_AP_Length", SSID_AP_Length);
+
+	AdjustThreshold = (int)(short)GetMyRegLong(NULL, "AdjustThreshold", 200);
+	if (AdjustThreshold < 100) AdjustThreshold = 100;
+	if (AdjustThreshold > 500) AdjustThreshold = 500;
+	SetMyRegLong(NULL, "AdjustThreshold", AdjustThreshold);
+	TimerCountForSec = (int)(short)GetMyRegLong("Status_DoNotEdit", "TimerCountForSec", 1000);
+	if (AdjustThreshold > 400) TimerCountForSec = 1000;
+	else if (TimerCountForSec > 1030) TimerCountForSec = 1030;
+	else if (TimerCountForSec < 970) TimerCountForSec = 970;
+	SetMyRegLong("Status_DoNotEdit", "TimerCountForSec", TimerCountForSec);
+
+	adjustWin11TrayCutPosition = (int)(short)GetMyRegLong("Win11", "AdjustCutTray", 0);
+	SetMyRegLong("Win11", "AdjustCutTray", adjustWin11TrayCutPosition);
+	adjustWin11ClockWidth = (int)(short)GetMyRegLong("Win11", "AdjustWin11ClockWidth", 0);
+	SetMyRegLong("Win11", "AdjustWin11ClockWidth", adjustWin11ClockWidth);
+	adjustWin11DetectNotify = (int)(short)GetMyRegLong("Win11", "AdjustDetectNotify", 0);
+	SetMyRegLong("Win11", "AdjustDetectNotify", adjustWin11DetectNotify);
+	bEnableWin11NotifyIcon = FALSE;
+	SetMyRegLong("Win11", "EnableWin11NotifyIcon", FALSE);
+	if (bWin11Main && hwndWin11Notify) bEnabledWin11Notify = TRUE;
+	else bEnabledWin11Notify = FALSE;
+	bAdjustTrayWin11SmallTaskbar = (BOOL)GetMyRegLong("Win11", "AdjustWin11IconPosition", 1);
+	SetMyRegLong("Win11", "AdjustWin11IconPosition", bAdjustTrayWin11SmallTaskbar);
+	wui_refresh();
+
+	GetMyRegStr("Format", "Format", fmt_raw, 1024, "mm/dd ddd\\n hh:nn:ss ");
+	BuildMainFormatWrapped(fmt_raw, format, (int)sizeof(format), TRUE, "[tclock.c][ReadDataMinimal]");
+	{
+		WCHAR wtmp[4096];
+		if (g_formatW) { free(g_formatW); g_formatW = NULL; }
+		if (tc_utf8_to_utf16(format, wtmp, (int)(sizeof(wtmp) / sizeof(wtmp[0]))) > 0) {
+			int fwLen = lstrlenW(wtmp) + 1;
+			g_formatW = (WCHAR*)malloc((size_t)fwLen * sizeof(WCHAR));
+			if (g_formatW) lstrcpyW(g_formatW, wtmp);
+		}
+	}
+
+	dwInfoFormat = g_formatW ? FindFormatW(g_formatW) : FindFormat(format);
+	bDispSecond = (dwInfoFormat & FORMAT_SECOND) ? TRUE : FALSE;
+	nDispBeat = dwInfoFormat & (FORMAT_BEAT1 | FORMAT_BEAT2);
+	bHour12 = GetMyRegLong("Format", "Hour12", 0);
+	bHourZero = GetMyRegLong("Format", "HourZero", 0);
+	GetLocalTime(&lt);
+	LastTime.wDay = lt.wDay;
+	b_DayChange = TRUE;
+	InitFormat(&lt);
+
+	sysMask = min_sysmask(dwInfoFormat);
+	backendMask = min_backendmask(sysMask);
+	StartMinimalBackends(backendMask);
+	InitSysInfoMinimal(sysMask);
+	StartMinimalTimers(sysMask);
+
+	CleanSettingFile();
+	InterlockedDecrement(&g_depth_ReadData);
+}
+
+static void RestartOnRefreshMinimal(void)
+{
+	BOOL tempBool;
+
+	if (InterlockedCompareExchange(&g_refresh_in_progress, 1, 0) != 0) {
+		InterlockedExchange(&g_refresh_pending, 1);
+		return;
+	}
+
+	tempBool = bEnableSubClks;
+	ReadDataMinimal();
+
+	if (!tempBool && bEnableSubClks) ActivateSubClocks();
+	else if (tempBool && !bEnableSubClks) DisableAllSubClocks();
+
+	DragAcceptFiles(hwndClockMain, FALSE);
+
+	if (bWin11Main) {
+		GetWin11ElementSize();
+		SetModifiedWidthWin11Tray();
+		if (bEnabledWin11Notify) DrawWin11Notify(TRUE);
+	}
+
+	for (int i = 0; i < MAX_SUBSCREEN; i++) {
+		if (bEnableSpecificSubClk[i]) {
+			ClearSpecificSubClock(i);
+			bSuppressUpdateSubClk[i] = TRUE;
+		}
+	}
+
+	ClearGraphData();
+	RedrawMainTaskbar();
+	b_WININICHANGED = TRUE;
+	RedrawTClock();
 
 	InterlockedExchange(&g_refresh_in_progress, 0);
 	if (InterlockedExchange(&g_refresh_pending, 0) != 0) {
@@ -2840,13 +3221,13 @@ void ReadData()
 	fillbackcolor = GetMyRegLong("Color_Font", "UseBackColor", TRUE);
 	bAutoBackMatchTaskbar = GetMyRegLong("Color_Font", "AutoBackMatchTaskbar", TRUE);
 	SetMyRegLong("Color_Font", "AutoBackMatchTaskbar", bAutoBackMatchTaskbar);
-	autoBackAlpha = (int)GetMyRegLong("Color_Font", "AutoBackAlpha", 96);
+	autoBackAlpha = (int)GetMyRegLong("Color_Font", "AutoBackAlpha", 255);
 	autoBackAlpha = ClampInt(autoBackAlpha, 0, 255);
 	SetMyRegLong("Color_Font", "AutoBackAlpha", autoBackAlpha);
 	autoBackBlendRatio = (int)GetMyRegLong("Color_Font", "AutoBackBlendRatio", 50);
 	autoBackBlendRatio = ClampInt(autoBackBlendRatio, 0, 100);
 	SetMyRegLong("Color_Font", "AutoBackBlendRatio", autoBackBlendRatio);
-	autoBackRefreshSec = (int)GetMyRegLong("Color_Font", "AutoBackRefreshSec", 5);
+	autoBackRefreshSec = (int)GetMyRegLong("Color_Font", "AutoBackRefreshSec", 1);
 	autoBackRefreshSec = ClampInt(autoBackRefreshSec, 1, 120);
 	SetMyRegLong("Color_Font", "AutoBackRefreshSec", autoBackRefreshSec);
 	autoBackSampleClockOffset = (int)GetMyRegLong("Color_Font", "AutoBackSampleClockOffset", 0);
@@ -3022,7 +3403,7 @@ void ReadData()
 
 	GetMyRegStr("ETC", "LTEString", strLTE, 32, "LTE");
 	if (strlen(strLTE) == 0) strcpy(strLTE, "LTE");
-	SetMyRegStr("ETC", "LTEString", strLTE);
+	if (!b_MinimalMode) SetMyRegStr("ETC", "LTEString", strLTE);
 
 	GetMyRegStr("ETC", "LTEChar", strBuf, 32, "L");
 	if (strlen(strBuf) == 0)
@@ -3033,7 +3414,7 @@ void ReadData()
 	{
 		strncpy(charLTE, strBuf, 1);
 	}
-	SetMyRegStr("ETC", "LTEChar", charLTE);
+	if (!b_MinimalMode) SetMyRegStr("ETC", "LTEChar", charLTE);
 
 
 	GetMyRegStr("ETC", "MuteString", strMute, 32, "*");
@@ -3316,10 +3697,10 @@ void ReadData()
 	SetMyRegLong("Status_DoNotEdit", "BatteryLifeAvailable", 1);
 
 	NetMIX_Length = GetMyRegLong("ETC", "NetMIX_Length", 10);
-	SetMyRegLong("ETC", "NetMIX_Length", NetMIX_Length);
+	if (!b_MinimalMode) SetMyRegLong("ETC", "NetMIX_Length", NetMIX_Length);
 
 	SSID_AP_Length = GetMyRegLong("ETC", "SSID_AP_Length", 10);
-	SetMyRegLong("ETC", "SSID_AP_Length", SSID_AP_Length);
+	if (!b_MinimalMode) SetMyRegLong("ETC", "SSID_AP_Length", SSID_AP_Length);
 
 	//ExtTXT_Length = GetMyRegLong("ETC", "ExtTXT_Length", 10);
 	//SetMyRegLong("ETC", "ExtTXT_Length", ExtTXT_Length);
@@ -3812,8 +4193,10 @@ void OnTimer_Win10(void)
 
 
 	GetDisplayTime(&t, nDispBeat ? (&beat100) : NULL);
-	CustomFormatVarsTick();
-	GipTick();
+	if (!b_MinimalMode) {
+		CustomFormatVarsTick();
+		GipTick();
+	}
 
 	if (b_DebugLog)
 	{
@@ -3855,10 +4238,19 @@ void OnTimer_Win10(void)
 
 		SetMyRegLong("Status_DoNotEdit", "TimerCountForSec", TimerCountForSec);
 
-		SetTimer(hwndClockMain, IDTIMERDLL_SYSINFO, ms_adjust + OFFSETMS_TIMER_SYSINFO, NULL);
-		bTimerAdjust_SysInfo = TRUE;
-		SetTimer(hwndClockMain, IDTIMERDLL_CHECKNETSTAT, ms_adjust + OFFSETMS_TIMER_NETSTAT, NULL);
-		bTimerAdjust_NetStat = TRUE;
+		if (b_MinimalMode) {
+			if (bTimerSysInfo) {
+				SetTimer(hwndClockMain, IDTIMERDLL_SYSINFO, ms_adjust + OFFSETMS_TIMER_SYSINFO, NULL);
+				bTimerAdjust_SysInfo = TRUE;
+			}
+			bTimerAdjust_NetStat = FALSE;
+		}
+		else {
+			SetTimer(hwndClockMain, IDTIMERDLL_SYSINFO, ms_adjust + OFFSETMS_TIMER_SYSINFO, NULL);
+			bTimerAdjust_SysInfo = TRUE;
+			SetTimer(hwndClockMain, IDTIMERDLL_CHECKNETSTAT, ms_adjust + OFFSETMS_TIMER_NETSTAT, NULL);
+			bTimerAdjust_NetStat = TRUE;
+		}
 
 		if (b_DebugLog)
 		{
@@ -4016,7 +4408,7 @@ void OnTimer_Win10(void)
 	}
 
 	//Ver 4.1以降はOnTimer_Win10から行うこととする。
-	if (bEnableTooltip) TooltipOnTimer(hwndClockMain, b_DayChange);
+	if (!b_MinimalMode && bEnableTooltip) TooltipOnTimer(hwndClockMain, b_DayChange);
 
 	//Ver4.0.4現在、exemainにおけるOnTimerZombieCheck2と二重チェックになっているのでいずれ整理が必要
 	//しかもこちらの仕組みは停止動作等は実装されていない。

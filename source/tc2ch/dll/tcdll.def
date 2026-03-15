@@ -9,3 +9,4 @@ HookEnd    @2
 CheckWinVersion_Win10	@3
 CheckModernStandbyCapability_Win10	@4
 FormatMenuLabel_Win11 @5
+IsMinimalMode @6

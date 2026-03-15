@@ -312,7 +312,7 @@ static void OnInit(HWND hDlg)
 	if (autoBackBlendRatio < 0) autoBackBlendRatio = 0;
 	if (autoBackBlendRatio > 100) autoBackBlendRatio = 100;
 
-	autoBackRefreshSec = (int)GetMyRegLong("Color_Font", "AutoBackRefreshSec", 3);
+	autoBackRefreshSec = (int)GetMyRegLong("Color_Font", "AutoBackRefreshSec", 1);
 	if (autoBackRefreshSec < 1) autoBackRefreshSec = 1;
 	if (autoBackRefreshSec > 120) autoBackRefreshSec = 120;
 

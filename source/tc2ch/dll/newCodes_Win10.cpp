@@ -1145,10 +1145,19 @@ extern "C" void newCodes_close_Win10()
 	if (b_DebugLog) writeDebugLog_Win10("newCodes_close_Win10 Called", 999);
 
 
-	if (b_SoundCapability) {
+	if (endpointVolume != NULL) {
+		endpointVolume->Release();
+		endpointVolume = NULL;
+	}
+	if (defaultDevice_Win10 != NULL) {
 		defaultDevice_Win10->Release();
 		defaultDevice_Win10 = NULL;
 	}
+	if (deviceEnumerator_Win10 != NULL) {
+		deviceEnumerator_Win10->Release();
+		deviceEnumerator_Win10 = NULL;
+	}
+	b_SoundCapability = FALSE;
 
 	delete internetConnectProf;
 	delete connectProfs;

@@ -4,6 +4,7 @@
 ---------------------------------------------------------------*/
 
 #include "tclock.h"
+#include "..\\dll\\minmode.h"
 #include "..\common\ini_io_utf8.h"
 #include "..\common\text_codec.h"
 
@@ -136,6 +137,37 @@ static void tc_menu_prepare_utf8_arg(const char* src, char* dst, int dstBytes);
 static BOOL tc_menu_try_decode_utf8_hex(const char* hex, char* out, int outBytes);
 static BOOL tc_menu_is_valid_utf8_text(const char* text);
 static const char* tc_menu_alarm_message_utf8_or_default(const TC_MENU_ALARM_ENTRY* e);
+static BOOL tc_menu_insert_string_utf8(HMENU hMenu, UINT position, UINT flags, UINT_PTR id, const char* text);
+static void tc_menu_reset_popup_state(void);
+static void tc_menu_show_minimal(HWND hwnd, int xPos, int yPos);
+
+static void tc_menu_reset_popup_state(void)
+{
+	if (g_hMenu) {
+		DestroyMenu(g_hMenu);
+		g_hMenu = NULL;
+		hPopupMenu = NULL;
+	}
+}
+
+static BOOL tc_menu_is_minimal(void)
+{
+	return GetMyRegLong("ETC", "MinimalMode", FALSE) ? TRUE : FALSE;
+}
+
+static void tc_menu_show_minimal(HWND hwnd, int xPos, int yPos)
+{
+	tc_menu_reset_popup_state();
+	g_hMenu = CreatePopupMenu();
+	if (!g_hMenu) return;
+	hPopupMenu = g_hMenu;
+	tc_menu_insert_string_utf8(hPopupMenu, 0, MF_BYPOSITION | MF_STRING, IDC_EXIT, MyStringUTF8(IDS_EXITTCLOCK));
+	SetMenuDefaultItem(hPopupMenu, IDC_EXIT, FALSE);
+	SetForegroundWindow98(hwnd);
+	g_menuPopupActive = TRUE;
+	TrackPopupMenu(hPopupMenu, TPM_LEFTALIGN | TPM_RIGHTBUTTON, xPos, yPos, 0, hwnd, NULL);
+	g_menuPopupActive = FALSE;
+}
 
 static BOOL tc_menu_should_keep_utf8_value(const char* key)
 {
@@ -560,6 +592,7 @@ static LONG tc_menu_get_tcapture_enable(void)
 	LONG v = GetMyRegLong("TCapture", "Enable", -1);
 	if (v != -1) return (v != 0) ? 1 : 0;
 	v = GetMyRegLong("ETC", "TCaptureEnable", 0);
+	if (tc_menu_is_minimal()) return (v != 0) ? 1 : 0;
 	SetMyRegLong("TCapture", "Enable", (v != 0) ? 1 : 0);
 	DelMyReg("ETC", "TCaptureEnable");
 	return (v != 0) ? 1 : 0;
@@ -569,6 +602,7 @@ static LONG tc_menu_get_tcalendar_enable(void)
 {
 	LONG v = GetMyRegLong("TCalendar", "Enable", -1);
 	if (v == -1) {
+		if (tc_menu_is_minimal()) return 0;
 		SetMyRegLong("TCalendar", "Enable", 0);
 		return 0;
 	}
@@ -579,6 +613,7 @@ static LONG tc_menu_get_tcycle_enable(void)
 {
 	LONG v = GetMyRegLong("TCycle", "Enable", -1);
 	if (v == -1) {
+		if (tc_menu_is_minimal()) return 0;
 		SetMyRegLong("TCycle", "Enable", 0);
 		return 0;
 	}
@@ -628,6 +663,7 @@ static void tc_menu_get_tcapture_path(char* outPath, int outPathLen)
 	if (legacy[0] == '\0') strcpy(legacy, "plugins\\TCapture.exe");
 	tc_menu_normalize_setting_utf8_in_place(legacy, (int)sizeof(legacy));
 	lstrcpyn(outPath, legacy, outPathLen);
+	if (tc_menu_is_minimal()) return;
 	SetMyRegStr("TCapture", "Path", outPath);
 	DelMyReg("ETC", "TCapturePath");
 }
@@ -645,6 +681,7 @@ static void tc_menu_get_tcalendar_path(char* outPath, int outPathLen)
 	}
 	lstrcpyn(before, outPath, (int)sizeof(before));
 	tc_menu_normalize_setting_utf8_in_place(outPath, outPathLen);
+	if (wasMissing && tc_menu_is_minimal()) return;
 	if (wasMissing || lstrcmp(before, outPath) != 0) SetMyRegStr("TCalendar", "Path", outPath);
 }
 
@@ -661,6 +698,7 @@ static void tc_menu_get_tcycle_path(char* outPath, int outPathLen)
 	}
 	lstrcpyn(before, outPath, (int)sizeof(before));
 	tc_menu_normalize_setting_utf8_in_place(outPath, outPathLen);
+	if (wasMissing && tc_menu_is_minimal()) return;
 	if (wasMissing || lstrcmp(before, outPath) != 0) SetMyRegStr("TCycle", "Path", outPath);
 }
 
@@ -1509,6 +1547,9 @@ void MenuCustomMigrateLegacyModeKeys(void)
 static void tc_menu_ensure_ini_defaults(void)
 {
 	int i;
+	if (tc_menu_is_minimal()) {
+		return;
+	}
 	if (tc_menu_has_section_header(TC_MENU_SECTION)) {
 		return;
 	}
@@ -1870,10 +1911,10 @@ void OnContextMenu(HWND hwnd, HWND hwndClicked, int xPos, int yPos)
 	g_menuLastPopupPos.x = xPos;
 	g_menuLastPopupPos.y = yPos;
 	g_menuLastPopupPosValid = TRUE;
-	if (g_hMenu) {
-		DestroyMenu(g_hMenu);
-		g_hMenu = NULL;
-		hPopupMenu = NULL;
+	tc_menu_reset_popup_state();
+	if (tc_menu_is_minimal()) {
+		tc_menu_show_minimal(hwnd, xPos, yPos);
+		return;
 	}
 	g_hMenu = LoadMenu(GetLangModule(), MAKEINTRESOURCE(IDR_MENU));
 	if (!g_hMenu) {

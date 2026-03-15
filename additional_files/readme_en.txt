@@ -1,5 +1,5 @@
 ***********************************************
-***  tclock-win11 Ver 0.2.4.2 (2026/03/14)  ***
+***  tclock-win11 Ver 0.2.5.0 (2026/03/15)  ***
 ***       by ID:DTgUvdcU0                   ***
 ***********************************************
 
@@ -283,6 +283,9 @@ LPROC: Number of logical processors (threads)
 ***************
 Version history
 ***************
+
+2026/03/15 Main changes (v0.2.5.0)
+Added a feature-limited MinimalMode that runs with [ETC]MinimalMode=1
 
 2026/03/14 Main changes (v0.2.4.2)
 Revived and corrected network-status-related format tokens

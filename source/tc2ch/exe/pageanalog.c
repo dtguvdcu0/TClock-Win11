@@ -14,6 +14,7 @@ static void OnInit(HWND hDlg);
 static void OnApply(HWND hDlg);
 static void OnBrowseAnalogClockBitmapFile(HWND hDlg);
 static int GetSpinPos(HWND hDlg, int ctrlId);
+static void clr_aclock_cfg(void);
 static void NormalizeUtf8InPlaceNoWriteback(char* value, int valueBytes);
 
 //extern int confNo;
@@ -35,6 +36,21 @@ __inline void SendPSChanged(HWND hDlg)
 static int GetSpinPos(HWND hDlg, int ctrlId)
 {
 	return (int)(short)SendDlgItemMessage(hDlg, ctrlId, UDM_GETPOS, 0, 0);
+}
+
+static void clr_aclock_cfg(void)
+{
+	DelMyReg("AnalogClock", "UseAnalogClock");
+	DelMyReg("AnalogClock", "AnalogClockBmp");
+	DelMyReg("AnalogClock", "AClockHourHandColor");
+	DelMyReg("AnalogClock", "AClockMinHandColor");
+	DelMyReg("AnalogClock", "AnalogClockHourHandBold");
+	DelMyReg("AnalogClock", "AnalogClockMinHandBold");
+	DelMyReg("AnalogClock", "AnalogClockPos");
+	DelMyReg("AnalogClock", "AnalogClockAtStartBtn");
+	DelMyReg("AnalogClock", "AnalogClockHPos");
+	DelMyReg("AnalogClock", "AnalogClockVPos");
+	DelMyReg("AnalogClock", "AnalogClockSize");
 }
 
 /*------------------------------------------------
@@ -176,6 +192,10 @@ void OnApply(HWND hDlg)
 {
 	DWORD dw;
 	char fname[MAX_PATH + 1];
+	if (!IsDlgButtonChecked(hDlg, IDC_CHECK_ACLOCK)) {
+		clr_aclock_cfg();
+		return;
+	}
 
 	//短針の色
 	dw = (DWORD)CBGetItemData(hDlg, IDC_COLHOUR, CBGetCurSel(hDlg, IDC_COLHOUR));

@@ -750,7 +750,6 @@ extern "C" BOOL updateConnectProfsInfo_Win10(BOOL b_Detail)	// return value: 1 =
 		if (numOfConnectProfs != intTemp)
 		{
 			numOfConnectProfs = intTemp;
-			SetMyRegLong("Status_DoNotEdit", "NumberOfProfiles", numOfConnectProfs);
 			if (b_DebugLog) writeDebugLog_Win10("New numOfConnectProfs = ", numOfConnectProfs);
 		}
 		else
@@ -1104,7 +1103,6 @@ extern "C" void chkInternetConnectionProfile_Win10()
 
 	if (b_ToDo_identifyInternetConnectProfNum_Win10)
 	{
-		int prevValue = internetConnectProfNum;
 		identifyInternetConnectProfNum_Win10();
 
 		if (internetConnectProfNum == -1)
@@ -1117,7 +1115,6 @@ extern "C" void chkInternetConnectionProfile_Win10()
 		}
 
 		if (b_DebugLog) writeDebugLog_Win10("[chkInternetConnectionProfile_Win10] CurrentInternetProfileNumber is identified as: ", internetConnectProfNum);
-		if (internetConnectProfNum != prevValue) SetMyRegLong("Status_DoNotEdit", "CurrentInternetProfileNumber", internetConnectProfNum);
 	}
 	
 

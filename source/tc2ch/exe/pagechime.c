@@ -14,6 +14,7 @@ static void OnPlayWav(HWND hDlg, BOOL bSecondary);
 static void OnStopWav(HWND hDlg);
 static void OnChangeHours(HWND hDlg);
 static void OnChangeEnable(HWND hDlg);
+static void clr_chime_cfg(void);
 static void NormalizeUtf8InPlaceNoWriteback(char* value, int valueBytes);
 
 
@@ -215,11 +216,31 @@ void OnChangeEnable(HWND hDlg)
 	}
 }
 
+static void clr_chime_cfg(void)
+{
+	DelMyReg("Chime", "EnableChime");
+	DelMyReg("Chime", "EnableSecondaryChime");
+	DelMyReg("Chime", "EnableBlinkOnChime");
+	DelMyReg("Chime", "OffsetChimeSec");
+	DelMyReg("Chime", "OffsetSecondaryChimeSec");
+	DelMyReg("Chime", "BlinksOnChime");
+	DelMyReg("Chime", "ChimeHourStart");
+	DelMyReg("Chime", "ChimeHourEnd");
+	DelMyReg("Chime", "ChimeWav");
+	DelMyReg("Chime", "SecondaryChimeWav");
+	DelMyReg("Chime", "CuckooClock");
+}
+
 /*------------------------------------------------
   Apply
 --------------------------------------------------*/
 void OnApply(HWND hDlg)
 {
+	if (!IsDlgButtonChecked(hDlg, IDC_CHECK_ENABLE_CHIME)) {
+		clr_chime_cfg();
+		return;
+	}
+
 	SetMyRegLong("Chime", "EnableChime",
 		IsDlgButtonChecked(hDlg, IDC_CHECK_ENABLE_CHIME));
 

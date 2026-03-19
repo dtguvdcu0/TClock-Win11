@@ -82,8 +82,18 @@ void min_ensure_defaults(void)
 
 void min_read(void)
 {
-	b_MinimalMode = GetMyRegLong("ETC", "MinimalMode", FALSE) ? TRUE : FALSE;
+	BOOL configMinimalMode = GetMyRegLong("ETC", "MinimalMode", FALSE) ? TRUE : FALSE;
+	BOOL safeModeActive = GetMyRegLong("Status_DoNotEdit", "SafeMode", FALSE) ? TRUE : FALSE;
+
+	b_MinimalMode = configMinimalMode || safeModeActive;
 	if (!b_MinimalMode) {
+		b_MinSysInfo = FALSE;
+		b_MinBattery = FALSE;
+		b_MinNetwork = FALSE;
+		return;
+	}
+
+	if (!configMinimalMode) {
 		b_MinSysInfo = FALSE;
 		b_MinBattery = FALSE;
 		b_MinNetwork = FALSE;

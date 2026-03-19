@@ -26,6 +26,66 @@ static DWORD GetSpinPos(HWND hDlg, int ctrlId)
 	return (DWORD)(UINT_PTR)SendDlgItemMessage(hDlg, ctrlId, UDM_GETPOS, 0, 0);
 }
 
+static void clr_barmeter_cfg(void)
+{
+	DelMyReg("BarMeter", "UseBarMeterVL");
+	DelMyReg("BarMeter", "BarMeterVL_Horizontal");
+	DelMyReg("BarMeter", "ColorBarMeterVL");
+	DelMyReg("BarMeter", "ColorBarMeterVL_Mute");
+	DelMyReg("BarMeter", "BarMeterVL_Right");
+	DelMyReg("BarMeter", "BarMeterVL_Width");
+	DelMyReg("BarMeter", "BarMeterVL_Bottom");
+	DelMyReg("BarMeter", "BarMeterVL_Top");
+	DelMyReg("BarMeter", "BarMeterVL_HorizontalToLeft");
+
+	DelMyReg("BarMeter", "UseBarMeterBL");
+	DelMyReg("BarMeter", "BarMeterBL_Horizontal");
+	DelMyReg("BarMeter", "ColorBarMeterBL_Charge");
+	DelMyReg("BarMeter", "ColorBarMeterBL_High");
+	DelMyReg("BarMeter", "ColorBarMeterBL_Mid");
+	DelMyReg("BarMeter", "ColorBarMeterBL_Low");
+	DelMyReg("BarMeter", "BarMeterBL_Right");
+	DelMyReg("BarMeter", "BarMeterBL_Width");
+	DelMyReg("BarMeter", "BarMeterBL_Bottom");
+	DelMyReg("BarMeter", "BarMeterBL_Top");
+	DelMyReg("BarMeter", "BarMeterBL_Threshold_High");
+	DelMyReg("BarMeter", "BarMeterBL_Threshold_Mid");
+	DelMyReg("BarMeter", "BarMeterBL_HorizontalToLeft");
+
+	DelMyReg("BarMeter", "UseBarMeterCU");
+	DelMyReg("BarMeter", "BarMeterCU_Horizontal");
+	DelMyReg("BarMeter", "ColorBarMeterCU_High");
+	DelMyReg("BarMeter", "ColorBarMeterCU_Mid");
+	DelMyReg("BarMeter", "ColorBarMeterCU_Low");
+	DelMyReg("BarMeter", "BarMeterCU_Right");
+	DelMyReg("BarMeter", "BarMeterCU_Width");
+	DelMyReg("BarMeter", "BarMeterCU_Bottom");
+	DelMyReg("BarMeter", "BarMeterCU_Top");
+	DelMyReg("BarMeter", "BarMeterCU_Threshold_High");
+	DelMyReg("BarMeter", "BarMeterCU_Threshold_Mid");
+	DelMyReg("BarMeter", "BarMeterCU_HorizontalToLeft");
+
+	DelMyReg("BarMeter", "UseBarMeterGU");
+	DelMyReg("BarMeter", "BarMeterGU_Right");
+	DelMyReg("BarMeter", "BarMeterGU_Bottom");
+	DelMyReg("BarMeter", "BarMeterGU_Top");
+	DelMyReg("BarMeter", "ColorBarMeterGPU");
+
+	DelMyReg("BarMeter", "UseBarMeterNet");
+	DelMyReg("BarMeter", "BarMeterNet_LogGraph");
+	DelMyReg("BarMeter", "BarMeterNet_Horizontal");
+	DelMyReg("BarMeter", "ColorBarMeterNet_Send");
+	DelMyReg("BarMeter", "ColorBarMeterNet_Recv");
+	DelMyReg("BarMeter", "BarMeterNetRecv_Right");
+	DelMyReg("BarMeter", "BarMeterNetRecv_Bottom");
+	DelMyReg("BarMeter", "BarMeterNetSend_Right");
+	DelMyReg("BarMeter", "BarMeterNetSend_Bottom");
+	DelMyReg("BarMeter", "BarMeterNet_Width");
+	DelMyReg("BarMeter", "BarMeterNetRecv_Top");
+	DelMyReg("BarMeter", "BarMeterNetSend_Top");
+	DelMyReg("BarMeter", "BarMeterNet_HorizontalToLeft");
+}
+
 extern char g_mydir[];
 
 extern BOOL b_EnglishMenu;
@@ -334,6 +394,14 @@ static void ArrangeItems(HWND hDlg)
 --------------------------------------------------*/
 void OnApply(HWND hDlg)
 {
+	if (!IsDlgButtonChecked(hDlg, IDC_USEBARVOL) &&
+		!IsDlgButtonChecked(hDlg, IDC_USEBARBAT) &&
+		!IsDlgButtonChecked(hDlg, IDC_USEBARCPU) &&
+		!IsDlgButtonChecked(hDlg, IDC_USEBARCPU2) &&
+		!IsDlgButtonChecked(hDlg, IDC_USEBARNET)) {
+		clr_barmeter_cfg();
+		return;
+	}
 
 	SetMyRegLong("BarMeter", "UseBarMeterVL",
 		IsDlgButtonChecked(hDlg, IDC_USEBARVOL));

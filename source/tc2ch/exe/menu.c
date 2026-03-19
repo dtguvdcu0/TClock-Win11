@@ -58,6 +58,7 @@ extern BOOL g_ExitRequestedFromMenu;
 #define TC_MENU_LABEL_CACHE_MAX (TC_MENU_CUSTOM_MAX_ITEMS + 1)
 #define TC_MENU_LIVE_MAX TC_MENU_CUSTOM_MAX_ITEMS
 #define TC_MENU_SECTION_CACHE_BYTES 65536
+#define IDC_RESTART_SAFEMODE 45988
 #define IDC_TCAP_SETTINGS 45990
 #define IDC_TCAP_CAPTURE 45989
 #define IDC_TCAL_OPEN 45991
@@ -155,6 +156,16 @@ static BOOL tc_menu_is_minimal(void)
 	return GetMyRegLong("ETC", "MinimalMode", FALSE) ? TRUE : FALSE;
 }
 
+static BOOL tc_menu_is_safe(void)
+{
+	return GetMyRegLong("Status_DoNotEdit", "SafeMode", FALSE) ? TRUE : FALSE;
+}
+
+static const char* tc_menu_safemode_label(void)
+{
+	return "Restart in SafeMode";
+}
+
 static void tc_menu_show_minimal(HWND hwnd, int xPos, int yPos)
 {
 	tc_menu_reset_popup_state();
@@ -163,6 +174,21 @@ static void tc_menu_show_minimal(HWND hwnd, int xPos, int yPos)
 	hPopupMenu = g_hMenu;
 	tc_menu_insert_string_utf8(hPopupMenu, 0, MF_BYPOSITION | MF_STRING, IDC_EXIT, MyStringUTF8(IDS_EXITTCLOCK));
 	SetMenuDefaultItem(hPopupMenu, IDC_EXIT, FALSE);
+	SetForegroundWindow98(hwnd);
+	g_menuPopupActive = TRUE;
+	TrackPopupMenu(hPopupMenu, TPM_LEFTALIGN | TPM_RIGHTBUTTON, xPos, yPos, 0, hwnd, NULL);
+	g_menuPopupActive = FALSE;
+}
+
+static void tc_menu_show_safe(HWND hwnd, int xPos, int yPos)
+{
+	tc_menu_reset_popup_state();
+	g_hMenu = CreatePopupMenu();
+	if (!g_hMenu) return;
+	hPopupMenu = g_hMenu;
+	tc_menu_insert_string_utf8(hPopupMenu, 0, MF_BYPOSITION | MF_STRING, IDC_RESTART, MyStringUTF8(IDS_RESTART));
+	tc_menu_insert_string_utf8(hPopupMenu, 1, MF_BYPOSITION | MF_STRING, IDC_EXIT, MyStringUTF8(IDS_EXITTCLOCK));
+	SetMenuDefaultItem(hPopupMenu, IDC_RESTART, FALSE);
 	SetForegroundWindow98(hwnd);
 	g_menuPopupActive = TRUE;
 	TrackPopupMenu(hPopupMenu, TPM_LEFTALIGN | TPM_RIGHTBUTTON, xPos, yPos, 0, hwnd, NULL);
@@ -1916,6 +1942,10 @@ void OnContextMenu(HWND hwnd, HWND hwndClicked, int xPos, int yPos)
 		tc_menu_show_minimal(hwnd, xPos, yPos);
 		return;
 	}
+	if (tc_menu_is_safe()) {
+		tc_menu_show_safe(hwnd, xPos, yPos);
+		return;
+	}
 	g_hMenu = LoadMenu(GetLangModule(), MAKEINTRESOURCE(IDR_MENU));
 	if (!g_hMenu) {
 		char fname[MAX_PATH];
@@ -1998,6 +2028,12 @@ void OnContextMenu(HWND hwnd, HWND hwndClicked, int xPos, int yPos)
 
 	b_CompactMode_menu = GetMyRegLong(NULL, "CompactMode", FALSE);
 	b_SafeMode_menu = GetMyRegLong("Status_DoNotEdit", "SafeMode", FALSE);
+	if (!b_SafeMode_menu) {
+		int restartPos = tc_menu_find_position_by_id(hPopupMenu, IDC_RESTART);
+		if (restartPos >= 0) {
+			tc_menu_insert_string_utf8(hPopupMenu, restartPos + 1, MF_BYPOSITION | MF_STRING, IDC_RESTART_SAFEMODE, tc_menu_safemode_label());
+		}
+	}
 	//b_UseDataPlanFunc = GetMyRegLong("DataPlan", "UseDataPlanFunction", FALSE);
 	MENUITEMINFO menuiteminfo_temp;
 	menuiteminfo_temp.cbSize = sizeof(MENUITEMINFO);
@@ -2364,6 +2400,18 @@ void OnTClockCommand(HWND hwnd, WORD wID, WORD wCode)
 		case IDC_RESTART: // Restart
 			if (b_DebugLog) WriteDebug_New2("[menu.c][OnTClockCommand] IDC_RESTART received");
 			if (b_NormalLog) WriteNormalLog("Restart TClock-Win10 from right-click menu.");
+			/* Avoid Explorer restart side-effects on explicit user restart. */
+			b_SkipHideClockRestore = TRUE;
+			g_ExitRequestedFromMenu = FALSE;
+			PostMessage(g_hwndClock, WM_COMMAND, IDC_RESTART, 0);
+			return;
+		case IDC_RESTART_SAFEMODE:
+			if (b_DebugLog) WriteDebug_New2("[menu.c][OnTClockCommand] IDC_RESTART_SAFEMODE received");
+			if (b_NormalLog) WriteNormalLog("Restart TClock-Win10 in SafeMode from right-click menu.");
+			SetMyRegLong("Status_DoNotEdit", "SafeModePendingOnce", 1);
+			SetMyRegLong("Status_DoNotEdit", "SafeMode", 0);
+			SetMyRegLong("Status_DoNotEdit", "LastExitUser", 0);
+			SetMyRegLong("Status_DoNotEdit", "CountAutoRestart", 0);
 			/* Avoid Explorer restart side-effects on explicit user restart. */
 			b_SkipHideClockRestore = TRUE;
 			g_ExitRequestedFromMenu = FALSE;

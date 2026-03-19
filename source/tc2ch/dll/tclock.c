@@ -207,7 +207,7 @@ extern BOOL bEnableTooltip;
 
 
 
-void CheckSafeMode_Win10(void);	// added by TTTT
+void ResolveRecoveryStartupState(void);
 BOOL b_ExistLTEProfile = FALSE;
 BOOL b_ExistMeteredProfile = FALSE;
 
@@ -937,6 +937,68 @@ static BOOL SampleTaskbarColorsAtX(int posX, COLORREF* outMain, COLORREF* outEdg
 	return ((*outMain != CLR_INVALID) && (*outEdge != CLR_INVALID));
 }
 
+// TEMP_VERIFY_START ghostchk
+#define CLKH_WIN11_MAIN          0x0001
+#define CLKH_LAYOUT_DEGRADED     0x0002
+#define CLKH_CLOCK_HWND_VALID    0x0004
+#define CLKH_TASKBAR_HWND_VALID  0x0008
+#define CLKH_TRAY_HWND_VALID     0x0010
+#define CLKH_OUTER_CB_VALID      0x0020
+#define CLKH_FRAME_VALID         0x0040
+#define CLKH_VISIBLE_PROBE_READY 0x0080
+
+static LRESULT clk_health_flags(void)
+{
+	LRESULT flags = 0;
+	BOOL frameValid;
+	BOOL visibleProbeReady;
+
+	RefreshWin11TaskbarHandles();
+
+	frameValid = (widthMainClockFrame > 0 && heightMainClockFrame > 0);
+	visibleProbeReady = frameValid && IsWindow(hwndTaskBarMain);
+
+	if (bWin11Main) flags |= CLKH_WIN11_MAIN;
+	if (bWin11LayoutDegraded) flags |= CLKH_LAYOUT_DEGRADED;
+	if (IsWindow(hwndClockMain)) flags |= CLKH_CLOCK_HWND_VALID;
+	if (IsWindow(hwndTaskBarMain)) flags |= CLKH_TASKBAR_HWND_VALID;
+	if (IsWindow(hwndTrayMain)) flags |= CLKH_TRAY_HWND_VALID;
+	if (IsWindow(hwndWin11ContentBridge)) flags |= CLKH_OUTER_CB_VALID;
+	if (frameValid) flags |= CLKH_FRAME_VALID;
+	if (visibleProbeReady) flags |= CLKH_VISIBLE_PROBE_READY;
+
+	if (b_DebugLog) {
+		char strLog[128];
+		wsprintf(strLog,
+			"[ghostchk][dll] flags=0x%02X win11=%d degraded=%d frame=%dx%d",
+			(unsigned int)flags,
+			bWin11Main,
+			bWin11LayoutDegraded,
+			widthMainClockFrame,
+			heightMainClockFrame);
+		WriteDebugDLL_New(strLog);
+	}
+
+	return flags;
+}
+
+static LRESULT clk_request_relayout(void)
+{
+	if (!bWin11Main) return 0;
+
+	RefreshWin11TaskbarHandles();
+	if (!IsWindow(hwndClockMain)) return 0;
+
+	if (b_DebugLog) {
+		WriteDebugDLL_New("[ghostchk][dll] action=relayout");
+	}
+
+	SetMainClockOnTasktray_Win11();
+	PostMessage(hwndClockMain, CLOCKM_MOVEWIN11CONTENTBRIDGE, 1, 0);
+	return 1;
+}
+// TEMP_VERIFY_END ghostchk
+
 static void RefreshAutoBackColors(BOOL force, const char* reason)
 {
 	DWORD nowTick;
@@ -1192,7 +1254,7 @@ void InitClock()
 
 
 	//SafeModeチェック
-	CheckSafeMode_Win10();
+	ResolveRecoveryStartupState();
 	min_ensure_defaults();
 	min_read();
 
@@ -2368,6 +2430,16 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 			{
 				return 255;		//呼び出し元はメインプログラム(exemain.) 255を返すと、このコード(WndProc)が生きている = 改造時計が存在する、と判断される。
 			}
+			else if (LOWORD(wParam) == CLOCKM_QUERY_HEALTH)
+			{
+				return clk_health_flags();
+			}
+			else if (LOWORD(wParam) == CLOCKM_REQUEST_RECOVERY)
+			{
+				if ((int)lParam == CLKR_RELAYOUT_ONLY) {
+					return clk_request_relayout();
+				}
+			}
 			
 			else if (LOWORD(wParam) == CLOCKM_SNAPSHOT_AUTOBACK_SAVE)
 			{
@@ -2747,7 +2819,6 @@ static void ReadDataMinimal(void)
 
 	UpdateSettingFile();
 	SetMyRegLong("Status_DoNotEdit", "Win11TClockMain", bWin11Main);
-	SetMyRegLong("Status_DoNotEdit", "Win11LayoutDegraded", bWin11LayoutDegraded);
 
 	GetModuleFileName(hmod, g_mydir_dll, MAX_PATH);
 	del_title(g_mydir_dll);
@@ -2759,7 +2830,6 @@ static void ReadDataMinimal(void)
 	offsetClockMS = (int)(short)GetMyRegLong(NULL, "OffsetClockMS", 0);
 	SetMyRegLong(NULL, "OffsetClockMS", (int)(short)offsetClockMS);
 	b_ModernStandbySupported = CheckModernStandbyCapability_Win10();
-	SetMyRegLong("Status_DoNotEdit", "ModernStandbySupported", b_ModernStandbySupported);
 
 	colfore = (COLORREF)GetMyRegLong("Color_Font", "ForeColor", GetSysColor(COLOR_BTNTEXT));
 	SetMyRegLong("Color_Font", "ForeColor", colfore);
@@ -3141,7 +3211,6 @@ void ReadData()
 	UpdateSettingFile();
 
 	SetMyRegLong("Status_DoNotEdit", "Win11TClockMain", bWin11Main);
-	SetMyRegLong("Status_DoNotEdit", "Win11LayoutDegraded", bWin11LayoutDegraded);
 
 	//SetMyRegLong("Status_DoNotEdit", "WindowsType", Win11Type);
 
@@ -3192,7 +3261,6 @@ void ReadData()
 
 	//モダンスタンバイ対応確認
 	b_ModernStandbySupported = CheckModernStandbyCapability_Win10();
-	SetMyRegLong("Status_DoNotEdit", "ModernStandbySupported", b_ModernStandbySupported);
 
 	//設定番号取得
 
@@ -3429,169 +3497,128 @@ void ReadData()
 
 	
 	b_BarMeterVL_Horizontal = GetMyRegLong("BarMeter", "BarMeterVL_Horizontal", FALSE);
-	if (GetMyRegLong("BarMeter", "UseBarMeterVL", 0)) SetMyRegLong("BarMeter", "BarMeterVL_Horizontal", b_BarMeterVL_Horizontal);
 
 	b_BarMeterBL_Horizontal = GetMyRegLong("BarMeter", "BarMeterBL_Horizontal", FALSE);
-	if (GetMyRegLong("BarMeter", "UseBarMeterBL", 0)) SetMyRegLong("BarMeter", "BarMeterBL_Horizontal", b_BarMeterBL_Horizontal);
 	
 	b_BarMeterCU_Horizontal = GetMyRegLong("BarMeter", "BarMeterCU_Horizontal", FALSE);
-	SetMyRegLong("BarMeter", "BarMeterCU_Horizontal", b_BarMeterCU_Horizontal);
 	
 	b_BarMeterNet_Horizontal = GetMyRegLong("BarMeter", "BarMeterNet_Horizontal", FALSE);
-	if (GetMyRegLong("BarMeter", "UseBarMeterNet", 0)) SetMyRegLong("BarMeter", "BarMeterNet_Horizontal", b_BarMeterNet_Horizontal);
 
 	
 	b_BarMeterVL_HorizontalToLeft = GetMyRegLong("BarMeter", "BarMeterVL_HorizontalToLeft", FALSE);
-	if (GetMyRegLong("BarMeter", "UseBarMeterVL", 0)) SetMyRegLong("BarMeter", "BarMeterVL_HorizontalToLeft", b_BarMeterVL_HorizontalToLeft);
 
 	b_BarMeterBL_HorizontalToLeft = GetMyRegLong("BarMeter", "BarMeterBL_HorizontalToLeft", FALSE);
-	if (GetMyRegLong("BarMeter", "UseBarMeterBL", 0)) SetMyRegLong("BarMeter", "BarMeterBL_HorizontalToLeft", b_BarMeterBL_HorizontalToLeft);
 
 	b_BarMeterCU_HorizontalToLeft = GetMyRegLong("BarMeter", "BarMeterCU_HorizontalToLeft", FALSE);
-	SetMyRegLong("BarMeter", "BarMeterCU_HorizontalToLeft", b_BarMeterCU_HorizontalToLeft);
 
 	b_BarMeterNet_HorizontalToLeft = GetMyRegLong("BarMeter", "BarMeterNet_HorizontalToLeft", FALSE);
-	if (GetMyRegLong("BarMeter", "UseBarMeterNet", 0)) SetMyRegLong("BarMeter", "BarMeterNet_HorizontalToLeft", b_BarMeterNet_HorizontalToLeft);
 
 
 
 	b_UseBarMeterVL = GetMyRegLong("BarMeter", "UseBarMeterVL", 0);
-	SetMyRegLong("BarMeter", "UseBarMeterVL", b_UseBarMeterVL);
 
 
 	ColorBarMeterVL = (COLORREF)GetMyRegLong("BarMeter", "ColorBarMeterVL", RGB(0, 255, 0));
-	if (b_UseBarMeterVL) SetMyRegLong("BarMeter", "ColorBarMeterVL", ColorBarMeterVL);
 
 	ColorBarMeterVL_Mute = (COLORREF)GetMyRegLong("BarMeter", "ColorBarMeterVL_Mute", RGB(255, 0, 0));
-	if (b_UseBarMeterVL) SetMyRegLong("BarMeter", "ColorBarMeterVL_Mute", ColorBarMeterVL_Mute);
 
 	BarMeterVL_Right = (int)(short)GetMyRegLong("BarMeter", "BarMeterVL_Right", 290);
-	if (b_UseBarMeterVL) SetMyRegLong("BarMeter", "BarMeterVL_Right", BarMeterVL_Right);
 
 	BarMeterWidth = (int)(short)GetMyRegLong("BarMeter", "BarMeterVL_Width", 5);
 	if (BarMeterWidth <= 0) BarMeterWidth = 5;
 	BarMeterVL_Left = BarMeterVL_Right + BarMeterWidth;
-	if (b_UseBarMeterVL) SetMyRegLong("BarMeter", "BarMeterVL_Width", BarMeterWidth);
 
 	BarMeterVL_Bottom = (int)(short)GetMyRegLong("BarMeter", "BarMeterVL_Bottom", 0);
 	if (BarMeterVL_Bottom < 0) BarMeterVL_Bottom = 0;
-	if (b_UseBarMeterVL) SetMyRegLong("BarMeter", "BarMeterVL_Bottom", BarMeterVL_Bottom);
 
 	BarMeterVL_Top = (int)(short)GetMyRegLong("BarMeter", "BarMeterVL_Top", 0);
 	if (BarMeterVL_Top < 0) BarMeterVL_Top = 0;
-	if (b_UseBarMeterVL) SetMyRegLong("BarMeter", "BarMeterVL_Top", BarMeterVL_Top);
 
 
 
 	b_UseBarMeterBL = GetMyRegLong("BarMeter", "UseBarMeterBL", 0);
-	SetMyRegLong("BarMeter", "UseBarMeterBL", b_UseBarMeterBL);
 
 
 	ColorBarMeterBL_Charge = (COLORREF)GetMyRegLong("BarMeter", "ColorBarMeterBL_Charge", RGB(255, 165, 0));
-	if (b_UseBarMeterBL) SetMyRegLong("BarMeter", "ColorBarMeterBL_Charge", ColorBarMeterBL_Charge);
 
 	ColorBarMeterBL_High = (COLORREF)GetMyRegLong("BarMeter", "ColorBarMeterBL_High", RGB(0, 255, 0));
-	if (b_UseBarMeterBL) SetMyRegLong("BarMeter", "ColorBarMeterBL_High", ColorBarMeterBL_High);
 
 	ColorBarMeterBL_Mid = (COLORREF)GetMyRegLong("BarMeter", "ColorBarMeterBL_Mid", RGB(255, 255, 0));
-	if (b_UseBarMeterBL) SetMyRegLong("BarMeter", "ColorBarMeterBL_Mid", ColorBarMeterBL_Mid);
 
 	ColorBarMeterBL_Low = (COLORREF)GetMyRegLong("BarMeter", "ColorBarMeterBL_Low", RGB(255, 0, 0));
-	if (b_UseBarMeterBL) SetMyRegLong("BarMeter", "ColorBarMeterBL_Low", ColorBarMeterBL_Low);
 
 	BarMeterBL_Right = (int)(short)GetMyRegLong("BarMeter", "BarMeterBL_Right", 210);
-	if (b_UseBarMeterBL) SetMyRegLong("BarMeter", "BarMeterBL_Right", BarMeterBL_Right);	
 	
 	BarMeterWidth = (int)(short)GetMyRegLong("BarMeter", "BarMeterBL_Width", 5);
 	if (BarMeterWidth <= 0) BarMeterWidth = 5;
 	BarMeterBL_Left = BarMeterBL_Right + BarMeterWidth;
-	if (b_UseBarMeterBL) SetMyRegLong("BarMeter", "BarMeterBL_Width", BarMeterWidth);
 
 
 	BarMeterBL_Bottom = (int)(short)GetMyRegLong("BarMeter", "BarMeterBL_Bottom", 0);
 	if (BarMeterBL_Bottom < 0) BarMeterBL_Bottom = 0;
-	if (b_UseBarMeterBL) SetMyRegLong("BarMeter", "BarMeterBL_Bottom", BarMeterBL_Bottom);
 
 	BarMeterBL_Top = (int)(short)GetMyRegLong("BarMeter", "BarMeterBL_Top", 0);
 	if (BarMeterBL_Top < 0) BarMeterBL_Top = 0;
-	if (b_UseBarMeterBL) SetMyRegLong("BarMeter", "BarMeterBL_Top", BarMeterBL_Top);
 
 
 	BarMeterBL_Threshold_High = (int)(short)GetMyRegLong("BarMeter", "BarMeterBL_Threshold_High", 50);
 	if (BarMeterBL_Threshold_High < 0) BarMeterBL_Threshold_High = 0;
 	if (BarMeterBL_Threshold_High > 101) BarMeterBL_Threshold_High = 101;
-	if (b_UseBarMeterBL) SetMyRegLong("BarMeter", "BarMeterBL_Threshold_High", BarMeterBL_Threshold_High);
 
 	BarMeterBL_Threshold_Mid = (int)(short)GetMyRegLong("BarMeter", "BarMeterBL_Threshold_Mid", 20);
 	if (BarMeterBL_Threshold_Mid < 0) BarMeterBL_Threshold_Mid = 0;
 	if (BarMeterBL_Threshold_Mid > 101) BarMeterBL_Threshold_Mid = 101;
-	if (b_UseBarMeterBL) SetMyRegLong("BarMeter", "BarMeterBL_Threshold_Mid", BarMeterBL_Threshold_Mid);
 
 
 
 	b_UseBarMeterCU = GetMyRegLong("BarMeter", "UseBarMeterCU", 0);
-	SetMyRegLong("BarMeter", "UseBarMeterCU", b_UseBarMeterCU);
 
 	ColorBarMeterCU_High = (COLORREF)GetMyRegLong("BarMeter", "ColorBarMeterCU_High", RGB(255, 0, 0));
-	if (b_UseBarMeterCU) SetMyRegLong("BarMeter", "ColorBarMeterCU_High", ColorBarMeterCU_High);
 
 	ColorBarMeterCU_Mid = (COLORREF)GetMyRegLong("BarMeter", "ColorBarMeterCU_Mid", RGB(255, 255, 0));
-	if (b_UseBarMeterCU) SetMyRegLong("BarMeter", "ColorBarMeterCU_Mid", ColorBarMeterCU_Mid);
 
 	ColorBarMeterCU_Low = (COLORREF)GetMyRegLong("BarMeter", "ColorBarMeterCU_Low", RGB(0, 255, 0));
-	if (b_UseBarMeterCU) SetMyRegLong("BarMeter", "ColorBarMeterCU_Low", ColorBarMeterCU_Low);
 
 
 	BarMeterCU_Right = (int)(short)GetMyRegLong("BarMeter", "BarMeterCU_Right", 170);
-	if (b_UseBarMeterCU) SetMyRegLong("BarMeter", "BarMeterCU_Right", BarMeterCU_Right);
 
 	BarMeterWidth = (int)(short)GetMyRegLong("BarMeter", "BarMeterCU_Width", 5);
 	if (BarMeterWidth <= 0) BarMeterWidth = 5;
 	BarMeterCU_Left = BarMeterCU_Right + BarMeterWidth;
-	if (b_UseBarMeterCU) SetMyRegLong("BarMeter", "BarMeterCU_Width", BarMeterWidth);
 
 	BarMeterCU_Bottom = (int)(short)GetMyRegLong("BarMeter", "BarMeterCU_Bottom", 0);
 	if (BarMeterCU_Bottom < 0) BarMeterCU_Bottom = 0;
-	if (b_UseBarMeterCU) SetMyRegLong("BarMeter", "BarMeterCU_Bottom", BarMeterCU_Bottom);
 
 	BarMeterCU_Top = (int)(short)GetMyRegLong("BarMeter", "BarMeterCU_Top", 0);
 	if (BarMeterCU_Top < 0) BarMeterCU_Top = 0;
-	if (b_UseBarMeterCU) SetMyRegLong("BarMeter", "BarMeterCU_Top", BarMeterCU_Top);
 
 
 	BarMeterCU_Threshold_High = (int)(short)GetMyRegLong("BarMeter", "BarMeterCU_Threshold_High", 70);
 	if (BarMeterCU_Threshold_High < 0) BarMeterCU_Threshold_High = 0;
 	if (BarMeterCU_Threshold_High > 101) BarMeterCU_Threshold_High = 101;
-	if (b_UseBarMeterCU) SetMyRegLong("BarMeter", "BarMeterCU_Threshold_High", BarMeterCU_Threshold_High);
 
 	BarMeterCU_Threshold_Mid = (int)(short)GetMyRegLong("BarMeter", "BarMeterCU_Threshold_Mid", 50);
 	if (BarMeterCU_Threshold_Mid < 0) BarMeterCU_Threshold_Mid = 0;
 	if (BarMeterCU_Threshold_Mid > 101) BarMeterCU_Threshold_Mid = 101;
-	if (b_UseBarMeterCU) SetMyRegLong("BarMeter", "BarMeterCU_Threshold_Mid", BarMeterCU_Threshold_Mid);
 
 
 
 
 	b_UseBarMeterGU = GetMyRegLong("BarMeter", "UseBarMeterGU", 0);
-	SetMyRegLong("BarMeter", "UseBarMeterGU", b_UseBarMeterGU);
 
 	BarMeterGU_Right = (int)(short)GetMyRegLong("BarMeter", "BarMeterGU_Right", 175);
-	if (b_UseBarMeterGU) SetMyRegLong("BarMeter", "BarMeterGU_Right", BarMeterGU_Right);
 
 	BarMeterWidth = (int)(short)GetMyRegLong("BarMeter", "BarMeterCU_Width", 5);
 	BarMeterGU_Left = BarMeterGU_Right + BarMeterWidth;
 
 	BarMeterGU_Bottom = (int)(short)GetMyRegLong("BarMeter", "BarMeterGU_Bottom", 0);
 	if (BarMeterGU_Bottom < 0) BarMeterGU_Bottom = 0;
-	if (b_UseBarMeterGU) SetMyRegLong("BarMeter", "BarMeterGU_Bottom", BarMeterGU_Bottom);
 
 	BarMeterGU_Top = (int)(short)GetMyRegLong("BarMeter", "BarMeterGU_Top", 0);
 	if (BarMeterGU_Top < 0) BarMeterGU_Top = 0;
-	if (b_UseBarMeterGU) SetMyRegLong("BarMeter", "BarMeterGU_Top", BarMeterGU_Top);
 
 
 	ColorBarMeterGPU = (COLORREF)GetMyRegLong("BarMeter", "ColorBarMeterGPU", ColorGPUGraph);
-	if (b_UseBarMeterGU) SetMyRegLong("BarMeter", "ColorBarMeterGPU", ColorBarMeterGPU);
 
 
 
@@ -3601,7 +3628,6 @@ void ReadData()
 
 
 	b_UseBarMeterCore = GetMyRegLong("BarMeter", "UseBarMeterCore", 0);
-	SetMyRegLong("BarMeter", "UseBarMeterCore", b_UseBarMeterCore);
 
 	NumberBarMeterCore = (int)(short)GetMyRegLong("BarMeter", "NumberBarMeterCore", 8);
 	if (NumberBarMeterCore < 0)
@@ -3609,17 +3635,13 @@ void ReadData()
 		NumberBarMeterCore = 0;
 		b_UseBarMeterCore = FALSE;
 	}
-	SetMyRegLong("BarMeter", "NumberBarMeterCore", NumberBarMeterCore);
 
 
 	ColorBarMeterCore_High = (COLORREF)GetMyRegLong("BarMeter", "ColorBarMeterCore_High", RGB(255, 0, 0));
-	SetMyRegLong("BarMeter", "ColorBarMeterCore_High", ColorBarMeterCore_High);
 
 	ColorBarMeterCore_Mid = (COLORREF)GetMyRegLong("BarMeter", "ColorBarMeterCore_Mid", RGB(255, 255, 0));
-	SetMyRegLong("BarMeter", "ColorBarMeterCore_Mid", ColorBarMeterCore_Mid);
 
 	ColorBarMeterCore_Low = (COLORREF)GetMyRegLong("BarMeter", "ColorBarMeterCore_Low", RGB(0, 255, 0));
-	SetMyRegLong("BarMeter", "ColorBarMeterCore_Low", ColorBarMeterCore_Low);
 
 
 
@@ -3629,10 +3651,6 @@ void ReadData()
 
 	if (BarMeterWidth <= 0) BarMeterWidth = BarMeterCU_Left - BarMeterCU_Right;
 	if (BarMeterSpacing < 0) BarMeterSpacing = 0;
-
-	SetMyRegLong("BarMeter", "BarMeterCore_Width", BarMeterWidth);
-	SetMyRegLong("BarMeter", "BarMeterCore_Spacing", BarMeterSpacing);
-	SetMyRegLong("BarMeter", "BarMeterCore_Left", BarMeterCore_Left);
 	
 	if (BarMeterCore_Left == 0)
 	{
@@ -3651,48 +3669,37 @@ void ReadData()
 
 
 	b_UseBarMeterNet = GetMyRegLong("BarMeter", "UseBarMeterNet", 0);
-	SetMyRegLong("BarMeter", "UseBarMeterNet", b_UseBarMeterNet);
 
 	b_BarMeterNet_LogGraph = GetMyRegLong("BarMeter", "BarMeterNet_LogGraph", 0);
-	if (b_UseBarMeterNet) SetMyRegLong("BarMeter", "BarMeterNet_LogGraph", b_BarMeterNet_LogGraph);
 
 	ColorBarMeterNet_Send = (COLORREF)GetMyRegLong("BarMeter", "ColorBarMeterNet_Send", ColSend);
-	if (b_UseBarMeterNet) SetMyRegLong("BarMeter", "ColorBarMeterNet_Send", ColorBarMeterNet_Send);
 
 
 	ColorBarMeterNet_Recv = (COLORREF)GetMyRegLong("BarMeter", "ColorBarMeterNet_Recv", ColRecv);
-	if (b_UseBarMeterNet) SetMyRegLong("BarMeter", "ColorBarMeterNet_Recv", ColorBarMeterNet_Recv);
 
 	BarMeterNetRecv_Right = (int)(short)GetMyRegLong("BarMeter", "BarMeterNetRecv_Right", 300);
-	if (b_UseBarMeterNet) SetMyRegLong("BarMeter", "BarMeterNetRecv_Right", BarMeterNetRecv_Right);
 
 
 	BarMeterNetRecv_Bottom = (int)(short)GetMyRegLong("BarMeter", "BarMeterNetRecv_Bottom", 0);
 	if (BarMeterNetRecv_Bottom < 0) BarMeterNetRecv_Bottom = 0;
-	if (b_UseBarMeterNet) SetMyRegLong("BarMeter", "BarMeterNetRecv_Bottom", BarMeterNetRecv_Bottom);
 
 	BarMeterNetSend_Right = (int)(short)GetMyRegLong("BarMeter", "BarMeterNetSend_Right", 310);
-	if (b_UseBarMeterNet) SetMyRegLong("BarMeter", "BarMeterNetSend_Right", BarMeterNetSend_Right);
 
 
 	BarMeterNetSend_Bottom = (int)(short)GetMyRegLong("BarMeter", "BarMeterNetSend_Bottom", 0);
 	if (BarMeterNetSend_Bottom < 0) BarMeterNetSend_Bottom = 0;
-	if (b_UseBarMeterNet) SetMyRegLong("BarMeter", "BarMeterNetSend_Bottom", BarMeterNetSend_Bottom);
 
 	BarMeterWidth = (int)(short)GetMyRegLong("BarMeter", "BarMeterNet_Width", 5);
 	if (BarMeterWidth <= 0) BarMeterWidth = 5;
 	BarMeterNetRecv_Left = BarMeterNetRecv_Right + BarMeterWidth;
 	BarMeterNetSend_Left = BarMeterNetSend_Right + BarMeterWidth;
-	if (b_UseBarMeterNet) SetMyRegLong("BarMeter", "BarMeterNet_Width", BarMeterWidth);
 
 	BarMeterNetRecv_Top = (int)(short)GetMyRegLong("BarMeter", "BarMeterNetRecv_Top", 0);
 	if (BarMeterNetRecv_Top < 0) BarMeterNetRecv_Top = 0;
-	if (b_UseBarMeterNet) SetMyRegLong("BarMeter", "BarMeterNetRecv_Top", BarMeterNetRecv_Top);
 
 
 	BarMeterNetSend_Top = (int)(short)GetMyRegLong("BarMeter", "BarMeterNetSend_Top", 0);
 	if (BarMeterNetSend_Top < 0) BarMeterNetSend_Top = 0;
-	if (b_UseBarMeterNet) SetMyRegLong("BarMeter", "BarMeterNetSend_Top", BarMeterNetSend_Top);
 
 	SetMyRegLong("Status_DoNotEdit", "BatteryLifeAvailable", 1);
 
@@ -3763,21 +3770,17 @@ void ReadData()
 
 
 	b_EnableChime = GetMyRegLong("Chime", "EnableChime", 0);
-	SetMyRegLong("Chime", "EnableChime", b_EnableChime);
 
 	//intVolChime = (int)(short)GetMyRegLong("Chime", "VolChime", 100);
 	//SetMyRegLong("Chime", "VolChime", intVolChime);
 
 	intOffsetChimeSec = (int)(short)GetMyRegLong("Chime", "OffsetChimeSec", 0);
-	SetMyRegLong("Chime", "OffsetChimeSec", intOffsetChimeSec);
 
 	chimeHourStart = (int)(short)GetMyRegLong("Chime", "ChimeHourStart", 0);
 	if ((chimeHourStart < 0) || (chimeHourStart > 23)) chimeHourStart = 0;
-	SetMyRegLong("Chime", "ChimeHourStart", chimeHourStart);
 
 	chimeHourEnd = (int)(short)GetMyRegLong("Chime", "ChimeHourEnd", 24);
 	if ((chimeHourEnd < 1) || (chimeHourEnd > 24)) chimeHourEnd = 0;
-	SetMyRegLong("Chime", "ChimeHourEnd", chimeHourEnd);
 
 	GetMyRegStr("Chime", "ChimeWav", fname, MAX_PATH, "C:\\Windows\\Media\\notify.wav");
 	if (GetFileAttributes(fname) != 0xFFFFFFFF)
@@ -3787,22 +3790,16 @@ void ReadData()
 	else {
 		lstrcpy(szChimeWav, "C:\\Windows\\Media\\notify.wav");
 	}
-	SetMyRegStr("Chime", "ChimeWav", szChimeWav);
 
 	b_EnableBlinkOnChime = GetMyRegLong("Chime", "EnableBlinkOnChime", 0);
-	SetMyRegLong("Chime", "EnableBlinkOnChime", b_EnableBlinkOnChime);
 
 	BlinksOnChime = (int)(short)GetMyRegLong("Chime", "BlinksOnChime", 3);
-	SetMyRegLong("Chime", "BlinksOnChime", BlinksOnChime);
 
 	b_EnableSecondaryChime = GetMyRegLong("Chime", "EnableSecondaryChime", 0);
-	SetMyRegLong("Chime", "EnableSecondaryChime", b_EnableSecondaryChime);
 
 	b_CuckooClock = GetMyRegLong("Chime", "CuckooClock", 0);
-	SetMyRegLong("Chime", "CuckooClock", b_CuckooClock);
 
 	intOffsetSecondaryChimeSec = (int)(short)GetMyRegLong("Chime", "OffsetSecondaryChimeSec", 1800);
-	SetMyRegLong("Chime", "OffsetSecondaryChimeSec", intOffsetSecondaryChimeSec);
 
 	GetMyRegStr("Chime", "SecondaryChimeWav", fname, MAX_PATH, "C:\\Windows\\Media\\chimes.wav");
 	if (GetFileAttributes(fname) != 0xFFFFFFFF)
@@ -3812,12 +3809,10 @@ void ReadData()
 	else {
 		lstrcpy(szSecondaryChimeWav, "C:\\Windows\\Media\\chimes.wav");
 	}
-	SetMyRegStr("Chime", "SecondaryChimeWav", szSecondaryChimeWav);
 
 
 
 	indexSelectedThermalZone = GetMyRegLong("ETC", "SelectedThermalZone", 0);
-	SetMyRegLong("ETC", "SelectedThermalZone", indexSelectedThermalZone);
 
 
 	if(bGraphTimerStart) KillTimer(hwndClockMain, IDTIMERDLL_GRAPH); bGraphTimerStart = FALSE;
@@ -7515,31 +7510,41 @@ BOOL IsVertTaskbar(HWND temphwndTaskBarMain)
 /*------------------------------------------------
 　SafeMode判定と起動時刻(Tick)保存
  --------------------------------------------------*/
-void CheckSafeMode_Win10(void)
+void ResolveRecoveryStartupState(void)
 {
-	//hwnd使われていない
+	BOOL pendingOnce;
 
 	if (GetMyRegLong("Status_DoNotEdit", "LastExitUser", 0)) {
 		SetMyRegLong("Status_DoNotEdit", "LastExitUser", 0);
 		b_SafeMode = FALSE;
 		SetMyRegLong("Status_DoNotEdit", "CountAutoRestart", 0);
+		SetMyRegLong("Status_DoNotEdit", "LastLaunchTimeStamp", 0);
+		SetMyRegLong("Status_DoNotEdit", "SafeModePendingOnce", 0);
 		SetMyRegLong("Status_DoNotEdit", "SafeMode", b_SafeMode);
-		if (b_DebugLog) writeDebugLog_Win10("[tclock.c] SafeMode skipped due to user exit", 999);
+		SetMyRegLong("Status_DoNotEdit", "ExcessNetProfiles", FALSE);
+		if (b_DebugLog) writeDebugLog_Win10("[tclock.c] Recovery startup skipped due to user exit", 999);
 		return;
 	}
 
-	b_SafeMode = FALSE;
-	SetMyRegLong("Status_DoNotEdit", "CountAutoRestart", 0);
+	pendingOnce = GetMyRegLong("Status_DoNotEdit", "SafeModePendingOnce", FALSE) ? TRUE : FALSE;
+	if (!pendingOnce) {
+		pendingOnce = GetMyRegLong("Status_DoNotEdit", "SafeMode", FALSE) ? TRUE : FALSE;
+	}
 
-	b_ExcessNetProfiles = GetMyRegLong("Status_DoNotEdit", "ExcessNetProfiles", FALSE);
+	b_SafeMode = pendingOnce;
+	SetMyRegLong("Status_DoNotEdit", "SafeModePendingOnce", FALSE);
+	if (b_SafeMode) {
+		SetMyRegLong("Status_DoNotEdit", "CountAutoRestart", 0);
+		SetMyRegLong("Status_DoNotEdit", "LastLaunchTimeStamp", 0);
+	}
+
+	b_ExcessNetProfiles = FALSE;
 	SetMyRegLong("Status_DoNotEdit", "ExcessNetProfiles", FALSE);
-	if (b_ExcessNetProfiles) b_SafeMode = TRUE;
-
 	SetMyRegLong("Status_DoNotEdit", "SafeMode", b_SafeMode);
 	
 	b_DebugLog = GetMyRegLong(NULL, "DebugLog", FALSE);
 
-	if (b_DebugLog) writeDebugLog_Win10("b_SafeMode = ", b_SafeMode);
+	if (b_DebugLog) writeDebugLog_Win10("[tclock.c] Recovery startup active = ", b_SafeMode);
 
 
 }

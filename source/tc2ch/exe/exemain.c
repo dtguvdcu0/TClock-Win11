@@ -10,6 +10,8 @@
 #include "../common/ini_io_utf8.h"
 
 #define AUTORESTART_WAIT_WIN11	5000	//Win11でのb_AutoRestart時のウェイト(ms)
+#define EX_CRASHLOOP_LIMIT 3
+#define EX_CRASHLOOP_WINDOW_MS 60000UL
 
 // Globals
 HINSTANCE g_hInst;           // instance handle
@@ -101,6 +103,7 @@ static void RestartExplorerForHideClock(void);
 static void ApplyHideClockPolicyFlow(void);
 static void RestoreHideClockPolicyFlow(void);
 static BOOL GetMinimalModeConfig(void);
+static int ex_mark_crashloop(void);
 static LONG GetTCycleEnableConfig(void);
 static void GetTCyclePathConfig(char* outPath, int outPathLen);
 static void LaunchTCycleAgentIfEnabled(void);
@@ -113,6 +116,8 @@ static void GetTCalendarPathConfig(char* outPath, int outPathLen);
 static void LaunchTCalendarAlertIfEnabled(void);
 static void EnsureTCalendarConfigDefaults(void);
 static void TerminateExtensionsOnExplicitExitIfNeeded(void);
+// TEMP_VERIFY_START ghostchk
+static void zchk_log(const char* state, BOOL shellAlive, BOOL trayAlive, DWORD flags, DWORD nowTick);
 
 static UINT s_uTaskbarRestart = 0;
 static BOOL bcontractTimer = FALSE;
@@ -163,7 +168,12 @@ BOOL b_ModernStandbySupported = FALSE;
 
 int countRestart = 0;
 int g_Win11ZombieMissCount = 0;
-BOOL b_UseHideClockPolicyFlow = FALSE;
+DWORD g_tickTaskbarRestartLast = 0;
+DWORD g_tickRelayoutRequestLast = 0;
+DWORD g_tickShellMissingLast = 0;
+DWORD g_tickZombieHealthyLast = 0;
+int g_lastGhostState = -1;
+// TEMP_VERIFY_END ghostchk
 BOOL b_HideClockPolicyApplied = FALSE;
 BOOL b_HideClockPolicyWasEnabled = FALSE;
 BOOL b_SkipHideClockRestore = FALSE;
@@ -330,7 +340,6 @@ static void RestartExplorerForHideClock(void)
 
 static void ApplyHideClockPolicyFlow(void)
 {
-    if (!b_UseHideClockPolicyFlow) return;
     if (b_HideClockPolicyWasEnabled) return;
     if (!SetHideClockPolicyValue(1)) return;
     b_HideClockPolicyApplied = TRUE;
@@ -348,6 +357,34 @@ static void RestoreHideClockPolicyFlow(void)
 static BOOL GetMinimalModeConfig(void)
 {
     return GetMyRegLong("ETC", "MinimalMode", FALSE) ? TRUE : FALSE;
+}
+
+static int ex_mark_crashloop(void)
+{
+    DWORD lastLaunchTick;
+    DWORD nowTick;
+    int restartCount;
+
+    if (GetMyRegLong("Status_DoNotEdit", "LastExitUser", 0)) {
+        SetMyRegLong("Status_DoNotEdit", "CountAutoRestart", 0);
+        SetMyRegLong("Status_DoNotEdit", "LastLaunchTimeStamp", 0);
+        return 0;
+    }
+
+    nowTick = GetTickCount();
+    lastLaunchTick = (DWORD)GetMyRegLong("Status_DoNotEdit", "LastLaunchTimeStamp", 0);
+    restartCount = (int)GetMyRegLong("Status_DoNotEdit", "CountAutoRestart", 0);
+
+    if (lastLaunchTick != 0 && (DWORD)(nowTick - lastLaunchTick) <= EX_CRASHLOOP_WINDOW_MS) {
+        restartCount++;
+    }
+    else {
+        restartCount = 0;
+    }
+
+    SetMyRegLong("Status_DoNotEdit", "CountAutoRestart", restartCount);
+    SetMyRegLong("Status_DoNotEdit", "LastLaunchTimeStamp", (LONG)nowTick);
+    return restartCount;
 }
 
 static LONG GetTCycleEnableConfig(void)
@@ -644,6 +681,27 @@ static void TerminateExtensionsOnExplicitExitIfNeeded(void)
     if (b_DebugLog) WriteDebug_New2("[exemain.c] ExitExtensionsOnTClockExit applied.");
 }
 
+// TEMP_VERIFY_START ghostchk
+static void zchk_log(const char* state, BOOL shellAlive, BOOL trayAlive, DWORD flags, DWORD nowTick)
+{
+	char tempString[256];
+	DWORD taskbarAge = g_tickTaskbarRestartLast ? (nowTick - g_tickTaskbarRestartLast) : 0xFFFFFFFFu;
+	DWORD shellMissingAge = g_tickShellMissingLast ? (nowTick - g_tickShellMissingLast) : 0xFFFFFFFFu;
+
+	wsprintf(tempString,
+		"[ghostchk][exe] state=%s shell=%d tray=%d zmiss=%d dllalive=%d tbr_age=%lu shellmiss_age=%lu flags=0x%02lX",
+		state,
+		shellAlive,
+		trayAlive,
+		g_Win11ZombieMissCount,
+		b_FlagDLLAlive,
+		(unsigned long)taskbarAge,
+		(unsigned long)shellMissingAge,
+		(unsigned long)flags);
+	WriteDebug_New2(tempString);
+}
+// TEMP_VERIFY_END ghostchk
+
 
 /*-------------------------------------------------------
 Wait Until Previous TClock Process Disappear
@@ -844,17 +902,9 @@ static UINT WINAPI TclockExeMain(void)
 	b_NormalLog = GetMyRegLong(NULL, "NormalLog", TRUE);
 	SetMyRegLong(NULL, "NormalLog", b_NormalLog);
 
-    b_UseHideClockPolicyFlow = GetMyRegLong("ETC", "UseHideClockPolicyFlow", FALSE);
-    SetMyRegLong("ETC", "UseHideClockPolicyFlow", b_UseHideClockPolicyFlow);
     b_HideClockPolicyWasEnabled = IsHideClockPolicyEnabled();
     if (HasCommandLineOption(L"restart")) {
         b_HideClockPolicyApplied = FALSE;
-    }
-    else if (HasCommandLineOption(L"exit")) {
-        b_UseHideClockPolicyFlow = FALSE;
-    }
-    else {
-        ApplyHideClockPolicyFlow();
     }
 
 
@@ -881,12 +931,12 @@ static UINT WINAPI TclockExeMain(void)
 	SetMyRegLong(NULL, "AutoRestart", b_AutoRestart);
 
 	//起動時に前回終了時の連続リスタート回数を取得する
-	countRestart = GetMyRegLong("Status_DoNotEdit", "CountAutoRestart", 0);
-	if (countRestart >= MAX_AUTORESTART) {
-		MessageBoxUtf8Strict(NULL, "クラッシュループを検出しました。アプリケーションを終了します。\n\nTClock is terminated because of repeting crash.",
-			"TClock-Win11", MB_ICONERROR | MB_SETFOREGROUND);
-		SetMyRegLong("Status_DoNotEdit", "CountAutoRestart", 0);
-		return 1;
+	countRestart = ex_mark_crashloop();
+	if (countRestart >= EX_CRASHLOOP_LIMIT) {
+		if (b_DebugLog) WriteDebug_New2("[exemain.c][TclockExeMain] Crash-loop threshold reached. SafeMode will be used.");
+		if (b_NormalLog) WriteNormalLog("Crash-loop threshold reached. Start next runtime in SafeMode.");
+		SetMyRegLong("Status_DoNotEdit", "SafeModePendingOnce", 1);
+		SetMyRegLong("Status_DoNotEdit", "SafeMode", 0);
 	}
 
 	b_EnglishMenu = GetMyRegLong(NULL, "EnglishMenu", FALSE);
@@ -1212,6 +1262,13 @@ LRESULT CALLBACK WndProc(HWND hwnd,	UINT message, WPARAM wParam, LPARAM lParam)	
 			if (b_DebugLog) WriteDebug_New2("[exemain.c][WndProc] WM_USER received");	//DLL Window生成時にハンドルを通知
 			//nCountFindingClock = -1;
 			g_hwndClock = (HWND)lParam;
+			// TEMP_VERIFY_START ghostchk
+			if (b_DebugLog) {
+				char tempString[128];
+				wsprintf(tempString, "[ghostchk][exe] hwnd-clock=%p", g_hwndClock);
+				WriteDebug_New2(tempString);
+			}
+			// TEMP_VERIFY_END ghostchk
 			return 0;
 		case (WM_USER + 1):   // error
 			if (b_DebugLog) {
@@ -1382,6 +1439,14 @@ LRESULT CALLBACK WndProc(HWND hwnd,	UINT message, WPARAM wParam, LPARAM lParam)	
 	if(message == s_uTaskbarRestart) // When Explorer is hung up,
 	{								 // and the taskbar is recreated.
 		if (b_DebugLog) WriteDebug_New2("[exemain.c][WndProc] message: s_uTaskbarRestart received");
+		// TEMP_VERIFY_START ghostchk
+		g_tickTaskbarRestartLast = GetTickCount();
+		g_tickRelayoutRequestLast = g_tickTaskbarRestartLast;
+		g_tickShellMissingLast = 0;
+		g_Win11ZombieMissCount = 0;
+		g_lastGhostState = -1;
+		if (b_DebugLog) zchk_log("taskbarcreated", TRUE, TRUE, 0, g_tickTaskbarRestartLast);
+		// TEMP_VERIFY_END ghostchk
 
         if (b_IgnoreTaskbarRestartForHideClock) {
             b_IgnoreTaskbarRestartForHideClock = FALSE;
@@ -1481,6 +1546,8 @@ void TerminateTClock(HWND hwnd)
 
 void TerminateTClockFromDLL(HWND hwnd)
 {
+	BOOL safeModePending;
+
 	if (b_DebugLog) WriteDebug_New2("[exemain.c] TerminateTClockFromDLL called.");
 
 	//FromDLLは、時計のほうで終了処理(EndClock)してから呼ばれる(WM_USER+2経由)状況で使う。
@@ -1513,7 +1580,11 @@ void TerminateTClockFromDLL(HWND hwnd)
 	}
 
     if (!b_SkipHideClockRestore) RestoreHideClockPolicyFlow();
-	SetMyRegLong("Status_DoNotEdit", "LastExitUser", 1);
+	safeModePending = GetMyRegLong("Status_DoNotEdit", "SafeModePendingOnce", 0) ? TRUE : FALSE;
+	SetMyRegLong("Status_DoNotEdit", "LastExitUser", safeModePending ? 0 : 1);
+	if (b_DebugLog && safeModePending) {
+		WriteDebug_New2("[exemain.c] SafeMode pending detected. LastExitUser will stay cleared.");
+	}
 	PostQuitMessage(0);
 	g_hwndMain = NULL;
 
@@ -1570,27 +1641,114 @@ void OnTimerMain(HWND hwnd)		//メインループタイマー(デフォルト1�
 
 void OnTimerZombieCheck2(HWND hwnd)
 {
+	// TEMP_VERIFY_START ghostchk
+	DWORD nowTick = GetTickCount();
+	HWND hwndShell = NULL;
+	HWND hwndTray = NULL;
+	DWORD healthFlags = 0;
+	BOOL shellAlive = FALSE;
+	BOOL trayAlive = FALSE;
+	int ghostState = -1;
+	// TEMP_VERIFY_END ghostchk
+
+	if (!g_hwndClock)
+	{
+		// TEMP_VERIFY_START ghostchk
+		ghostState = 1;
+		if (b_DebugLog && g_lastGhostState != ghostState) {
+			zchk_log("clock-missing", FALSE, FALSE, 0, nowTick);
+			g_lastGhostState = ghostState;
+		}
+		// TEMP_VERIFY_END ghostchk
+		return;
+	}
+
 	if (g_hwndClock)
 	{
 		int ret = 0;
 		ret = (int)SendMessage(g_hwndClock, WM_COMMAND, (WPARAM)CLOCKM_ZOMBIECHECK_CALL, 0);
 		if (ret == 255)
 		{
+			// TEMP_VERIFY_START ghostchk
+			g_tickZombieHealthyLast = nowTick;
+			g_tickShellMissingLast = 0;
+			g_Win11ZombieMissCount = 0;
+			// TEMP_VERIFY_END ghostchk
 			if (b_DebugLog) WriteDebug_New2("[exemain.c][OnTimerZombieCheck2] TClock is alive.");
+			// TEMP_VERIFY_START ghostchk
+			ghostState = 0;
+			if (b_DebugLog && g_lastGhostState != ghostState) {
+				zchk_log("healthy", TRUE, TRUE, 0, nowTick);
+				g_lastGhostState = ghostState;
+			}
+			// TEMP_VERIFY_END ghostchk
 		}
 		else
 		{
+			// TEMP_VERIFY_START ghostchk
+			BOOL relayoutWanted = FALSE;
+			DWORD relayoutAge = 0xFFFFFFFFu;
+			g_Win11ZombieMissCount++;
+			hwndShell = FindWindowW(L"Shell_TrayWnd", NULL);
+			shellAlive = (hwndShell != NULL);
+			if (shellAlive) {
+				hwndTray = FindWindowExW(hwndShell, NULL, L"TrayNotifyWnd", NULL);
+				trayAlive = (hwndTray != NULL);
+				g_tickShellMissingLast = 0;
+			}
+			if (!shellAlive && g_tickShellMissingLast == 0) {
+				g_tickShellMissingLast = nowTick;
+			}
+			if (g_hwndClock) {
+				healthFlags = (DWORD)SendMessage(g_hwndClock, WM_COMMAND, (WPARAM)CLOCKM_QUERY_HEALTH, 0);
+			}
+			relayoutWanted = (g_Win11ZombieMissCount >= 2)
+				&& shellAlive
+				&& ((healthFlags & CLKH_LAYOUT_DEGRADED) != 0
+					|| (healthFlags & CLKH_TASKBAR_HWND_VALID) == 0
+					|| (healthFlags & CLKH_TRAY_HWND_VALID) == 0
+					|| (healthFlags & CLKH_OUTER_CB_VALID) == 0
+					|| (healthFlags & CLKH_FRAME_VALID) == 0);
+			relayoutAge = g_tickRelayoutRequestLast ? (nowTick - g_tickRelayoutRequestLast) : 0xFFFFFFFFu;
+			// TEMP_VERIFY_END ghostchk
 
 			if (GetMyRegLong("Status_DoNotEdit", "Win11TClockMain", 0) == 1) {
 				//Win11の場合は普通にExplorerが再起動したらここに来る。無視してExeを生かしておいたらOSからNotificationが来るのでその時に対処する。
 				//if (b_DebugLog) WriteDebug_New2("[exemain.c][OnTimerZombieCheck2](Win11) No responce from DLL. Explorer.exe may be restarted. Continue operation to wait notification from OS.");
 				//if (b_NormalLog) WriteNormalLog("(Win11) No responce from DLL. Explorer.exe may be restarted. Continue operation to wait notification from OS.");
+				// TEMP_VERIFY_START ghostchk
+				if (relayoutWanted && relayoutAge >= 10000) {
+					LRESULT recoverRet = SendMessage(g_hwndClock, WM_COMMAND, (WPARAM)CLOCKM_REQUEST_RECOVERY, (LPARAM)CLKR_RELAYOUT_ONLY);
+					g_tickRelayoutRequestLast = nowTick;
+					if (b_DebugLog) {
+						char tempString[256];
+						wsprintf(tempString,
+							"[ghostchk][exe] action=relayout-requested ret=%ld age=%lu flags=0x%02lX",
+							(long)recoverRet,
+							(unsigned long)relayoutAge,
+							(unsigned long)healthFlags);
+						WriteDebug_New2(tempString);
+					}
+				}
+				ghostState = shellAlive ? 3 : 2;
+				if (b_DebugLog && g_lastGhostState != ghostState) {
+					zchk_log(shellAlive ? "win11-return-shell-alive" : "win11-return-shell-missing", shellAlive, trayAlive, healthFlags, nowTick);
+					g_lastGhostState = ghostState;
+				}
+				// TEMP_VERIFY_END ghostchk
 				return;
 			}
 			else {
 				//Win10の場合にはここに来た時点でかなり異常なのでそのまま終わることにする。ふつうは起きない。
 				if (b_DebugLog) WriteDebug_New2("[exemain.c][OnTimerZombieCheck2](Win10) No responce from DLL. TClock may be unexpectedly dead. Quit TClock, regardless b_AutoRestart.");
 				if (b_NormalLog) WriteNormalLog("(Win10) No responce from DLL. TClock may be unexpectedly dead. Quit TClock, regardless b_AutoRestart.");
+				// TEMP_VERIFY_START ghostchk
+				ghostState = 4;
+				if (b_DebugLog && g_lastGhostState != ghostState) {
+					zchk_log("win10-terminate-current-behavior", shellAlive, trayAlive, healthFlags, nowTick);
+					g_lastGhostState = ghostState;
+				}
+				// TEMP_VERIFY_END ghostchk
 				TerminateTClockFromDLL(hwnd);		//すでにTClockの改造部は終了/消失していると判断されるため、FromDLLでの終了動作を行う。
 			}
 
@@ -1876,13 +2034,10 @@ void CreateDefaultIniFile_Win10(const wchar_t* fnameW)
 		SetMyRegLong("Status_DoNotEdit", "PreviousLTEProfNumber", 0);
 		SetMyRegLong("Status_DoNotEdit", "BatteryLifeAvailable", 1);
 		SetMyRegLong("Status_DoNotEdit", "TimerCountForSec", 985);
-		SetMyRegLong("Status_DoNotEdit", "ModernStandbySupported", 1);
 		SetMyRegLong("Status_DoNotEdit", "CountAutoRestart", 0);
 		SetMyRegLong("Status_DoNotEdit", "Win11TClockMain", 1);
 		SetMyRegLong("Status_DoNotEdit", "ClockWidth", 272);
 		SetMyRegLong("Status_DoNotEdit", "ClockHeight", 48);
-		SetMyRegLong("Status_DoNotEdit", "Win11IconSize", 32);
-		SetMyRegLong("Status_DoNotEdit", "Win11LayoutDegraded", 0);
 		SetMyRegLong("Status_DoNotEdit", "LastExitUser", 1);
 		SetMyRegLong("Win11", "AdjustCutTray", 0);
 		SetMyRegLong("Win11", "AdjustWin11ClockWidth", 0);
@@ -1933,17 +2088,6 @@ void CreateDefaultIniFile_Win10(const wchar_t* fnameW)
 		SetMyRegLong("Graph", "BackNet", 0);
 		SetMyRegLong("Graph", "EnableGPUGraph", 1);
 		SetMyRegLong("Graph", "UseBarMeterColForGraph", 0);
-		SetMyRegLong("AnalogClock", "UseAnalogClock", 0);
-		SetMyRegStr("AnalogClock", "AnalogClockBmp", "tclock.bmp");
-		SetMyRegLong("AnalogClock", "AClockHourHandColor", 255);
-		SetMyRegLong("AnalogClock", "AClockMinHandColor", 16711680);
-		SetMyRegLong("AnalogClock", "AnalogClockHourHandBold", 0);
-		SetMyRegLong("AnalogClock", "AnalogClockMinHandBold", 0);
-		SetMyRegLong("AnalogClock", "AnalogClockPos", 0);
-		SetMyRegLong("AnalogClock", "AnalogClockAtStartBtn", 0);
-		SetMyRegLong("AnalogClock", "AnalogClockHPos", 10);
-		SetMyRegLong("AnalogClock", "AnalogClockVPos", 2);
-		SetMyRegLong("AnalogClock", "AnalogClockSize", 25);
 		SetMyRegLong("Tooltip", "EnableTooltip", 1);
 		SetMyRegStr("Tooltip", "Tooltip", "file:tclock_tooltip.txt");
 		SetMyRegStr("Tooltip", "Tooltip2", "\"\"TClock <%LDATE%>\"\"");
@@ -1962,21 +2106,6 @@ void CreateDefaultIniFile_Win10(const wchar_t* fnameW)
 		SetMyRegLong("Tooltip", "TipFontColor", 0);
 		SetMyRegLong("Tooltip", "TipTitleColor", 16711680);
 		SetMyRegLong("Tooltip", "TipBakColor", 16777215);
-		SetMyRegLong("BarMeter", "UseBarMeterVL", 0);
-		SetMyRegLong("BarMeter", "UseBarMeterBL", 0);
-		SetMyRegLong("BarMeter", "UseBarMeterCU", 0);
-		SetMyRegLong("BarMeter", "BarMeterCU_Horizontal", 0);
-		SetMyRegLong("BarMeter", "UseBarMeterCore", 0);
-		SetMyRegLong("BarMeter", "NumberBarMeterCore", 8);
-		SetMyRegLong("BarMeter", "ColorBarMeterCore_High", 255);
-		SetMyRegLong("BarMeter", "ColorBarMeterCore_Mid", 65535);
-		SetMyRegLong("BarMeter", "ColorBarMeterCore_Low", 65280);
-		SetMyRegLong("BarMeter", "BarMeterCore_Left", 0);
-		SetMyRegLong("BarMeter", "BarMeterCore_Width", 5);
-		SetMyRegLong("BarMeter", "BarMeterCore_Spacing", 2);
-		SetMyRegLong("BarMeter", "UseBarMeterNet", 0);
-		SetMyRegLong("BarMeter", "BarMeterCU_HorizontalToLeft", 0);
-		SetMyRegLong("BarMeter", "UseBarMeterGU", 0);
 		SetMyRegStr("VPN", "VPNKeywords", "VPN");
 		SetMyRegLong("ETC", "ZombieCheckInterval", 10);
 		if (!GetMinimalModeConfig()) {
@@ -1985,13 +2114,6 @@ void CreateDefaultIniFile_Win10(const wchar_t* fnameW)
 			SetMyRegStr("ETC", "MuteString", "*");
 			SetMyRegLong("ETC", "NetMIX_Length", 10);
 			SetMyRegLong("ETC", "SSID_AP_Length", 10);
-			SetMyRegLong("ETC", "SelectedThermalZone", 0);
-			SetMyRegLong("ETC", "GipEnabled", 0);
-			SetMyRegLong("ETC", "GipRefreshHours", 6);
-			SetMyRegStr("ETC", "GipProvider", "ipify");
-			SetMyRegStr("ETC", "GipJsonField", "ip");
-			SetMyRegStr("ETC", "GipLastValue", "N/A");
-			SetMyRegLong("ETC", "UseHideClockPolicyFlow", 1);
 			SetMyRegLong("TCapture", "Enable", 0);
 			SetMyRegStr("TCapture", "Path", "plugins\\TCapture.exe");
 			SetMyRegLong("TCalendar", "Enable", 0);
@@ -2000,17 +2122,6 @@ void CreateDefaultIniFile_Win10(const wchar_t* fnameW)
 			SetMyRegLong("TCycle", "Enable", 0);
 			SetMyRegStr("TCycle", "Path", "plugins\\TCycle.exe");
 		}
-		SetMyRegLong("Chime", "EnableChime", 0);
-		SetMyRegLong("Chime", "OffsetChimeSec", 0);
-		SetMyRegLong("Chime", "ChimeHourStart", 0);
-		SetMyRegLong("Chime", "ChimeHourEnd", 24);
-		SetMyRegStr("Chime", "ChimeWav", "C:\\Windows\\Media\\notify.wav");
-		SetMyRegLong("Chime", "EnableBlinkOnChime", 0);
-		SetMyRegLong("Chime", "BlinksOnChime", 3);
-		SetMyRegLong("Chime", "EnableSecondaryChime", 0);
-		SetMyRegLong("Chime", "CuckooClock", 0);
-		SetMyRegLong("Chime", "OffsetSecondaryChimeSec", 1800);
-		SetMyRegStr("Chime", "SecondaryChimeWav", "C:\\Windows\\Media\\chimes.wav");
 		SetMyRegLong(NULL, "DebugLog", 0);
 		SetMyRegLong(NULL, "AutoClearLogFile", 1);
 		SetMyRegLong(NULL, "AutoClearLogLines", 1000);

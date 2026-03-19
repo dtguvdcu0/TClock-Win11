@@ -778,6 +778,7 @@
 #define IDD_PAGE_ETC                    10007
 #define IDD_PAGE_CUSTOMVARS             10008
 #define IDD_PAGE_RCLICK_MENU          10009
+#define IDD_INI_RECOVERY              10010
 #define IDC_USEBARVOL                   10201
 #define IDC_USEBARCPU                   10202
 #define IDC_USEBARBAT                   10203
@@ -922,6 +923,14 @@
 #define IDC_RM_ITEM_ALARM_SOUND_FILE  10381
 #define IDC_RM_LBL_ALARM_MESSAGE      10382
 #define IDC_RM_ITEM_ALARM_MESSAGE     10383
+#define IDC_INIR_ENCODING             10384
+#define IDC_INIR_EOL                  10385
+#define IDC_INIR_UTF8HEX              10386
+#define IDC_INIR_STALE                10387
+#define IDC_INIR_SCAN                 10388
+#define IDC_INIR_APPLY                10389
+#define IDC_INIR_REPORT               10390
+#define IDC_INIR_DEFAULTS             10391
 #define IDD_PAGEBARMETER_ENG            11001
 #define IDD_PAGE_KEYWORDS_ENG           11002
 #define IDD_PAGE_WIN11_ENG              11003
@@ -930,6 +939,7 @@
 #define IDD_PAGE_ETC_ENG                11007
 #define IDD_PAGE_CUSTOMVARS_ENG         11008
 #define IDD_PAGE_RCLICK_MENU_ENG      11009
+#define IDD_INI_RECOVERY_ENG          11010
 #define IDC_REMOVE_DRIVE_SEPARATOR      40001
 #define IDC_TOGGLE_BARMETER_VOLUME      40002
 #define IDC_TOGGLE_BARMETER_CPU         40003

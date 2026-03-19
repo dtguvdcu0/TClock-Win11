@@ -59,6 +59,7 @@ extern BOOL g_ExitRequestedFromMenu;
 #define TC_MENU_LIVE_MAX TC_MENU_CUSTOM_MAX_ITEMS
 #define TC_MENU_SECTION_CACHE_BYTES 65536
 #define IDC_RESTART_SAFEMODE 45988
+#define IDC_INI_RECOVERY 45993
 #define IDC_TCAP_SETTINGS 45990
 #define IDC_TCAP_CAPTURE 45989
 #define IDC_TCAL_OPEN 45991
@@ -186,9 +187,10 @@ static void tc_menu_show_safe(HWND hwnd, int xPos, int yPos)
 	g_hMenu = CreatePopupMenu();
 	if (!g_hMenu) return;
 	hPopupMenu = g_hMenu;
-	tc_menu_insert_string_utf8(hPopupMenu, 0, MF_BYPOSITION | MF_STRING, IDC_RESTART, MyStringUTF8(IDS_RESTART));
-	tc_menu_insert_string_utf8(hPopupMenu, 1, MF_BYPOSITION | MF_STRING, IDC_EXIT, MyStringUTF8(IDS_EXITTCLOCK));
-	SetMenuDefaultItem(hPopupMenu, IDC_RESTART, FALSE);
+	tc_menu_insert_string_utf8(hPopupMenu, 0, MF_BYPOSITION | MF_STRING, IDC_INI_RECOVERY, "INI Recovery...");
+	tc_menu_insert_string_utf8(hPopupMenu, 1, MF_BYPOSITION | MF_STRING, IDC_RESTART, MyStringUTF8(IDS_RESTART));
+	tc_menu_insert_string_utf8(hPopupMenu, 2, MF_BYPOSITION | MF_STRING, IDC_EXIT, MyStringUTF8(IDS_EXITTCLOCK));
+	SetMenuDefaultItem(hPopupMenu, IDC_INI_RECOVERY, FALSE);
 	SetForegroundWindow98(hwnd);
 	g_menuPopupActive = TRUE;
 	TrackPopupMenu(hPopupMenu, TPM_LEFTALIGN | TPM_RIGHTBUTTON, xPos, yPos, 0, hwnd, NULL);
@@ -2029,10 +2031,7 @@ void OnContextMenu(HWND hwnd, HWND hwndClicked, int xPos, int yPos)
 	b_CompactMode_menu = GetMyRegLong(NULL, "CompactMode", FALSE);
 	b_SafeMode_menu = GetMyRegLong("Status_DoNotEdit", "SafeMode", FALSE);
 	if (!b_SafeMode_menu) {
-		int restartPos = tc_menu_find_position_by_id(hPopupMenu, IDC_RESTART);
-		if (restartPos >= 0) {
-			tc_menu_insert_string_utf8(hPopupMenu, restartPos + 1, MF_BYPOSITION | MF_STRING, IDC_RESTART_SAFEMODE, tc_menu_safemode_label());
-		}
+		tc_menu_insert_string_utf8(hPopupMenu, 0, MF_BYPOSITION | MF_STRING, IDC_RESTART_SAFEMODE, tc_menu_safemode_label());
 	}
 	//b_UseDataPlanFunc = GetMyRegLong("DataPlan", "UseDataPlanFunction", FALSE);
 	MENUITEMINFO menuiteminfo_temp;
@@ -2404,6 +2403,10 @@ void OnTClockCommand(HWND hwnd, WORD wID, WORD wCode)
 			b_SkipHideClockRestore = TRUE;
 			g_ExitRequestedFromMenu = FALSE;
 			PostMessage(g_hwndClock, WM_COMMAND, IDC_RESTART, 0);
+			return;
+		case IDC_INI_RECOVERY:
+			if (b_DebugLog) WriteDebug_New2("[menu.c][OnTClockCommand] IDC_INI_RECOVERY received");
+			inir_show(hwnd);
 			return;
 		case IDC_RESTART_SAFEMODE:
 			if (b_DebugLog) WriteDebug_New2("[menu.c][OnTClockCommand] IDC_RESTART_SAFEMODE received");

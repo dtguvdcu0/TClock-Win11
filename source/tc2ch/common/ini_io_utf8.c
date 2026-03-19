@@ -235,13 +235,107 @@ static DWORD tc_hash_path_ci(const char* s)
     return h;
 }
 
-static void tc_ini_utf8_cache_clear(void)
+void tc_ini_utf8_clear_cache(void)
 {
     if (g_iniUtf8Cache.text) {
         tc_free_text_buffer(g_iniUtf8Cache.text);
         g_iniUtf8Cache.text = NULL;
     }
     ZeroMemory(&g_iniUtf8Cache, sizeof(g_iniUtf8Cache));
+}
+
+static int tc_ini_utf8_parse_section_multisz(const char* text, DWORD size, const char* sec,
+                                             char* outBuf, int outBytes)
+{
+    DWORD i = 0;
+    int pos = 0;
+    int count = 0;
+    BOOL inTarget = FALSE;
+
+    if (!text || !sec || !outBuf || outBytes <= 1) return 0;
+    outBuf[0] = '\0';
+    outBuf[1] = '\0';
+
+    while (i < size) {
+        DWORD ls = i;
+        DWORD le = i;
+        DWORD txtEnd;
+        int ll = 0;
+        int rr = 0;
+
+        while (le < size && text[le] != '\r' && text[le] != '\n') le++;
+        txtEnd = le;
+        if (le < size && text[le] == '\r') {
+            le++;
+            if (le < size && text[le] == '\n') le++;
+        }
+        else if (le < size && text[le] == '\n') {
+            le++;
+        }
+
+        if (tc_line_is_section(text + ls, (int)(txtEnd - ls), sec)) {
+            inTarget = TRUE;
+            i = le;
+            continue;
+        }
+        if (tc_line_is_any_section(text + ls, (int)(txtEnd - ls))) {
+            inTarget = FALSE;
+            i = le;
+            continue;
+        }
+        if (!inTarget) {
+            i = le;
+            continue;
+        }
+
+        tc_trim_lr(text + ls, (int)(txtEnd - ls), &ll, &rr);
+        if (rr > ll) {
+            const char* line = text + ls + ll;
+            int lineLen = rr - ll;
+            int eq = -1;
+            int j;
+            for (j = 0; j < lineLen; ++j) {
+                if (line[j] == '=') {
+                    eq = j;
+                    break;
+                }
+            }
+            if (line[0] != ';' && line[0] != '#' && eq >= 0) {
+                int kl = 0;
+                int kr = eq;
+                int vl = eq + 1;
+                int vr = lineLen;
+                int keyLen;
+                int valLen;
+                int need;
+                tc_trim_lr(line, eq, &kl, &kr);
+                tc_trim_lr(line + eq + 1, lineLen - (eq + 1), &vl, &vr);
+                keyLen = kr - kl;
+                valLen = vr - vl;
+                if (keyLen > 0) {
+                    need = keyLen + 1 + (valLen > 0 ? valLen : 0) + 1;
+                    if (pos + need + 1 >= outBytes) {
+                        break;
+                    }
+                    CopyMemory(outBuf + pos, line + kl, (SIZE_T)keyLen);
+                    pos += keyLen;
+                    outBuf[pos++] = '=';
+                    if (valLen > 0) {
+                        CopyMemory(outBuf + pos, line + eq + 1 + vl, (SIZE_T)valLen);
+                        pos += valLen;
+                    }
+                    outBuf[pos++] = '\0';
+                    ++count;
+                }
+            }
+        }
+        i = le;
+    }
+
+    if (pos >= outBytes - 1) pos = outBytes - 2;
+    outBuf[pos++] = '\0';
+    outBuf[pos] = '\0';
+    return count;
 }
 
 static BOOL tc_ini_utf8_get_file_stamp(const char* path, FILETIME* ftWrite, DWORD* fileSizeLow)
@@ -301,7 +395,7 @@ static BOOL tc_ini_utf8_cache_get_locked(const char* iniPath, char** text, DWORD
         return FALSE;
     }
 
-    tc_ini_utf8_cache_clear();
+    tc_ini_utf8_clear_cache();
     lstrcpyn(g_iniUtf8Cache.path, iniPath, (int)sizeof(g_iniUtf8Cache.path));
     g_iniUtf8Cache.ftWrite = ftWrite;
     g_iniUtf8Cache.fileSizeLow = fileSizeLow;
@@ -751,14 +845,14 @@ int tc_ini_utf8_read_section_multisz(const char* iniPath, const char* section,
 {
     HANDLE hLock = NULL;
     char* text = NULL;
+    char* readText = NULL;
     DWORD size = 0;
     BOOL hadBom = FALSE;
+    BOOL isUtf8 = FALSE;
     char secNorm[128];
     const char* sec;
-    DWORD i = 0;
     tc_normalize_ini_name(section, "Main", secNorm, (int)sizeof(secNorm));
     sec = secNorm;
-    int pos = 0;
     int count = 0;
 
     if (!outBuf || outBytes <= 1) return 0;
@@ -771,106 +865,32 @@ int tc_ini_utf8_read_section_multisz(const char* iniPath, const char* section,
         UNREFERENCED_PARAMETER(hadBom);
     }
     else {
-        DWORD r = GetPrivateProfileSection(sec, outBuf, (DWORD)outBytes, iniPath);
-        const char* p;
-        if (hLock) tc_ini_lock_leave(hLock);
-        if (r == 0) {
-            outBuf[0] = '\0';
-            outBuf[1] = '\0';
-            return 0;
+        if (tc_ini_utf8_detect_file(iniPath, &isUtf8, NULL) && isUtf8 &&
+            tc_read_text_file_utf8(iniPath, &readText, &size, &hadBom)) {
+            text = readText;
         }
-        outBuf[outBytes - 1] = '\0';
-        outBuf[outBytes - 2] = '\0';
-        p = outBuf;
-        while (*p) {
-            ++count;
-            p += lstrlen(p) + 1;
-        }
-        return count;
-    }
-
-    {
-        BOOL inTarget = FALSE;
-        while (i < size) {
-            DWORD ls = i;
-            DWORD le = i;
-            DWORD txtEnd;
-            int ll = 0;
-            int rr = 0;
-
-            while (le < size && text[le] != '\r' && text[le] != '\n') le++;
-            txtEnd = le;
-            if (le < size && text[le] == '\r') {
-                le++;
-                if (le < size && text[le] == '\n') le++;
+        else {
+            DWORD r = GetPrivateProfileSection(sec, outBuf, (DWORD)outBytes, iniPath);
+            const char* p;
+            if (hLock) tc_ini_lock_leave(hLock);
+            if (r == 0) {
+                outBuf[0] = '\0';
+                outBuf[1] = '\0';
+                return 0;
             }
-            else if (le < size && text[le] == '\n') {
-                le++;
+            outBuf[outBytes - 1] = '\0';
+            outBuf[outBytes - 2] = '\0';
+            p = outBuf;
+            while (*p) {
+                ++count;
+                p += lstrlen(p) + 1;
             }
-
-            if (tc_line_is_section(text + ls, (int)(txtEnd - ls), sec)) {
-                inTarget = TRUE;
-                i = le;
-                continue;
-            }
-            if (tc_line_is_any_section(text + ls, (int)(txtEnd - ls))) {
-                inTarget = FALSE;
-                i = le;
-                continue;
-            }
-            if (!inTarget) {
-                i = le;
-                continue;
-            }
-
-            tc_trim_lr(text + ls, (int)(txtEnd - ls), &ll, &rr);
-            if (rr > ll) {
-                const char* line = text + ls + ll;
-                int lineLen = rr - ll;
-                int eq = -1;
-                int j;
-                for (j = 0; j < lineLen; ++j) {
-                    if (line[j] == '=') {
-                        eq = j;
-                        break;
-                    }
-                }
-                if (line[0] != ';' && line[0] != '#' && eq >= 0) {
-                    int kl = 0;
-                    int kr = eq;
-                    int vl = eq + 1;
-                    int vr = lineLen;
-                    int keyLen;
-                    int valLen;
-                    int need;
-                    tc_trim_lr(line, eq, &kl, &kr);
-                    tc_trim_lr(line + eq + 1, lineLen - (eq + 1), &vl, &vr);
-                    keyLen = kr - kl;
-                    valLen = vr - vl;
-                    if (keyLen > 0) {
-                        need = keyLen + 1 + (valLen > 0 ? valLen : 0) + 1;
-                        if (pos + need + 1 >= outBytes) {
-                            break;
-                        }
-                        CopyMemory(outBuf + pos, line + kl, (SIZE_T)keyLen);
-                        pos += keyLen;
-                        outBuf[pos++] = '=';
-                        if (valLen > 0) {
-                            CopyMemory(outBuf + pos, line + eq + 1 + vl, (SIZE_T)valLen);
-                            pos += valLen;
-                        }
-                        outBuf[pos++] = '\0';
-                        ++count;
-                    }
-                }
-            }
-            i = le;
+            return count;
         }
     }
 
-    if (pos >= outBytes - 1) pos = outBytes - 2;
-    outBuf[pos++] = '\0';
-    outBuf[pos] = '\0';
+    count = tc_ini_utf8_parse_section_multisz(text, size, sec, outBuf, outBytes);
+    if (readText) tc_free_text_buffer(readText);
     tc_ini_lock_leave(hLock);
     return count;
 }
@@ -922,7 +942,7 @@ BOOL tc_ini_utf8_write_string(const char* iniPath, const char* section, const ch
         goto cleanup;
     }
     ok = TRUE;
-    tc_ini_utf8_cache_clear();
+    tc_ini_utf8_clear_cache();
 
 cleanup:
     if (text) tc_free_text_buffer(text);
@@ -955,7 +975,7 @@ BOOL tc_ini_utf8_delete_key(const char* iniPath, const char* section, const char
     if (!tc_ini_utf8_rewrite_delete(text, size, secNorm, keyNorm, FALSE, &outText, &outSize)) goto cleanup;
     if (!tc_write_text_file_utf8(iniPath, outText, outSize, hadBom ? TRUE : FALSE)) goto cleanup;
     ok = TRUE;
-    tc_ini_utf8_cache_clear();
+    tc_ini_utf8_clear_cache();
 
 cleanup:
     if (text) tc_free_text_buffer(text);
@@ -983,7 +1003,7 @@ BOOL tc_ini_utf8_delete_section(const char* iniPath, const char* section)
     if (!tc_ini_utf8_rewrite_delete(text, size, section, NULL, TRUE, &outText, &outSize)) goto cleanup;
     if (!tc_write_text_file_utf8(iniPath, outText, outSize, hadBom ? TRUE : FALSE)) goto cleanup;
     ok = TRUE;
-    tc_ini_utf8_cache_clear();
+    tc_ini_utf8_clear_cache();
 
 cleanup:
     if (text) tc_free_text_buffer(text);

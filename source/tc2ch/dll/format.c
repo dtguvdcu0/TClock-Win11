@@ -3967,12 +3967,45 @@ static BOOL tc_wfmt_core(WCHAR* s, int sCch, char* s_info, SYSTEMTIME* pt, int b
 
 void MakeFormatW(WCHAR* s, int sCch, char* s_info, SYSTEMTIME* pt, int beat100, const WCHAR* fmt)
 {
+	static const WCHAR kSafePrefix[] = L"[SafeMode] ";
+	int prefixLen;
+	int textLen;
+	int i;
+
 	if (!s || sCch <= 0) return;
 	s[0] = L'\0';
 	if (!fmt || !pt) return;
 	if (!tc_wfmt_core(s, sCch, s_info, pt, beat100, fmt)) {
 		s[0] = L'\0';
 		if (s_info && sCch > 0) s_info[0] = '\0';
+		return;
+	}
+	if (!b_SafeMode) return;
+	prefixLen = (int)(sizeof(kSafePrefix) / sizeof(kSafePrefix[0])) - 1;
+	if (_wcsnicmp(s, kSafePrefix, prefixLen) == 0) return;
+	textLen = lstrlenW(s);
+	if (textLen + prefixLen >= sCch) {
+		textLen = sCch - prefixLen - 1;
+		if (textLen < 0) textLen = 0;
+	}
+	for (i = textLen; i >= 0; --i) {
+		s[i + prefixLen] = s[i];
+	}
+	for (i = 0; i < prefixLen; ++i) {
+		s[i] = kSafePrefix[i];
+	}
+	if (s_info && sCch > 0) {
+		textLen = lstrlen(s_info);
+		if (textLen + prefixLen >= sCch) {
+			textLen = sCch - prefixLen - 1;
+			if (textLen < 0) textLen = 0;
+		}
+		for (i = textLen; i >= 0; --i) {
+			s_info[i + prefixLen] = s_info[i];
+		}
+		for (i = 0; i < prefixLen; ++i) {
+			s_info[i] = 0x01;
+		}
 	}
 }
 

@@ -21,7 +21,7 @@ static HFONT hfontb;  // for IDC_BOLD
 static HFONT hfonti;  // for IDC_ITALIC
 static COMBOCOLOR combocolor[3] = {
 	{ IDC_TFONCOL,      "TipFontColor",  0x80000000|COLOR_BTNTEXT },
-	{ IDC_TBAKCOL,      "TipBakColor",   0x80000000|COLOR_INFOBK },
+	{ IDC_TBAKCOL,      "TipBakColor",   0x00FFFFFF },
 	{ IDC_TTITLECOL,      "TipTitleColor", 0x00FF0000 }
 };
 
@@ -283,7 +283,7 @@ void OnInit(HWND hDlg)
 	for (i = IDS_TIPTYPENORMAL; i <= IDS_TIPTYPEBALLOON; i++)
 		CBAddStringUTF8Compat(hDlg, IDC_BALLOONFLG, MyStringUTF8(i));
 	CBSetCurSel(hDlg, IDC_BALLOONFLG,
-		GetMyRegLong("Tooltip", "BalloonFlg", 0));
+		GetMyRegLong("Tooltip", "BalloonFlg", 1));
 	AdjustDlgConboBoxDropDown(hDlg, IDC_BALLOONFLG, 3);
 
 

@@ -883,7 +883,6 @@ void TooltipReadData(void)
 	bTooltipTate = GetMyRegLong("Tooltip", "TipTateFlg", FALSE);
 
 	bEnableTooltip = GetMyRegLong("Tooltip", "EnableTooltip", TRUE);
-	SetMyRegLong("Tooltip", "EnableTooltip", bEnableTooltip);
 
 	GetMyRegStr("Tooltip", "Tooltip", fmtToolTip1, sizeof(fmtToolTip1), "");
 	GetMyRegStr("Tooltip", "Tooltip2", fmtToolTip2, sizeof(fmtToolTip1), "");
@@ -893,10 +892,8 @@ void TooltipReadData(void)
 
 
 	colTooltipText = GetMyRegLong("Tooltip", "TipFontColor", RGB(0, 0, 0));
-	SetMyRegLong("Tooltip", "TipFontColor", colTooltipText);
 
 	colTooltipBack = GetMyRegLong("Tooltip", "TipBakColor", RGB(255,255,255));
-	SetMyRegLong("Tooltip", "TipBakColor", colTooltipBack);
 
 	//dwTooltipFonCol = GetMyRegLong("Tooltip", "TipFontColor", 0x80000000 | COLOR_INFOTEXT);
 	//if (dwTooltipFonCol & 0x80000000) dwTooltipFonCol = GetSysColor(dwTooltipFonCol & 0x00ffffff);
@@ -907,8 +904,7 @@ void TooltipReadData(void)
 	//SetMyRegLong("Tooltip", "TipBakColor", dwTooltipBakCol);
 
 
-	colTooltipTitle = GetMyRegLong("Tooltip", "TipTitleColor", RGB(0,0,255));
-	SetMyRegLong("Tooltip", "TipTitleColor", colTooltipTitle);
+	colTooltipTitle = GetMyRegLong("Tooltip", "TipTitleColor", RGB(255,0,0));
 
 	//bTooltipEnableDoubleBuffering = GetMyRegLong("Tooltip", "TipEnableDoubleBuffering", FALSE);
 	//bTooltipEnableDoubleBuffering = FALSE;

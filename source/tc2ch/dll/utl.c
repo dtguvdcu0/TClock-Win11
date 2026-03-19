@@ -651,15 +651,41 @@ BOOL SetMyRegStr(const char* section, const char* entry, const char* val)
 			if (tc_is_utf8_hex_target_key(section, entry)) {
 				char hexbuf[4096];
 				char hexEntry[128];
-				BOOL rHex = FALSE;
+				char currentHex[4096];
+				BOOL rHex = TRUE;
 				BOOL rLegacy = FALSE;
+				BOOL hasCurrentHex = FALSE;
+				BOOL haveDesiredHex = FALSE;
+				BOOL syncHex = FALSE;
 				if (tc_build_utf8_hex_entry_name(entry, hexEntry, (int)sizeof(hexEntry))) {
-					if (val[0] != '\0' && !tc_is_valid_utf8_bytes(val) &&
-						tc_encode_utf8_hex_from_ansi(val, hexbuf, (int)sizeof(hexbuf))) {
-						rHex = tc_ini_utf8_write_string(g_inifile, key, hexEntry, hexbuf) ? TRUE : FALSE;
+					currentHex[0] = '\0';
+					if (tc_ini_utf8_read_string(g_inifile, key, hexEntry, "", currentHex, (int)sizeof(currentHex)) > 0) {
+						tc_strip_wrapping_quotes(currentHex);
+						hasCurrentHex = TRUE;
 					}
-					else {
-						rHex = tc_ini_utf8_delete_key(g_inifile, key, hexEntry) ? TRUE : FALSE;
+					if (val[0] != '\0') {
+						if (tc_is_valid_utf8_bytes(val)) {
+							haveDesiredHex = tc_encode_hex_from_utf8_bytes(val, hexbuf, (int)sizeof(hexbuf));
+						}
+						else {
+							haveDesiredHex = tc_encode_utf8_hex_from_ansi(val, hexbuf, (int)sizeof(hexbuf));
+						}
+					}
+					if (hasCurrentHex) {
+						if (haveDesiredHex) {
+							if (lstrcmp(currentHex, hexbuf) != 0) syncHex = TRUE;
+						}
+						else {
+							syncHex = TRUE;
+						}
+					}
+					if (syncHex) {
+						if (haveDesiredHex) {
+							rHex = tc_ini_utf8_write_string(g_inifile, key, hexEntry, hexbuf) ? TRUE : FALSE;
+						}
+						else {
+							rHex = tc_ini_utf8_delete_key(g_inifile, key, hexEntry) ? TRUE : FALSE;
+						}
 					}
 				}
 				rLegacy = tc_ini_utf8_write_string(g_inifile, key, entry, val) ? TRUE : FALSE;

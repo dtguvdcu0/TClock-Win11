@@ -254,6 +254,9 @@ HRESULT SelectPathUTF8Modern(HWND hDlg, BOOL pickFolder, const wchar_t* initdir,
 void InitFormat(void);
 void CreateFormat(char* s, int* checks);
 
+// page_inirecovery.c
+void inir_show(HWND hwndOwner);
+
 // menu.c
 void InitializeMenuItems(void);
 void MenuCustomMigrateLegacyModeKeys(void);

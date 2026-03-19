@@ -2928,11 +2928,9 @@ static void ReadDataMinimal(void)
 
 	GetMyRegStr("ETC", "LTEString", strLTE, 32, "LTE");
 	if (strlen(strLTE) == 0) strcpy(strLTE, "LTE");
-	if (!b_MinimalMode) SetMyRegStr("ETC", "LTEString", strLTE);
 	GetMyRegStr("ETC", "LTEChar", strBuf, 32, "L");
 	if (strlen(strBuf) == 0) strcpy(charLTE, "L");
 	else strncpy(charLTE, strBuf, 1);
-	if (!b_MinimalMode) SetMyRegStr("ETC", "LTEChar", charLTE);
 	NetMIX_Length = GetMyRegLong("ETC", "NetMIX_Length", 10);
 	if (!b_MinimalMode) SetMyRegLong("ETC", "NetMIX_Length", NetMIX_Length);
 	SSID_AP_Length = GetMyRegLong("ETC", "SSID_AP_Length", 10);
@@ -3471,7 +3469,6 @@ void ReadData()
 
 	GetMyRegStr("ETC", "LTEString", strLTE, 32, "LTE");
 	if (strlen(strLTE) == 0) strcpy(strLTE, "LTE");
-	if (!b_MinimalMode) SetMyRegStr("ETC", "LTEString", strLTE);
 
 	GetMyRegStr("ETC", "LTEChar", strBuf, 32, "L");
 	if (strlen(strBuf) == 0)
@@ -3482,12 +3479,10 @@ void ReadData()
 	{
 		strncpy(charLTE, strBuf, 1);
 	}
-	if (!b_MinimalMode) SetMyRegStr("ETC", "LTEChar", charLTE);
 
 
 	GetMyRegStr("ETC", "MuteString", strMute, 32, "*");
 	if (strlen(strMute) == 0) strcpy(strMute, "*");
-	SetMyRegStr("ETC", "MuteString", strMute);
 
 
 

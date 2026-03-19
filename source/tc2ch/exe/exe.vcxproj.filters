@@ -81,6 +81,9 @@
     <ClCompile Include="pagecustomvars.c">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
+    <ClCompile Include="page_inirecovery.c">
+      <Filter>ソース ファイル</Filter>
+    </ClCompile>
     <ClCompile Include="page_rclick_menu.c">
       <Filter>ソース ファイル</Filter>
     </ClCompile>

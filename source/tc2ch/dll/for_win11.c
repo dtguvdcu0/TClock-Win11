@@ -695,8 +695,6 @@ void GetWin11ElementSize(void)
 
 	widthWin11Icon = widthWin11Button * 4 / 3;
 
-	SetMyRegLong("Status_DoNotEdit", "Win11IconSize", widthWin11Icon);	//設定の際の上限値決めるためにファイルに保存する。
-
 //	defaultWin11ClockWidth = widthWin11Button * 11 / 3 - (widthWin11Button / 15) + adjustWin11ClockWidth;		//(widthWin11Button / 15)は計算上の誤差の吸収用。ここで手動調整値を適用する。
 
 	//Ver4.2.1以降

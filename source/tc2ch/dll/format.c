@@ -1615,14 +1615,9 @@ void GipRead(void)
 	g_gipStartupPending = enabled ? 1 : 0;
 	if (!enabled) {
 		tc_gip_set(NULL);
-		g_gipPersistPending = 1;
 	}
 	LeaveCriticalSection(&g_gipLock);
 
-	SetMyRegLong("ETC", "GipEnabled", enabled ? 1 : 0);
-	SetMyRegLong("ETC", "GipRefreshHours", hours);
-	SetMyRegStr("ETC", "GipProvider", provider);
-	if (!enabled) SetMyRegStr("ETC", "GipLastValue", "N/A");
 	if (!preset) {
 		SetMyRegStr("ETC", "GipJsonField", field);
 	}

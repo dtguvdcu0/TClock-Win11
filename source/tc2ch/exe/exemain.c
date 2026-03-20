@@ -289,6 +289,116 @@ BOOL seed_get(int index, const char** section, const char** key, const char** de
 	return TRUE;
 }
 
+static BOOL setting_is_tooltip(const char* key)
+{
+	static const char* const kKeys[] = {
+		"EnableTooltip",
+		"Tooltip2",
+		"Tooltip3",
+		"TipTitle",
+		"TipFont",
+		"TipFontSize",
+		"Tip2Use",
+		"Tip3Use",
+		"TipTateFlg",
+		"Tip2Update",
+		"Tip3Update",
+		"TipBold",
+		"TipItalic",
+		"BalloonFlg",
+		"TipFontColor",
+		"TipTitleColor",
+		"TipBakColor",
+	};
+	int i;
+
+	for (i = 0; i < (int)_countof(kKeys); i++) {
+		if (lstrcmp(key, kKeys[i]) == 0) return TRUE;
+	}
+	return FALSE;
+}
+
+static BOOL setting_is_analog(const char* key)
+{
+	static const char* const kKeys[] = {
+		"UseAnalogClock",
+		"AnalogClockBmp",
+		"AClockHourHandColor",
+		"AClockMinHandColor",
+		"AnalogClockHourHandBold",
+		"AnalogClockMinHandBold",
+		"AnalogClockPos",
+		"AnalogClockAtStartBtn",
+		"AnalogClockHPos",
+		"AnalogClockVPos",
+		"AnalogClockSize",
+	};
+	int i;
+
+	for (i = 0; i < (int)_countof(kKeys); i++) {
+		if (lstrcmp(key, kKeys[i]) == 0) return TRUE;
+	}
+	return FALSE;
+}
+
+static BOOL setting_is_chime(const char* key)
+{
+	static const char* const kKeys[] = {
+		"EnableChime",
+		"OffsetChimeSec",
+	};
+	int i;
+
+	for (i = 0; i < (int)_countof(kKeys); i++) {
+		if (lstrcmp(key, kKeys[i]) == 0) return TRUE;
+	}
+	return FALSE;
+}
+
+static BOOL setting_is_etc(const char* key)
+{
+	static const char* const kKeys[] = {
+		"LTEString",
+		"LTEChar",
+		"MuteString",
+		"SelectedThermalZone",
+		"GipEnabled",
+		"GipRefreshHours",
+		"GipProvider",
+		"GipJsonField",
+		"GipLastValue",
+	};
+	int i;
+
+	for (i = 0; i < (int)_countof(kKeys); i++) {
+		if (lstrcmp(key, kKeys[i]) == 0) return TRUE;
+	}
+	return FALSE;
+}
+
+BOOL setting_get(const char* section, const char* key, BOOL* knownCurrentSetting, BOOL* missingKeySafe, BOOL* rematerializesOnNormalApply)
+{
+	BOOL covered = FALSE;
+
+	if (knownCurrentSetting) *knownCurrentSetting = FALSE;
+	if (missingKeySafe) *missingKeySafe = FALSE;
+	if (rematerializesOnNormalApply) *rematerializesOnNormalApply = FALSE;
+
+	if (!section || !key) return FALSE;
+	if (lstrcmp(section, "Tooltip") == 0) covered = setting_is_tooltip(key);
+	else if (lstrcmp(section, "AnalogClock") == 0) covered = setting_is_analog(key);
+	else if (lstrcmp(section, "Chime") == 0) covered = setting_is_chime(key);
+	else if (lstrcmp(section, "ETC") == 0) covered = setting_is_etc(key);
+	if (!covered) return FALSE;
+
+	// The current-setting fact surface remains intentionally narrow here:
+	// only the already-audited owner-side subset is exposed to recovery.
+	if (knownCurrentSetting) *knownCurrentSetting = TRUE;
+	if (missingKeySafe) *missingKeySafe = TRUE;
+	if (rematerializesOnNormalApply) *rematerializesOnNormalApply = TRUE;
+	return TRUE;
+}
+
 
 /*-------------------------------------------------------
     mouse function list

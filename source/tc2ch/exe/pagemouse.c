@@ -1051,7 +1051,7 @@ void OnApply(HWND hDlg)
 	n = CBGetCurSel(hDlg, IDC_DROPFILES);
 	if (dropfiles_dirty)
 	{
-		SetMyRegLong(reg_section, "DropFiles", n);
+		SetMyRegLongDef(reg_section, "DropFiles", n);
 		dropfiles_initial = n;
 		dropfiles_dirty = FALSE;
 	}
@@ -1066,7 +1066,7 @@ void OnApply(HWND hDlg)
 	{
 		rightclick_menu_initial =
 			(IsDlgButtonChecked(hDlg, IDC_RCLICKMENU) == BST_CHECKED) ? TRUE : FALSE;
-		SetMyRegLong(reg_section, "RightClickMenu", rightclick_menu_initial ? 1 : 0);
+		SetMyRegLongDef(reg_section, "RightClickMenu", rightclick_menu_initial ? 1 : 0);
 		rightclick_menu_dirty = FALSE;
 	}
 

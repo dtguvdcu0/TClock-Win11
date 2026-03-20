@@ -103,6 +103,9 @@ static void RestartExplorerForHideClock(void);
 static void ApplyHideClockPolicyFlow(void);
 static void RestoreHideClockPolicyFlow(void);
 static BOOL GetMinimalModeConfig(void);
+static BOOL seed_lookup(const char* section, const char* key, const SEED_ENTRY** outEntry);
+static void seed_write(const char* section, const char* key);
+static void seed_emit_defaults(BOOL minimalMode);
 static int ex_mark_crashloop(void);
 static LONG GetTCycleEnableConfig(void);
 static void GetTCyclePathConfig(char* outPath, int outPathLen);
@@ -179,6 +182,112 @@ BOOL b_HideClockPolicyWasEnabled = FALSE;
 BOOL b_SkipHideClockRestore = FALSE;
 BOOL b_IgnoreTaskbarRestartForHideClock = FALSE;
 BOOL g_ExitRequestedFromMenu = FALSE;
+
+static const SEED_ENTRY k_seedEntries[] = {
+	{ "Tooltip", "Tooltip", "file:tclock_tooltip.txt", SEED_FLAG_STRING | SEED_FLAG_EMIT },
+	{ "Tooltip", "EnableTooltip", "1", SEED_FLAG_DROP },
+	{ "Tooltip", "Tooltip2", "", SEED_FLAG_STRING | SEED_FLAG_DROP },
+	{ "Tooltip", "Tooltip3", "", SEED_FLAG_STRING | SEED_FLAG_DROP },
+	{ "Tooltip", "TipTitle", "", SEED_FLAG_STRING | SEED_FLAG_DROP },
+	{ "Tooltip", "TipFont", "", SEED_FLAG_STRING | SEED_FLAG_DROP },
+	{ "Tooltip", "TipFontSize", "9", SEED_FLAG_DROP },
+	{ "Tooltip", "Tip2Use", "0", SEED_FLAG_DROP },
+	{ "Tooltip", "Tip3Use", "0", SEED_FLAG_DROP },
+	{ "Tooltip", "TipTateFlg", "0", SEED_FLAG_DROP },
+	{ "Tooltip", "Tip2Update", "0", SEED_FLAG_DROP },
+	{ "Tooltip", "Tip3Update", "0", SEED_FLAG_DROP },
+	{ "Tooltip", "TipBold", "0", SEED_FLAG_DROP },
+	{ "Tooltip", "TipItalic", "0", SEED_FLAG_DROP },
+	{ "Tooltip", "BalloonFlg", "1", SEED_FLAG_DROP },
+	{ "Tooltip", "TipFontColor", "0", SEED_FLAG_DROP },
+	{ "Tooltip", "TipTitleColor", "16711680", SEED_FLAG_DROP },
+	{ "Tooltip", "TipBakColor", "16777215", SEED_FLAG_DROP },
+	{ "AnalogClock", "UseAnalogClock", "0", SEED_FLAG_DROP },
+	{ "AnalogClock", "AnalogClockBmp", "..\\tclock.bmp", SEED_FLAG_STRING | SEED_FLAG_DROP },
+	{ "AnalogClock", "AClockHourHandColor", "255", SEED_FLAG_DROP },
+	{ "AnalogClock", "AClockMinHandColor", "16711680", SEED_FLAG_DROP },
+	{ "AnalogClock", "AnalogClockHourHandBold", "0", SEED_FLAG_DROP },
+	{ "AnalogClock", "AnalogClockMinHandBold", "0", SEED_FLAG_DROP },
+	{ "AnalogClock", "AnalogClockPos", "0", SEED_FLAG_DROP },
+	{ "AnalogClock", "AnalogClockAtStartBtn", "0", SEED_FLAG_DROP },
+	{ "AnalogClock", "AnalogClockHPos", "0", SEED_FLAG_DROP },
+	{ "AnalogClock", "AnalogClockVPos", "0", SEED_FLAG_DROP },
+	{ "AnalogClock", "AnalogClockSize", "18", SEED_FLAG_DROP },
+	{ "Chime", "EnableChime", "0", SEED_FLAG_DROP },
+	{ "Chime", "OffsetChimeSec", "0", SEED_FLAG_DROP },
+	{ "ETC", "LTEString", "LTE", SEED_FLAG_DROP },
+	{ "ETC", "LTEChar", "L", SEED_FLAG_DROP },
+	{ "ETC", "MuteString", "*", SEED_FLAG_DROP },
+	{ "ETC", "SelectedThermalZone", "0", SEED_FLAG_DROP },
+	{ "ETC", "GipEnabled", "0", SEED_FLAG_DROP },
+	{ "ETC", "GipRefreshHours", "6", SEED_FLAG_DROP },
+	{ "ETC", "GipProvider", "ipify", SEED_FLAG_STRING | SEED_FLAG_DROP },
+	{ "ETC", "GipJsonField", "ip", SEED_FLAG_STRING | SEED_FLAG_DROP },
+	{ "ETC", "GipLastValue", "N/A", SEED_FLAG_STRING | SEED_FLAG_DROP },
+	{ "ETC", "ZombieCheckInterval", "10", SEED_FLAG_EMIT },
+	{ "ETC", "NetMIX_Length", "10", SEED_FLAG_EMIT | SEED_FLAG_NO_MIN },
+	{ "ETC", "SSID_AP_Length", "10", SEED_FLAG_EMIT | SEED_FLAG_NO_MIN },
+};
+
+static BOOL seed_lookup(const char* section, const char* key, const SEED_ENTRY** outEntry)
+{
+	int i;
+
+	if (outEntry) *outEntry = NULL;
+	if (!section || !key) return FALSE;
+	for (i = 0; i < (int)_countof(k_seedEntries); i++) {
+		if (strcmp(k_seedEntries[i].section, section) != 0) continue;
+		if (strcmp(k_seedEntries[i].key, key) != 0) continue;
+		if (outEntry) *outEntry = &k_seedEntries[i];
+		return TRUE;
+	}
+	return FALSE;
+}
+
+static void seed_write(const char* section, const char* key)
+{
+	const SEED_ENTRY* entry = NULL;
+
+	if (!seed_lookup(section, key, &entry) || !entry) return;
+	if ((entry->flags & SEED_FLAG_STRING) != 0) {
+		SetMyRegStr(section, key, entry->defaultValue);
+	}
+	else {
+		SetMyRegLong(section, key, atoi(entry->defaultValue));
+	}
+}
+
+static void seed_emit_defaults(BOOL minimalMode)
+{
+	int i;
+	const SEED_ENTRY* entry = NULL;
+
+	for (i = 0; i < (int)_countof(k_seedEntries); i++) {
+		entry = &k_seedEntries[i];
+		if ((entry->flags & SEED_FLAG_EMIT) == 0) continue;
+		if (minimalMode && (entry->flags & SEED_FLAG_NO_MIN) != 0) continue;
+		seed_write(entry->section, entry->key);
+	}
+}
+
+int seed_count(void)
+{
+	return (int)_countof(k_seedEntries);
+}
+
+BOOL seed_get(int index, const char** section, const char** key, const char** defaultValue, BOOL* emitOnCreate, BOOL* dropEligible)
+{
+	const SEED_ENTRY* entry = NULL;
+
+	if (index < 0 || index >= (int)_countof(k_seedEntries)) return FALSE;
+	entry = &k_seedEntries[index];
+	if (section) *section = entry->section;
+	if (key) *key = entry->key;
+	if (defaultValue) *defaultValue = entry->defaultValue;
+	if (emitOnCreate) *emitOnCreate = ((entry->flags & SEED_FLAG_EMIT) != 0) ? TRUE : FALSE;
+	if (dropEligible) *dropEligible = ((entry->flags & SEED_FLAG_DROP) != 0) ? TRUE : FALSE;
+	return TRUE;
+}
 
 
 /*-------------------------------------------------------
@@ -2004,6 +2113,7 @@ void CreateDefaultIniFile_Win10(const wchar_t* fnameW)
 	HANDLE hCreate;
 	DWORD written = 0;
 	const BYTE utf8Bom[3] = { 0xEF, 0xBB, 0xBF };
+	BOOL minimalMode = FALSE;
 
 	if (!fnameW || !fnameW[0]) return;
 
@@ -2016,6 +2126,7 @@ void CreateDefaultIniFile_Win10(const wchar_t* fnameW)
 
 		//g_bIniSetting = TRUE;
 		if (!SetIniPathFromWide(fnameW)) return;
+		minimalMode = GetMinimalModeConfig();
 		SetMyRegLong(NULL, "DebugLog", 1);
 		SetMyRegLong(NULL, "NormalLog", 1);
 		SetMyRegLong(NULL, "AutoClearLogFile", 1);
@@ -2088,12 +2199,9 @@ void CreateDefaultIniFile_Win10(const wchar_t* fnameW)
 		SetMyRegLong("Graph", "BackNet", 0);
 		SetMyRegLong("Graph", "EnableGPUGraph", 1);
 		SetMyRegLong("Graph", "UseBarMeterColForGraph", 0);
-		SetMyRegStr("Tooltip", "Tooltip", "file:tclock_tooltip.txt");
+		seed_emit_defaults(minimalMode);
 		SetMyRegStr("VPN", "VPNKeywords", "VPN");
-		SetMyRegLong("ETC", "ZombieCheckInterval", 10);
-		if (!GetMinimalModeConfig()) {
-			SetMyRegLong("ETC", "NetMIX_Length", 10);
-			SetMyRegLong("ETC", "SSID_AP_Length", 10);
+		if (!minimalMode) {
 			SetMyRegLong("TCapture", "Enable", 0);
 			SetMyRegStr("TCapture", "Path", "plugins\\TCapture.exe");
 			SetMyRegLong("TCalendar", "Enable", 0);

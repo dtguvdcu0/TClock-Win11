@@ -270,6 +270,7 @@ void CreateFormat(char* s, int* checks);
 void inir_show(HWND hwndOwner);
 int seed_count(void);
 BOOL seed_get(int index, const char** section, const char** key, const char** defaultValue, BOOL* emitOnCreate, BOOL* dropEligible);
+BOOL setting_get(const char* section, const char* key, BOOL* knownCurrentSetting, BOOL* missingKeySafe, BOOL* rematerializesOnNormalApply);
 void CreateDefaultIniFile_Win10(const wchar_t* fnameW);
 
 // menu.c

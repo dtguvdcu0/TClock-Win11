@@ -937,7 +937,7 @@ static int inir_scan_inventory(char* report, int cchReport)
 
 	inir_append(report, cchReport, "[Inventory: uncategorized]\r\n");
 	for (i = 0; i < activeCount; ++i) {
-		if (active[i].classified) continue;
+		if (_stricmp(active[i].auditConfidence, "uncategorized") != 0) continue;
 		inir_append_inventory_line(report, cchReport, &active[i]);
 		uncategorized++;
 	}
@@ -1285,6 +1285,9 @@ static int inir_scan_defaults(char* report, int cchReport)
 	int foundCount = 0;
 	char value[2048];
 	BOOL found;
+	BOOL knownCurrentSetting;
+	BOOL missingKeySafe;
+	BOOL rematerializesOnNormalApply;
 	const char* section = NULL;
 	const char* key = NULL;
 	const char* defaultValue = NULL;
@@ -1296,6 +1299,8 @@ static int inir_scan_defaults(char* report, int cchReport)
 		if (!seed_get(i, &section, &key, &defaultValue, &emitOnCreate, &dropEligible)) continue;
 		UNREFERENCED_PARAMETER(emitOnCreate);
 		if (!dropEligible) continue;
+		if (!setting_get(section, key, &knownCurrentSetting, &missingKeySafe, &rematerializesOnNormalApply)) continue;
+		if (!knownCurrentSetting || !missingKeySafe || !rematerializesOnNormalApply) continue;
 		found = FALSE;
 		value[0] = '\0';
 		inir_find_entry(section, key, value, (int)sizeof(value), &found);
@@ -1315,6 +1320,9 @@ static int inir_apply_defaults(char* report, int cchReport)
 	int removed = 0;
 	char value[2048];
 	BOOL found;
+	BOOL knownCurrentSetting;
+	BOOL missingKeySafe;
+	BOOL rematerializesOnNormalApply;
 	const char* section = NULL;
 	const char* key = NULL;
 	const char* defaultValue = NULL;
@@ -1326,6 +1334,8 @@ static int inir_apply_defaults(char* report, int cchReport)
 		if (!seed_get(i, &section, &key, &defaultValue, &emitOnCreate, &dropEligible)) continue;
 		UNREFERENCED_PARAMETER(emitOnCreate);
 		if (!dropEligible) continue;
+		if (!setting_get(section, key, &knownCurrentSetting, &missingKeySafe, &rematerializesOnNormalApply)) continue;
+		if (!knownCurrentSetting || !missingKeySafe || !rematerializesOnNormalApply) continue;
 		found = FALSE;
 		value[0] = '\0';
 		inir_find_entry(section, key, value, (int)sizeof(value), &found);
@@ -1546,9 +1556,6 @@ static void inir_run_scan(HWND hDlg)
 	if (inir_is_checked(hDlg, IDC_INIR_EOL)) inir_scan_eol(report, (int)sizeof(report));
 	if (inir_is_checked(hDlg, IDC_INIR_DEFAULTS)) inir_scan_defaults(report, (int)sizeof(report));
 	if (inir_is_checked(hDlg, IDC_INIR_STALE)) inir_scan_obsolete(report, (int)sizeof(report));
-	if (inir_is_checked(hDlg, IDC_INIR_DEFAULTS) || inir_is_checked(hDlg, IDC_INIR_STALE)) {
-		inir_scan_inventory(report, (int)sizeof(report));
-	}
 	SetDlgItemTextUTF8Strict(hDlg, IDC_INIR_REPORT, report);
 }
 

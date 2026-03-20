@@ -241,40 +241,40 @@ void OnApply(HWND hDlg)
 		return;
 	}
 
-	SetMyRegLong("Chime", "EnableChime",
+	SetMyRegLongDef("Chime", "EnableChime",
 		IsDlgButtonChecked(hDlg, IDC_CHECK_ENABLE_CHIME));
 
-	SetMyRegLong("Chime", "EnableSecondaryChime",
+	SetMyRegLongDef("Chime", "EnableSecondaryChime",
 		IsDlgButtonChecked(hDlg, IDC_CHECK_ENABLE_CHIME2));
 
-	SetMyRegLong("Chime", "EnableBlinkOnChime",
+	SetMyRegLongDef("Chime", "EnableBlinkOnChime",
 		IsDlgButtonChecked(hDlg, IDC_CHECK_ENABLE_CHIME_BLINK));
 
 	//SetMyRegLong("Chime", "VolChime", intVolChime);
 
-	SetMyRegLong("Chime", "OffsetChimeSec", 
+	SetMyRegLongDef("Chime", "OffsetChimeSec",
 		(short)SendDlgItemMessage(hDlg, IDC_SPIN_CHIME_OFFSET_S, UDM_GETPOS, 0, 0));
 
-	SetMyRegLong("Chime", "OffsetSecondaryChimeSec",
+	SetMyRegLongDef("Chime", "OffsetSecondaryChimeSec",
 		(short)SendDlgItemMessage(hDlg, IDC_SPIN_CHIME_OFFSET_S2, UDM_GETPOS, 0, 0));
 
-	SetMyRegLong("Chime", "BlinksOnChime",
+	SetMyRegLongDef("Chime", "BlinksOnChime",
 		(short)SendDlgItemMessage(hDlg, IDC_SPIN_CHIME_BLINK, UDM_GETPOS, 0, 0));
 
-	SetMyRegLong("Chime", "ChimeHourStart", hStart);
-	SetMyRegLong("Chime", "ChimeHourEnd", hEnd);
+	SetMyRegLongDef("Chime", "ChimeHourStart", hStart);
+	SetMyRegLongDef("Chime", "ChimeHourEnd", hEnd);
 
 	if (GetFileAttributes(fname) != 0xFFFFFFFF)
 	{
-		SetMyRegStr("Chime", "ChimeWav", fname);
+		SetMyRegStrDef("Chime", "ChimeWav", fname);
 	}
 
 	if (GetFileAttributes(fname2) != 0xFFFFFFFF)
 	{
-		SetMyRegStr("Chime", "SecondaryChimeWav", fname2);
+		SetMyRegStrDef("Chime", "SecondaryChimeWav", fname2);
 	}
 
-	SetMyRegLong("Chime", "CuckooClock",
+	SetMyRegLongDef("Chime", "CuckooClock",
 		IsDlgButtonChecked(hDlg, IDC_CHECK_ENABLE_CUCKOOCLOCK));
 
 }

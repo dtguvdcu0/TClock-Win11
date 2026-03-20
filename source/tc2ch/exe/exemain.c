@@ -184,6 +184,25 @@ BOOL b_IgnoreTaskbarRestartForHideClock = FALSE;
 BOOL g_ExitRequestedFromMenu = FALSE;
 
 static const SEED_ENTRY k_seedEntries[] = {
+	{ "Win11", "AlignTaskbarLeft", "1", SEED_FLAG_DROP },
+	{ "Color_Font", "FontSize", "12", SEED_FLAG_DROP },
+	{ "Color_Font", "TextPos", "0", SEED_FLAG_DROP },
+	{ "Format", "Year4", "0", SEED_FLAG_DROP },
+	{ "Format", "Year", "1", SEED_FLAG_DROP },
+	{ "Format", "Month", "1", SEED_FLAG_DROP },
+	{ "Format", "MonthS", "0", SEED_FLAG_DROP },
+	{ "Format", "Day", "1", SEED_FLAG_DROP },
+	{ "Format", "Weekday", "1", SEED_FLAG_DROP },
+	{ "Format", "Hour", "1", SEED_FLAG_DROP },
+	{ "Format", "Minute", "1", SEED_FLAG_DROP },
+	{ "Format", "Second", "1", SEED_FLAG_DROP },
+	{ "Format", "InternetTime", "0", SEED_FLAG_DROP },
+	{ "Format", "AMPM", "0", SEED_FLAG_DROP },
+	{ "Format", "Hour12", "0", SEED_FLAG_DROP },
+	{ "Format", "HourZero", "0", SEED_FLAG_DROP },
+	{ "Mouse", "DropFiles", "0", SEED_FLAG_DROP },
+	{ "Mouse", "RightClickMenu", "1", SEED_FLAG_DROP },
+	{ "Mouse", "01", "-1", SEED_FLAG_DROP },
 	{ "Tooltip", "Tooltip", "file:tclock_tooltip.txt", SEED_FLAG_STRING | SEED_FLAG_EMIT },
 	{ "Tooltip", "EnableTooltip", "1", SEED_FLAG_DROP },
 	{ "Tooltip", "Tooltip2", "", SEED_FLAG_STRING | SEED_FLAG_DROP },
@@ -215,6 +234,14 @@ static const SEED_ENTRY k_seedEntries[] = {
 	{ "AnalogClock", "AnalogClockSize", "18", SEED_FLAG_DROP },
 	{ "Chime", "EnableChime", "0", SEED_FLAG_DROP },
 	{ "Chime", "OffsetChimeSec", "0", SEED_FLAG_DROP },
+	{ "Chime", "ChimeHourStart", "0", SEED_FLAG_DROP },
+	{ "Chime", "ChimeHourEnd", "24", SEED_FLAG_DROP },
+	{ "Chime", "ChimeWav", "C:\\Windows\\Media\\notify.wav", SEED_FLAG_STRING | SEED_FLAG_DROP },
+	{ "Chime", "EnableBlinkOnChime", "0", SEED_FLAG_DROP },
+	{ "Chime", "BlinksOnChime", "3", SEED_FLAG_DROP },
+	{ "Chime", "EnableSecondaryChime", "0", SEED_FLAG_DROP },
+	{ "Chime", "CuckooClock", "0", SEED_FLAG_DROP },
+	{ "Chime", "SecondaryChimeWav", "C:\\Windows\\Media\\chimes.wav", SEED_FLAG_STRING | SEED_FLAG_DROP },
 	{ "ETC", "LTEString", "LTE", SEED_FLAG_DROP },
 	{ "ETC", "LTEChar", "L", SEED_FLAG_DROP },
 	{ "ETC", "MuteString", "*", SEED_FLAG_DROP },
@@ -289,6 +316,56 @@ BOOL seed_get(int index, const char** section, const char** key, const char** de
 	return TRUE;
 }
 
+static BOOL setting_is_win11(const char* key)
+{
+	return lstrcmp(key, "AlignTaskbarLeft") == 0;
+}
+
+static BOOL setting_is_color_font(const char* key)
+{
+	return lstrcmp(key, "FontSize") == 0 || lstrcmp(key, "TextPos") == 0;
+}
+
+static BOOL setting_is_format(const char* key)
+{
+	static const char* const kKeys[] = {
+		"Year4",
+		"Year",
+		"Month",
+		"MonthS",
+		"Day",
+		"Weekday",
+		"Hour",
+		"Minute",
+		"Second",
+		"InternetTime",
+		"AMPM",
+		"Hour12",
+		"HourZero",
+	};
+	int i;
+
+	for (i = 0; i < (int)_countof(kKeys); i++) {
+		if (lstrcmp(key, kKeys[i]) == 0) return TRUE;
+	}
+	return FALSE;
+}
+
+static BOOL setting_is_mouse(const char* key)
+{
+	static const char* const kKeys[] = {
+		"DropFiles",
+		"RightClickMenu",
+		"01",
+	};
+	int i;
+
+	for (i = 0; i < (int)_countof(kKeys); i++) {
+		if (lstrcmp(key, kKeys[i]) == 0) return TRUE;
+	}
+	return FALSE;
+}
+
 static BOOL setting_is_tooltip(const char* key)
 {
 	static const char* const kKeys[] = {
@@ -346,6 +423,14 @@ static BOOL setting_is_chime(const char* key)
 	static const char* const kKeys[] = {
 		"EnableChime",
 		"OffsetChimeSec",
+		"ChimeHourStart",
+		"ChimeHourEnd",
+		"ChimeWav",
+		"EnableBlinkOnChime",
+		"BlinksOnChime",
+		"EnableSecondaryChime",
+		"CuckooClock",
+		"SecondaryChimeWav",
 	};
 	int i;
 
@@ -385,14 +470,16 @@ BOOL setting_get(const char* section, const char* key, BOOL* knownCurrentSetting
 	if (rematerializesOnNormalApply) *rematerializesOnNormalApply = FALSE;
 
 	if (!section || !key) return FALSE;
-	if (lstrcmp(section, "Tooltip") == 0) covered = setting_is_tooltip(key);
+	if (lstrcmp(section, "Win11") == 0) covered = setting_is_win11(key);
+	else if (lstrcmp(section, "Color_Font") == 0) covered = setting_is_color_font(key);
+	else if (lstrcmp(section, "Format") == 0) covered = setting_is_format(key);
+	else if (lstrcmp(section, "Mouse") == 0) covered = setting_is_mouse(key);
+	else if (lstrcmp(section, "Tooltip") == 0) covered = setting_is_tooltip(key);
 	else if (lstrcmp(section, "AnalogClock") == 0) covered = setting_is_analog(key);
 	else if (lstrcmp(section, "Chime") == 0) covered = setting_is_chime(key);
 	else if (lstrcmp(section, "ETC") == 0) covered = setting_is_etc(key);
 	if (!covered) return FALSE;
 
-	// The current-setting fact surface remains intentionally narrow here:
-	// only the already-audited owner-side subset is exposed to recovery.
 	if (knownCurrentSetting) *knownCurrentSetting = TRUE;
 	if (missingKeySafe) *missingKeySafe = TRUE;
 	if (rematerializesOnNormalApply) *rematerializesOnNormalApply = TRUE;
@@ -2265,15 +2352,12 @@ void CreateDefaultIniFile_Win10(const wchar_t* fnameW)
 		SetMyRegLong("Win11", "AdjustDetectNotify", 0);
 		SetMyRegLong("Win11", "AdjustWin11IconPosition", 1);
 		SetMyRegLong("Win11", "EnableWin11NotifyIcon", 0);
-		SetMyRegLong("Win11", "AlignTaskbarLeft", 1);
 		SetMyRegLong("Color_Font", "UseBackColor", 0);
 		SetMyRegLong("Color_Font", "BackColor", 2147483633);
 		SetMyRegLong("Color_Font", "BackColor2", 2147483633);
 		SetMyRegLong("Color_Font", "ForeColor", 0);
 		SetMyRegLong("Color_Font", "ShadowColor", 0);
 		SetMyRegStr("Color_Font", "Font", "MS Gothic");
-		SetMyRegLong("Color_Font", "FontSize", 12);
-		SetMyRegLong("Color_Font", "TextPos", 0);
 		SetMyRegLong("Color_Font", "UseAllColor", 0);
 		SetMyRegLong("Color_Font", "AutoBackMatchTaskbar", 1);
 		SetMyRegLong("Color_Font", "AutoBackAlpha", 255);
@@ -2284,28 +2368,12 @@ void CreateDefaultIniFile_Win10(const wchar_t* fnameW)
 		SetMyRegLong("Color_Font", "AutoBackSnapshotColor", 15000804);
 		SetMyRegLong("Color_Font", "AutoBackSnapshotColor2", 12895428);
 		SetMyRegLong("Format", "Locale", 1041);
-		SetMyRegLong("Format", "Year4", 0);
-		SetMyRegLong("Format", "Year", 1);
-		SetMyRegLong("Format", "Month", 1);
-		SetMyRegLong("Format", "MonthS", 0);
-		SetMyRegLong("Format", "Day", 1);
-		SetMyRegLong("Format", "Weekday", 1);
-		SetMyRegLong("Format", "Hour", 1);
-		SetMyRegLong("Format", "Minute", 1);
-		SetMyRegLong("Format", "Second", 1);
 		SetMyRegLong("Format", "Kaigyo", 0);
-		SetMyRegLong("Format", "InternetTime", 0);
-		SetMyRegLong("Format", "AMPM", 0);
-		SetMyRegLong("Format", "Hour12", 0);
-		SetMyRegLong("Format", "HourZero", 0);
 		SetMyRegStr("Format", "AMsymbol", "AM");
 		SetMyRegStr("Format", "PMsymbol", "PM");
 		SetMyRegLong("Format", "Custom", 1);
 		SetMyRegStr("Format", "Format", "yyyy/mm/dd ddd tt hh:nn:ss");
 		SetMyRegStr("Format", "CustomFormat", "yyyy/mm/dd ddd tt hh:nn:ss");
-		SetMyRegLong("Mouse", "DropFiles", 0);
-		SetMyRegLong("Mouse", "RightClickMenu", 1);
-		SetMyRegLong("Mouse", "01", (DWORD)MOUSEFUNC_NONE);
 		SetMyRegLong("Graph", "BackNet", 0);
 		SetMyRegLong("Graph", "EnableGPUGraph", 1);
 		SetMyRegLong("Graph", "UseBarMeterColForGraph", 0);

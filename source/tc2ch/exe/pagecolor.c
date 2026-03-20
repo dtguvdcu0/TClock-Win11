@@ -347,10 +347,10 @@ void OnApply(HWND hDlg)
 		dw = 12;
 		SetDlgItemInt(hDlg, IDC_FONTSIZE, dw, FALSE);
 	}
-	SetMyRegLong("Color_Font", "FontSize", dw);
+	SetMyRegLongDef("Color_Font", "FontSize", dw);
 
 	//テキスト位置の保存
-	SetMyRegLong("Color_Font", "TextPos", CBGetCurSel(hDlg, IDC_TEXTPOS));
+	SetMyRegLongDef("Color_Font", "TextPos", CBGetCurSel(hDlg, IDC_TEXTPOS));
 
 	//「Bold」「Italic」の保存
 	SetMyRegLong("Color_Font", "Bold", IsDlgButtonChecked(hDlg, IDC_BOLD));

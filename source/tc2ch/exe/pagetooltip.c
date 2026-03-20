@@ -331,25 +331,25 @@ void OnApply(HWND hDlg)
 	COLORREF col;
 
 	GetDlgItemTextUTF8(hDlg, IDC_TOOLTIP, s, 1024);
-	SetMyRegStr("Tooltip", "Tooltip", s);
+	SetMyRegStrDef("Tooltip", "Tooltip", s);
 	GetDlgItemTextUTF8(hDlg, IDC_TOOLTIP2, s, 1024);
-	SetMyRegStr("Tooltip", "Tooltip2", s);
+	SetMyRegStrDef("Tooltip", "Tooltip2", s);
 	GetDlgItemTextUTF8(hDlg, IDC_TOOLTIP3, s, 1024);
-	SetMyRegStr("Tooltip", "Tooltip3", s);
+	SetMyRegStrDef("Tooltip", "Tooltip3", s);
 
-	SetMyRegLong("Tooltip", "Tip2Use", IsDlgButtonChecked(hDlg, IDC_TIP2));
-	SetMyRegLong("Tooltip", "Tip3Use", IsDlgButtonChecked(hDlg, IDC_TIP3));
-	SetMyRegLong("Tooltip", "TipTateFlg", IsDlgButtonChecked(hDlg, IDC_TIPTATE));
-	SetMyRegLong("Tooltip", "EnableTooltip", IsDlgButtonChecked(hDlg, IDC_TIPENABLE));
+	SetMyRegLongDef("Tooltip", "Tip2Use", IsDlgButtonChecked(hDlg, IDC_TIP2));
+	SetMyRegLongDef("Tooltip", "Tip3Use", IsDlgButtonChecked(hDlg, IDC_TIP3));
+	SetMyRegLongDef("Tooltip", "TipTateFlg", IsDlgButtonChecked(hDlg, IDC_TIPTATE));
+	SetMyRegLongDef("Tooltip", "EnableTooltip", IsDlgButtonChecked(hDlg, IDC_TIPENABLE));
 
 	SetMyRegLong("Tooltip", "Tip1Update", IsDlgButtonChecked(hDlg, IDC_UPDATETIP1));
-	SetMyRegLong("Tooltip", "Tip2Update", IsDlgButtonChecked(hDlg, IDC_UPDATETIP2));
-	SetMyRegLong("Tooltip", "Tip3Update", IsDlgButtonChecked(hDlg, IDC_UPDATETIP3));
+	SetMyRegLongDef("Tooltip", "Tip2Update", IsDlgButtonChecked(hDlg, IDC_UPDATETIP2));
+	SetMyRegLongDef("Tooltip", "Tip3Update", IsDlgButtonChecked(hDlg, IDC_UPDATETIP3));
 	//SetMyRegLong("Tooltip", "TipEnableDoubleBuffering", IsDlgButtonChecked(hDlg, IDC_ENABLEDOUBLEBUFFERING));
 
 	//フォント名の保存
 	CBGetLBText(hDlg, IDC_TFONT, CBGetCurSel(hDlg, IDC_TFONT), s);
-	SetMyRegStr("Tooltip", "TipFont", s + 1); // +1 is to remove proportinal mark "*"
+	SetMyRegStrDef("Tooltip", "TipFont", s + 1); // +1 is to remove proportinal mark "*"
 
 	//フォントサイズの保存
 	//5以下のサイズは許可しない(数値でないものも含まれる)
@@ -359,12 +359,12 @@ void OnApply(HWND hDlg)
 		dw = 9;
 		SetDlgItemInt(hDlg, IDC_TFONTSIZE, dw, FALSE);
 	}
-	SetMyRegLong("Tooltip", "TipFontSize", dw);
+	SetMyRegLongDef("Tooltip", "TipFontSize", dw);
 
 	//「Bold」「Italic」の保存
-	SetMyRegLong("Tooltip", "TipBold", IsDlgButtonChecked(hDlg, IDC_TBOLD));
-	SetMyRegLong("Tooltip", "TipItalic", IsDlgButtonChecked(hDlg, IDC_TITALIC));
-	SetMyRegLong("Tooltip", "BalloonFlg", CBGetCurSel(hDlg, IDC_BALLOONFLG));
+	SetMyRegLongDef("Tooltip", "TipBold", IsDlgButtonChecked(hDlg, IDC_TBOLD));
+	SetMyRegLongDef("Tooltip", "TipItalic", IsDlgButtonChecked(hDlg, IDC_TITALIC));
+	SetMyRegLongDef("Tooltip", "BalloonFlg", CBGetCurSel(hDlg, IDC_BALLOONFLG));
 
 	//dw = GetDlgItemInt(hDlg, IDC_ALPHATIP, NULL, FALSE);
 	//if(dw > 100) dw = 100;
@@ -383,17 +383,17 @@ void OnApply(HWND hDlg)
 
 
 	dw = (DWORD)CBGetItemData(hDlg, IDC_TFONCOL, CBGetCurSel(hDlg, IDC_TFONCOL));
-	SetMyRegLong("Tooltip", "TipFontColor", dw);
+	SetMyRegLongDef("Tooltip", "TipFontColor", dw);
 	dw = (DWORD)CBGetItemData(hDlg, IDC_TBAKCOL, CBGetCurSel(hDlg, IDC_TBAKCOL));
-	SetMyRegLong("Tooltip", "TipBakColor", dw);
+	SetMyRegLongDef("Tooltip", "TipBakColor", dw);
 
 	col = (COLORREF)CBGetItemData(hDlg, IDC_TTITLECOL, CBGetCurSel(hDlg, IDC_TTITLECOL));
-	SetMyRegLong("Tooltip", "TipTitleColor", col);
+	SetMyRegLongDef("Tooltip", "TipTitleColor", col);
 
 	//n = CBGetCurSel(hDlg, IDC_TICON);
 	//SetMyRegLong("Tooltip", "TipIcon", n);
 	GetDlgItemTextUTF8(hDlg, IDC_Win10ITLE, s, 300);
-	SetMyRegStr("Tooltip", "TipTitle", s);
+	SetMyRegStrDef("Tooltip", "TipTitle", s);
 
 
 	//PostMessage(g_hwndMain, WM_TIMER, 6, NULL);
@@ -638,6 +638,6 @@ static void NormalizeTooltipSettingUtf8InPlace(char* value, int valueBytes, cons
 	if (tc_utf16_to_utf8(wbuf, utf8, (int)sizeof(utf8)) <= 0) return;
 	lstrcpyn(value, utf8, valueBytes);
 	if (lstrcmp(before, value) != 0) {
-		SetMyRegStr("Tooltip", (char*)entry, value);
+		SetMyRegStrDef("Tooltip", (char*)entry, value);
 	}
 }

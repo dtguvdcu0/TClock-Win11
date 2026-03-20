@@ -1,5 +1,5 @@
 ***********************************************
-***  tclock-win11 Ver 0.2.5.0 (2026/03/15)  ***
+***  tclock-win11 Ver 0.2.5.1 (2026/03/20)  ***
 ***       by ID:DTgUvdcU0                   ***
 ***********************************************
 
@@ -283,6 +283,11 @@ LPROC: Number of logical processors (threads)
 ***************
 Version history
 ***************
+
+2026/03/20 Main changes (v0.2.5.1)
+Reviewed and adjusted SafeMode behavior
+Added an INI Recovery feature available only while SafeMode is active
+Reviewed the items emitted into the initial INI
 
 2026/03/15 Main changes (v0.2.5.0)
 Added a feature-limited MinimalMode that runs with [ETC]MinimalMode=1

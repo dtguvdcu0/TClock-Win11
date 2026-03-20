@@ -26,6 +26,16 @@ typedef struct {
 	const char* baseKey;
 } INIR_UTF8HEX_KEY;
 
+typedef struct {
+	char section[64];
+	char key[128];
+	BOOL seeded;
+	BOOL classified;
+	char classSource[32];
+	char auditBucket[48];
+	char auditConfidence[16];
+} INIR_INV_KEY;
+
 static const INIR_KEY k_inirStaleKeys[] = {
 	{ "ETC", "UseHideClockPolicyFlow" },
 	{ "ETC", "2chHelpURL" },
@@ -458,6 +468,484 @@ static int inir_parse_section_multisz(const char* text, DWORD size, const char* 
 	outBuf[pos++] = '\0';
 	outBuf[pos] = '\0';
 	return count;
+}
+
+static BOOL inir_parse_section_name(const char* line, int lineLen, char* outSection, int outSectionBytes)
+{
+	int ll = 0;
+	int rr = 0;
+	int nameLen = 0;
+
+	if (!line || !outSection || outSectionBytes <= 1) return FALSE;
+	outSection[0] = '\0';
+	if (!inir_line_is_any_section(line, lineLen)) return FALSE;
+	inir_trim_lr(line + 1, lineLen - 2, &ll, &rr);
+	nameLen = rr - ll;
+	if (nameLen <= 0) return TRUE;
+	if (nameLen >= outSectionBytes) nameLen = outSectionBytes - 1;
+	CopyMemory(outSection, line + 1 + ll, (SIZE_T)nameLen);
+	outSection[nameLen] = '\0';
+	return TRUE;
+}
+
+static int inir_inventory_find(const INIR_INV_KEY* items, int count, const char* section, const char* key)
+{
+	int i;
+	const char* sec = section ? section : "";
+
+	if (!items || count <= 0 || !key || !key[0]) return -1;
+	for (i = 0; i < count; ++i) {
+		if (_stricmp(items[i].section, sec) != 0) continue;
+		if (_stricmp(items[i].key, key) != 0) continue;
+		return i;
+	}
+	return -1;
+}
+
+static void inir_copy_text(char* dst, int dstBytes, const char* src)
+{
+	int n = 0;
+
+	if (!dst || dstBytes <= 0) return;
+	dst[0] = '\0';
+	if (!src) return;
+	while (n < dstBytes - 1 && src[n]) {
+		dst[n] = src[n];
+		n++;
+	}
+	dst[n] = '\0';
+}
+
+static BOOL inir_inventory_add(INIR_INV_KEY** items, int* count, int* cap, const char* section, const char* key)
+{
+	INIR_INV_KEY* grown = NULL;
+	INIR_INV_KEY* entry = NULL;
+	const char* sec = section ? section : "";
+	int nextCap;
+
+	if (!items || !count || !cap || !key || !key[0]) return FALSE;
+	if (inir_inventory_find(*items, *count, sec, key) >= 0) return TRUE;
+	if (*count >= *cap) {
+		nextCap = (*cap > 0) ? (*cap * 2) : 128;
+		if (*items) {
+			grown = (INIR_INV_KEY*)HeapReAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, *items, (SIZE_T)nextCap * sizeof(INIR_INV_KEY));
+		}
+		else {
+			grown = (INIR_INV_KEY*)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, (SIZE_T)nextCap * sizeof(INIR_INV_KEY));
+		}
+		if (!grown) return FALSE;
+		*items = grown;
+		*cap = nextCap;
+	}
+	entry = &(*items)[(*count)++];
+	ZeroMemory(entry, sizeof(*entry));
+	inir_copy_text(entry->section, (int)_countof(entry->section), sec);
+	inir_copy_text(entry->key, (int)_countof(entry->key), key);
+	return TRUE;
+}
+
+static BOOL inir_collect_keys_from_text(const char* text, DWORD size, INIR_INV_KEY** items, int* count, int* cap)
+{
+	DWORD i = 0;
+	char currentSection[64];
+
+	if (!text || !items || !count || !cap) return FALSE;
+	currentSection[0] = '\0';
+
+	while (i < size) {
+		DWORD ls = i;
+		DWORD le = i;
+		DWORD txtEnd;
+		int ll = 0;
+		int rr = 0;
+
+		while (le < size && text[le] != '\r' && text[le] != '\n') le++;
+		txtEnd = le;
+		if (le < size && text[le] == '\r') {
+			le++;
+			if (le < size && text[le] == '\n') le++;
+		}
+		else if (le < size && text[le] == '\n') {
+			le++;
+		}
+
+		inir_trim_lr(text + ls, (int)(txtEnd - ls), &ll, &rr);
+		if (rr > ll) {
+			const char* line = text + ls + ll;
+			int lineLen = rr - ll;
+			if (inir_line_is_any_section(line, lineLen)) {
+				inir_parse_section_name(line, lineLen, currentSection, (int)_countof(currentSection));
+			}
+			else if (line[0] != ';' && line[0] != '#') {
+				int j;
+				for (j = 0; j < lineLen; ++j) {
+					if (line[j] == '=') {
+						int kl = 0;
+						int kr = j;
+						char key[128];
+						int keyLen;
+						inir_trim_lr(line, j, &kl, &kr);
+						keyLen = kr - kl;
+						if (keyLen > 0) {
+							if (keyLen >= (int)_countof(key)) keyLen = (int)_countof(key) - 1;
+							CopyMemory(key, line + kl, (SIZE_T)keyLen);
+							key[keyLen] = '\0';
+							if (!inir_inventory_add(items, count, cap, currentSection, key)) return FALSE;
+						}
+						break;
+					}
+				}
+			}
+		}
+		i = le;
+	}
+	return TRUE;
+}
+
+static BOOL inir_collect_keys_from_file(const char* path, INIR_INV_KEY** items, int* count, int* cap)
+{
+	char* text = NULL;
+	DWORD size = 0;
+	BOOL hadBom = FALSE;
+	BOOL isUtf8 = FALSE;
+	BOOL ok = FALSE;
+
+	if (!path || !items || !count || !cap) return FALSE;
+	if (!inir_load_text_any(path, &text, &size, &hadBom, &isUtf8)) return FALSE;
+	UNREFERENCED_PARAMETER(hadBom);
+	UNREFERENCED_PARAMETER(isUtf8);
+	ok = inir_collect_keys_from_text(text, size, items, count, cap);
+	free(text);
+	return ok;
+}
+
+static BOOL inir_collect_seed_keys(INIR_INV_KEY** items, int* count, int* cap)
+{
+	wchar_t tempDir[MAX_PATH];
+	wchar_t tempFile[MAX_PATH];
+	char originalIni[MAX_PATH];
+	char tempIni[MAX_PATH];
+	BOOL ok = FALSE;
+
+	if (!items || !count || !cap) return FALSE;
+	if (!GetTempPathW((DWORD)_countof(tempDir), tempDir)) return FALSE;
+	if (!GetTempFileNameW(tempDir, L"INR", 0, tempFile)) return FALSE;
+	DeleteFileW(tempFile);
+	inir_copy_text(originalIni, (int)_countof(originalIni), g_inifile);
+	CreateDefaultIniFile_Win10(tempFile);
+	inir_copy_text(tempIni, (int)_countof(tempIni), g_inifile);
+	tc_ini_utf8_clear_cache();
+	ok = inir_collect_keys_from_file(tempIni, items, count, cap);
+	DeleteFileW(tempFile);
+	inir_copy_text(g_inifile, MAX_PATH, originalIni);
+	tc_ini_utf8_clear_cache();
+	return ok;
+}
+
+static void inir_build_legacy_key(char* outKey, int outKeyBytes, const char* prefix, int index)
+{
+	char digits[16];
+	int digitCount = 0;
+	int prefixLen = 0;
+	int value = index;
+	int i;
+
+	if (!outKey || outKeyBytes <= 0) return;
+	outKey[0] = '\0';
+	if (!prefix) return;
+	while (prefix[prefixLen] && prefixLen < outKeyBytes - 1) {
+		outKey[prefixLen] = prefix[prefixLen];
+		prefixLen++;
+	}
+	if (value <= 0) {
+		if (prefixLen < outKeyBytes - 1) outKey[prefixLen++] = '0';
+		outKey[prefixLen] = '\0';
+		return;
+	}
+	while (value > 0 && digitCount < (int)_countof(digits)) {
+		digits[digitCount++] = (char)('0' + (value % 10));
+		value /= 10;
+	}
+	for (i = digitCount - 1; i >= 0 && prefixLen < outKeyBytes - 1; --i) {
+		outKey[prefixLen++] = digits[i];
+	}
+	outKey[prefixLen] = '\0';
+}
+
+static BOOL inir_key_is_stale_exact(const char* section, const char* key)
+{
+	int i;
+	for (i = 0; i < (int)_countof(k_inirStaleKeys); ++i) {
+		if (_stricmp(k_inirStaleKeys[i].section, section ? section : "") != 0) continue;
+		if (_stricmp(k_inirStaleKeys[i].key, key) != 0) continue;
+		return TRUE;
+	}
+	return FALSE;
+}
+
+static BOOL inir_key_is_utf8hex_fixed(const char* section, const char* key)
+{
+	int i;
+	for (i = 0; i < (int)_countof(k_inirUtf8HexKeys); ++i) {
+		if (_stricmp(k_inirUtf8HexKeys[i].section, section ? section : "") != 0) continue;
+		if (_stricmp(k_inirUtf8HexKeys[i].key, key) != 0) continue;
+		return TRUE;
+	}
+	return FALSE;
+}
+
+static BOOL inir_key_is_legacy_member(const char* section, const char* key)
+{
+	int i;
+	int j;
+	char legacyKey[128];
+	for (i = 0; i < (int)_countof(k_inirLegacyFamilies); ++i) {
+		if (_stricmp(k_inirLegacyFamilies[i].section, section ? section : "") != 0) continue;
+		for (j = k_inirLegacyFamilies[i].firstIndex; j <= k_inirLegacyFamilies[i].lastIndex; ++j) {
+			inir_build_legacy_key(legacyKey, (int)_countof(legacyKey), k_inirLegacyFamilies[i].legacyPrefix, j);
+			if (_stricmp(legacyKey, key) == 0) return TRUE;
+		}
+	}
+	return FALSE;
+}
+
+static BOOL inir_key_is_currently_classified(const char* section, const char* key)
+{
+	if (inir_key_is_stale_exact(section, key)) return TRUE;
+	if (inir_key_is_utf8hex_fixed(section, key)) return TRUE;
+	if (inir_key_is_legacy_member(section, key)) return TRUE;
+	return FALSE;
+}
+
+static BOOL inir_seed_meta(const char* section, const char* key, BOOL* emitOnCreate, BOOL* dropEligible)
+{
+	int i;
+	const char* seedSection = NULL;
+	const char* seedKey = NULL;
+	const char* defaultValue = NULL;
+	BOOL emit = FALSE;
+	BOOL drop = FALSE;
+
+	for (i = 0; i < seed_count(); ++i) {
+		if (!seed_get(i, &seedSection, &seedKey, &defaultValue, &emit, &drop)) continue;
+		UNREFERENCED_PARAMETER(defaultValue);
+		if (_stricmp(seedSection ? seedSection : "", section ? section : "") != 0) continue;
+		if (_stricmp(seedKey ? seedKey : "", key ? key : "") != 0) continue;
+		if (emitOnCreate) *emitOnCreate = emit;
+		if (dropEligible) *dropEligible = drop;
+		return TRUE;
+	}
+	return FALSE;
+}
+
+static BOOL inir_status_audit(const char* key, const char** bucket, const char** confidence)
+{
+	if (!key || !key[0]) return FALSE;
+
+	if (_stricmp(key, "SafeMode") == 0
+		|| _stricmp(key, "CountAutoRestart") == 0
+		|| _stricmp(key, "LastExitUser") == 0) {
+		if (bucket) *bucket = "explicit-state";
+		if (confidence) *confidence = "inherited";
+		return TRUE;
+	}
+
+	if (_stricmp(key, "PreviousLTEProfNumber") == 0
+		|| _stricmp(key, "ModernStandbySupported") == 0
+		|| _stricmp(key, "BatteryLifeAvailable") == 0
+		|| _stricmp(key, "TimerCountForSec") == 0
+		|| _stricmp(key, "Win11TClockMain") == 0
+		|| _stricmp(key, "Win11LayoutDegraded") == 0
+		|| _stricmp(key, "ClockWidth") == 0
+		|| _stricmp(key, "ClockHeight") == 0
+		|| _stricmp(key, "Win11IconSize") == 0) {
+		if (bucket) *bucket = "runtime-cache";
+		if (confidence) *confidence = "inherited";
+		return TRUE;
+	}
+
+	return FALSE;
+}
+
+static void inir_overlay_audit(INIR_INV_KEY* item)
+{
+	BOOL emitOnCreate = FALSE;
+	BOOL dropEligible = FALSE;
+	const char* bucket = NULL;
+	const char* confidence = NULL;
+
+	if (!item) return;
+	item->auditBucket[0] = '\0';
+	item->auditConfidence[0] = '\0';
+
+	if (inir_seed_meta(item->section, item->key, &emitOnCreate, &dropEligible)) {
+		UNREFERENCED_PARAMETER(emitOnCreate);
+		if (dropEligible) {
+			inir_copy_text(item->auditBucket, (int)_countof(item->auditBucket), "default-readable");
+			inir_copy_text(item->auditConfidence, (int)_countof(item->auditConfidence), "proven");
+			return;
+		}
+	}
+
+	if (inir_key_is_utf8hex_fixed(item->section, item->key) || inir_key_is_legacy_member(item->section, item->key)) {
+		inir_copy_text(item->auditBucket, (int)_countof(item->auditBucket), "compatibility-sensitive");
+		inir_copy_text(item->auditConfidence, (int)_countof(item->auditConfidence), "proven");
+		return;
+	}
+
+	if (inir_key_is_stale_exact(item->section, item->key)) {
+		inir_copy_text(item->auditBucket, (int)_countof(item->auditBucket), "obsolete");
+		inir_copy_text(item->auditConfidence, (int)_countof(item->auditConfidence), "proven");
+		return;
+	}
+
+	if (_stricmp(item->section, "Status_DoNotEdit") == 0 && inir_status_audit(item->key, &bucket, &confidence)) {
+		inir_copy_text(item->auditBucket, (int)_countof(item->auditBucket), bucket);
+		inir_copy_text(item->auditConfidence, (int)_countof(item->auditConfidence), confidence);
+		return;
+	}
+
+	if (item->seeded) {
+		inir_copy_text(item->auditConfidence, (int)_countof(item->auditConfidence), "needs-recheck");
+		return;
+	}
+
+	if (item->classified) {
+		inir_copy_text(item->auditConfidence, (int)_countof(item->auditConfidence), "proven");
+		return;
+	}
+
+	inir_copy_text(item->auditConfidence, (int)_countof(item->auditConfidence), "uncategorized");
+}
+
+static const char* inir_classify_key_source(const char* section, const char* key)
+{
+	if (inir_key_is_stale_exact(section, key)) return "stale";
+	if (inir_key_is_utf8hex_fixed(section, key)) return "utf8hex";
+	if (inir_key_is_legacy_member(section, key)) return "legacy";
+	return "";
+}
+
+static void inir_append_inventory_line(char* report, int cchReport, const INIR_INV_KEY* item)
+{
+	if (!item) return;
+	if (item->auditBucket[0] && item->auditConfidence[0] && item->classSource[0]) {
+		inir_append(report, cchReport, "  [%s] %s (%s; %s/%s)\r\n",
+			item->section[0] ? item->section : "root",
+			item->key,
+			item->classSource,
+			item->auditBucket,
+			item->auditConfidence);
+	}
+	else if (item->auditBucket[0] && item->auditConfidence[0]) {
+		inir_append(report, cchReport, "  [%s] %s (%s/%s)\r\n",
+			item->section[0] ? item->section : "root",
+			item->key,
+			item->auditBucket,
+			item->auditConfidence);
+	}
+	else if (item->auditConfidence[0] && item->classSource[0]) {
+		inir_append(report, cchReport, "  [%s] %s (%s; %s)\r\n",
+			item->section[0] ? item->section : "root",
+			item->key,
+			item->classSource,
+			item->auditConfidence);
+	}
+	else if (item->classSource[0]) {
+		inir_append(report, cchReport, "  [%s] %s (%s)\r\n",
+			item->section[0] ? item->section : "root",
+			item->key,
+			item->classSource);
+	}
+	else if (item->auditConfidence[0]) {
+		inir_append(report, cchReport, "  [%s] %s (%s)\r\n",
+			item->section[0] ? item->section : "root",
+			item->key,
+			item->auditConfidence);
+	}
+	else {
+		inir_append(report, cchReport, "  [%s] %s\r\n",
+			item->section[0] ? item->section : "root",
+			item->key);
+	}
+}
+
+static int inir_scan_inventory(char* report, int cchReport)
+{
+	INIR_INV_KEY* active = NULL;
+	INIR_INV_KEY* seeded = NULL;
+	int activeCount = 0;
+	int activeCap = 0;
+	int seedCount = 0;
+	int seedCap = 0;
+	int i;
+	int seededPresent = 0;
+	int presentNotSeeded = 0;
+	int seededNotPresent = 0;
+	int uncategorized = 0;
+
+	if (!inir_collect_keys_from_file(g_inifile, &active, &activeCount, &activeCap)) {
+		inir_append(report, cchReport, "[Inventory: failed]\r\n");
+		inir_append(report, cchReport, "  failed: active INI inventory could not be collected.\r\n");
+		if (active) HeapFree(GetProcessHeap(), 0, active);
+		return 0;
+	}
+	if (!inir_collect_seed_keys(&seeded, &seedCount, &seedCap)) {
+		inir_append(report, cchReport, "[Inventory: failed]\r\n");
+		inir_append(report, cchReport, "  failed: seed inventory could not be collected.\r\n");
+		if (active) HeapFree(GetProcessHeap(), 0, active);
+		if (seeded) HeapFree(GetProcessHeap(), 0, seeded);
+		return 0;
+	}
+
+	for (i = 0; i < activeCount; ++i) {
+		active[i].seeded = (inir_inventory_find(seeded, seedCount, active[i].section, active[i].key) >= 0) ? TRUE : FALSE;
+		inir_copy_text(active[i].classSource, (int)_countof(active[i].classSource), active[i].seeded ? "seed" : inir_classify_key_source(active[i].section, active[i].key));
+		active[i].classified = active[i].seeded ? TRUE : inir_key_is_currently_classified(active[i].section, active[i].key);
+		inir_overlay_audit(&active[i]);
+	}
+
+	inir_append(report, cchReport, "[Inventory: seeded-present]\r\n");
+	for (i = 0; i < activeCount; ++i) {
+		if (!active[i].seeded) continue;
+		inir_append_inventory_line(report, cchReport, &active[i]);
+		seededPresent++;
+	}
+	if (!seededPresent) inir_append(report, cchReport, "  none\r\n");
+
+	inir_append(report, cchReport, "[Inventory: present-not-seeded]\r\n");
+	for (i = 0; i < activeCount; ++i) {
+		if (active[i].seeded) continue;
+		inir_append_inventory_line(report, cchReport, &active[i]);
+		presentNotSeeded++;
+	}
+	if (!presentNotSeeded) inir_append(report, cchReport, "  none\r\n");
+
+	inir_append(report, cchReport, "[Inventory: seeded-not-present]\r\n");
+	for (i = 0; i < seedCount; ++i) {
+		INIR_INV_KEY seedItem;
+		if (inir_inventory_find(active, activeCount, seeded[i].section, seeded[i].key) >= 0) continue;
+		ZeroMemory(&seedItem, sizeof(seedItem));
+		inir_copy_text(seedItem.section, (int)_countof(seedItem.section), seeded[i].section);
+		inir_copy_text(seedItem.key, (int)_countof(seedItem.key), seeded[i].key);
+		inir_copy_text(seedItem.classSource, (int)_countof(seedItem.classSource), "seed");
+		inir_copy_text(seedItem.auditConfidence, (int)_countof(seedItem.auditConfidence), "needs-recheck");
+		inir_append_inventory_line(report, cchReport, &seedItem);
+		seededNotPresent++;
+	}
+	if (!seededNotPresent) inir_append(report, cchReport, "  none\r\n");
+
+	inir_append(report, cchReport, "[Inventory: uncategorized]\r\n");
+	for (i = 0; i < activeCount; ++i) {
+		if (active[i].classified) continue;
+		inir_append_inventory_line(report, cchReport, &active[i]);
+		uncategorized++;
+	}
+	if (!uncategorized) inir_append(report, cchReport, "  none\r\n");
+
+	if (active) HeapFree(GetProcessHeap(), 0, active);
+	if (seeded) HeapFree(GetProcessHeap(), 0, seeded);
+	return activeCount + seedCount;
 }
 
 static int inir_read_section_multisz(const char* section, char* outBuf, int outBytes)
@@ -1049,7 +1537,7 @@ static int inir_apply_runtime_normalize(char* report, int cchReport)
 
 static void inir_run_scan(HWND hDlg)
 {
-	char report[32768];
+	char report[131072];
 
 	report[0] = '\0';
 	tc_ini_utf8_clear_cache();
@@ -1058,6 +1546,9 @@ static void inir_run_scan(HWND hDlg)
 	if (inir_is_checked(hDlg, IDC_INIR_EOL)) inir_scan_eol(report, (int)sizeof(report));
 	if (inir_is_checked(hDlg, IDC_INIR_DEFAULTS)) inir_scan_defaults(report, (int)sizeof(report));
 	if (inir_is_checked(hDlg, IDC_INIR_STALE)) inir_scan_obsolete(report, (int)sizeof(report));
+	if (inir_is_checked(hDlg, IDC_INIR_DEFAULTS) || inir_is_checked(hDlg, IDC_INIR_STALE)) {
+		inir_scan_inventory(report, (int)sizeof(report));
+	}
 	SetDlgItemTextUTF8Strict(hDlg, IDC_INIR_REPORT, report);
 }
 

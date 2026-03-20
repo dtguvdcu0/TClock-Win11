@@ -72,7 +72,7 @@ static BOOL CheckDLL(const char *fname);
 static void CheckRegistry(void);
 static BOOL IsWow64(void);
 static BOOL CheckRegistry_Win10(void); //Added by TTTT
-static void CreateDefaultIniFile_Win10(const wchar_t* fnameW); //Added by TTTT
+void CreateDefaultIniFile_Win10(const wchar_t* fnameW); //Added by TTTT
 void getExeVersion(const char *fname); //Added by TTTT
 void SetIdlePriority(void);		//Added by TTTT
 

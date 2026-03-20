@@ -330,6 +330,8 @@ int GetMyRegStr(const char* section, const char* entry, char* val, int cbData,
 LONG GetMyRegLong(const char* section, const char* entry, LONG defval);
 BOOL SetMyRegStr(const char* subkey, const char* entry, const char* val);
 BOOL SetMyRegLong(const char* subkey, const char* entry, DWORD val);
+BOOL SetMyRegStrDef(const char* subkey, const char* entry, const char* val);
+BOOL SetMyRegLongDef(const char* subkey, const char* entry, DWORD val);
 BOOL DelMyReg(const char* subkey, const char* entry);
 BOOL DelMyRegKey(const char* subkey);
 int DelRegAll(void);

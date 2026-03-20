@@ -1391,6 +1391,46 @@ BOOL SetMyRegStr(const char* section, const char* entry, const char* val)
 /*-------------------------------------------
 　レジストリにDWORD値を書き込む
 ---------------------------------------------*/
+static BOOL seed_drop_default(const char* section, const char* entry, const char* value)
+{
+	int i;
+	const char* seedSection = NULL;
+	const char* seedKey = NULL;
+	const char* defaultValue = NULL;
+	BOOL emitOnCreate = FALSE;
+	BOOL dropEligible = FALSE;
+	const char* actualSection = (section && *section) ? section : "Main";
+
+	if (!entry || !value) return FALSE;
+	for (i = 0; i < seed_count(); i++) {
+		if (!seed_get(i, &seedSection, &seedKey, &defaultValue, &emitOnCreate, &dropEligible)) continue;
+		if (!dropEligible) continue;
+		if (lstrcmp(actualSection, seedSection) != 0) continue;
+		if (lstrcmp(entry, seedKey) != 0) continue;
+		return lstrcmp(value, defaultValue) == 0;
+	}
+	return FALSE;
+}
+
+BOOL SetMyRegStrDef(const char* section, const char* entry, const char* val)
+{
+	if (!val) val = "";
+	if (seed_drop_default(section, entry, val)) {
+		return DelMyReg(section, entry);
+	}
+	return SetMyRegStr(section, entry, val);
+}
+
+BOOL SetMyRegLongDef(const char* section, const char* entry, DWORD val)
+{
+	char buf[20];
+	wsprintf(buf, "%d", (int)val);
+	if (seed_drop_default(section, entry, buf)) {
+		return DelMyReg(section, entry);
+	}
+	return SetMyRegLong(section, entry, val);
+}
+
 BOOL SetMyRegLong(const char* section, const char* entry, DWORD val)
 {
 	BOOL r = FALSE;

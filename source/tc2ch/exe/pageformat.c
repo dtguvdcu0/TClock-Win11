@@ -559,7 +559,7 @@ void OnApply(HWND hDlg)
 
 	for(i = IDC_YEAR4; i <= IDC_CUSTOM; i++)
 	{
-		SetMyRegLong("Format", ENTRY(i), IsDlgButtonChecked(hDlg, i));
+		SetMyRegLongDef("Format", ENTRY(i), IsDlgButtonChecked(hDlg, i));
 	}
 
 	GetDlgItemTextUTF8(hDlg, IDC_FORMAT, s, 1024);

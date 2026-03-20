@@ -301,7 +301,7 @@ static void OnApply(HWND hDlg)
 	SetMyRegLong("TCapture", "Enable", IsDlgButtonChecked(hDlg, IDC_ETC_TCAPTURE_INTEGRATION));
 	SetMyRegLong("ETC", "ExitExtensionsOnTClockExit", IsDlgButtonChecked(hDlg, IDC_ETC_EXIT_EXTENSIONS_ON_EXIT));
 
-	SetMyRegLong("ETC", "SelectedThermalZone", selectedThermalZone);
+	SetMyRegLongDef("ETC", "SelectedThermalZone", selectedThermalZone);
 
 }
 

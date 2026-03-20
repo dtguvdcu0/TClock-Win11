@@ -199,32 +199,32 @@ void OnApply(HWND hDlg)
 
 	//短針の色
 	dw = (DWORD)CBGetItemData(hDlg, IDC_COLHOUR, CBGetCurSel(hDlg, IDC_COLHOUR));
-	SetMyRegLong("AnalogClock", "AClockHourHandColor", dw);
+	SetMyRegLongDef("AnalogClock", "AClockHourHandColor", dw);
 
 	//長針の色
 	dw = (DWORD)CBGetItemData(hDlg, IDC_COLMIN, CBGetCurSel(hDlg, IDC_COLMIN));
-	SetMyRegLong("AnalogClock", "AClockMinHandColor", dw);
+	SetMyRegLongDef("AnalogClock", "AClockMinHandColor", dw);
 
 	//短針、長針の太さ
-	SetMyRegLong("AnalogClock", "AnalogClockHourHandBold", IsDlgButtonChecked(hDlg, IDC_HOURHAND_BOLD));
-	SetMyRegLong("AnalogClock", "AnalogClockMinHandBold", IsDlgButtonChecked(hDlg, IDC_MINHAND_BOLD));
+	SetMyRegLongDef("AnalogClock", "AnalogClockHourHandBold", IsDlgButtonChecked(hDlg, IDC_HOURHAND_BOLD));
+	SetMyRegLongDef("AnalogClock", "AnalogClockMinHandBold", IsDlgButtonChecked(hDlg, IDC_MINHAND_BOLD));
 
 	//アナログ時計位置の保存
-	SetMyRegLong("AnalogClock", "AnalogClockPos", CBGetCurSel(hDlg, IDC_ACLOCK_POS));
+	SetMyRegLongDef("AnalogClock", "AnalogClockPos", CBGetCurSel(hDlg, IDC_ACLOCK_POS));
 
-	SetMyRegLong("AnalogClock", "UseAnalogClock",
+	SetMyRegLongDef("AnalogClock", "UseAnalogClock",
 		IsDlgButtonChecked(hDlg, IDC_CHECK_ACLOCK));
 
-	SetMyRegLong("AnalogClock", "AnalogClockHPos",
+	SetMyRegLongDef("AnalogClock", "AnalogClockHPos",
 		GetSpinPos(hDlg, IDC_SPIN_ACLOCK_HPOS));
 
-	SetMyRegLong("AnalogClock", "AnalogClockVPos",
+	SetMyRegLongDef("AnalogClock", "AnalogClockVPos",
 		GetSpinPos(hDlg, IDC_SPIN_ACLOCK_VPOS));
 
 	GetDlgItemTextUTF8(hDlg, IDC_ACLOCKBMP, fname, MAX_PATH);
-	SetMyRegStr("AnalogClock", "AnalogClockBmp", fname);
+	SetMyRegStrDef("AnalogClock", "AnalogClockBmp", fname);
 
-	SetMyRegLong("AnalogClock", "AnalogClockSize",
+	SetMyRegLongDef("AnalogClock", "AnalogClockSize",
 		GetSpinPos(hDlg, IDC_SPIN_ACLOCK_SIZE));
 
 }

@@ -230,19 +230,19 @@ void OnApply(HWND hDlg)
 	else DelMyReg("VPN", "VPNExcludeKeywords");
 	ClearLegacyKeywordList("VPN", "VPN_Exclude");
 
-	SetMyRegLong("ETC", "GipEnabled", (IsDlgButtonChecked(hDlg, IDC_GIP_ENABLE) == BST_CHECKED) ? 1 : 0);
+	SetMyRegLongDef("ETC", "GipEnabled", (IsDlgButtonChecked(hDlg, IDC_GIP_ENABLE) == BST_CHECKED) ? 1 : 0);
 	hours = GetDlgItemInt(hDlg, IDC_GIP_INTERVAL, &translated, FALSE);
 	if (!translated) hours = 6;
 	if (hours < 1) hours = 1;
 	if (hours > 168) hours = 168;
-	SetMyRegLong("ETC", "GipRefreshHours", hours);
+	SetMyRegLongDef("ETC", "GipRefreshHours", hours);
 
 	sel = CBGetCurSel(hDlg, IDC_GIP_PROVIDER);
 	if (sel >= 0 && sel < (int)(sizeof(g_gipProviders) / sizeof(g_gipProviders[0]))) {
-		SetMyRegStr("ETC", "GipProvider", (char*)g_gipProviders[sel].key);
+		SetMyRegStrDef("ETC", "GipProvider", (char*)g_gipProviders[sel].key);
 	}
 	else if (g_gipCustomIndex >= 0 && sel == g_gipCustomIndex) {
-		SetMyRegStr("ETC", "GipProvider", g_gipProviderIni);
+		SetMyRegStrDef("ETC", "GipProvider", g_gipProviderIni);
 	}
 	UpdateGipResult(hDlg);
 }

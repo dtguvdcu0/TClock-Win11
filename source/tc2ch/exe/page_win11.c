@@ -416,7 +416,7 @@ void OnApply(HWND hDlg)
 	WritePolicyDword("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize", "EnableTransparency", transparency);
 
 	alignLeft = IsDlgButtonChecked(hDlg, IDC_WIN11_TASKBAR_ALIGN_LEFT) ? TRUE : FALSE;
-	SetMyRegLong("Win11", "AlignTaskbarLeft", alignLeft);
+	SetMyRegLongDef("Win11", "AlignTaskbarLeft", alignLeft);
 	displayWinUIExperimental = IsDlgButtonChecked(hDlg, IDC_WIN11_EXPERIMENTAL_DISPLAY_WINUI) ? TRUE : FALSE;
 	SetMyRegLong("Win11", "ExperimentalDisplayBackend", displayWinUIExperimental ? 1 : 0);
 	if (alignLeft) {

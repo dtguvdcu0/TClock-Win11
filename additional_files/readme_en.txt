@@ -1,5 +1,5 @@
 ***********************************************
-***  tclock-win11 Ver 0.2.5.1 (2026/03/20)  ***
+***  tclock-win11 Ver 0.2.5.2 (2026/03/21)  ***
 ***       by ID:DTgUvdcU0                   ***
 ***********************************************
 
@@ -283,6 +283,9 @@ LPROC: Number of logical processors (threads)
 ***************
 Version history
 ***************
+
+2026/03/21 Main changes (v0.2.5.2)
+Fixes for the INI Recovery feature
 
 2026/03/20 Main changes (v0.2.5.1)
 Reviewed and adjusted SafeMode behavior

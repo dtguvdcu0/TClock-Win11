@@ -207,6 +207,18 @@ typedef struct{
 	signed short idstring;
 } MOUSE_FUNC_INFO;
 
+typedef struct {
+	const char* section;
+	const char* key;
+	const char* defaultValue;
+	BYTE flags;
+} SEED_ENTRY;
+
+#define SEED_FLAG_STRING 0x01
+#define SEED_FLAG_EMIT   0x02
+#define SEED_FLAG_DROP   0x04
+#define SEED_FLAG_NO_MIN 0x08
+
 // exemain.c
 extern HINSTANCE g_hInst;           // instance handle
 extern HINSTANCE g_hInstResource;   // instance handle of language module
@@ -256,6 +268,8 @@ void CreateFormat(char* s, int* checks);
 
 // page_inirecovery.c
 void inir_show(HWND hwndOwner);
+int seed_count(void);
+BOOL seed_get(int index, const char** section, const char** key, const char** defaultValue, BOOL* emitOnCreate, BOOL* dropEligible);
 
 // menu.c
 void InitializeMenuItems(void);

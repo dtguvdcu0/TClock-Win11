@@ -14,12 +14,6 @@ typedef struct {
 
 typedef struct {
 	const char* section;
-	const char* key;
-	const char* defaultValue;
-} INIR_DEFAULT_KEY;
-
-typedef struct {
-	const char* section;
 	const char* combinedKey;
 	const char* legacyPrefix;
 	int firstIndex;
@@ -53,48 +47,6 @@ static const INIR_UTF8HEX_KEY k_inirUtf8HexKeys[] = {
 	{ "Tooltip", "Tooltip2Utf8Hex", "Tooltip2" },
 	{ "Tooltip", "Tooltip3Utf8Hex", "Tooltip3" },
 	{ "ETC", "TCapturePathUtf8Hex", "TCapturePath" },
-};
-
-static const INIR_DEFAULT_KEY k_inirDefaultKeys[] = {
-	{ "Tooltip", "EnableTooltip", "1" },
-	{ "Tooltip", "Tooltip2", "" },
-	{ "Tooltip", "Tooltip3", "" },
-	{ "Tooltip", "TipTitle", "" },
-	{ "Tooltip", "TipFont", "" },
-	{ "Tooltip", "TipFontSize", "9" },
-	{ "Tooltip", "Tip2Use", "0" },
-	{ "Tooltip", "Tip3Use", "0" },
-	{ "Tooltip", "TipTateFlg", "0" },
-	{ "Tooltip", "Tip2Update", "0" },
-	{ "Tooltip", "Tip3Update", "0" },
-	{ "Tooltip", "TipBold", "0" },
-	{ "Tooltip", "TipItalic", "0" },
-	{ "Tooltip", "BalloonFlg", "1" },
-	{ "Tooltip", "TipFontColor", "0" },
-	{ "Tooltip", "TipTitleColor", "16711680" },
-	{ "Tooltip", "TipBakColor", "16777215" },
-	{ "AnalogClock", "UseAnalogClock", "0" },
-	{ "AnalogClock", "AnalogClockBmp", "..\\tclock.bmp" },
-	{ "AnalogClock", "AClockHourHandColor", "255" },
-	{ "AnalogClock", "AClockMinHandColor", "16711680" },
-	{ "AnalogClock", "AnalogClockHourHandBold", "0" },
-	{ "AnalogClock", "AnalogClockMinHandBold", "0" },
-	{ "AnalogClock", "AnalogClockPos", "0" },
-	{ "AnalogClock", "AnalogClockAtStartBtn", "0" },
-	{ "AnalogClock", "AnalogClockHPos", "0" },
-	{ "AnalogClock", "AnalogClockVPos", "0" },
-	{ "AnalogClock", "AnalogClockSize", "18" },
-	{ "Chime", "EnableChime", "0" },
-	{ "Chime", "OffsetChimeSec", "0" },
-	{ "ETC", "LTEString", "LTE" },
-	{ "ETC", "LTEChar", "L" },
-	{ "ETC", "MuteString", "*" },
-	{ "ETC", "SelectedThermalZone", "0" },
-	{ "ETC", "GipEnabled", "0" },
-	{ "ETC", "GipRefreshHours", "6" },
-	{ "ETC", "GipProvider", "ipify" },
-	{ "ETC", "GipJsonField", "ip" },
-	{ "ETC", "GipLastValue", "N/A" },
 };
 
 static const INIR_LEGACY_FAMILY k_inirLegacyFamilies[] = {
@@ -845,16 +797,24 @@ static int inir_scan_defaults(char* report, int cchReport)
 	int foundCount = 0;
 	char value[2048];
 	BOOL found;
+	const char* section = NULL;
+	const char* key = NULL;
+	const char* defaultValue = NULL;
+	BOOL emitOnCreate = FALSE;
+	BOOL dropEligible = FALSE;
 
 	inir_append(report, cchReport, "[Default-valued settings]\r\n");
-	for (i = 0; i < (int)_countof(k_inirDefaultKeys); i++) {
+	for (i = 0; i < seed_count(); i++) {
+		if (!seed_get(i, &section, &key, &defaultValue, &emitOnCreate, &dropEligible)) continue;
+		UNREFERENCED_PARAMETER(emitOnCreate);
+		if (!dropEligible) continue;
 		found = FALSE;
 		value[0] = '\0';
-		inir_find_entry(k_inirDefaultKeys[i].section, k_inirDefaultKeys[i].key, value, (int)sizeof(value), &found);
+		inir_find_entry(section, key, value, (int)sizeof(value), &found);
 		if (!found) continue;
-		if (lstrcmp(value, k_inirDefaultKeys[i].defaultValue) != 0) continue;
+		if (lstrcmp(value, defaultValue) != 0) continue;
 		inir_append(report, cchReport, "  found: [%s] %s=%s\r\n",
-			k_inirDefaultKeys[i].section, k_inirDefaultKeys[i].key, value[0] ? value : "\"\"");
+			section, key, value[0] ? value : "\"\"");
 		foundCount++;
 	}
 	if (!foundCount) inir_append(report, cchReport, "  no changes\r\n");
@@ -867,22 +827,30 @@ static int inir_apply_defaults(char* report, int cchReport)
 	int removed = 0;
 	char value[2048];
 	BOOL found;
+	const char* section = NULL;
+	const char* key = NULL;
+	const char* defaultValue = NULL;
+	BOOL emitOnCreate = FALSE;
+	BOOL dropEligible = FALSE;
 
 	inir_append(report, cchReport, "[Default-valued settings]\r\n");
-	for (i = 0; i < (int)_countof(k_inirDefaultKeys); i++) {
+	for (i = 0; i < seed_count(); i++) {
+		if (!seed_get(i, &section, &key, &defaultValue, &emitOnCreate, &dropEligible)) continue;
+		UNREFERENCED_PARAMETER(emitOnCreate);
+		if (!dropEligible) continue;
 		found = FALSE;
 		value[0] = '\0';
-		inir_find_entry(k_inirDefaultKeys[i].section, k_inirDefaultKeys[i].key, value, (int)sizeof(value), &found);
+		inir_find_entry(section, key, value, (int)sizeof(value), &found);
 		if (!found) continue;
-		if (lstrcmp(value, k_inirDefaultKeys[i].defaultValue) != 0) continue;
-		if (tc_ini_utf8_delete_key(g_inifile, k_inirDefaultKeys[i].section, k_inirDefaultKeys[i].key)) {
+		if (lstrcmp(value, defaultValue) != 0) continue;
+		if (tc_ini_utf8_delete_key(g_inifile, section, key)) {
 			inir_append(report, cchReport, "  removed: [%s] %s\r\n",
-				k_inirDefaultKeys[i].section, k_inirDefaultKeys[i].key);
+				section, key);
 			removed++;
 		}
 		else {
 			inir_append(report, cchReport, "  failed: [%s] %s\r\n",
-				k_inirDefaultKeys[i].section, k_inirDefaultKeys[i].key);
+				section, key);
 		}
 	}
 	if (!removed) inir_append(report, cchReport, "  no changes\r\n");

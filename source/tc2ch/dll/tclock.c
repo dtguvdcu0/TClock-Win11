@@ -147,6 +147,7 @@ void RefreshWin11TaskbarHandles(void)
 	}
 
 }
+
 void GetMainClock(void);
 void SetMainClockOnTasktray(void);
 LRESULT CALLBACK SubclassTrayProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData);
@@ -234,6 +235,7 @@ extern HWND hwndTaskBarMain;
 
 HWND hwndTrayMain = NULL;
 HWND hwndDesktop = NULL;
+static HWND hwndTraySubclassMain = NULL;
 
 //以下の配列の初期化はFindAllSubClocksのループの中で行う。
 HWND hwndTaskBarSubClk[MAX_SUBSCREEN];
@@ -259,7 +261,39 @@ HANDLE hmod = 0;
 HWND hwndClockMain = NULL;
 HWND hwndTClockBarWin11 = NULL;
 WNDPROC oldWndProc = NULL;
+static HWND hwndClockMainSubclass = NULL;
 WNDPROC oldWndProcSub[MAX_SUBSCREEN] = { NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL };
+
+typedef struct {
+	const TCHAR* className;
+} TC_CLOSE_CLASS_CTX;
+
+static BOOL CALLBACK CloseClassChildProc(HWND hwnd, LPARAM lParam)
+{
+	TC_CLOSE_CLASS_CTX* ctx = (TC_CLOSE_CLASS_CTX*)lParam;
+	TCHAR className[64];
+
+	if (!ctx || !ctx->className) return TRUE;
+	if (!GetClassName(hwnd, className, (int)(sizeof(className) / sizeof(className[0])))) return TRUE;
+	if (lstrcmp(className, ctx->className) != 0) return TRUE;
+
+	DestroyWindow(hwnd);
+	return TRUE;
+}
+
+static BOOL CALLBACK CloseClassTopProc(HWND hwnd, LPARAM lParam)
+{
+	CloseClassChildProc(hwnd, lParam);
+	EnumChildWindows(hwnd, CloseClassChildProc, lParam);
+	return TRUE;
+}
+
+static void CloseClassWindows(const TCHAR* className)
+{
+	TC_CLOSE_CLASS_CTX ctx;
+	ctx.className = className;
+	EnumWindows(CloseClassTopProc, (LPARAM)&ctx);
+}
 WNDPROC oldProcTaskbarContentBridge_Win11;
 
 BOOL bTimer = FALSE;
@@ -514,6 +548,30 @@ static void ClockTextOutCompatW(HDC hdc, int x, int y, const WCHAR* sp, int wlen
 
 // Added by TTTT for Win10AU (WIN10RS1) compatibility
 #define SUBCLASSTRAY_ID		2
+
+static void SetTraySubclassMain(HWND hwndTray, SUBCLASSPROC proc, HWND hwndClock)
+{
+	if (!IsWindow(hwndTray) || !proc) {
+		return;
+	}
+	if (hwndTraySubclassMain && hwndTraySubclassMain != hwndTray && IsWindow(hwndTraySubclassMain)) {
+		RemoveWindowSubclass(hwndTraySubclassMain, proc, SUBCLASSTRAY_ID);
+	}
+	SetWindowSubclass(hwndTray, proc, SUBCLASSTRAY_ID, (DWORD_PTR)hwndClock);
+	hwndTraySubclassMain = hwndTray;
+}
+
+static void RemoveTraySubclassMain(SUBCLASSPROC proc)
+{
+	if (!proc) {
+		return;
+	}
+	if (hwndTraySubclassMain && IsWindow(hwndTraySubclassMain)) {
+		RemoveWindowSubclass(hwndTraySubclassMain, proc, SUBCLASSTRAY_ID);
+	}
+	hwndTraySubclassMain = NULL;
+}
+
 int     g_winver = WIN10;              // Windows version, currently set as WIN10(non AU)
 BOOL    g_bVertTaskbar = FALSE;        // vertical taskbar ?
 int     prevWidthMainClock;      // original clock width
@@ -937,7 +995,6 @@ static BOOL SampleTaskbarColorsAtX(int posX, COLORREF* outMain, COLORREF* outEdg
 	return ((*outMain != CLR_INVALID) && (*outEdge != CLR_INVALID));
 }
 
-// TEMP_VERIFY_START ghostchk
 #define CLKH_WIN11_MAIN          0x0001
 #define CLKH_LAYOUT_DEGRADED     0x0002
 #define CLKH_CLOCK_HWND_VALID    0x0004
@@ -997,8 +1054,6 @@ static LRESULT clk_request_relayout(void)
 	PostMessage(hwndClockMain, CLOCKM_MOVEWIN11CONTENTBRIDGE, 1, 0);
 	return 1;
 }
-// TEMP_VERIFY_END ghostchk
-
 static void RefreshAutoBackColors(BOOL force, const char* reason)
 {
 	DWORD nowTick;
@@ -1326,6 +1381,7 @@ void InitClock()
 
 	//サブクラス化
 	oldWndProc = (WNDPROC)GetWindowLongPtr(hwndClockMain, GWLP_WNDPROC);
+	hwndClockMainSubclass = hwndClockMain;
 	SubclassWindow(hwndClockMain, WndProc);
 
 	if (bWin11Main)		//現時点でWndProcは同じ, Removeも合わせること。
@@ -1340,14 +1396,12 @@ void InitClock()
 		//}
 		//else
 		{
-			SetWindowSubclass(hwndTrayMain, SubclassTrayProc_Win11,
-				SUBCLASSTRAY_ID, (DWORD_PTR)hwndClockMain);
+			SetTraySubclassMain(hwndTrayMain, SubclassTrayProc_Win11, hwndClockMain);
 		}
 	}
 	else 
 	{
-		SetWindowSubclass(hwndTrayMain, SubclassTrayProc,
-			SUBCLASSTRAY_ID, (DWORD_PTR)hwndClockMain);
+		SetTraySubclassMain(hwndTrayMain, SubclassTrayProc, hwndClockMain);
 	}
 	//ダブルクリック受け付けない
 	SetClassLongPtr(hwndClockMain, GCL_STYLE,
@@ -2093,10 +2147,12 @@ void EndClock(void)
 		KillTimer(hwndClockMain, IDTIMERDLL_STARTUP_AUTOADJUST);
 		startupAutoAdjustRetryRemaining = 0;
 
-		if (oldWndProc && (WNDPROC)WndProc == (WNDPROC)GetWindowLongPtr(hwndClockMain, GWLP_WNDPROC))
+		if (oldWndProc && hwndClockMainSubclass &&
+			(WNDPROC)WndProc == (WNDPROC)GetWindowLongPtr(hwndClockMainSubclass, GWLP_WNDPROC))
 		{
-			SubclassWindow(hwndClockMain, oldWndProc);
+			SubclassWindow(hwndClockMainSubclass, oldWndProc);
 		}
+		hwndClockMainSubclass = NULL;
 		oldWndProc = NULL;
 	}
 
@@ -2126,8 +2182,7 @@ void EndClock(void)
 		//}
 		//else if (Win11Type < 2)
 		{
-			RemoveWindowSubclass(hwndTrayMain, SubclassTrayProc_Win11,
-				SUBCLASSTRAY_ID);
+			RemoveTraySubclassMain(SubclassTrayProc_Win11);
 		}
 
 		if (IsWindow(hwndClockMain)) {
@@ -2141,6 +2196,12 @@ void EndClock(void)
 			DestroyWindow(hwndWin11Notify);
 		}
 		hwndWin11Notify = NULL;
+
+		CloseClassWindows(TEXT("TClockSub"));
+		CloseClassWindows(TEXT("TClockNotify"));
+		CloseClassWindows(TEXT("TClockMain"));
+		CloseClassWindows(TEXT("TClockBarWin11"));
+
 		UnregisterClass("TClockNotify", hmod);
 
 //		if (Win11Type == 2) {
@@ -2150,8 +2211,7 @@ void EndClock(void)
 //		}
 
 	}else {
-		RemoveWindowSubclass(hwndTrayMain, SubclassTrayProc,
-			SUBCLASSTRAY_ID);
+		RemoveTraySubclassMain(SubclassTrayProc);
 	}
 
 
@@ -2167,10 +2227,8 @@ void EndClock(void)
 --------------------------------------------------*/
 LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
-	UNREFERENCED_PARAMETER(hwnd);
 	HWND tempHwnd;
-//	tempHwnd = hwnd;
-	tempHwnd = hwndClockMain;
+	tempHwnd = hwnd;
 
 	//このコールバック関数はhwndClockMainとの組み合わせででしか正しく動作しないので、原則としてhwnd = hwndClockMainだがコールバック関数なのでtempHwndで処理している
 	//messageは、定常運転時はWM_TIMER(275)以外はめったに来ない。
@@ -2211,6 +2269,19 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 	switch(message)
 	{
+		case WM_NCDESTROY:
+			if (oldWndProc && (WNDPROC)WndProc == (WNDPROC)GetWindowLongPtr(hwnd, GWLP_WNDPROC))
+			{
+				SubclassWindow(hwnd, oldWndProc);
+			}
+			if (hwndClockMainSubclass == hwnd) hwndClockMainSubclass = NULL;
+			if (hwndClockMain == hwnd) hwndClockMain = NULL;
+			{
+				WNDPROC forwardProc = oldWndProc;
+				oldWndProc = NULL;
+				if (forwardProc) return CallWindowProc(forwardProc, hwnd, message, wParam, lParam);
+			}
+			return DefWindowProc(hwnd, message, wParam, lParam);
 		case WM_DESTROY:
 			if (b_DebugLog) writeDebugLog_Win10("[tclock.c][WndProc()] WM_DESTROY received, bAutoRestart =", bAutoRestart);
 			//何らかの理由でWM_CLOSEではなく、直接DESTROYが来たケース。WinExplorerでDestroyするとこれが呼ばれる。Explorerクラッシュ時にはこれは来ない。
@@ -2923,7 +2994,9 @@ static void ReadDataMinimal(void)
 	SetMyRegLong(NULL, "CompactMode", b_CompactMode);
 	b_SafeMode = GetMyRegLong("Status_DoNotEdit", "SafeMode", FALSE);
 	if (b_SafeMode) {
+		/* SafeMode recovery must not create subclocks on secondary taskbars. */
 		b_CompactMode = TRUE;
+		bEnableSubClks = FALSE;
 	}
 
 	GetMyRegStr("ETC", "LTEString", strLTE, 32, "LTE");
@@ -3464,7 +3537,9 @@ void ReadData()
 
 	if (b_SafeMode)
 	{
+		/* SafeMode recovery must not create subclocks on secondary taskbars. */
 		b_CompactMode = TRUE;
+		bEnableSubClks = FALSE;
 	}
 
 	GetMyRegStr("ETC", "LTEString", strLTE, 32, "LTE");
@@ -7202,7 +7277,7 @@ LRESULT CALLBACK SubclassTrayProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM
 
 			LRESULT ret;
 
-			ret = DefSubclassProc(hwndTrayMain, message, wParam, lParam);
+			ret = DefSubclassProc(hwnd, message, wParam, lParam);
 
 
 
@@ -7244,7 +7319,7 @@ LRESULT CALLBACK SubclassTrayProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM
 
 			if (nmh->code != PGN_CALCSIZE) break;
 
-			ret = DefSubclassProc(hwndTrayMain, message, wParam, lParam);	//hwndを明示したが、機能は同じ。
+			ret = DefSubclassProc(hwnd, message, wParam, lParam);	//hwndを明示したが、機能は同じ。
 
 			if (b_DebugLog)writeDebugLog_Win10("[tclock.c][SubclassTrayProc] SetMainClockOnTasktray called, initiated by WM_NOTIFY(78) + PGN_CALCSIZE.", 999);
 
@@ -7252,9 +7327,17 @@ LRESULT CALLBACK SubclassTrayProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM
 
 			return ret;
 		}
+		case WM_NCDESTROY:
+		{
+			RemoveWindowSubclass(hwnd, SubclassTrayProc, SUBCLASSTRAY_ID);
+			if (hwndTraySubclassMain == hwnd) {
+				hwndTraySubclassMain = NULL;
+			}
+			return DefSubclassProc(hwnd, message, wParam, lParam);
+		}
 	}
 
-	return DefSubclassProc(hwndTrayMain, message, wParam, lParam);
+	return DefSubclassProc(hwnd, message, wParam, lParam);
 }
 
 void GetPrevMainClockSize(void)
@@ -7678,16 +7761,11 @@ void RestartTClockFromDLL(void)
 	if (b_DebugLog) writeDebugLog_Win10("TClock will be restarted ...", 999);
 
 	SetMyRegLong("Status_DoNotEdit", "LastLaunchTimeStamp", 0);
-	char fname[MAX_PATH];
-	strcpy(fname, g_mydir_dll);
-	add_title(fname, "TClock-Win11.exe");
-	NormalizeUtf8InPlaceNoWriteback(fname, (int)sizeof(fname));
-	ShellExecuteUtf8Strict_DLL(NULL, "open", fname, "/restart", NULL, SW_HIDE);
 	/* Prevent WM_DESTROY auto-restart from launching a second child process. */
 	bAutoRestart = FALSE;
-	/* Ensure old EXE process is terminated even when WM_DESTROY branch is skipped. */
+	/* Hand restart ownership to the EXE after DLL teardown to avoid old/new overlap. */
 	if (IsWindow(hwndTClockExeMain)) {
-		PostMessage(hwndTClockExeMain, WM_USER + 2, 0, 0);
+		PostMessage(hwndTClockExeMain, WM_USER + 2, 1, 0);
 	}
 	EndClock();
 }

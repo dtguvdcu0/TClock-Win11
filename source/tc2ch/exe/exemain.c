@@ -83,7 +83,7 @@ void OnDLLAliveMessage(WPARAM tempwParam); //Added by TTTT
 
 void TerminateTClock(HWND hwnd);
 
-void TerminateTClockFromDLL(HWND hwnd);
+void TerminateTClockFromDLL(HWND hwnd, BOOL restartRequested);
 
 BOOL WaitQuitPrevTClock(int cycle);
 
@@ -1589,7 +1589,7 @@ LRESULT CALLBACK WndProc(HWND hwnd,	UINT message, WPARAM wParam, LPARAM lParam)	
 		case (WM_USER + 2):   // exit (from tclock.c EndClock())	このコードはVer4.0.3以降では修了処理として呼ばれなくなっている(はず)。適当な時期に削除すること。
 			if (b_DebugLog) WriteDebug_New2("[exemain.c][WndProc] WM_USER+2 received");
 
-			TerminateTClockFromDLL(hwnd);	//tcdlll(tclock.cから呼ばれるときはFromDLLを実行する)
+			TerminateTClockFromDLL(hwnd, wParam ? TRUE : FALSE);	//tcdlll(tclock.cから呼ばれるときはFromDLLを実行する)
 			////タイマ機能のなごり
 			////if(g_hDlgTimer && IsWindow(g_hDlgTimer))
 			////	PostMessage(g_hDlgTimer, WM_CLOSE, 0, 0);
@@ -1850,7 +1850,7 @@ void TerminateTClock(HWND hwnd)
 }
 
 
-void TerminateTClockFromDLL(HWND hwnd)
+void TerminateTClockFromDLL(HWND hwnd, BOOL restartRequested)
 {
 	BOOL safeModePending;
 
@@ -1890,6 +1890,13 @@ void TerminateTClockFromDLL(HWND hwnd)
 	SetMyRegLong("Status_DoNotEdit", "LastExitUser", safeModePending ? 0 : 1);
 	if (b_DebugLog && safeModePending) {
 		WriteDebug_New2("[exemain.c] SafeMode pending detected. LastExitUser will stay cleared.");
+	}
+	if (restartRequested) {
+		char fname[MAX_PATH];
+		strcpy(fname, g_mydir);
+		add_title(fname, "TClock-Win11.exe");
+		b_SkipHideClockRestore = TRUE;
+		ShellExecuteUtf8Strict(NULL, "open", fname, "/restart", NULL, SW_HIDE);
 	}
 	PostQuitMessage(0);
 	g_hwndMain = NULL;
@@ -2055,7 +2062,7 @@ void OnTimerZombieCheck2(HWND hwnd)
 					g_lastGhostState = ghostState;
 				}
 				// TEMP_VERIFY_END ghostchk
-				TerminateTClockFromDLL(hwnd);		//すでにTClockの改造部は終了/消失していると判断されるため、FromDLLでの終了動作を行う。
+				TerminateTClockFromDLL(hwnd, FALSE);		//すでにTClockの改造部は終了/消失していると判断されるため、FromDLLでの終了動作を行う。
 			}
 
 

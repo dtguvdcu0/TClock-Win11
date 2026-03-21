@@ -164,7 +164,9 @@ void CreateTClockBarWin11Type2(void)
 {
 	//最初に残骸が残ってたら消す。
 	HWND tempHwnd;
-	if ((tempHwnd = FindWindow(TEXT("TClockBarWin11"), NULL)) != NULL) PostMessage(tempHwnd, WM_CLOSE, 0, 0);
+	if ((tempHwnd = FindWindow(TEXT("TClockBarWin11"), NULL)) != NULL) {
+		DestroyWindow(tempHwnd);
+	}
 
 
 	//Win11Type2用のTClockBarのウィンドウを自作する。
@@ -210,7 +212,9 @@ void CreateWin11MainClock(void)
 	//最初に残骸が残ってたら消す。
 	HWND tempHwnd;
 //	if (Win11Type < 2){
-		while ((tempHwnd = FindWindowEx(hwndTaskBarMain, NULL, TEXT("TClockMain"), NULL)) != NULL) PostMessage(tempHwnd, WM_CLOSE, 0, 0);
+		while ((tempHwnd = FindWindowEx(hwndTaskBarMain, NULL, TEXT("TClockMain"), NULL)) != NULL) {
+			DestroyWindow(tempHwnd);
+		}
 //	}
 
 
@@ -260,7 +264,9 @@ HWND CreateWin11SubClock(HWND tempHwndTaskbar)
 
 	//最初に残骸が残ってたら消す。
 	HWND tempHwnd;
-	if ((tempHwnd = FindWindowEx(tempHwndTaskbar, NULL, TEXT("TClockSub"), NULL)) != NULL) PostMessage(tempHwnd, WM_CLOSE, 0, 0);
+	if ((tempHwnd = FindWindowEx(tempHwndTaskbar, NULL, TEXT("TClockSub"), NULL)) != NULL) {
+		DestroyWindow(tempHwnd);
+	}
 
 	WNDCLASS classTClockWin11Sub;
 	TCHAR szClassName[] = TEXT("TClockSub");
@@ -304,7 +310,9 @@ void CreateWin11Notify(void)
 	//最初に残骸が残ってたら消す。
 	HWND tempHwnd;
 //	if (Win11Type < 2) {
-		while ((tempHwnd = FindWindowEx(hwndTaskBarMain, NULL, TEXT("TClockNotify"), NULL)) != NULL) PostMessage(tempHwnd, WM_CLOSE, 0, 0);
+		while ((tempHwnd = FindWindowEx(hwndTaskBarMain, NULL, TEXT("TClockNotify"), NULL)) != NULL) {
+			DestroyWindow(tempHwnd);
+		}
 //	}
 
 	//Win11用のTClockのウィンドウを自作する。
@@ -351,7 +359,9 @@ void ReCreateWin11Notify(void)
 
 	//最初に残骸が残ってたら消す。
 	HWND tempHwnd;
-	while ((tempHwnd = FindWindowEx(hwndTaskBarMain, NULL, TEXT("TClockNotify"), NULL)) != NULL) PostMessage(tempHwnd, WM_CLOSE, 0, 0);
+	while ((tempHwnd = FindWindowEx(hwndTaskBarMain, NULL, TEXT("TClockNotify"), NULL)) != NULL) {
+		DestroyWindow(tempHwnd);
+	}
 
 	hwndWin11Notify = NULL;
 
@@ -1186,8 +1196,6 @@ LRESULT CALLBACK SubclassTrayProc_Win11(HWND hwnd, UINT message, WPARAM wParam, 
 	//このコード内ではhwndがhwndTrayMainであり、他の多くの場合(hwnd=hwndClockMain)と異なるなので注意すること！
 	//タスクトレイはメインのタスクバーにしか存在しないので、それ以外には使えないコールバック関数になっている。
 
-	UNREFERENCED_PARAMETER(hwnd);
-	UNREFERENCED_PARAMETER(uIdSubclass);
 	UNREFERENCED_PARAMETER(dwRefData);
 
 	TraceWin11TrayMessage(message, wParam, lParam);
@@ -1200,7 +1208,7 @@ LRESULT CALLBACK SubclassTrayProc_Win11(HWND hwnd, UINT message, WPARAM wParam, 
 		case (WM_USER + 100):	//1124
 		{
 			LRESULT ret;
-			ret = DefSubclassProc(hwndTrayMain, message, wParam, lParam);
+			ret = DefSubclassProc(hwnd, message, wParam, lParam);
 			return ret;
 		}
 		case (WM_NCCALCSIZE):	//131
@@ -1246,12 +1254,17 @@ LRESULT CALLBACK SubclassTrayProc_Win11(HWND hwnd, UINT message, WPARAM wParam, 
 			}
 			if (b_DebugLog)writeDebugLog_Win10("[for_win11.c][SubclassTrayProc_Win11] SetMainClockOnTasktray_Win11 called by WM_NOTIFY(78) + PGN_CALCSIZE, origWidthWin11Tray = ", origWidthWin11Tray);
 			TryRelayoutWin11Tasktray("WM_NOTIFY_PGN_CALCSIZE");
-			ret = DefSubclassProc(hwndTrayMain, message, wParam, lParam);
+			ret = DefSubclassProc(hwnd, message, wParam, lParam);
 			return ret;
+		}
+		case WM_NCDESTROY:
+		{
+			RemoveWindowSubclass(hwnd, SubclassTrayProc_Win11, uIdSubclass);
+			return DefSubclassProc(hwnd, message, wParam, lParam);
 		}
 	}
 
-	return DefSubclassProc(hwndTrayMain, message, wParam, lParam);
+	return DefSubclassProc(hwnd, message, wParam, lParam);
 }
 
 
@@ -1293,9 +1306,19 @@ LRESULT CALLBACK WndProcWin11Notify(HWND hwnd, UINT message, WPARAM wParam, LPAR
 		case WM_RBUTTONDOWN:
 		{
 			POINT pos = { 0,0 };
-			MapWindowPoints(hwndWin11Notify, GetDesktopWindow(), &pos, 1);
+			MapWindowPoints(hwnd, GetDesktopWindow(), &pos, 1);
 			PostMessage(hwndTClockExeMain, WM_CONTEXTMENU, wParam, (LPARAM)MAKELONG(pos.x, pos.y));		//正しい場所にメニューを出すために位置情報を画面上の絶対座標に変えて送る必要がある。
 			return 0;
+		}
+		case WM_NCDESTROY:
+		{
+			if ((WNDPROC)GetWindowLongPtr(hwnd, GWLP_WNDPROC) == WndProcWin11Notify) {
+				SubclassWindow(hwnd, DefWindowProc);
+			}
+			if (hwndWin11Notify == hwnd) {
+				hwndWin11Notify = NULL;
+			}
+			return DefWindowProc(hwnd, message, wParam, lParam);
 		}
 	}
 	return DefWindowProc(hwnd, message, wParam, lParam);

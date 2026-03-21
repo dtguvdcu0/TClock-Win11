@@ -129,7 +129,7 @@ LRESULT CALLBACK WndProcSubClk(HWND hwnd, UINT message, WPARAM wParam, LPARAM lP
 					SetSpecificSubClock(i);
 					RedrawTClock();
 				}
-			}		
+			}
 		}
 		if (bWmWinPosChangingRecevied)
 		{
@@ -196,6 +196,25 @@ LRESULT CALLBACK WndProcSubClk(HWND hwnd, UINT message, WPARAM wParam, LPARAM lP
 		bWmPaintRecevied = FALSE;
 		bWmWinPosChangingRecevied = FALSE;
 		break;
+	}
+	case WM_NCDESTROY:
+	{
+		int i = GetSubClkIndexFromHWND(hwnd);
+		WNDPROC oldProc = NULL;
+		if (i != 999) {
+			oldProc = oldWndProcSub[i];
+			if (oldProc && (WNDPROC)GetWindowLongPtr(hwnd, GWLP_WNDPROC) == WndProcSubClk) {
+				SubclassWindow(hwnd, oldProc);
+			}
+			oldWndProcSub[i] = NULL;
+			if (hwndClockSubClk[i] == hwnd) {
+				hwndClockSubClk[i] = NULL;
+			}
+		}
+		if (oldProc) {
+			return CallWindowProc(oldProc, hwnd, message, wParam, lParam);
+		}
+		return DefWindowProc(hwnd, message, wParam, lParam);
 	}
 	}
 	return DefWindowProc(hwnd, message, wParam, lParam);
@@ -694,7 +713,7 @@ void DisableSpecificSubClock(int i) {
 		{
 			//Win11の場合。サブクロックウィンドウを削除する。
 			ClearSpecificSubClock(i);
-			PostMessage(hwndClockSubClk[i], WM_CLOSE, 0, 0);
+			DestroyWindow(hwndClockSubClk[i]);
 		}
 		else
 		{

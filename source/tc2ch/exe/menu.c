@@ -58,7 +58,9 @@ extern BOOL g_ExitRequestedFromMenu;
 #define TC_MENU_LABEL_CACHE_MAX (TC_MENU_CUSTOM_MAX_ITEMS + 1)
 #define TC_MENU_LIVE_MAX TC_MENU_CUSTOM_MAX_ITEMS
 #define TC_MENU_SECTION_CACHE_BYTES 65536
+#define IDC_EXIT_SAFEMODE 45987
 #define IDC_RESTART_SAFEMODE 45988
+#define IDC_RESTART_SAFESESSION 45994
 #define IDC_INI_RECOVERY 45993
 #define IDC_TCAP_SETTINGS 45990
 #define IDC_TCAP_CAPTURE 45989
@@ -188,8 +190,8 @@ static void tc_menu_show_safe(HWND hwnd, int xPos, int yPos)
 	if (!g_hMenu) return;
 	hPopupMenu = g_hMenu;
 	tc_menu_insert_string_utf8(hPopupMenu, 0, MF_BYPOSITION | MF_STRING, IDC_INI_RECOVERY, "INI Recovery...");
-	tc_menu_insert_string_utf8(hPopupMenu, 1, MF_BYPOSITION | MF_STRING, IDC_RESTART, MyStringUTF8(IDS_RESTART));
-	tc_menu_insert_string_utf8(hPopupMenu, 2, MF_BYPOSITION | MF_STRING, IDC_EXIT, MyStringUTF8(IDS_EXITTCLOCK));
+	tc_menu_insert_string_utf8(hPopupMenu, 1, MF_BYPOSITION | MF_STRING, IDC_RESTART_SAFESESSION, MyStringUTF8(IDS_RESTART));
+	tc_menu_insert_string_utf8(hPopupMenu, 2, MF_BYPOSITION | MF_STRING, IDC_EXIT_SAFEMODE, MyStringUTF8(IDS_EXITTCLOCK));
 	SetMenuDefaultItem(hPopupMenu, IDC_INI_RECOVERY, FALSE);
 	SetForegroundWindow98(hwnd);
 	g_menuPopupActive = TRUE;
@@ -2404,17 +2406,32 @@ void OnTClockCommand(HWND hwnd, WORD wID, WORD wCode)
 			g_ExitRequestedFromMenu = FALSE;
 			PostMessage(g_hwndClock, WM_COMMAND, IDC_RESTART, 0);
 			return;
+		case IDC_RESTART_SAFEMODE:
+			if (b_DebugLog) WriteDebug_New2("[menu.c][OnTClockCommand] IDC_RESTART_SAFEMODE received");
+			if (b_NormalLog) WriteNormalLog("Restart TClock-Win10 into SafeMode from right-click menu.");
+			SetMyRegLong("Status_DoNotEdit", "SafeMode", 1);
+			SetMyRegLong("Status_DoNotEdit", "SafeModePendingOnce", 0);
+			/* Avoid Explorer restart side-effects on explicit user restart. */
+			b_SkipHideClockRestore = TRUE;
+			g_ExitRequestedFromMenu = FALSE;
+			PostMessage(g_hwndClock, WM_COMMAND, IDC_RESTART, 0);
+			return;
+		case IDC_EXIT_SAFEMODE:
+			if (b_DebugLog) WriteDebug_New2("[menu.c][OnTClockCommand] IDC_EXIT_SAFEMODE received");
+			if (b_NormalLog) WriteNormalLog("Exit TClock-Win10 from SafeMode right-click menu.");
+			SetMyRegLong("Status_DoNotEdit", "SafeMode", 0);
+			b_SkipHideClockRestore = TRUE;
+			g_ExitRequestedFromMenu = TRUE;
+			PostMessage(g_hwndMain, WM_CLOSE, 0, 0);
+			return;
 		case IDC_INI_RECOVERY:
 			if (b_DebugLog) WriteDebug_New2("[menu.c][OnTClockCommand] IDC_INI_RECOVERY received");
 			inir_show(hwnd);
 			return;
-		case IDC_RESTART_SAFEMODE:
-			if (b_DebugLog) WriteDebug_New2("[menu.c][OnTClockCommand] IDC_RESTART_SAFEMODE received");
-			if (b_NormalLog) WriteNormalLog("Restart TClock-Win10 in SafeMode from right-click menu.");
-			SetMyRegLong("Status_DoNotEdit", "SafeModePendingOnce", 1);
+		case IDC_RESTART_SAFESESSION:
+			if (b_DebugLog) WriteDebug_New2("[menu.c][OnTClockCommand] IDC_RESTART_SAFESESSION received");
+			if (b_NormalLog) WriteNormalLog("Restart TClock-Win10 from SafeMode right-click menu.");
 			SetMyRegLong("Status_DoNotEdit", "SafeMode", 0);
-			SetMyRegLong("Status_DoNotEdit", "LastExitUser", 0);
-			SetMyRegLong("Status_DoNotEdit", "CountAutoRestart", 0);
 			/* Avoid Explorer restart side-effects on explicit user restart. */
 			b_SkipHideClockRestore = TRUE;
 			g_ExitRequestedFromMenu = FALSE;

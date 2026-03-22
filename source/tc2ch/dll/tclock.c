@@ -2992,7 +2992,9 @@ static void ReadDataMinimal(void)
 
 	b_CompactMode = GetMyRegLong(NULL, "CompactMode", FALSE);
 	SetMyRegLong(NULL, "CompactMode", b_CompactMode);
-	b_SafeMode = GetMyRegLong("Status_DoNotEdit", "SafeMode", FALSE);
+	if (!b_SafeMode) {
+		b_SafeMode = GetMyRegLong("Status_DoNotEdit", "SafeMode", FALSE);
+	}
 	if (b_SafeMode) {
 		/* SafeMode recovery must not create subclocks on secondary taskbars. */
 		b_CompactMode = TRUE;
@@ -3532,7 +3534,9 @@ void ReadData()
 
 
 	//SafeMode operation Added by TTTT
-	b_SafeMode = GetMyRegLong("Status_DoNotEdit", "SafeMode", FALSE);
+	if (!b_SafeMode) {
+		b_SafeMode = GetMyRegLong("Status_DoNotEdit", "SafeMode", FALSE);
+	}
 	if (b_DebugLog) writeDebugLog_Win10("[tclock.c][ReadData] b_SafeMode was retrieved from tclock-win11.ini as ", b_SafeMode);
 
 	if (b_SafeMode)
@@ -7591,25 +7595,24 @@ BOOL IsVertTaskbar(HWND temphwndTaskBarMain)
 void ResolveRecoveryStartupState(void)
 {
 	BOOL pendingOnce;
+	BOOL safeModePersisted;
+	BOOL lastExitUser;
 
-	if (GetMyRegLong("Status_DoNotEdit", "LastExitUser", 0)) {
+	lastExitUser = GetMyRegLong("Status_DoNotEdit", "LastExitUser", 0) ? TRUE : FALSE;
+	pendingOnce = GetMyRegLong("Status_DoNotEdit", "SafeModePendingOnce", FALSE) ? TRUE : FALSE;
+	safeModePersisted = GetMyRegLong("Status_DoNotEdit", "SafeMode", FALSE) ? TRUE : FALSE;
+
+	if (lastExitUser) {
 		SetMyRegLong("Status_DoNotEdit", "LastExitUser", 0);
-		b_SafeMode = FALSE;
 		SetMyRegLong("Status_DoNotEdit", "CountAutoRestart", 0);
 		SetMyRegLong("Status_DoNotEdit", "LastLaunchTimeStamp", 0);
 		SetMyRegLong("Status_DoNotEdit", "SafeModePendingOnce", 0);
-		SetMyRegLong("Status_DoNotEdit", "SafeMode", b_SafeMode);
 		SetMyRegLong("Status_DoNotEdit", "ExcessNetProfiles", FALSE);
+		pendingOnce = FALSE;
 		if (b_DebugLog) writeDebugLog_Win10("[tclock.c] Recovery startup skipped due to user exit", 999);
-		return;
 	}
 
-	pendingOnce = GetMyRegLong("Status_DoNotEdit", "SafeModePendingOnce", FALSE) ? TRUE : FALSE;
-	if (!pendingOnce) {
-		pendingOnce = GetMyRegLong("Status_DoNotEdit", "SafeMode", FALSE) ? TRUE : FALSE;
-	}
-
-	b_SafeMode = pendingOnce;
+	b_SafeMode = pendingOnce || safeModePersisted;
 	SetMyRegLong("Status_DoNotEdit", "SafeModePendingOnce", FALSE);
 	if (b_SafeMode) {
 		SetMyRegLong("Status_DoNotEdit", "CountAutoRestart", 0);
@@ -7618,8 +7621,6 @@ void ResolveRecoveryStartupState(void)
 
 	b_ExcessNetProfiles = FALSE;
 	SetMyRegLong("Status_DoNotEdit", "ExcessNetProfiles", FALSE);
-	SetMyRegLong("Status_DoNotEdit", "SafeMode", b_SafeMode);
-	
 	b_DebugLog = GetMyRegLong(NULL, "DebugLog", FALSE);
 
 	if (b_DebugLog) writeDebugLog_Win10("[tclock.c] Recovery startup active = ", b_SafeMode);
@@ -7758,16 +7759,19 @@ static void NormalizeUtf8InPlaceNoWriteback(char* value, int valueBytes)
 
 void RestartTClockFromDLL(void)
 {
+	HWND hwndExeMain;
+
 	if (b_DebugLog) writeDebugLog_Win10("TClock will be restarted ...", 999);
 
 	SetMyRegLong("Status_DoNotEdit", "LastLaunchTimeStamp", 0);
 	/* Prevent WM_DESTROY auto-restart from launching a second child process. */
 	bAutoRestart = FALSE;
-	/* Hand restart ownership to the EXE after DLL teardown to avoid old/new overlap. */
-	if (IsWindow(hwndTClockExeMain)) {
-		PostMessage(hwndTClockExeMain, WM_USER + 2, 1, 0);
-	}
+	hwndExeMain = hwndTClockExeMain;
 	EndClock();
+	/* Hand restart ownership to the EXE only after DLL teardown completes. */
+	if (IsWindow(hwndExeMain)) {
+		PostMessage(hwndExeMain, WM_USER + 2, 1, 0);
+	}
 }
 
 BOOL IsHoliday_Win10(SYSTEMTIME* pt)

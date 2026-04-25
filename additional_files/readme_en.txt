@@ -1,5 +1,5 @@
 ***********************************************
-***  tclock-win11 Ver 0.2.5.2 (2026/03/21)  ***
+***  tclock-win11 Ver 0.2.5.4 (2026/04/25)  ***
 ***       by ID:DTgUvdcU0                   ***
 ***********************************************
 
@@ -283,6 +283,10 @@ LPROC: Number of logical processors (threads)
 ***************
 Version history
 ***************
+
+2026/04/25 Main changes (v0.2.5.4)
+Added holiday support for TCalendar
+Other minor fixes
 
 2026/03/21 Main changes (v0.2.5.2)
 Fixes for the INI Recovery feature

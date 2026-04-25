@@ -1495,6 +1495,10 @@ TCalendarHost::~TCalendarHost() {
     Shutdown();
 }
 
+void TCalendarHost::SetHostWindow(HWND hwnd) {
+    host_window_ = hwnd;
+}
+
 bool TCalendarHost::Initialize() {
     if (initialized_) return true;
 
@@ -1626,6 +1630,16 @@ bool TCalendarHost::HandleWebMessage(const std::wstring& request_json, std::wstr
     }
 
     if (req.method == L"system.appReady") {
+        response_json = BuildResponse(true, L"OK", L"", req.request_id, L"{\"accepted\":true}");
+        return true;
+    }
+
+    if (req.method == L"system.closeWindow") {
+        if (!host_window_) {
+            response_json = BuildResponse(false, L"HOST_WINDOW_UNAVAILABLE", L"Host window is unavailable", req.request_id, L"null");
+            return true;
+        }
+        PostMessageW(host_window_, WM_CLOSE, 0, 0);
         response_json = BuildResponse(true, L"OK", L"", req.request_id, L"{\"accepted\":true}");
         return true;
     }

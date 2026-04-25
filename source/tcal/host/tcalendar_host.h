@@ -1,4 +1,6 @@
 #pragma once
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
 #include <string>
 #include "task_store.h"
 namespace tcalendar {
@@ -45,6 +47,7 @@ public:
     void Shutdown();
     // Phase 1: wire this to WebView2 message bridge.
     bool HandleWebMessage(const std::wstring& request_json, std::wstring& response_json);
+    void SetHostWindow(HWND hwnd);
     bool IsWebView2BootstrapReady() const;
     const std::wstring& GetLastInitializeError() const;
 private:
@@ -53,6 +56,7 @@ private:
     TaskStore store_;
     void* webview2_loader_module_ = nullptr;
     bool webview2_bootstrap_ready_ = false;
+    HWND host_window_ = nullptr;
     std::wstring last_initialize_error_;
     bool InitializeWebView2Bootstrap();
     void ShutdownWebView2Bootstrap();

@@ -547,10 +547,10 @@ STYLE DS_SETFONT | DS_CONTROL | WS_CHILD
 FONT 9, "MS UI Gothic", 0, 0, 0x1
 BEGIN
     LTEXT           "その他の設定について",IDC_STATIC,10,8,158,8
-    LTEXT           "現時点で一部の機能については設定ダイアログがありません。設定ファイル(tclock-win11.ini)を直接編集してください。主要設定項目は以下です。",IDC_STATIC,10,27,181,37
-    PUSHBUTTON      "設定ファイル (tclock-win11.ini) 編集",IDC_EDITINI,6,181,136,15
-    LTEXT           "[ETC]\nLTE / ミュート 状態表示文字列等を設定・変更できます。",IDC_STATIC,10,61,181,100
-    LTEXT           "詳細な設定方法は、readme_jp.txtファイルを参照してください。",IDC_STATIC,10,163,181,12
+    LTEXT           "現時点で一部の機能については設定ダイアログがありません。設定ファイル(tclock-win11.ini)を直接編集してください。主要設定項目は以下です。",IDC_STATIC,10,24,181,35
+    PUSHBUTTON      "設定ファイル (tclock-win11.ini) 編集",IDC_EDITINI,6,179,136,15
+    LTEXT           "[ETC]\nLTE / ミュート 状態表示文字列等を設定・変更できます。",IDC_STATIC,10,59,181,98
+    LTEXT           "詳細な設定方法は、readme_jp.txtファイルを参照してください。",IDC_STATIC,10,159,181,12
 END
 
 IDD_PAGEABOUT_ENG DIALOGEX 0, 0, 210, 230
@@ -558,10 +558,10 @@ STYLE DS_SETFONT | DS_CONTROL | WS_CHILD
 FONT 9, "MS UI Gothic", 0, 0, 0x1
 BEGIN
     LTEXT           "For additional settings...",IDC_STATIC,10,8,158,8
-    LTEXT           "The setting dialogs do not cover all the functionality of the sotware. Please edit setting file (tclock-win11.ini) for additional settings. Following settings can be edited.",IDC_STATIC,10,27,181,37
-    PUSHBUTTON      "Edit tclock-win11.ini",IDC_EDITINI,6,178,136,15
-    LTEXT           "[ETC] Strings for LTE / Mute  indicators, etc.",IDC_STATIC,10,61,181,100
-    LTEXT           "Refer readme_en.txt for further information.",IDC_STATIC,10,163,181,12
+    LTEXT           "The setting dialogs do not cover all the functionality of the sotware. Please edit setting file (tclock-win11.ini) for additional settings. Following settings can be edited.",IDC_STATIC,10,24,181,35
+    PUSHBUTTON      "Edit tclock-win11.ini",IDC_EDITINI,6,179,136,15
+    LTEXT           "[ETC] Strings for LTE / Mute  indicators, etc.",IDC_STATIC,10,59,181,98
+    LTEXT           "Refer readme_en.txt for further information.",IDC_STATIC,10,159,181,12
 END
 
 IDD_PROPERTY DIALOGEX 0, 0, 338, 265

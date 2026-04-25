@@ -20,6 +20,7 @@
   const timelineHourStartWrap = document.getElementById("timelineHourStartWrap");
   const timelineHourStartInput = document.getElementById("timelineHourStartInput");
   const settingsButton = document.getElementById("settingsButton");
+  const closeButton = document.getElementById("closeButton");
 
   let cursor = new Date();
   let selectedDate = new Date();
@@ -903,7 +904,7 @@
   }
 
   function refreshBusyUiState() {
-    const controls = [taskTitle, viewModeSelect, rangePresetSelect, customRangeDaysInput, timelineLayoutSelect, timelineHourStartInput, settingsButton];
+    const controls = [taskTitle, viewModeSelect, rangePresetSelect, customRangeDaysInput, timelineLayoutSelect, timelineHourStartInput, settingsButton, closeButton];
     controls.forEach((el) => { if (el) el.disabled = mutationInFlight; });
 
     const submitButton = taskForm.querySelector('button[type="submit"]');
@@ -2208,6 +2209,14 @@
     const next = await openSettingsDialog();
     if (!next) return;
     void saveViewConfigToIni();
+  });
+
+  closeButton.addEventListener("click", () => {
+    if (hasHostBridge) {
+      void hostCall("system.closeWindow", {}).catch(() => {});
+      return;
+    }
+    window.close();
   });
 
   applyUiStyleConfig();

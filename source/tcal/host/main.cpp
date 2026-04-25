@@ -47,6 +47,9 @@ struct WindowContext {
     HRESULT init_hr = E_PENDING;
 };
 
+int get_frame_px(HWND hwnd);
+int get_drag_px(HWND hwnd);
+
 void LogStartupMark(WindowContext* context, const wchar_t* label) {
     if (!context || !context->startup_tick || !label) {
         return;
@@ -550,6 +553,8 @@ void EnsureTCalendarIni(const std::filesystem::path& exe_dir) {
     WritePrivateProfileStringW(L"TCalendar", L"StorageDbPath", L"tcalendar\\data\\tasks.db", ini_path.wstring().c_str());
     WritePrivateProfileStringW(L"TCalendar", L"WindowWidth", L"960", ini_path.wstring().c_str());
     WritePrivateProfileStringW(L"TCalendar", L"WindowHeight", L"640", ini_path.wstring().c_str());
+    WritePrivateProfileStringW(L"TCalendar", L"WindowLeft", L"", ini_path.wstring().c_str());
+    WritePrivateProfileStringW(L"TCalendar", L"WindowTop", L"", ini_path.wstring().c_str());
     WritePrivateProfileStringW(L"TCalendar", L"BlockExternalNavigation", L"1", ini_path.wstring().c_str());
     WritePrivateProfileStringW(L"TCalendar", L"EnableWebView2Bootstrap", L"1", ini_path.wstring().c_str());
     WritePrivateProfileStringW(L"TCalendar", L"DefaultViewMode", L"list", ini_path.wstring().c_str());
@@ -600,6 +605,8 @@ void LoadHostConfigFromIni(const std::filesystem::path& exe_dir, bool smoke_mode
     ensure_ini_key(L"Skin", L"default");
     ensure_ini_key(L"WindowWidth", L"960");
     ensure_ini_key(L"WindowHeight", L"640");
+    ensure_ini_key(L"WindowLeft", L"");
+    ensure_ini_key(L"WindowTop", L"");
     ensure_ini_key(L"DefaultViewMode", L"list");
     ensure_ini_key(L"DefaultRangePresetDays", L"1");
     ensure_ini_key(L"DefaultCustomRangeDays", L"7");
@@ -757,7 +764,7 @@ void LoadHostConfigFromIni(const std::filesystem::path& exe_dir, bool smoke_mode
     }
 }
 
-void LoadWindowSizeFromIni(const std::wstring& ini_file, int& width, int& height) {
+void LoadWindowPlacementFromIni(const std::wstring& ini_file, int& x, int& y, int& width, int& height, bool& has_position) {
     int w = GetPrivateProfileIntW(L"TCalendar", L"WindowWidth", width, ini_file.c_str());
     int h = GetPrivateProfileIntW(L"TCalendar", L"WindowHeight", height, ini_file.c_str());
     if (w >= 320 && w <= 3840) {
@@ -766,9 +773,35 @@ void LoadWindowSizeFromIni(const std::wstring& ini_file, int& width, int& height
     if (h >= 240 && h <= 2160) {
         height = h;
     }
+
+    wchar_t xbuf[32] = {0};
+    wchar_t ybuf[32] = {0};
+    GetPrivateProfileStringW(L"TCalendar", L"WindowLeft", L"", xbuf, _countof(xbuf), ini_file.c_str());
+    GetPrivateProfileStringW(L"TCalendar", L"WindowTop", L"", ybuf, _countof(ybuf), ini_file.c_str());
+
+    if (xbuf[0] == L'\0' || ybuf[0] == L'\0') {
+        has_position = false;
+        return;
+    }
+
+    const int parsed_x = _wtoi(xbuf);
+    const int parsed_y = _wtoi(ybuf);
+    const int virtual_left = GetSystemMetrics(SM_XVIRTUALSCREEN);
+    const int virtual_top = GetSystemMetrics(SM_YVIRTUALSCREEN);
+    const int virtual_right = virtual_left + GetSystemMetrics(SM_CXVIRTUALSCREEN);
+    const int virtual_bottom = virtual_top + GetSystemMetrics(SM_CYVIRTUALSCREEN);
+    if (parsed_x > virtual_right - 80 || parsed_y > virtual_bottom - 40 ||
+        parsed_x + width < virtual_left + 80 || parsed_y + height < virtual_top + 40) {
+        has_position = false;
+        return;
+    }
+
+    x = parsed_x;
+    y = parsed_y;
+    has_position = true;
 }
 
-void SaveWindowSizeToIni(HWND hwnd, const std::wstring& ini_file) {
+void SaveWindowPlacementToIni(HWND hwnd, const std::wstring& ini_file) {
     if (!hwnd || ini_file.empty() || IsZoomed(hwnd) || IsIconic(hwnd)) {
         return;
     }
@@ -786,11 +819,17 @@ void SaveWindowSizeToIni(HWND hwnd, const std::wstring& ini_file) {
 
     wchar_t wbuf[16] = {0};
     wchar_t hbuf[16] = {0};
+    wchar_t xbuf[16] = {0};
+    wchar_t ybuf[16] = {0};
     _snwprintf_s(wbuf, _countof(wbuf), _TRUNCATE, L"%d", width);
     _snwprintf_s(hbuf, _countof(hbuf), _TRUNCATE, L"%d", height);
+    _snwprintf_s(xbuf, _countof(xbuf), _TRUNCATE, L"%d", r.left);
+    _snwprintf_s(ybuf, _countof(ybuf), _TRUNCATE, L"%d", r.top);
 
     WritePrivateProfileStringW(L"TCalendar", L"WindowWidth", wbuf, ini_file.c_str());
     WritePrivateProfileStringW(L"TCalendar", L"WindowHeight", hbuf, ini_file.c_str());
+    WritePrivateProfileStringW(L"TCalendar", L"WindowLeft", xbuf, ini_file.c_str());
+    WritePrivateProfileStringW(L"TCalendar", L"WindowTop", ybuf, ini_file.c_str());
 }
 
 void ResizeWebViewToClient(WindowContext* context, HWND hwnd) {
@@ -798,7 +837,12 @@ void ResizeWebViewToClient(WindowContext* context, HWND hwnd) {
 
     RECT bounds{};
     GetClientRect(hwnd, &bounds);
+    const int drag_height = get_drag_px(hwnd);
+    if (bounds.bottom > drag_height) {
+        bounds.top = drag_height;
+    }
     context->controller->put_Bounds(bounds);
+    InvalidateRect(hwnd, nullptr, FALSE);
 }
 
 bool StartWebView2ForWindow(WindowContext* context, HWND hwnd) {
@@ -895,6 +939,17 @@ void ActivateExistingTCalendarWindow() {
     SetForegroundWindow(hwnd);
 }
 
+int get_frame_px(HWND hwnd) {
+    const UINT dpi = GetDpiForWindow(hwnd);
+    return GetSystemMetricsForDpi(SM_CXSIZEFRAME, dpi) + GetSystemMetricsForDpi(SM_CXPADDEDBORDER, dpi);
+}
+
+int get_drag_px(HWND hwnd) {
+    const UINT dpi = GetDpiForWindow(hwnd);
+    const int caption = GetSystemMetricsForDpi(SM_CYCAPTION, dpi);
+    return max(8, caption / 3);
+}
+
 LRESULT CALLBACK TCalendarWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
     if (msg == WM_NCCREATE) {
         auto* cs = reinterpret_cast<CREATESTRUCTW*>(lparam);
@@ -905,6 +960,29 @@ LRESULT CALLBACK TCalendarWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpa
     auto* context = reinterpret_cast<WindowContext*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
 
     switch (msg) {
+        case WM_NCHITTEST: {
+            const LRESULT hit = DefWindowProcW(hwnd, msg, wparam, lparam);
+            if (hit != HTCLIENT) {
+                return hit;
+            }
+
+            POINT cursor{
+                static_cast<LONG>(static_cast<short>(LOWORD(lparam))),
+                static_cast<LONG>(static_cast<short>(HIWORD(lparam)))
+            };
+            ScreenToClient(hwnd, &cursor);
+
+            RECT client{};
+            GetClientRect(hwnd, &client);
+            const int frame = get_frame_px(hwnd);
+
+            // Keep a minimal drag affordance after removing the native caption.
+            if (cursor.y >= 0 && cursor.y < get_drag_px(hwnd) && cursor.x >= frame && cursor.x < client.right - frame) {
+                return HTCAPTION;
+            }
+            return HTCLIENT;
+        }
+
         case WM_ERASEBKGND:
             return 1;
 
@@ -921,7 +999,7 @@ LRESULT CALLBACK TCalendarWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpa
 
         case WM_EXITSIZEMOVE:
             if (context) {
-                SaveWindowSizeToIni(hwnd, context->ini_file_path);
+                SaveWindowPlacementToIni(hwnd, context->ini_file_path);
             }
             return 0;
 
@@ -933,7 +1011,7 @@ LRESULT CALLBACK TCalendarWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpa
 
         case WM_DESTROY:
             if (context) {
-                SaveWindowSizeToIni(hwnd, context->ini_file_path);
+                SaveWindowPlacementToIni(hwnd, context->ini_file_path);
             }
             PostQuitMessage(0);
             return 0;
@@ -1079,17 +1157,20 @@ int RunStandaloneWindowMode(tcalendar::TCalendarHost& host, const tcalendar::Hos
     context.webview_user_data_dir = (std::filesystem::absolute(config.storage_db_path).parent_path() / L"webview2").wstring();
     context.ini_file_path = (exe_dir / kTCalendarIniFileName).wstring();
 
+    int window_x = CW_USEDEFAULT;
+    int window_y = CW_USEDEFAULT;
     int window_width = 960;
     int window_height = 640;
-    LoadWindowSizeFromIni(context.ini_file_path, window_width, window_height);
+    bool has_window_position = false;
+    LoadWindowPlacementFromIni(context.ini_file_path, window_x, window_y, window_width, window_height, has_window_position);
 
     HWND hwnd = CreateWindowExW(
         0,
         kTCalendarWindowClassName,
         L"TCalendar",
-        WS_OVERLAPPEDWINDOW & ~WS_MAXIMIZEBOX,
-        CW_USEDEFAULT,
-        CW_USEDEFAULT,
+        WS_POPUP | WS_THICKFRAME | WS_SYSMENU | WS_MINIMIZEBOX,
+        has_window_position ? window_x : CW_USEDEFAULT,
+        has_window_position ? window_y : CW_USEDEFAULT,
         window_width,
         window_height,
         nullptr,
@@ -1101,6 +1182,8 @@ int RunStandaloneWindowMode(tcalendar::TCalendarHost& host, const tcalendar::Hos
         UnregisterClassW(kTCalendarWindowClassName, instance);
         return 3;
     }
+
+    host.SetHostWindow(hwnd);
 
     ShowWindow(hwnd, SW_SHOWDEFAULT);
     UpdateWindow(hwnd);

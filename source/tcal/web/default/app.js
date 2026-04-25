@@ -1683,7 +1683,9 @@
       alertSettings.appendChild(createRow("Sound", alertSoundEnabledWrap, ""));
       alertSettings.appendChild(createRow("Sound file", alertSoundPathInput, "Default: C:\\Windows\\Media\\notify.wav"));
       const holidaySettings = createSection("Holiday");
-      holidaySettings.appendChild(createRow("Providers", holidaySubscriptionListBox, ""));
+      const holidayRow = createRow("Providers", holidaySubscriptionListBox, "");
+      holidayRow.classList.add("settingsRowWide", "settingsHolidayRow");
+      holidaySettings.appendChild(holidayRow);
       const holidaySectionTitle = holidaySettings.querySelector("h4");
 
 
@@ -1748,11 +1750,7 @@
         resolve(value);
       };
 
-      const renderHolidaySubscriptionStatus = (items) => {
-        const statusMap = new Map();
-        items.forEach((item) => {
-          statusMap.set(normalizeHolidaySubscriptionPath(item.path), item);
-        });
+      const renderHolidaySubscriptionStatus = () => {
         if (holidaySectionTitle) {
           const activeCount = holidaySubscriptionEntries.filter((entry) => entry.enabled).length;
           holidaySectionTitle.textContent = activeCount ? `Holiday (${activeCount})` : "Holiday";
@@ -1766,52 +1764,36 @@
           return;
         }
         holidaySubscriptionEntries.forEach((entry, index) => {
-          const item = statusMap.get(normalizeHolidaySubscriptionPath(entry.path)) || null;
           const row = document.createElement("div");
           row.className = "settingsSubscriptionItem";
-          const label = document.createElement("label");
-          label.className = "settingsSubscriptionToggle";
           const toggle = document.createElement("input");
           toggle.type = "checkbox";
           toggle.checked = !!entry.enabled;
+          toggle.className = "settingsSubscriptionCheckbox";
+          const label = document.createElement("label");
+          label.className = "settingsSubscriptionLabel";
           const pathText = document.createElement("span");
           pathText.className = "settingsSubscriptionPathText";
           pathText.textContent = entry.name || entry.path;
-          label.appendChild(toggle);
           label.appendChild(pathText);
           const status = document.createElement("span");
           status.className = "settingsSubscriptionBadge";
           if (!entry.enabled) {
             status.textContent = "Off";
           } else {
-            status.textContent = item ? (item.loaded ? "On" : (item.exists ? "Error" : "Missing")) : "Loading";
+            status.textContent = entry.ready ? "On" : "Missing";
           }
 
           toggle.addEventListener("change", () => {
             holidaySubscriptionEntries[index].enabled = !!toggle.checked;
             applyDraft(collectDraft());
-            refreshHolidaySubscriptionStatus();
+            renderHolidaySubscriptionStatus();
           });
 
+          row.appendChild(toggle);
           row.appendChild(label);
           row.appendChild(status);
           holidaySubscriptionListBox.appendChild(row);
-        });
-      };
-
-      let holidayStatusLoadSeq = 0;
-      const refreshHolidaySubscriptionStatus = () => {
-        const seq = ++holidayStatusLoadSeq;
-        holidaySubscriptionListBox.innerHTML = "";
-        const loading = document.createElement("div");
-        loading.className = "settingsSubscriptionEmpty";
-        loading.textContent = "Loading...";
-        holidaySubscriptionListBox.appendChild(loading);
-        fetchHolidaySubscriptionStatus(encodeHolidaySubscriptionFiles(holidaySubscriptionEntries)).then((items) => {
-          if (seq !== holidayStatusLoadSeq || !document.body.contains(overlay)) {
-            return;
-          }
-          renderHolidaySubscriptionStatus(items);
         });
       };
 
@@ -1837,11 +1819,12 @@
           return {
             path,
             name: String(item?.name || path),
-            enabled: activeSet.has(path)
+            enabled: activeSet.has(path),
+            ready: !!item?.ready
           };
         });
         applyDraft(collectDraft());
-        refreshHolidaySubscriptionStatus();
+        renderHolidaySubscriptionStatus();
       });
 
       cancelButton.addEventListener("click", () => {

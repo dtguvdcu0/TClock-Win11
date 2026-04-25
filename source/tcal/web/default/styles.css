@@ -631,9 +631,9 @@ taskList,
 }
 
 .settingsSubscriptionItem {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
   gap: 10px;
   padding: 10px 12px;
   border: 1px solid rgba(128, 139, 153, 0.24);
@@ -641,20 +641,20 @@ taskList,
   background: rgba(248, 250, 252, 0.92);
 }
 
-.settingsSubscriptionToggle {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+.settingsSubscriptionCheckbox {
+  margin: 0;
+  justify-self: start;
+}
+
+.settingsSubscriptionLabel {
+  display: block;
   min-width: 0;
   font-size: 13px;
   color: #23303c;
 }
 
-.settingsSubscriptionToggle input[type="checkbox"] {
-  margin: 0;
-}
-
 .settingsSubscriptionPathText {
+  display: block;
   min-width: 0;
   overflow-wrap: anywhere;
 }
@@ -850,6 +850,20 @@ taskList,
 
 .settingsRowSingle {
   grid-template-columns: 1fr;
+}
+
+.settingsRowWide {
+  grid-template-columns: 1fr;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.settingsRowWide .settingsValue {
+  width: 100%;
+}
+
+.settingsHolidayRow .settingsSubscriptionList {
+  margin-top: 0;
 }
 
 .settingsRowSingle .settingsCheckboxWrap {

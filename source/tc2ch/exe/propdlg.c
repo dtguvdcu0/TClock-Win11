@@ -185,6 +185,29 @@ static VOID CreatePageDialogW(HWND hParent, HWND hDlg[], BOOL bDlgFlg[], int ind
 	bDlgFlg[index] = TRUE;
 }
 
+static VOID AdjustPropertyTreeHeight(HWND hTree)
+{
+	LRESULT itemHeight;
+	int targetHeight;
+
+	if (!hTree) {
+		return;
+	}
+
+	itemHeight = SendMessageW(hTree, TVM_GETITEMHEIGHT, 0, 0);
+	if (itemHeight <= 0) {
+		return;
+	}
+
+	targetHeight = (int)itemHeight - 2;
+	if (targetHeight < 16) {
+		targetHeight = 16;
+	}
+	if (targetHeight != (int)itemHeight) {
+		SendMessageW(hTree, TVM_SETITEMHEIGHT, (WPARAM)targetHeight, 0);
+	}
+}
+
 /*-------------------------------------------
   Property dialog
 ---------------------------------------------*/
@@ -206,6 +229,7 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 			InitCommonControls();
 
 			hTree = GetDlgItem(hDwnd, IDC_TREE);
+			AdjustPropertyTreeHeight(hTree);
 			memset(&tv, 0, sizeof(_TV_INSERTSTRUCT));
 
 			//設定ダイアログ左メニューの順序は、数字ではなく、以下の行の順番で決まっている。

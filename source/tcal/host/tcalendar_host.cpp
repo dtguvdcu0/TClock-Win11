@@ -62,6 +62,7 @@ struct HolidayManifestRule {
     std::wstring section;
     std::wstring name;
     std::wstring kind;
+    std::wstring scope;
     int start_year = 0;
     int end_year = 0;
     std::wstring date_spec;
@@ -512,6 +513,7 @@ std::wstring BuildHolidayManifestJson(const HolidayProviderManifest& manifest) {
         data += std::wstring(L"{\"section\":\"") + EscapeJsonString(rule.section) +
             L"\",\"name\":\"" + EscapeJsonString(rule.name) +
             L"\",\"kind\":\"" + EscapeJsonString(rule.kind) +
+            L"\",\"scope\":\"" + EscapeJsonString(rule.scope) +
             L"\",\"startYear\":" + std::to_wstring(rule.start_year) +
             L",\"endYear\":" + std::to_wstring(rule.end_year) +
             L",\"dateSpec\":\"" + EscapeJsonString(rule.date_spec) +
@@ -870,6 +872,7 @@ bool ParseHolidayManifestIni(const std::wstring& text, HolidayProviderManifest& 
             };
             rule.name = get_value(L"name");
             rule.kind = get_value(L"kind");
+            rule.scope = ToLowerInvariant(get_value(L"scope"));
             if (rule.name.empty() || rule.kind.empty()) {
                 out_error = L"Manifest rule missing name or kind";
                 return false;

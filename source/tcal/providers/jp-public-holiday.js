@@ -90,6 +90,14 @@ function parseMonthDaySpec(spec) {
   };
 }
 
+function getRuleScope(rule) {
+  return rule && rule.scope ? String(rule.scope) : "public";
+}
+
+function isObservedForPostRule(rule) {
+  return getRuleScope(rule) !== "closure";
+}
+
 function buildBaseHolidayMap(year, manifest) {
   var rules = manifest && manifest.rules ? manifest.rules : [];
   var seenNames = {};
@@ -124,7 +132,10 @@ function buildBaseHolidayMap(year, manifest) {
       dateKey = makeDateKey(year, 9, getAutumnEquinoxDay(year));
     }
     if (dateKey) {
-      byDate[dateKey] = rule.name;
+      byDate[dateKey] = {
+        name: rule.name,
+        observedForPostRule: isObservedForPostRule(rule)
+      };
       seenNames[rule.name] = true;
     }
   }
@@ -155,7 +166,10 @@ function isCitizenHoliday(baseHolidays, manifest, dateKey) {
   }
   var prevKey = addDaysToDateKey(dateKey, -1);
   var nextKey = addDaysToDateKey(dateKey, 1);
-  return hasOwn(baseHolidays, prevKey) && hasOwn(baseHolidays, nextKey);
+  return hasOwn(baseHolidays, prevKey) &&
+    hasOwn(baseHolidays, nextKey) &&
+    baseHolidays[prevKey].observedForPostRule &&
+    baseHolidays[nextKey].observedForPostRule;
 }
 
 function isHolidayWithoutSubstitute(baseHolidays, manifest, dateKey) {
@@ -173,9 +187,12 @@ function getSubstituteHolidayName(baseHolidays, manifest, dateKey) {
   }
   var scanKey = addDaysToDateKey(dateKey, -1);
   while (isHolidayWithoutSubstitute(baseHolidays, manifest, scanKey)) {
-    var holidayName = hasOwn(baseHolidays, scanKey) ? baseHolidays[scanKey] : "";
-    if (holidayName && isSundayDateKey(scanKey)) {
-      return holidayName + "振替";
+    var holiday = hasOwn(baseHolidays, scanKey) ? baseHolidays[scanKey] : null;
+    if (holiday && holiday.observedForPostRule && holiday.name && isSundayDateKey(scanKey)) {
+      return holiday.name + "\u632f\u66ff";
+    }
+    if (holiday && !holiday.observedForPostRule) {
+      return "";
     }
     scanKey = addDaysToDateKey(scanKey, -1);
   }
@@ -197,7 +214,7 @@ function getHolidays(year, manifest) {
   while (dayValue.getFullYear() === year) {
     var dateKey = makeDateKey(year, dayValue.getMonth() + 1, dayValue.getDate());
     if (hasOwn(baseHolidays, dateKey)) {
-      out.push({ date: dateKey, name: baseHolidays[dateKey], kind: "public" });
+      out.push({ date: dateKey, name: baseHolidays[dateKey].name, kind: "public" });
     } else if (isCitizenHoliday(baseHolidays, manifest, dateKey)) {
       out.push({ date: dateKey, name: "国民の休日", kind: "citizen" });
     } else {

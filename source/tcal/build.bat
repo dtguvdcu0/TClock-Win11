@@ -27,6 +27,8 @@ set ARCH=x64
 set "SCRIPT_DIR=%~dp0"
 set "WV2_ROOT=%SCRIPT_DIR%third_party\webview2"
 set "DEPLOY_DIR=%SCRIPT_DIR%..\x64\%CONFIG%\plugins"
+set "WEB_ASSETS_DIR=%SCRIPT_DIR%web"
+set "PROVIDER_ASSETS_DIR=%SCRIPT_DIR%providers"
 
 if not exist "%WV2_ROOT%\include\WebView2.h" (
     echo ERROR: Bundled WebView2 header missing: %WV2_ROOT%\include\WebView2.h
@@ -81,12 +83,36 @@ if errorlevel 1 (
     exit /b 1
 )
 
+if not exist "%WEB_ASSETS_DIR%\default\index.html" (
+    echo ERROR: Web assets not found: %WEB_ASSETS_DIR%\default\index.html
+    popd
+    exit /b 1
+)
+if not exist "%PROVIDER_ASSETS_DIR%\jp-public-holiday.ini" (
+    echo ERROR: Provider manifest not found: %PROVIDER_ASSETS_DIR%\jp-public-holiday.ini
+    popd
+    exit /b 1
+)
+if not exist "%PROVIDER_ASSETS_DIR%\jp-public-holiday.js" (
+    echo ERROR: Provider script not found: %PROVIDER_ASSETS_DIR%\jp-public-holiday.js
+    popd
+    exit /b 1
+)
+
 if not exist "%DEPLOY_DIR%\tcalendar\template" mkdir "%DEPLOY_DIR%\tcalendar\template"
+if not exist "%DEPLOY_DIR%\tcalendar\providers" mkdir "%DEPLOY_DIR%\tcalendar\providers"
 if not exist "%DEPLOY_DIR%\tcalendar\data" mkdir "%DEPLOY_DIR%\tcalendar\data"
 
-xcopy /e /i /y "%TCAL_BUILD_OUT%\tcalendar\template" "%DEPLOY_DIR%\tcalendar\template" >nul
+xcopy /e /i /y "%WEB_ASSETS_DIR%" "%DEPLOY_DIR%\tcalendar\template" >nul
 if errorlevel 1 (
     echo ERROR: Failed to copy template assets to %DEPLOY_DIR%\tcalendar\template
+    popd
+    exit /b 1
+)
+
+xcopy /e /i /y "%PROVIDER_ASSETS_DIR%" "%DEPLOY_DIR%\tcalendar\providers" >nul
+if errorlevel 1 (
+    echo ERROR: Failed to copy provider assets to %DEPLOY_DIR%\tcalendar\providers
     popd
     exit /b 1
 )

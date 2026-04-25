@@ -496,50 +496,76 @@ std::wstring TrimAsciiWhitespace(const std::wstring& value) {
     return value.substr(start, end - start);
 }
 
+bool DecodeIniUtf8Text(const std::string& text, std::wstring& out_value) {
+    out_value.clear();
+    if (text.empty()) {
+        return true;
+    }
+    const int count = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text.data(), static_cast<int>(text.size()), nullptr, 0);
+    if (count <= 0) {
+        return false;
+    }
+    out_value.resize(static_cast<size_t>(count));
+    return MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text.data(), static_cast<int>(text.size()),
+                               out_value.data(), count) > 0;
+}
+
 std::wstring ReadMergedIniValue(const std::wstring& ini_path, const std::wstring& section, const std::wstring& key) {
-    std::wifstream input(std::filesystem::path(ini_path), std::ios::binary);
+    std::ifstream input(std::filesystem::path(ini_path), std::ios::binary);
     if (!input) {
         return L"";
     }
 
-    std::wstring line;
+    std::string bytes((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+    if (bytes.size() >= 3 &&
+        static_cast<unsigned char>(bytes[0]) == 0xEF &&
+        static_cast<unsigned char>(bytes[1]) == 0xBB &&
+        static_cast<unsigned char>(bytes[2]) == 0xBF) {
+        bytes.erase(0, 3);
+    }
+
+    std::wstring text;
+    if (!DecodeIniUtf8Text(bytes, text)) {
+        return L"";
+    }
+
     std::wstring current_section;
     std::wstring last_value;
-    while (std::getline(input, line)) {
+    size_t start = 0;
+    while (start <= text.size()) {
+        const size_t end = text.find(L'\n', start);
+        const size_t line_end = (end == std::wstring::npos) ? text.size() : end;
+        std::wstring line = text.substr(start, line_end - start);
         if (!line.empty() && line.back() == L'\r') {
             line.pop_back();
         }
-        if (!line.empty() && line.front() == 0xFEFF) {
-            line.erase(0, 1);
-        }
 
         const std::wstring trimmed = TrimAsciiWhitespace(line);
-        if (trimmed.empty() || trimmed[0] == L';' || trimmed[0] == L'#') {
-            continue;
-        }
-        if (trimmed.size() >= 2 && trimmed.front() == L'[' && trimmed.back() == L']') {
-            current_section = TrimAsciiWhitespace(trimmed.substr(1, trimmed.size() - 2));
-            continue;
-        }
-        if (_wcsicmp(current_section.c_str(), section.c_str()) != 0) {
-            continue;
+        if (!trimmed.empty() && trimmed[0] != L';' && trimmed[0] != L'#') {
+            if (trimmed.size() >= 2 && trimmed.front() == L'[' && trimmed.back() == L']') {
+                current_section = TrimAsciiWhitespace(trimmed.substr(1, trimmed.size() - 2));
+            } else if (_wcsicmp(current_section.c_str(), section.c_str()) == 0) {
+                const size_t eq = trimmed.find(L'=');
+                if (eq != std::wstring::npos) {
+                    const std::wstring line_key = TrimAsciiWhitespace(trimmed.substr(0, eq));
+                    if (_wcsicmp(line_key.c_str(), key.c_str()) == 0) {
+                        const std::wstring candidate_value = TrimAsciiWhitespace(trimmed.substr(eq + 1));
+                        if (!candidate_value.empty()) {
+                            last_value = candidate_value;
+                        }
+                    }
+                }
+            }
         }
 
-        const size_t eq = trimmed.find(L'=');
-        if (eq == std::wstring::npos) {
-            continue;
+        if (end == std::wstring::npos) {
+            break;
         }
-        const std::wstring line_key = TrimAsciiWhitespace(trimmed.substr(0, eq));
-        if (_wcsicmp(line_key.c_str(), key.c_str()) != 0) {
-            continue;
-        }
-        const std::wstring candidate_value = TrimAsciiWhitespace(trimmed.substr(eq + 1));
-        if (!candidate_value.empty()) {
-            last_value = candidate_value;
-        }
+        start = end + 1;
     }
     return last_value;
 }
+
 
 void EnsureTCalendarIni(const std::filesystem::path& exe_dir) {
     const std::filesystem::path ini_path = exe_dir / kTCalendarIniFileName;
@@ -1073,7 +1099,7 @@ int RunSmokeMode(tcalendar::TCalendarHost& host, const std::filesystem::path& ex
     std::wcout << response << std::endl;
 
     host.HandleWebMessage(
-        LR"({"apiVersion":"1.0","requestId":"smoke-10c","method":"system.setViewConfig","params":{"holidaySubscriptionFiles":"holiday-subscription-smoke.txt|missing-subscription-smoke.txt"}})",
+        LR"({"apiVersion":"1.0","requestId":"smoke-10c","method":"system.setViewConfig","params":{"defaultViewMode":"list","rangePreset":"1","customRangeDays":"7","uiFontFamily":"Segoe UI","uiBaseFontSize":"14","uiCalendarDateFontSize":"13","uiTaskFontSize":"14","uiPanelRightWidth":"420","uiCalendarHeight":"420","uiShowTaskPanel":"1","tclockAlertEnabled":"0","alertSoundEnabled":"1","alertSoundPath":"C:\\Windows\\Media\\notify.wav","holidaySubscriptionFiles":"jp-public-holiday","holidaySubscriptionCatalog":"1 jp-public-holiday"}})",
         response);
     std::wcout << response << std::endl;
 

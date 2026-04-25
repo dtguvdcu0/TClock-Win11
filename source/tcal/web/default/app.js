@@ -1661,7 +1661,15 @@
       alertSoundPathInput.value = normalizeAlertSoundPath(currentAlertSoundPath);
       const holidaySubscriptionListBox = document.createElement("div");
       holidaySubscriptionListBox.className = "settingsSubscriptionList";
-      let holidaySubscriptionEntries = [];
+      let holidaySubscriptionEntries = parseHolidaySubscriptionCatalog(
+        snapshot.holidaySubscriptionCatalog,
+        snapshot.holidaySubscriptionFiles
+      ).map((entry) => ({
+        path: entry.path,
+        name: entry.path,
+        enabled: !!entry.enabled,
+        ready: true
+      }));
 
 
 
@@ -1724,7 +1732,7 @@
         alertSoundEnabled: !!alertSoundEnabledInput.checked,
         alertSoundPath: normalizeAlertSoundPath(alertSoundPathInput.value),
         holidaySubscriptionFiles: encodeHolidaySubscriptionFiles(holidaySubscriptionEntries),
-        holidaySubscriptionCatalog: ""
+        holidaySubscriptionCatalog: encodeHolidaySubscriptionCatalog(holidaySubscriptionEntries)
       });
 
       const applyDraft = (draft) => {
@@ -1805,25 +1813,47 @@
       tclockAlertInput.addEventListener("change", () => applyDraft(collectDraft()));
       alertSoundEnabledInput.addEventListener("change", () => applyDraft(collectDraft()));
       alertSoundPathInput.addEventListener("input", () => applyDraft(collectDraft()));
+      renderHolidaySubscriptionStatus();
       fetchHolidayProviderCatalog().then((items) => {
         if (!document.body.contains(overlay)) {
           return;
         }
-        const activeSet = new Set(
-          String(currentHolidaySubscriptionFiles || "")
-            .split("|")
-            .map((entry) => normalizeHolidaySubscriptionPath(entry))
-            .filter(Boolean)
+        const currentMap = new Map(
+          holidaySubscriptionEntries.map((entry) => [normalizeHolidaySubscriptionPath(entry.path), entry])
         );
-        holidaySubscriptionEntries = items.map((item) => {
+        const mergedEntries = [];
+        const seen = new Set();
+
+        items.forEach((item) => {
           const path = normalizeHolidaySubscriptionPath(item && item.id);
-          return {
+          if (!path || seen.has(path)) {
+            return;
+          }
+          seen.add(path);
+          const currentEntry = currentMap.get(path);
+          mergedEntries.push({
             path,
-            name: String(item?.name || path),
-            enabled: activeSet.has(path),
+            name: String(item?.name || currentEntry?.name || path),
+            enabled: currentEntry ? !!currentEntry.enabled : false,
             ready: !!item?.ready
-          };
+          });
         });
+
+        holidaySubscriptionEntries.forEach((entry) => {
+          const path = normalizeHolidaySubscriptionPath(entry.path);
+          if (!path || seen.has(path)) {
+            return;
+          }
+          seen.add(path);
+          mergedEntries.push({
+            path,
+            name: String(entry.name || path),
+            enabled: !!entry.enabled,
+            ready: !!entry.ready
+          });
+        });
+
+        holidaySubscriptionEntries = mergedEntries;
         applyDraft(collectDraft());
         renderHolidaySubscriptionStatus();
       });
@@ -1850,7 +1880,6 @@
         close(draft);
       });
 
-      refreshHolidaySubscriptionStatus();
 
       modal.tabIndex = -1;
       modal.focus();
@@ -2068,7 +2097,7 @@
   }
 
   async function saveViewConfigToIni() {
-    if (!hasHostBridge) return;
+    if (!hasHostBridge) return false;
     try {
       await hostCall("system.setViewConfig", {
         defaultViewMode: currentViewMode,
@@ -2087,7 +2116,10 @@
         holidaySubscriptionFiles: currentHolidaySubscriptionFiles,
         holidaySubscriptionCatalog: currentHolidaySubscriptionCatalog
       });
+      await loadStartupState();
+      return true;
     } catch (_) {
+      return false;
     }
   }
 
@@ -2208,7 +2240,7 @@
   settingsButton.addEventListener("click", async () => {
     const next = await openSettingsDialog();
     if (!next) return;
-    void saveViewConfigToIni();
+    await saveViewConfigToIni();
   });
 
   closeButton.addEventListener("click", () => {

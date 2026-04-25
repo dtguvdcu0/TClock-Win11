@@ -337,6 +337,16 @@ bool ReadUtf8TextFile(const std::filesystem::path& path, std::wstring& out_value
     return DecodeUtf8Text(bytes, out_value);
 }
 
+bool EncodeUtf8Text(const std::wstring& text, std::string& out_value) {
+    out_value.clear();
+    if (text.empty()) return true;
+    const int count = WideCharToMultiByte(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), nullptr, 0, nullptr, nullptr);
+    if (count <= 0) return false;
+    out_value.resize(static_cast<size_t>(count));
+    return WideCharToMultiByte(CP_UTF8, 0, text.data(), static_cast<int>(text.size()),
+                               out_value.data(), count, nullptr, nullptr) > 0;
+}
+
 std::vector<std::wstring> SplitString(const std::wstring& value, wchar_t delimiter) {
     std::vector<std::wstring> out;
     size_t start = 0;
@@ -1114,6 +1124,107 @@ bool EvaluateJScriptHolidayProvider(const std::filesystem::path& script_path,
     return ok;
 }
 
+bool CanonicalizeHolidaySubscriptionKeys(const std::wstring& ini_file_path,
+                                         const std::wstring& holiday_subscription_files,
+                                         const std::wstring& holiday_subscription_catalog) {
+    if (ini_file_path.empty()) {
+        return true;
+    }
+
+    std::wstring text;
+    if (!ReadUtf8TextFile(std::filesystem::path(ini_file_path), text)) {
+        return false;
+    }
+
+    std::vector<std::wstring> lines;
+    size_t start = 0;
+    while (start <= text.size()) {
+        const size_t end = text.find(L'\n', start);
+        const size_t line_end = (end == std::wstring::npos) ? text.size() : end;
+        std::wstring line = text.substr(start, line_end - start);
+        if (!line.empty() && line.back() == L'\r') {
+            line.pop_back();
+        }
+        lines.push_back(line);
+        if (end == std::wstring::npos) {
+            break;
+        }
+        start = end + 1;
+    }
+
+    std::vector<std::wstring> output;
+    output.reserve(lines.size() + 6);
+    std::wstring current_section;
+    bool saw_tcalendar = false;
+    size_t last_tcalendar_header_index = std::wstring::npos;
+
+    for (const std::wstring& raw_line : lines) {
+        const std::wstring trimmed = TrimWhitespace(raw_line);
+        if (trimmed.size() >= 2 && trimmed.front() == L'[' && trimmed.back() == L']') {
+            current_section = TrimWhitespace(trimmed.substr(1, trimmed.size() - 2));
+            if (_wcsicmp(current_section.c_str(), L"TCalendar") == 0) {
+                saw_tcalendar = true;
+                last_tcalendar_header_index = output.size();
+            }
+            output.push_back(raw_line);
+            continue;
+        }
+
+        if (_wcsicmp(current_section.c_str(), L"TCalendar") == 0) {
+            const size_t eq = trimmed.find(L'=');
+            if (eq != std::wstring::npos) {
+                const std::wstring key = TrimWhitespace(trimmed.substr(0, eq));
+                if (_wcsicmp(key.c_str(), L"HolidaySubscriptionFiles") == 0 ||
+                    _wcsicmp(key.c_str(), L"HolidaySubscriptionCatalog") == 0) {
+                    continue;
+                }
+            }
+        }
+
+        output.push_back(raw_line);
+    }
+
+    if (saw_tcalendar) {
+        const size_t insert_at = last_tcalendar_header_index + 1;
+        output.insert(output.begin() + static_cast<std::ptrdiff_t>(insert_at),
+                      std::wstring(L"HolidaySubscriptionCatalog=") + holiday_subscription_catalog);
+        output.insert(output.begin() + static_cast<std::ptrdiff_t>(insert_at),
+                      std::wstring(L"HolidaySubscriptionFiles=") + holiday_subscription_files);
+    } else {
+        if (!output.empty() && !output.back().empty()) {
+            output.push_back(L"");
+        }
+        output.push_back(L"[TCalendar]");
+        output.push_back(std::wstring(L"HolidaySubscriptionFiles=") + holiday_subscription_files);
+        output.push_back(std::wstring(L"HolidaySubscriptionCatalog=") + holiday_subscription_catalog);
+    }
+
+    std::wstring normalized;
+    for (size_t i = 0; i < output.size(); ++i) {
+        normalized += output[i];
+        if (i + 1 < output.size()) {
+            normalized += L"\r\n";
+        }
+    }
+
+    std::string utf8;
+    if (!EncodeUtf8Text(normalized, utf8)) {
+        return false;
+    }
+
+    std::ofstream out(std::filesystem::path(ini_file_path), std::ios::binary | std::ios::trunc);
+    if (!out) {
+        return false;
+    }
+
+    static constexpr unsigned char kUtf8Bom[] = {0xEF, 0xBB, 0xBF};
+    out.write(reinterpret_cast<const char*>(kUtf8Bom), sizeof(kUtf8Bom));
+    if (!utf8.empty()) {
+        out.write(utf8.data(), static_cast<std::streamsize>(utf8.size()));
+    }
+    return !!out;
+}
+
 void MergeHolidaySubscriptionFile(std::map<std::wstring, HolidayItem>& items,
                                   const std::filesystem::path& path,
                                   const std::wstring& date_from,
@@ -1835,6 +1946,12 @@ bool TCalendarHost::HandleWebMessage(const std::wstring& request_json, std::wstr
             write_ok = write_ok && (WritePrivateProfileStringW(L"TCalendar", L"AlertSoundPath", config_.alert_sound_path.c_str(), config_.ini_file_path.c_str()) != FALSE);
             write_ok = write_ok && (WritePrivateProfileStringW(L"TCalendar", L"HolidaySubscriptionFiles", config_.holiday_subscription_files.c_str(), config_.ini_file_path.c_str()) != FALSE);
             write_ok = write_ok && (WritePrivateProfileStringW(L"TCalendar", L"HolidaySubscriptionCatalog", config_.holiday_subscription_catalog.c_str(), config_.ini_file_path.c_str()) != FALSE);
+            if (write_ok) {
+                write_ok = CanonicalizeHolidaySubscriptionKeys(
+                    config_.ini_file_path,
+                    config_.holiday_subscription_files,
+                    config_.holiday_subscription_catalog);
+            }
             if (!config_.tclock_ini_file_path.empty()) {
                 const wchar_t* tclock_alert = config_.tclock_alert_enabled ? L"1" : L"0";
                 // Persist alert startup toggle to tclock-win11.ini [TCalendar].

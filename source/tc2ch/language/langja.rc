@@ -522,9 +522,14 @@ FONT 9, "MS UI Gothic", 0, 0, 0x0
 BEGIN
     ICON            0,IDC_ABOUTICON,10,2,20,20
     LTEXT           "TClock-Win11 Ver. x.x.x.x",IDC_STATIC_VersionText,40,8,158,8
-    LTEXT           "本プログラムはフリーソフトウェアです。",IDC_STATIC,40,18,158,8
-    LTEXT           "本プログラム利用での一切の損害等の責任は負いません。",IDC_STATIC,10,29,181,8
-    LTEXT           "本プログラムは、\n　TClock (by Kazubon氏)\n　TClock2ch (by 2ch有志)\n　TClockLight (by K. Takata氏)\n　Tclock-Win10 (by Mantis Mountain Mobile氏)\nを参考にしWindows11 25H2動作のための修正を行っています。",IDC_STATIC,10,52,182,68
+    LTEXT           "本プログラムはフリーソフトウェアです。",IDC_STATIC,40,26,158,8
+    LTEXT           "本プログラム利用での一切の損害等の責任は負いません。",IDC_STATIC,10,44,181,8
+    LTEXT           "本プログラムは、",IDC_STATIC,10,62,182,8
+    LTEXT           "　TClock (by Kazubon氏)",IDC_STATIC,10,80,182,8
+    LTEXT           "　TClock2ch (by 2ch有志)",IDC_STATIC,10,90,182,8
+    LTEXT           "　TClockLight (by K. Takata氏)",IDC_STATIC,10,100,182,8
+    LTEXT           "　Tclock-Win10 (by Mantis Mountain Mobile氏)",IDC_STATIC,10,110,182,8
+    LTEXT           "を参考にしWindows11 25H2動作のための修正を行っています。",IDC_STATIC,10,126,182,12
     PUSHBUTTON      "Windowsが起動するたびにTClockを起動",IDC_STARTUP,6,181,136,15
     PUSHBUTTON      "レジストリ削除",IDC_DELREG,146,181,50,15
 END
@@ -535,9 +540,14 @@ FONT 9, "MS UI Gothic", 0, 0, 0x0
 BEGIN
     ICON            0,IDC_ABOUTICON,10,2,20,20
     LTEXT           "TClock-Win11 Ver. x.x.x.x",IDC_STATIC_VersionText,40,8,158,8
-    LTEXT           "This program is freeware.",IDC_STATIC,40,18,158,8
-    LTEXT           "The developer assumes no responsibility for any damages caused by using this program.",IDC_STATIC,10,29,190,16
-    LTEXT           "This program:\n  TClock (by Kazubon)\n  TClock2ch (by Japanese netgeeks)\n  TClockLight (by K. Takata)\n  TClock-Win10 (by Mantis Mountain Mobile)\nwas revised with reference to those versions for Windows 11 25H2 compatibility.",IDC_STATIC,10,52,190,68
+    LTEXT           "This program is freeware.",IDC_STATIC,40,26,158,8
+    LTEXT           "The developer assumes no responsibility for any damages caused by using this program.",IDC_STATIC,10,44,190,16
+    LTEXT           "This program:",IDC_STATIC,10,62,190,8
+    LTEXT           "  TClock (by Kazubon)",IDC_STATIC,10,80,190,8
+    LTEXT           "  TClock2ch (by Japanese netgeeks)",IDC_STATIC,10,90,190,8
+    LTEXT           "  TClockLight (by K. Takata)",IDC_STATIC,10,100,190,8
+    LTEXT           "  TClock-Win10 (by Mantis Mountain Mobile)",IDC_STATIC,10,110,190,8
+    LTEXT           "was revised with reference to those versions for Windows 11 25H2 compatibility.",IDC_STATIC,10,126,190,16
     PUSHBUTTON      "Create a Shortcut in Startup",IDC_STARTUP,6,181,136,15
     PUSHBUTTON      "Clean Registry",IDC_DELREG,146,181,50,15
 END

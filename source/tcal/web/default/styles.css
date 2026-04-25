@@ -8,7 +8,12 @@
   --panel: #ffffff;
   --text: #1b1f24;
   --accent: #0a65cc;
+  --accent-hover: #0759b8;
+  --control: rgba(255, 255, 255, 0.78);
+  --control-hover: rgba(255, 255, 255, 0.95);
+  --control-active: #e9f2ff;
   --border: #d9dde3;
+  --shadow: 0 18px 42px rgba(31, 41, 55, 0.12);
 }
 
 * {
@@ -21,7 +26,104 @@ body {
   font-size: var(--font-size);
   line-height: var(--line-height);
   color: var(--text);
-  background: linear-gradient(180deg, #eef2f7, var(--surface));
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.82), rgba(239, 244, 249, 0.9)),
+    radial-gradient(circle at 20% 0%, rgba(170, 214, 255, 0.32), transparent 34%),
+    var(--surface);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button,
+select,
+input[type="text"],
+input[type="number"],
+input[type="time"],
+textarea {
+  border: 1px solid rgba(128, 139, 153, 0.34);
+  border-radius: 8px;
+  background-color: var(--control);
+  color: var(--text);
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    box-shadow 120ms ease,
+    transform 80ms ease;
+}
+
+button {
+  min-height: 32px;
+  padding: 0 12px;
+  cursor: pointer;
+}
+
+button:hover,
+select:hover,
+input[type="text"]:hover,
+input[type="number"]:hover,
+input[type="time"]:hover,
+textarea:hover {
+  background-color: var(--control-hover);
+  border-color: rgba(85, 102, 121, 0.48);
+}
+
+button:active {
+  transform: translateY(1px);
+  background-color: var(--control-active);
+}
+
+button:focus-visible,
+select:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(10, 101, 204, 0.18);
+}
+
+select {
+  appearance: none;
+  padding-right: 32px;
+  background-image:
+    linear-gradient(45deg, transparent 50%, #5d6977 50%),
+    linear-gradient(135deg, #5d6977 50%, transparent 50%);
+  background-position:
+    calc(100% - 16px) 50%,
+    calc(100% - 11px) 50%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+}
+
+* {
+  scrollbar-color: rgba(104, 116, 132, 0.62) transparent;
+  scrollbar-width: thin;
+}
+
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(104, 116, 132, 0.42);
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(85, 99, 117, 0.62);
+  border: 3px solid transparent;
+  background-clip: padding-box;
 }
 
 .app {
@@ -77,27 +179,42 @@ body {
 
 .calendarHeightSplitter {
   cursor: row-resize;
-  border-radius: 6px;
-  background: linear-gradient(90deg, #e7ecf3, #d8dee8);
-  border: 1px solid #cfd7e3;
+  border-radius: 8px;
+  background:
+    linear-gradient(90deg, transparent, rgba(67, 80, 96, 0.18), transparent),
+    rgba(255, 255, 255, 0.45);
+  border: 1px solid rgba(119, 132, 149, 0.22);
 }
 
 .calendarHeightSplitter:hover {
-  background: linear-gradient(90deg, #dbe7f8, #c8d8f1);
+  background:
+    linear-gradient(90deg, transparent, rgba(10, 101, 204, 0.36), transparent),
+    rgba(255, 255, 255, 0.78);
+}
+
+.calendarHeightSplitter:focus-visible,
+.layoutSplitter:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(10, 101, 204, 0.18);
 }
 
 .layoutSplitter {
   grid-area: splitter;
   align-self: start;
   cursor: col-resize;
-  border-radius: 6px;
-  background: linear-gradient(180deg, #e7ecf3, #d8dee8);
-  border: 1px solid #cfd7e3;
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, transparent, rgba(67, 80, 96, 0.2), transparent),
+    rgba(255, 255, 255, 0.45);
+  border: 1px solid rgba(119, 132, 149, 0.22);
   min-height: 260px;
 }
 
 .layoutSplitter:hover {
-  background: linear-gradient(180deg, #dbe7f8, #c8d8f1);
+  background:
+    linear-gradient(180deg, transparent, rgba(10, 101, 204, 0.36), transparent),
+    rgba(255, 255, 255, 0.78);
 }
 
 body.hideTaskPanel .app {
@@ -137,8 +254,6 @@ body.isResizingCalendarHeight {
 }
 
 .topbar button {
-  border: 1px solid var(--border);
-  background: var(--panel);
   border-radius: 8px;
   height: 36px;
 }
@@ -148,10 +263,11 @@ body.isResizingCalendarHeight {
   height: clamp(320px, calc(100vh - 210px), 840px);
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: var(--panel);
+  background: rgba(255, 255, 255, 0.74);
   padding: 12px;
   display: flex;
   flex-direction: column;
+  box-shadow: 0 1px 2px rgba(31, 41, 55, 0.04);
 }
 
 .dayPanel {
@@ -159,8 +275,9 @@ body.isResizingCalendarHeight {
   min-width: 0;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: var(--panel);
+  background: rgba(255, 255, 255, 0.74);
   padding: 12px;
+  box-shadow: 0 1px 2px rgba(31, 41, 55, 0.04);
 }
 
 .viewControls {
@@ -180,11 +297,7 @@ body.isResizingCalendarHeight {
 .viewControls select,
 .viewControls input {
   height: 30px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: #fff;
   padding: 0 8px;
-  font: inherit;
 }
 
 .isHidden {
@@ -201,6 +314,18 @@ body.isResizingCalendarHeight {
 #taskForm input,
 #taskForm button {
   height: 36px;
+}
+
+#taskForm button,
+.settingsActions button:last-child {
+  border-color: transparent;
+  background-color: var(--accent);
+  color: #fff;
+}
+
+#taskForm button:hover,
+.settingsActions button:last-child:hover {
+  background-color: var(--accent-hover);
 }
 
 
@@ -229,7 +354,7 @@ body.isResizingCalendarHeight {
 
 .dayCell {
   border: 1px solid var(--border);
-  background: #fff;
+  background: rgba(255, 255, 255, 0.72);
   border-radius: 8px;
   min-height: 44px;
   text-align: left;
@@ -239,12 +364,31 @@ body.isResizingCalendarHeight {
 
 .dayCell.isOutside {
   color: #95a0ad;
-  background: #f8fafc;
+  background: rgba(248, 250, 252, 0.72);
+}
+
+.dayCell.isToday {
+  border-color: rgba(10, 101, 204, 0.34);
+  background: rgba(235, 245, 255, 0.9);
+}
+
+.dayCell.isHoliday {
+  border-color: rgba(190, 94, 94, 0.26);
+  background: rgba(255, 248, 248, 0.9);
 }
 
 .dayCell.isSelected {
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(10, 101, 204, 0.15);
+  background: rgba(227, 239, 255, 0.98);
+  box-shadow: 0 0 0 2px rgba(10, 101, 204, 0.22);
+}
+
+.dayCell.isToday.isSelected {
+  border-color: var(--accent);
+  background: rgba(219, 235, 255, 1);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.9) inset,
+    0 0 0 3px rgba(10, 101, 204, 0.22);
 }
 
 .dayCell .dateLabel {
@@ -283,6 +427,20 @@ body.isResizingCalendarHeight {
   opacity: 0.4;
 }
 
+.dayCell .dateHolidayMarker {
+  display: inline-block;
+  margin-left: 3px;
+  font-size: 0.72em;
+  line-height: 1;
+  transform: translateY(-0.42em);
+  opacity: 0.82;
+  color: #c45a5a;
+}
+
+.dayCell.isOutside .dateHolidayMarker {
+  opacity: 0.45;
+}
+
 
 taskList,
 #taskList {
@@ -296,12 +454,50 @@ taskList,
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 28px;
+  min-height: 36px;
+  padding: 5px 8px;
+  border-radius: 8px;
+}
+
+.taskRowInteractive,
+.timelineTaskRow.taskRowInteractive,
+.timelinePerTaskTop.taskRowInteractive {
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    box-shadow 120ms ease,
+    border-color 120ms ease;
+}
+
+.taskRowInteractive:hover,
+.timelineTaskRow.taskRowInteractive:hover,
+.timelinePerTaskTop.taskRowInteractive:hover {
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.taskRowInteractive:focus-visible,
+.timelineTaskRow.taskRowInteractive:focus-visible,
+.timelinePerTaskTop.taskRowInteractive:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(10, 101, 204, 0.18);
 }
 
 .taskTitle.isDone {
-  color: #6c7682;
+  color: #7b8794;
   text-decoration: line-through;
+  opacity: 0.78;
+}
+
+.taskRow.isDone,
+.timelineTaskRow.isDone,
+.timelinePerTaskTop.isDone {
+  background: rgba(246, 248, 251, 0.72);
+}
+
+.taskRow.isDone:hover,
+.timelineTaskRow.isDone:hover,
+.timelinePerTaskTop.isDone:hover {
+  background: rgba(242, 245, 249, 0.94);
 }
 
 
@@ -339,23 +535,50 @@ taskList,
 
 .taskDelete {
   margin-left: auto;
-  border: 1px solid var(--border);
   border-radius: 6px;
-  background: #fff;
-  height: 24px;
+  min-width: 58px;
+  height: 26px;
   padding: 0 8px;
-  font-size: 12px;
-  cursor: pointer;
+  font-size: 11px;
+  color: #5c2d2d;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.taskDelete:hover {
+  background: rgba(255, 237, 237, 0.92);
+  border-color: rgba(186, 91, 91, 0.38);
 }
 
 .taskActionGroup {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  margin-left: auto;
+  flex: 0 0 auto;
+  opacity: 0;
+  transform: translateX(4px);
+  pointer-events: none;
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease;
 }
 
 .taskActionGroup .taskDelete {
   margin-left: 0;
+}
+
+.taskRowInteractive:hover .taskActionGroup,
+.taskRowInteractive:focus-within .taskActionGroup,
+.taskRowInteractive:focus-visible .taskActionGroup,
+.timelineTaskRow.taskRowInteractive:hover .taskActionGroup,
+.timelineTaskRow.taskRowInteractive:focus-within .taskActionGroup,
+.timelineTaskRow.taskRowInteractive:focus-visible .taskActionGroup,
+.timelinePerTaskTop.taskRowInteractive:hover .taskActionGroup,
+.timelinePerTaskTop.taskRowInteractive:focus-within .taskActionGroup,
+.timelinePerTaskTop.taskRowInteractive:focus-visible .taskActionGroup {
+  opacity: 1;
+  transform: translateX(0);
+  pointer-events: auto;
 }
 
 .taskEmpty {
@@ -366,13 +589,10 @@ taskList,
 
 
 .taskEdit {
-  border: 1px solid var(--border);
   border-radius: 6px;
-  background: #fff;
   height: 24px;
   padding: 0 8px;
   font-size: 12px;
-  cursor: pointer;
 }
 
 .taskModalOverlay {
@@ -387,12 +607,110 @@ taskList,
 
 .taskModal {
   width: min(520px, calc(100vw - 24px));
-  background: #fff;
-  border: 1px solid var(--border);
+  max-height: min(82vh, 720px);
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(128, 139, 153, 0.34);
   border-radius: 10px;
   padding: 14px;
   display: grid;
+  gap: 12px;
+  box-shadow: var(--shadow);
+  overflow: auto;
+}
+
+.settingsStatusList {
+  display: grid;
   gap: 8px;
+  margin-top: 4px;
+}
+
+.settingsSubscriptionList {
+  display: grid;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.settingsSubscriptionItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(128, 139, 153, 0.24);
+  border-radius: 8px;
+  background: rgba(248, 250, 252, 0.92);
+}
+
+.settingsSubscriptionToggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  font-size: 13px;
+  color: #23303c;
+}
+
+.settingsSubscriptionToggle input[type="checkbox"] {
+  margin: 0;
+}
+
+.settingsSubscriptionPathText {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.settingsSubscriptionBadge {
+  flex: 0 0 auto;
+  font-size: 11px;
+  line-height: 1;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(128, 139, 153, 0.24);
+  color: #55606d;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.settingsSubscriptionEmpty {
+  font-size: 12px;
+  line-height: 1.4;
+  color: #6c7682;
+}
+
+.settingsStatusItem {
+  display: grid;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid rgba(128, 139, 153, 0.24);
+  border-radius: 6px;
+  background: rgba(248, 250, 252, 0.92);
+}
+
+.settingsStatusHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+}
+
+.settingsStatusPath,
+.settingsStatusError,
+.settingsStatusEmpty {
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.settingsStatusPath {
+  word-break: break-all;
+  color: #47515d;
+}
+
+.settingsStatusError {
+  color: #9a3c3c;
+}
+
+.settingsStatusEmpty {
+  color: #6c7682;
 }
 
 .taskModal h3 {
@@ -405,26 +723,35 @@ taskList,
   color: #4f5966;
 }
 
+.taskModalField {
+  display: grid;
+  gap: 5px;
+}
+
+.taskModalTimeRow {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
 .taskModalInlineCheck {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 34px;
   font-size: 12px;
   color: #4f5966;
 }
 
 .taskModalInlineCheck input[type="checkbox"] {
-  width: auto;
   margin: 0;
 }
 
 .taskModal input,
 .taskModal textarea {
   width: 100%;
-  border: 1px solid var(--border);
-  border-radius: 8px;
   padding: 8px 10px;
-  font: inherit;
 }
 
 .taskModal textarea {
@@ -440,10 +767,18 @@ taskList,
 
 .taskModalActions button {
   height: 32px;
-  border: 1px solid var(--border);
   border-radius: 8px;
-  background: #fff;
   padding: 0 12px;
+}
+
+.taskModalActions .primary {
+  border-color: transparent;
+  background-color: var(--accent);
+  color: #fff;
+}
+
+.taskModalActions .primary:hover {
+  background-color: var(--accent-hover);
 }
 
 .settingsModal {
@@ -453,12 +788,14 @@ taskList,
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   overflow: hidden;
+  background: rgba(248, 250, 252, 0.96);
+  box-shadow: var(--shadow);
 }
 
 .settingsHeader {
   padding: 16px 18px 12px;
   border-bottom: 1px solid var(--border);
-  background: linear-gradient(180deg, #fafbfd, #f4f7fb);
+  background: rgba(248, 250, 252, 0.9);
 }
 
 .settingsHeader h3 {
@@ -478,21 +815,21 @@ taskList,
   overflow: auto;
   display: grid;
   gap: 14px;
-  padding: 14px 18px;
-  background: #f8fafc;
+  padding: 14px 18px 22px;
+  background: rgba(248, 250, 252, 0.9);
 }
 
 .settingsSection {
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: #fff;
-  padding: 12px;
+  border: 1px solid rgba(128, 139, 153, 0.22);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.74);
+  padding: 10px;
   display: grid;
-  gap: 10px;
+  gap: 0;
 }
 
 .settingsSection h4 {
-  margin: 0;
+  margin: 0 0 8px;
   font-size: 13px;
   color: #44505d;
 }
@@ -500,8 +837,15 @@ taskList,
 .settingsRow {
   display: grid;
   grid-template-columns: minmax(140px, 180px) minmax(0, 1fr);
-  gap: 10px;
-  align-items: start;
+  gap: 12px;
+  align-items: center;
+  min-height: 44px;
+  padding: 6px 2px;
+  border-top: 1px solid rgba(128, 139, 153, 0.14);
+}
+
+.settingsSection h4 + .settingsRow {
+  border-top: 0;
 }
 
 .settingsRowSingle {
@@ -514,7 +858,6 @@ taskList,
 
 .settingsLabel {
   display: inline-block;
-  padding-top: 6px;
   font-size: 12px;
   color: #5a6572;
 }
@@ -527,12 +870,8 @@ taskList,
 .settingsValue input[type="text"],
 .settingsValue input[type="number"] {
   height: 34px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
   padding: 0 10px;
-  font: inherit;
   width: 100%;
-  background: #fff;
 }
 
 .settingsHint {
@@ -542,17 +881,68 @@ taskList,
 
 .settingsCheckboxWrap {
   min-height: 34px;
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+  gap: 14px;
   font-size: 13px;
-  white-space: nowrap;
+  width: 100%;
+}
+
+.settingsCheckboxWrap input[type="checkbox"],
+.taskModalInlineCheck input[type="checkbox"] {
+  appearance: none;
+  position: relative;
+  flex: 0 0 auto;
+  width: 40px;
+  height: 22px;
+  border: 1px solid rgba(104, 116, 132, 0.62);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.82);
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.settingsCheckboxWrap input[type="checkbox"]::before,
+.taskModalInlineCheck input[type="checkbox"]::before {
+  content: "";
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  top: 3px;
+  left: 3px;
+  border-radius: 50%;
+  background: #5f6b78;
+  transition:
+    transform 120ms ease,
+    background-color 120ms ease;
+}
+
+.settingsCheckboxWrap input[type="checkbox"]:checked,
+.taskModalInlineCheck input[type="checkbox"]:checked {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.settingsCheckboxWrap input[type="checkbox"]:checked::before,
+.taskModalInlineCheck input[type="checkbox"]:checked::before {
+  transform: translateX(18px);
+  background: #fff;
+}
+
+.settingsCheckboxWrap input[type="checkbox"]:focus-visible,
+.taskModalInlineCheck input[type="checkbox"]:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(10, 101, 204, 0.18);
 }
 
 .settingsActions {
   padding: 12px 18px 14px;
   border-top: 1px solid var(--border);
-  background: #fff;
+  background: rgba(255, 255, 255, 0.86);
 }
 
 @media (max-width: 760px) {
@@ -563,6 +953,10 @@ taskList,
 
   .settingsLabel {
     padding-top: 0;
+  }
+
+  .taskModalTimeRow {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -593,9 +987,6 @@ taskList,
     justify-content: flex-start;
   }
 
-  .calendarHeightSplitter {
-    display: none;
-  }
 }
 
 
@@ -609,7 +1000,7 @@ taskList,
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 8px;
-  background: #fff;
+  background: rgba(255, 255, 255, 0.68);
 }
 
 .timelineDayHeader {
@@ -705,6 +1096,9 @@ taskList,
   display: flex;
   align-items: center;
   gap: 8px;
+  min-height: 36px;
+  padding: 2px 4px;
+  border-radius: 8px;
 }
 
 .timelineTaskLabel {
@@ -731,6 +1125,14 @@ taskList,
   white-space: nowrap;
 }
 
+.timelineTaskRow.isDone .timelineTaskLabel,
+.timelinePerTaskTop.isDone .timelineTaskLabel,
+.timelinePerTaskItem.isDone .timelineTaskLabel {
+  color: #7b8794;
+  opacity: 0.8;
+  text-decoration: line-through;
+}
+
 .timelinePerTaskList {
   margin-top: 8px;
   display: grid;
@@ -740,16 +1142,24 @@ taskList,
 .timelinePerTaskItem {
   border: 1px solid #e4e8ee;
   border-radius: 6px;
-  padding: 6px;
-  background: #fbfcfe;
+  padding: 5px;
+  background: rgba(251, 252, 254, 0.82);
   display: grid;
-  gap: 6px;
+  gap: 4px;
+}
+
+.timelinePerTaskItem.isDone {
+  background: rgba(246, 248, 251, 0.82);
+  border-color: rgba(210, 217, 226, 0.9);
 }
 
 .timelinePerTaskTop {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-height: 32px;
+  padding: 1px 2px;
+  border-radius: 8px;
 }
 
 .timelinePerTaskTop .timelineTaskLabel {

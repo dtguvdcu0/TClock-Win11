@@ -28,10 +28,14 @@ struct HostConfig {
     bool enable_task_start_notify = false;
     bool alert_sound_enabled = true;
     std::wstring alert_sound_path = L"C:\\Windows\\Media\\notify.wav";
+    std::wstring holiday_subscription_files;
+    std::wstring holiday_subscription_catalog;
     int alert_scan_window_minutes = 60;
     int alert_dispatch_tick_seconds = 60;
     int alert_refresh_minutes = 10;
     int alert_grace_minutes = 1;
+    bool startup_log_enabled = false;
+    std::wstring startup_log_path;
 };
 class TCalendarHost {
 public:

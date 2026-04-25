@@ -9,9 +9,11 @@
 #include <wrl.h>
 
 #include <iostream>
+#include <fstream>
 #include <string>
 #include <filesystem>
 #include <chrono>
+#include <sstream>
 #include <thread>
 #include <unordered_set>
 #include <vector>
@@ -38,19 +40,103 @@ struct WindowContext {
     Microsoft::WRL::ComPtr<ICoreWebView2Controller> controller;
     Microsoft::WRL::ComPtr<ICoreWebView2> webview;
     bool webview_ready = false;
+    bool app_ready = false;
+    bool startup_log_enabled = false;
+    std::wstring startup_log_path;
+    ULONGLONG startup_tick = 0;
     HRESULT init_hr = E_PENDING;
 };
+
+void LogStartupMark(WindowContext* context, const wchar_t* label) {
+    if (!context || !context->startup_tick || !label) {
+        return;
+    }
+
+    const ULONGLONG elapsed_ms = GetTickCount64() - context->startup_tick;
+    wchar_t line[192] = {0};
+    _snwprintf_s(line, _countof(line), _TRUNCATE, L"[TCalendar][startup] +%llums %s\n", elapsed_ms, label);
+    OutputDebugStringW(line);
+
+    if (context->startup_log_enabled && !context->startup_log_path.empty()) {
+        std::wofstream log(std::filesystem::path(context->startup_log_path), std::ios::app);
+        if (log) {
+            log << line;
+        }
+    }
+}
+
+void PaintStartupSkeleton(HWND hwnd) {
+    PAINTSTRUCT ps{};
+    HDC hdc = BeginPaint(hwnd, &ps);
+    RECT rc{};
+    GetClientRect(hwnd, &rc);
+
+    HBRUSH background = CreateSolidBrush(RGB(238, 242, 247));
+    FillRect(hdc, &rc, background);
+    DeleteObject(background);
+
+    SetBkMode(hdc, TRANSPARENT);
+    SetTextColor(hdc, RGB(27, 31, 36));
+
+    HFONT title_font = CreateFontW(
+        -24, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+        OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
+    HFONT old_font = static_cast<HFONT>(SelectObject(hdc, title_font));
+
+    RECT title_rect{32, 28, rc.right - 32, 62};
+    DrawTextW(hdc, L"TCalendar", -1, &title_rect, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+
+    SelectObject(hdc, old_font);
+    DeleteObject(title_font);
+
+    HBRUSH panel = CreateSolidBrush(RGB(255, 255, 255));
+    HBRUSH rail = CreateSolidBrush(RGB(217, 223, 232));
+    HPEN border = CreatePen(PS_SOLID, 1, RGB(213, 219, 228));
+    HPEN old_pen = static_cast<HPEN>(SelectObject(hdc, border));
+    HBRUSH old_brush = static_cast<HBRUSH>(SelectObject(hdc, panel));
+
+    const int gap = 16;
+    const int top = 86;
+    const int bottom = rc.bottom - 28;
+    const int right_width = max(320, min(420, (rc.right - 96) / 3));
+    const int left = 28;
+    const int right = rc.right - 28;
+    const int split = right - right_width - gap;
+
+    RoundRect(hdc, left, top, split, bottom, 12, 12);
+    RoundRect(hdc, split + gap, top, right, bottom, 12, 12);
+
+    SelectObject(hdc, rail);
+    for (int row = 0; row < 6; ++row) {
+        const int y = top + 28 + row * 34;
+        RoundRect(hdc, left + 24, y, split - 24, y + 14, 8, 8);
+    }
+    for (int row = 0; row < 5; ++row) {
+        const int y = top + 28 + row * 38;
+        RoundRect(hdc, split + gap + 24, y, right - 24, y + 16, 8, 8);
+    }
+
+    SelectObject(hdc, old_brush);
+    SelectObject(hdc, old_pen);
+    DeleteObject(panel);
+    DeleteObject(rail);
+    DeleteObject(border);
+
+    EndPaint(hwnd, &ps);
+}
 
 enum class RuntimeMode {
     Ui,
     Alert,
     Smoke,
+    Compare,
 };
 
 struct RuntimeArgs {
     RuntimeMode mode = RuntimeMode::Ui;
     bool smoke_storage_error_mode = false;
     bool smoke_strict_mode = false;
+    std::wstring compare_years_csv;
 };
 
 bool ParseDate(const std::wstring& value, int& y, int& m, int& d) {
@@ -118,6 +204,20 @@ bool ParseRuntimeArgs(int argc, wchar_t** argv, RuntimeArgs& out, std::wstring& 
 
     for (int i = 1; i < argc; ++i) {
         const std::wstring arg = argv[i] ? argv[i] : L"";
+        if (arg == L"--compare-jp-provider") {
+            out.mode = RuntimeMode::Compare;
+            if (i + 1 >= argc) {
+                out_error = L"Missing year list after --compare-jp-provider";
+                return false;
+            }
+            out.compare_years_csv = argv[++i] ? argv[i] : L"";
+            continue;
+        }
+        if (arg.rfind(L"--compare-jp-provider=", 0) == 0) {
+            out.mode = RuntimeMode::Compare;
+            out.compare_years_csv = arg.substr(wcslen(L"--compare-jp-provider="));
+            continue;
+        }
         if (arg == L"--smoke") {
             out.mode = RuntimeMode::Smoke;
             continue;
@@ -148,6 +248,18 @@ bool ParseRuntimeArgs(int argc, wchar_t** argv, RuntimeArgs& out, std::wstring& 
     if (out.mode == RuntimeMode::Smoke) {
         if (saw_ui || saw_alert) {
             out_error = L"Smoke mode cannot be combined with --ui/--alert";
+            return false;
+        }
+        return true;
+    }
+
+    if (out.mode == RuntimeMode::Compare) {
+        if (saw_ui || saw_alert) {
+            out_error = L"Compare mode cannot be combined with --ui/--alert";
+            return false;
+        }
+        if (out.compare_years_csv.empty()) {
+            out_error = L"Missing compare year list";
             return false;
         }
         return true;
@@ -369,6 +481,63 @@ std::filesystem::path ResolveTClockIniFromExe(const std::filesystem::path& exe_d
     return exe_dir.parent_path() / L"tclock-win11.ini";
 }
 
+std::wstring TrimAsciiWhitespace(const std::wstring& value) {
+    size_t start = 0;
+    while (start < value.size() && iswspace(value[start])) {
+        ++start;
+    }
+    size_t end = value.size();
+    while (end > start && iswspace(value[end - 1])) {
+        --end;
+    }
+    return value.substr(start, end - start);
+}
+
+std::wstring ReadMergedIniValue(const std::wstring& ini_path, const std::wstring& section, const std::wstring& key) {
+    std::wifstream input(std::filesystem::path(ini_path), std::ios::binary);
+    if (!input) {
+        return L"";
+    }
+
+    std::wstring line;
+    std::wstring current_section;
+    std::wstring last_value;
+    while (std::getline(input, line)) {
+        if (!line.empty() && line.back() == L'\r') {
+            line.pop_back();
+        }
+        if (!line.empty() && line.front() == 0xFEFF) {
+            line.erase(0, 1);
+        }
+
+        const std::wstring trimmed = TrimAsciiWhitespace(line);
+        if (trimmed.empty() || trimmed[0] == L';' || trimmed[0] == L'#') {
+            continue;
+        }
+        if (trimmed.size() >= 2 && trimmed.front() == L'[' && trimmed.back() == L']') {
+            current_section = TrimAsciiWhitespace(trimmed.substr(1, trimmed.size() - 2));
+            continue;
+        }
+        if (_wcsicmp(current_section.c_str(), section.c_str()) != 0) {
+            continue;
+        }
+
+        const size_t eq = trimmed.find(L'=');
+        if (eq == std::wstring::npos) {
+            continue;
+        }
+        const std::wstring line_key = TrimAsciiWhitespace(trimmed.substr(0, eq));
+        if (_wcsicmp(line_key.c_str(), key.c_str()) != 0) {
+            continue;
+        }
+        const std::wstring candidate_value = TrimAsciiWhitespace(trimmed.substr(eq + 1));
+        if (!candidate_value.empty()) {
+            last_value = candidate_value;
+        }
+    }
+    return last_value;
+}
+
 void EnsureTCalendarIni(const std::filesystem::path& exe_dir) {
     const std::filesystem::path ini_path = exe_dir / kTCalendarIniFileName;
     if (std::filesystem::exists(ini_path)) {
@@ -400,6 +569,9 @@ void EnsureTCalendarIni(const std::filesystem::path& exe_dir) {
     WritePrivateProfileStringW(L"TCalendar", L"AlertGraceMinutes", L"1", ini_path.wstring().c_str());
     WritePrivateProfileStringW(L"TCalendar", L"AlertSoundEnabled", L"1", ini_path.wstring().c_str());
     WritePrivateProfileStringW(L"TCalendar", L"AlertSoundPath", L"C:\\Windows\\Media\\notify.wav", ini_path.wstring().c_str());
+    WritePrivateProfileStringW(L"TCalendar", L"HolidaySubscriptionFiles", L"", ini_path.wstring().c_str());
+    WritePrivateProfileStringW(L"TCalendar", L"HolidaySubscriptionCatalog", L"", ini_path.wstring().c_str());
+    WritePrivateProfileStringW(L"TCalendar", L"StartupLogEnabled", L"0", ini_path.wstring().c_str());
 }
 
 void LoadHostConfigFromIni(const std::filesystem::path& exe_dir, bool smoke_mode, bool smoke_storage_error_mode, tcalendar::HostConfig& out_config) {
@@ -445,6 +617,9 @@ void LoadHostConfigFromIni(const std::filesystem::path& exe_dir, bool smoke_mode
     ensure_ini_key(L"AlertGraceMinutes", L"1");
     ensure_ini_key(L"AlertSoundEnabled", L"1");
     ensure_ini_key(L"AlertSoundPath", L"C:\\Windows\\Media\\notify.wav");
+    ensure_ini_key(L"HolidaySubscriptionFiles", L"");
+    ensure_ini_key(L"HolidaySubscriptionCatalog", L"");
+    ensure_ini_key(L"StartupLogEnabled", L"0");
 
     wchar_t buf[MAX_PATH] = {0};
     wchar_t skin[MAX_PATH] = {0};
@@ -541,6 +716,22 @@ void LoadHostConfigFromIni(const std::filesystem::path& exe_dir, bool smoke_mode
     } else {
         out_config.alert_sound_path = buf;
     }
+    const std::wstring merged_holiday_subscription_files =
+        ReadMergedIniValue(ini_file, L"TCalendar", L"HolidaySubscriptionFiles");
+    if (!merged_holiday_subscription_files.empty()) {
+        out_config.holiday_subscription_files = merged_holiday_subscription_files;
+    } else {
+        GetPrivateProfileStringW(L"TCalendar", L"HolidaySubscriptionFiles", L"", buf, MAX_PATH, ini_file.c_str());
+        out_config.holiday_subscription_files = buf;
+    }
+    const std::wstring merged_holiday_subscription_catalog =
+        ReadMergedIniValue(ini_file, L"TCalendar", L"HolidaySubscriptionCatalog");
+    if (!merged_holiday_subscription_catalog.empty()) {
+        out_config.holiday_subscription_catalog = merged_holiday_subscription_catalog;
+    } else {
+        GetPrivateProfileStringW(L"TCalendar", L"HolidaySubscriptionCatalog", L"", buf, MAX_PATH, ini_file.c_str());
+        out_config.holiday_subscription_catalog = buf;
+    }
 
     out_config.alert_scan_window_minutes = 60;
 
@@ -558,6 +749,12 @@ void LoadHostConfigFromIni(const std::filesystem::path& exe_dir, bool smoke_mode
     if (alert_grace_minutes < 0) alert_grace_minutes = 0;
     if (alert_grace_minutes > 5) alert_grace_minutes = 5;
     out_config.alert_grace_minutes = alert_grace_minutes;
+
+    out_config.startup_log_enabled = GetPrivateProfileIntW(L"TCalendar", L"StartupLogEnabled", 0, ini_file.c_str()) != 0;
+    out_config.startup_log_path = (runtime_root / L"logs" / L"startup.log").wstring();
+    if (out_config.startup_log_enabled) {
+        std::filesystem::create_directories(runtime_root / L"logs", ec);
+    }
 }
 
 void LoadWindowSizeFromIni(const std::wstring& ini_file, int& width, int& height) {
@@ -607,6 +804,7 @@ void ResizeWebViewToClient(WindowContext* context, HWND hwnd) {
 bool StartWebView2ForWindow(WindowContext* context, HWND hwnd) {
     if (!context) return false;
 
+    LogStartupMark(context, L"webview2 environment create begin");
     const HRESULT hr = CreateCoreWebView2EnvironmentWithOptions(
         nullptr,
         context->webview_user_data_dir.empty() ? nullptr : context->webview_user_data_dir.c_str(),
@@ -614,6 +812,7 @@ bool StartWebView2ForWindow(WindowContext* context, HWND hwnd) {
         Microsoft::WRL::Callback<ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler>(
             [context, hwnd](HRESULT result, ICoreWebView2Environment* environment) -> HRESULT {
                 context->init_hr = result;
+                LogStartupMark(context, SUCCEEDED(result) ? L"webview2 environment ready" : L"webview2 environment failed");
                 if (FAILED(result) || !environment) {
                     return S_OK;
                 }
@@ -624,6 +823,7 @@ bool StartWebView2ForWindow(WindowContext* context, HWND hwnd) {
                     Microsoft::WRL::Callback<ICoreWebView2CreateCoreWebView2ControllerCompletedHandler>(
                         [context, hwnd](HRESULT controller_result, ICoreWebView2Controller* controller) -> HRESULT {
                             context->init_hr = controller_result;
+                            LogStartupMark(context, SUCCEEDED(controller_result) ? L"webview2 controller ready" : L"webview2 controller failed");
                             if (FAILED(controller_result) || !controller) {
                                 return S_OK;
                             }
@@ -636,7 +836,7 @@ bool StartWebView2ForWindow(WindowContext* context, HWND hwnd) {
                                 EventRegistrationToken web_message_token{};
                                 context->webview->add_WebMessageReceived(
                                     Microsoft::WRL::Callback<ICoreWebView2WebMessageReceivedEventHandler>(
-                                        [context](ICoreWebView2* sender, ICoreWebView2WebMessageReceivedEventArgs* args) -> HRESULT {
+                                        [context, hwnd](ICoreWebView2* sender, ICoreWebView2WebMessageReceivedEventArgs* args) -> HRESULT {
                                             if (!context || !context->host || !sender || !args) {
                                                 return S_OK;
                                             }
@@ -655,14 +855,21 @@ bool StartWebView2ForWindow(WindowContext* context, HWND hwnd) {
                                                 return S_OK;
                                             }
 
+                                            if (request_json.find(L"\"method\":\"system.appReady\"") != std::wstring::npos) {
+                                                context->app_ready = true;
+                                                context->webview_ready = true;
+                                                LogStartupMark(context, L"web app first render ready");
+                                                InvalidateRect(hwnd, nullptr, FALSE);
+                                            }
+
                                             sender->PostWebMessageAsString(response_json.c_str());
                                             return S_OK;
                                         })
                                         .Get(),
                                     &web_message_token);
 
+                                LogStartupMark(context, L"webview2 navigate begin");
                                 context->webview->Navigate(context->initial_uri.c_str());
-                                context->webview_ready = true;
                             }
                             return S_OK;
                         })
@@ -703,12 +910,7 @@ LRESULT CALLBACK TCalendarWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpa
 
         case WM_PAINT:
             if (context && !context->webview_ready) {
-                PAINTSTRUCT ps{};
-                HDC hdc = BeginPaint(hwnd, &ps);
-                RECT rc{};
-                GetClientRect(hwnd, &rc);
-                FillRect(hdc, &rc, static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH)));
-                EndPaint(hwnd, &ps);
+                PaintStartupSkeleton(hwnd);
                 return 0;
             }
             break;
@@ -739,10 +941,22 @@ LRESULT CALLBACK TCalendarWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpa
         default:
             return DefWindowProcW(hwnd, msg, wparam, lparam);
     }
+
+    return DefWindowProcW(hwnd, msg, wparam, lparam);
 }
 
-int RunSmokeMode(tcalendar::TCalendarHost& host, bool force_storage_error_test, bool strict_assert) {
+int RunSmokeMode(tcalendar::TCalendarHost& host, const std::filesystem::path& exe_dir, bool force_storage_error_test, bool strict_assert) {
     std::wstring response;
+    const auto smoke_subscription_path = exe_dir / L"holiday-subscription-smoke.txt";
+    bool smoke_subscription_written = false;
+
+    {
+        std::ofstream smoke_output(smoke_subscription_path, std::ios::binary | std::ios::trunc);
+        if (smoke_output) {
+            smoke_output << "2026-02-01|Smoke Existing|subscription\n";
+            smoke_subscription_written = true;
+        }
+    }
 
     host.HandleWebMessage(LR"({"apiVersion":"1.0","requestId":"smoke-1","method":"system.getVersion","params":{}})", response);
     std::wcout << response << std::endl;
@@ -777,6 +991,24 @@ int RunSmokeMode(tcalendar::TCalendarHost& host, bool force_storage_error_test, 
     host.HandleWebMessage(LR"({"apiVersion":"1.0","requestId":"smoke-10","method":"calendar.getDayTasks","params":{"date":"2026-02-23"}})", response);
     std::wcout << response << std::endl;
 
+    host.HandleWebMessage(LR"({"apiVersion":"1.0","requestId":"smoke-10b","method":"system.getStartupState","params":{"selectedDate":"2026-02-23","monthFrom":"2026-02-01","monthTo":"2026-02-28"}})", response);
+    std::wcout << response << std::endl;
+
+    host.HandleWebMessage(
+        LR"({"apiVersion":"1.0","requestId":"smoke-10c","method":"system.setViewConfig","params":{"holidaySubscriptionFiles":"holiday-subscription-smoke.txt|missing-subscription-smoke.txt"}})",
+        response);
+    std::wcout << response << std::endl;
+
+    host.HandleWebMessage(LR"({"apiVersion":"1.0","requestId":"smoke-10d","method":"system.getHolidaySubscriptionStatus","params":{}})", response);
+    std::wcout << response << std::endl;
+
+    const bool ok_subscription_status =
+        response.find(L"\"requestId\":\"smoke-10d\"") != std::wstring::npos &&
+        response.find(L"holiday-subscription-smoke.txt") != std::wstring::npos &&
+        response.find(L"missing-subscription-smoke.txt") != std::wstring::npos &&
+        response.find(L"\"loaded\":true") != std::wstring::npos &&
+        response.find(L"\"exists\":false") != std::wstring::npos;
+
     if (force_storage_error_test) {
         host.HandleWebMessage(LR"({"apiVersion":"1.0","requestId":"smoke-11","method":"task.create","params":{"date":"2026-02-23","title":"forced-storage-error-check"}})", response);
         std::wcout << response << std::endl;
@@ -791,7 +1023,32 @@ int RunSmokeMode(tcalendar::TCalendarHost& host, bool force_storage_error_test, 
         }
     }
 
+    if (smoke_subscription_written) {
+        std::error_code ec;
+        std::filesystem::remove(smoke_subscription_path, ec);
+    }
+
+    if (strict_assert && !ok_subscription_status) {
+        std::wcerr << L"smoke strict check failed: expected subscription status for smoke-10d" << std::endl;
+        return 22;
+    }
+
     return 0;
+}
+
+int RunCompareMode(tcalendar::TCalendarHost& host, const std::wstring& years_csv) {
+    std::wstring response;
+    const std::wstring request = std::wstring(L"{\"apiVersion\":\"1.0\",\"requestId\":\"compare-1\",\"method\":\"debug.compareJpHolidayProviders\",\"params\":{\"yearsCsv\":\"") +
+        years_csv + L"\"}}";
+    host.HandleWebMessage(request, response);
+    std::wcout << response << std::endl;
+    if (response.find(L"\"requestId\":\"compare-1\"") == std::wstring::npos) {
+        return 31;
+    }
+    if (response.find(L"\"ok\":true") == std::wstring::npos) {
+        return 32;
+    }
+    return (response.find(L"\"totalMismatchCount\":0") != std::wstring::npos) ? 0 : 33;
 }
 
 int RunStandaloneWindowMode(tcalendar::TCalendarHost& host, const tcalendar::HostConfig& config, const std::filesystem::path& exe_dir, HINSTANCE instance) {
@@ -815,6 +1072,9 @@ int RunStandaloneWindowMode(tcalendar::TCalendarHost& host, const tcalendar::Hos
 
     WindowContext context{};
     context.host = &host;
+    context.startup_tick = GetTickCount64();
+    context.startup_log_enabled = config.startup_log_enabled;
+    context.startup_log_path = config.startup_log_path;
     context.initial_uri = BuildFileUriFromPath(std::filesystem::absolute(config.default_template_path).wstring());
     context.webview_user_data_dir = (std::filesystem::absolute(config.storage_db_path).parent_path() / L"webview2").wstring();
     context.ini_file_path = (exe_dir / kTCalendarIniFileName).wstring();
@@ -844,6 +1104,7 @@ int RunStandaloneWindowMode(tcalendar::TCalendarHost& host, const tcalendar::Hos
 
     ShowWindow(hwnd, SW_SHOWDEFAULT);
     UpdateWindow(hwnd);
+    LogStartupMark(&context, L"native window shown");
 
     if (!StartWebView2ForWindow(&context, hwnd)) {
         DestroyWindow(hwnd);
@@ -876,7 +1137,7 @@ int wmain(int argc, wchar_t** argv) {
     }
 
     HANDLE single_instance_mutex = nullptr;
-    if (args.mode != RuntimeMode::Smoke) {
+    if (args.mode != RuntimeMode::Smoke && args.mode != RuntimeMode::Compare) {
         HWND console = GetConsoleWindow();
         if (console) {
             ShowWindow(console, SW_HIDE);
@@ -899,6 +1160,7 @@ int wmain(int argc, wchar_t** argv) {
     }
 
     const bool smoke_mode = (args.mode == RuntimeMode::Smoke);
+    const bool compare_mode = (args.mode == RuntimeMode::Compare);
 
     const std::filesystem::path exe_dir = GetExecutableDirectory();
     tcalendar::HostConfig config{};
@@ -937,7 +1199,9 @@ int wmain(int argc, wchar_t** argv) {
     }
 
     if (smoke_mode) {
-        rc = RunSmokeMode(host, args.smoke_storage_error_mode, args.smoke_strict_mode);
+        rc = RunSmokeMode(host, exe_dir, args.smoke_storage_error_mode, args.smoke_strict_mode);
+    } else if (compare_mode) {
+        rc = RunCompareMode(host, args.compare_years_csv);
     } else {
         rc = RunStandaloneWindowMode(host, config, exe_dir, GetModuleHandleW(nullptr));
     }

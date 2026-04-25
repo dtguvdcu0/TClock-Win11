@@ -52,6 +52,8 @@
   let currentTimelineHourStart = 0;
   let currentLoadedTasks = [];
   let currentMonthTaskDateSet = new Set();
+  let currentMonthHolidayMap = new Map();
+  let currentRangeHolidayMap = new Map();
   let monthMarkerLoadSeq = 0;
   let currentUiFontFamily = "Segoe UI";
   let currentUiBaseFontSize = 14;
@@ -61,8 +63,15 @@
   let currentTclockAlertEnabled = false;
   let currentAlertSoundEnabled = true;
   let currentAlertSoundPath = "C:\\Windows\\Media\\notify.wav";
+  let currentHolidaySubscriptionFiles = "";
+  let currentHolidaySubscriptionCatalog = "";
+  let appReadyNotified = false;
 
   const DEFAULT_ALERT_SOUND_PATH = "C:\\Windows\\Media\\notify.wav";
+  const JP_PUBLIC_HOLIDAY_ALIAS = "jp-public-holiday";
+  const JP_PUBLIC_HOLIDAY_INI = "tcalendar/providers/jp-public-holiday.ini";
+  const JP_PUBLIC_HOLIDAY_JS = "tcalendar/providers/jp-public-holiday.js";
+  const JP_PUBLIC_HOLIDAY_TXT = "tcalendar/providers/jp-public-holiday.txt";
   const weekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
   const PANEL_RIGHT_MIN = 320;
@@ -135,6 +144,101 @@
   function normalizeAlertSoundPath(value) {
     const s = String(value || "").trim();
     return s || DEFAULT_ALERT_SOUND_PATH;
+  }
+
+  function normalizeHolidaySubscriptionPath(value) {
+    const s = String(value || "").trim();
+    if (!s) {
+      return "";
+    }
+    const lower = s.toLowerCase();
+    if (lower === JP_PUBLIC_HOLIDAY_ALIAS ||
+        lower === JP_PUBLIC_HOLIDAY_INI ||
+        lower === JP_PUBLIC_HOLIDAY_JS ||
+        lower === JP_PUBLIC_HOLIDAY_TXT) {
+      return JP_PUBLIC_HOLIDAY_ALIAS;
+    }
+    return s;
+  }
+
+  function encodeHolidaySubscriptionFiles(entries) {
+    return (Array.isArray(entries) ? entries : [])
+      .filter((entry) => entry && entry.enabled)
+      .map((entry) => normalizeHolidaySubscriptionPath(entry.path))
+      .filter(Boolean)
+      .join("|");
+  }
+
+  function encodeHolidaySubscriptionCatalog(entries) {
+    return (Array.isArray(entries) ? entries : [])
+      .map((entry) => {
+        const path = normalizeHolidaySubscriptionPath(entry && entry.path);
+        if (!path) {
+          return "";
+        }
+        return `${entry.enabled ? "1" : "0"} ${path}`;
+      })
+      .filter(Boolean)
+      .join("|");
+  }
+
+  function parseHolidaySubscriptionCatalog(rawCatalog, rawActiveFiles) {
+    const items = [];
+    const seen = new Set();
+    const pushEntry = (pathValue, enabled) => {
+      const path = normalizeHolidaySubscriptionPath(pathValue);
+      if (!path || seen.has(path)) {
+        return;
+      }
+      seen.add(path);
+      items.push({ path, enabled: !!enabled });
+    };
+    const catalogText = String(rawCatalog || "").trim();
+    if (catalogText) {
+      catalogText.split("|").forEach((part) => {
+        const item = String(part || "").trim();
+        if (!item) {
+          return;
+        }
+        const enabled = item[0] !== "0";
+        const path = item.length > 2 ? item.slice(2) : item.slice(1);
+        pushEntry(path, enabled);
+      });
+    }
+    String(rawActiveFiles || "").split("|").forEach((part) => {
+      pushEntry(part, true);
+    });
+    return items;
+  }
+
+  async function fetchHolidaySubscriptionStatus(holidaySubscriptionFiles = currentHolidaySubscriptionFiles) {
+    if (!hasHostBridge) {
+      return [];
+    }
+    try {
+      const response = await hostCall("system.getHolidaySubscriptionStatus", {
+        holidaySubscriptionFiles: typeof holidaySubscriptionFiles === "string"
+          ? holidaySubscriptionFiles
+          : encodeHolidaySubscriptionFiles(holidaySubscriptionFiles)
+      });
+      const items = response?.data?.files;
+      return Array.isArray(items) ? items : [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  async function fetchHolidayProviderCatalog() {
+    if (!hasHostBridge) {
+      return [];
+    }
+    try {
+      const response = await hostCall("system.getHolidayProviderCatalog", {});
+      const items = response?.data?.items;
+      return Array.isArray(items) ? items : [];
+    } catch (_) {
+      return [];
+    }
   }
 
   function applyUiStyleConfig() {
@@ -258,6 +362,11 @@
     if (!monthGrid) return;
     const next = clampCalendarHeight(height);
     monthGrid.style.height = `${next}px`;
+    if (calendarHeightSplitter) {
+      calendarHeightSplitter.setAttribute("aria-valuemin", String(CALENDAR_HEIGHT_MIN));
+      calendarHeightSplitter.setAttribute("aria-valuemax", String(CALENDAR_HEIGHT_MAX));
+      calendarHeightSplitter.setAttribute("aria-valuenow", String(next));
+    }
     syncLayoutSplitterHeight();
     if (persist) saveCalendarHeight(next);
   }
@@ -293,6 +402,22 @@
       document.body.classList.add("isResizingCalendarHeight");
     });
 
+    calendarHeightSplitter.tabIndex = 0;
+    calendarHeightSplitter.addEventListener("keydown", (e) => {
+      const current = readCurrentCalendarHeight();
+      let next = current;
+      if (e.key === "ArrowUp") next = current - 16;
+      else if (e.key === "ArrowDown") next = current + 16;
+      else if (e.key === "PageUp") next = current - 80;
+      else if (e.key === "PageDown") next = current + 80;
+      else if (e.key === "Home") next = CALENDAR_HEIGHT_MIN;
+      else if (e.key === "End") next = CALENDAR_HEIGHT_MAX;
+      else return;
+      e.preventDefault();
+      applyCalendarHeight(next, true);
+      void saveViewConfigToIni();
+    });
+
     window.addEventListener("mousemove", onMouseMove);
     window.addEventListener("mouseup", onMouseUp);
   }
@@ -320,6 +445,13 @@
     }
     const next = clampPanelRightWidth(width);
     appRoot.style.gridTemplateColumns = `minmax(0, 1fr) ${SPLITTER_WIDTH}px ${next}px`;
+    if (layoutSplitter) {
+      const appWidth = appRoot.getBoundingClientRect().width;
+      const maxRight = Math.max(PANEL_RIGHT_MIN, Math.floor(appWidth - PANEL_LEFT_MIN - SPLITTER_WIDTH));
+      layoutSplitter.setAttribute("aria-valuemin", String(PANEL_RIGHT_MIN));
+      layoutSplitter.setAttribute("aria-valuemax", String(maxRight));
+      layoutSplitter.setAttribute("aria-valuenow", String(next));
+    }
     if (persist) savePanelRightWidth(next);
   }
 
@@ -355,6 +487,24 @@
       layoutResizeState.startX = e.clientX;
       layoutResizeState.startRightWidth = readCurrentPanelRightWidth();
       document.body.classList.add("isResizingPanels");
+    });
+
+    layoutSplitter.tabIndex = 0;
+    layoutSplitter.addEventListener("keydown", (e) => {
+      if (isNarrowLayout()) return;
+      const current = readCurrentPanelRightWidth();
+      let next = current;
+      if (e.key === "ArrowLeft") next = current + 16;
+      else if (e.key === "ArrowRight") next = current - 16;
+      else if (e.key === "PageUp") next = current + 80;
+      else if (e.key === "PageDown") next = current - 80;
+      else if (e.key === "Home") next = PANEL_RIGHT_MIN;
+      else if (e.key === "End") next = 10000;
+      else return;
+      e.preventDefault();
+      applyPanelRightWidth(next, true);
+      syncLayoutSplitterHeight();
+      void saveViewConfigToIni();
     });
 
     window.addEventListener("mousemove", onMouseMove);
@@ -585,23 +735,51 @@
       const title = document.createElement("h3");
       title.textContent = "Task Detail";
 
+      const titleLabel = document.createElement("label");
+      titleLabel.className = "taskModalField";
+      const titleText = document.createElement("span");
+      titleText.textContent = "Title";
+      const titleInput = document.createElement("input");
+      titleInput.type = "text";
+      titleInput.maxLength = 120;
+      titleInput.value = initialTask?.title || "";
+      titleLabel.appendChild(titleText);
+      titleLabel.appendChild(titleInput);
+
+      const timeRow = document.createElement("div");
+      timeRow.className = "taskModalTimeRow";
+
       const startLabel = document.createElement("label");
-      startLabel.textContent = "Start time";
+      startLabel.className = "taskModalField";
+      const startText = document.createElement("span");
+      startText.textContent = "Start time";
       const startInput = document.createElement("input");
       startInput.type = "time";
       startInput.value = initialTask?.startTime || "";
+      startLabel.appendChild(startText);
+      startLabel.appendChild(startInput);
 
       const endLabel = document.createElement("label");
-      endLabel.textContent = "End time";
+      endLabel.className = "taskModalField";
+      const endText = document.createElement("span");
+      endText.textContent = "End time";
       const endInput = document.createElement("input");
       endInput.type = "time";
       endInput.value = initialTask?.endTime || "";
+      endLabel.appendChild(endText);
+      endLabel.appendChild(endInput);
+      timeRow.appendChild(startLabel);
+      timeRow.appendChild(endLabel);
 
       const detailLabel = document.createElement("label");
-      detailLabel.textContent = "Detail";
+      detailLabel.className = "taskModalField";
+      const detailText = document.createElement("span");
+      detailText.textContent = "Detail";
       const detailInput = document.createElement("textarea");
       detailInput.rows = 6;
       detailInput.value = initialTask?.detail || "";
+      detailLabel.appendChild(detailText);
+      detailLabel.appendChild(detailInput);
       const alertRow = document.createElement("label");
       alertRow.className = "taskModalInlineCheck";
       const alertInput = document.createElement("input");
@@ -609,8 +787,8 @@
       alertInput.checked = !!initialTask?.alertEnabled;
       const alertText = document.createElement("span");
       alertText.textContent = "Enable alert";
-      alertRow.appendChild(alertInput);
       alertRow.appendChild(alertText);
+      alertRow.appendChild(alertInput);
 
       const actions = document.createElement("div");
       actions.className = "taskModalActions";
@@ -619,19 +797,17 @@
       cancelButton.textContent = "Cancel";
       const saveButton = document.createElement("button");
       saveButton.type = "button";
+      saveButton.className = "primary";
       saveButton.textContent = "Save";
 
       actions.appendChild(cancelButton);
       actions.appendChild(saveButton);
 
       modal.appendChild(title);
-      modal.appendChild(startLabel);
-      modal.appendChild(startInput);
-      modal.appendChild(endLabel);
-      modal.appendChild(endInput);
+      modal.appendChild(titleLabel);
+      modal.appendChild(timeRow);
       modal.appendChild(alertRow);
       modal.appendChild(detailLabel);
-      modal.appendChild(detailInput);
       modal.appendChild(actions);
       overlay.appendChild(modal);
       document.body.appendChild(overlay);
@@ -646,16 +822,22 @@
         if (e.target === overlay) close(null);
       });
       saveButton.addEventListener("click", () => {
+        const nextTitle = titleInput.value.trim();
         const startTime = startInput.value.trim();
         const endTime = endInput.value.trim();
         const detail = detailInput.value.trim();
         const alertEnabled = !!alertInput.checked;
+        if (!nextTitle) {
+          window.alert("Task title is required.");
+          titleInput.focus();
+          return;
+        }
         const timeCheck = validateTimeRange(startTime, endTime);
         if (!timeCheck.ok) {
           window.alert(timeCheck.message);
           return;
         }
-        close({ detail, startTime, endTime, alertEnabled });
+        close({ title: nextTitle, detail, startTime, endTime, alertEnabled });
       });
     });
   }
@@ -711,6 +893,15 @@
     });
   }
 
+  function notifyAppReadyOnce(phase) {
+    if (appReadyNotified || !hasHostBridge) return;
+    appReadyNotified = true;
+    void hostCall("system.appReady", {
+      phase: phase || "firstTaskRender",
+      elapsedMs: String(Math.round(performance.now()))
+    }).catch(() => {});
+  }
+
   function refreshBusyUiState() {
     const controls = [taskTitle, viewModeSelect, rangePresetSelect, customRangeDaysInput, timelineLayoutSelect, timelineHourStartInput, settingsButton];
     controls.forEach((el) => { if (el) el.disabled = mutationInFlight; });
@@ -760,82 +951,79 @@
     return deleted;
   }
 
+  async function saveTaskEdits(task, edited) {
+    await withTaskMutation(async () => {
+      if (hasHostBridge && task.id) {
+        await hostCall("task.update", {
+          id: task.id,
+          title: edited.title,
+          detail: edited.detail,
+          startTime: edited.startTime,
+          endTime: edited.endTime,
+          alertEnabled: !!edited.alertEnabled
+        });
+      } else {
+        updateInMemoryTaskById(task.id, (target) => {
+          target.title = edited.title;
+          target.detail = edited.detail;
+          target.startTime = edited.startTime;
+          target.endTime = edited.endTime;
+          target.alertEnabled = !!edited.alertEnabled;
+        });
+      }
+      await loadTasksForCurrentRange();
+    });
+  }
+
+  async function openTaskEditor(task) {
+    const edited = await openTaskDetailDialog(task);
+    if (!edited) return;
+    await saveTaskEdits(task, edited);
+  }
+
+  async function deleteTaskWithConfirm(task) {
+    if (!window.confirm(`Delete task "${task.title}"?`)) return;
+    await withTaskMutation(async () => {
+      if (hasHostBridge && task.id) {
+        await hostCall("task.delete", { id: task.id });
+      } else {
+        deleteInMemoryTaskById(task.id);
+      }
+      await loadTasksForCurrentRange();
+    });
+  }
+
   function createTaskActionButtons(t) {
     const actions = document.createElement("div");
     actions.className = "taskActionGroup";
 
-    const editTitle = document.createElement("button");
-    editTitle.type = "button";
-    editTitle.className = "taskEdit";
-    editTitle.textContent = "Title";
-    editTitle.addEventListener("click", async () => {
-      const nextTitleRaw = window.prompt("Edit task title", t.title || "");
-      if (nextTitleRaw === null) return;
-      const nextTitle = nextTitleRaw.trim();
-      if (!nextTitle) return;
-
-      await withTaskMutation(async () => {
-        if (hasHostBridge && t.id) {
-          await hostCall("task.updateTitle", { id: t.id, title: nextTitle });
-        } else {
-          updateInMemoryTaskById(t.id, (target) => {
-            target.title = nextTitle;
-          });
-        }
-        await loadTasksForCurrentRange();
-      });
-    });
-
-    const editDetail = document.createElement("button");
-    editDetail.type = "button";
-    editDetail.className = "taskEdit";
-    editDetail.textContent = "Detail";
-    editDetail.addEventListener("click", async () => {
-      const edited = await openTaskDetailDialog(t);
-      if (!edited) return;
-
-      await withTaskMutation(async () => {
-        if (hasHostBridge && t.id) {
-          await hostCall("task.update", {
-            id: t.id,
-            title: t.title,
-            detail: edited.detail,
-            startTime: edited.startTime,
-            endTime: edited.endTime,
-            alertEnabled: !!edited.alertEnabled
-          });
-        } else {
-          updateInMemoryTaskById(t.id, (target) => {
-            target.detail = edited.detail;
-            target.startTime = edited.startTime;
-            target.endTime = edited.endTime;
-            target.alertEnabled = !!edited.alertEnabled;
-          });
-        }
-        await loadTasksForCurrentRange();
-      });
-    });
-
     const remove = document.createElement("button");
     remove.type = "button";
     remove.className = "taskDelete";
-    remove.textContent = "Delete";
+    remove.textContent = "Remove";
+    remove.setAttribute("aria-label", `Delete ${t.title || "task"}`);
     remove.addEventListener("click", async () => {
-      if (!window.confirm(`Delete task "${t.title}"?`)) return;
-      await withTaskMutation(async () => {
-        if (hasHostBridge && t.id) {
-          await hostCall("task.delete", { id: t.id });
-        } else {
-          deleteInMemoryTaskById(t.id);
-        }
-        await loadTasksForCurrentRange();
-      });
+      await deleteTaskWithConfirm(t);
     });
 
-    actions.appendChild(editTitle);
-    actions.appendChild(editDetail);
     actions.appendChild(remove);
     return actions;
+  }
+
+  function attachTaskRowInteraction(row, task) {
+    row.tabIndex = 0;
+    row.setAttribute("role", "button");
+    row.setAttribute("aria-label", `Edit task ${task.title || ""}`.trim());
+    row.addEventListener("click", async (e) => {
+      if (e.target instanceof Element && e.target.closest("button")) return;
+      await openTaskEditor(task);
+    });
+    row.addEventListener("keydown", async (e) => {
+      if (e.key !== "Enter" && e.key !== " ") return;
+      if (e.target instanceof Element && e.target.closest("button")) return;
+      e.preventDefault();
+      await openTaskEditor(task);
+    });
   }
 
   function renderTimelineTaskLabel(target, task) {
@@ -870,8 +1058,10 @@
 
     for (const t of sortedTasks) {
       const li = document.createElement("li");
-      const row = document.createElement("label");
-      row.className = "taskRow";
+      const row = document.createElement("div");
+      row.className = "taskRow taskRowInteractive";
+      attachTaskRowInteraction(row, t);
+      if (t.done) row.classList.add("isDone");
 
       const title = document.createElement("span");
       title.className = "taskTitle";
@@ -883,78 +1073,8 @@
         row.title = tooltipText;
       }
 
-      const editTitle = document.createElement("button");
-      editTitle.type = "button";
-      editTitle.className = "taskEdit";
-      editTitle.textContent = "Title";
-      editTitle.addEventListener("click", async () => {
-        const nextTitleRaw = window.prompt("Edit task title", t.title || "");
-        if (nextTitleRaw === null) return;
-        const nextTitle = nextTitleRaw.trim();
-        if (!nextTitle) return;
-
-        await withTaskMutation(async () => {
-          if (hasHostBridge && t.id) {
-            await hostCall("task.updateTitle", { id: t.id, title: nextTitle });
-          } else {
-            updateInMemoryTaskById(t.id, (target) => {
-              target.title = nextTitle;
-            });
-          }
-          await loadTasksForCurrentRange();
-        });
-      });
-
-      const editDetail = document.createElement("button");
-      editDetail.type = "button";
-      editDetail.className = "taskEdit";
-      editDetail.textContent = "Detail";
-      editDetail.addEventListener("click", async () => {
-        const edited = await openTaskDetailDialog(t);
-        if (!edited) return;
-
-        await withTaskMutation(async () => {
-          if (hasHostBridge && t.id) {
-            await hostCall("task.update", {
-              id: t.id,
-              title: t.title,
-              detail: edited.detail,
-              startTime: edited.startTime,
-              endTime: edited.endTime,
-              alertEnabled: !!edited.alertEnabled
-            });
-          } else {
-            updateInMemoryTaskById(t.id, (target) => {
-              target.detail = edited.detail;
-              target.startTime = edited.startTime;
-              target.endTime = edited.endTime;
-              target.alertEnabled = !!edited.alertEnabled;
-            });
-          }
-          await loadTasksForCurrentRange();
-        });
-      });
-
-      const remove = document.createElement("button");
-      remove.type = "button";
-      remove.className = "taskDelete";
-      remove.textContent = "Delete";
-      remove.addEventListener("click", async () => {
-        if (!window.confirm(`Delete task "${t.title}"?`)) return;
-        await withTaskMutation(async () => {
-          if (hasHostBridge && t.id) {
-            await hostCall("task.delete", { id: t.id });
-          } else {
-            deleteInMemoryTaskById(t.id);
-          }
-          await loadTasksForCurrentRange();
-        });
-      });
-
       row.appendChild(title);
-      row.appendChild(editTitle);
-      row.appendChild(editDetail);
-      row.appendChild(remove);
+      row.appendChild(createTaskActionButtons(t));
       li.appendChild(row);
       taskList.appendChild(li);
     }
@@ -1085,7 +1205,9 @@
 
       for (const t of dayTasks) {
         const row = document.createElement("div");
-        row.className = "timelineTaskRow";
+        row.className = "timelineTaskRow taskRowInteractive";
+        attachTaskRowInteraction(row, t);
+        if (t.done) row.classList.add("isDone");
 
         const label = document.createElement("span");
         label.className = "timelineTaskLabel";
@@ -1116,7 +1238,9 @@
 
       for (const t of untimed) {
         const row = document.createElement("div");
-        row.className = "timelineTaskRow";
+        row.className = "timelineTaskRow taskRowInteractive";
+        attachTaskRowInteraction(row, t);
+        if (t.done) row.classList.add("isDone");
 
         const taskLabel = document.createElement("span");
         taskLabel.className = "timelineTaskLabel";
@@ -1145,9 +1269,12 @@
       for (const t of timed) {
         const item = document.createElement("div");
         item.className = "timelinePerTaskItem";
+        if (t.done) item.classList.add("isDone");
 
         const top = document.createElement("div");
-        top.className = "timelinePerTaskTop";
+        top.className = "timelinePerTaskTop taskRowInteractive";
+        attachTaskRowInteraction(top, t);
+        if (t.done) top.classList.add("isDone");
 
         const label = document.createElement("span");
         label.className = "timelineTaskLabel";
@@ -1237,7 +1364,10 @@
     const rangeLabel = range.days === 1
       ? range.fromKey
       : `${range.fromKey} .. ${range.toKey}`;
-    dayTitle.textContent = `${currentViewMode === "timeline" ? "Timeline" : "Tasks"} ${rangeLabel}`;
+    const holidayName = range.days === 1 ? currentRangeHolidayMap.get(range.fromKey) || "" : "";
+    dayTitle.textContent = holidayName
+      ? `${currentViewMode === "timeline" ? "Timeline" : "Tasks"} ${rangeLabel} - ${holidayName}`
+      : `${currentViewMode === "timeline" ? "Timeline" : "Tasks"} ${rangeLabel}`;
   }
 
   async function fetchTasksForRange(range) {
@@ -1273,6 +1403,21 @@
     return out;
   }
 
+  async function fetchHolidaysForRange(range) {
+    if (hasHostBridge) {
+      try {
+        const response = await hostCall("calendar.getRangeHolidays", {
+          dateFrom: range.fromKey,
+          dateTo: range.toKey
+        });
+        const items = response?.data?.items;
+        return Array.isArray(items) ? items : [];
+      } catch (_) {
+      }
+    }
+    return [];
+  }
+
   async function loadTasksForCurrentRange() {
     const currentSeq = ++loadSeq;
     const range = buildCurrentRange();
@@ -1280,7 +1425,10 @@
     const items = await fetchTasksForRange(range);
     if (currentSeq !== loadSeq) return;
 
-    currentLoadedTasks = items.map(normalizeTask).sort(compareTasksForList);
+    applyTaskItemsForRange(items, range);
+    const holidayItems = await fetchHolidaysForRange(range);
+    if (currentSeq !== loadSeq) return;
+    applyRangeHolidayItems(holidayItems);
     renderCurrentView(range);
   }
 
@@ -1304,8 +1452,16 @@
     const button = document.createElement("button");
     button.type = "button";
     button.className = "dayCell";
+    const dateKey = keyOf(date);
+    const holidayName = currentMonthHolidayMap.get(dateKey) || "";
+    const today = new Date();
     if (!inCurrentMonth) button.classList.add("isOutside");
+    if (sameDay(date, today)) button.classList.add("isToday");
     if (sameDay(date, selectedDate)) button.classList.add("isSelected");
+    if (holidayName) {
+      button.classList.add("isHoliday");
+      button.title = holidayName;
+    }
 
     const dateLabel = document.createElement("span");
     dateLabel.className = "dateLabel";
@@ -1316,9 +1472,15 @@
       dateLabel.classList.add("isSaturday");
     }
     dateLabel.textContent = String(date.getDate());
-    if (currentMonthTaskDateSet.has(keyOf(date))) {
+    if (!holidayName && currentMonthTaskDateSet.has(keyOf(date))) {
       const marker = document.createElement("span");
       marker.className = "dateTaskMarker";
+      marker.textContent = "\u2022";
+      dateLabel.appendChild(marker);
+    }
+    if (holidayName) {
+      const marker = document.createElement("span");
+      marker.className = "dateHolidayMarker";
       marker.textContent = "\u2022";
       dateLabel.appendChild(marker);
     }
@@ -1389,7 +1551,9 @@
         uiShowTaskPanel: currentUiShowTaskPanel,
         tclockAlertEnabled: currentTclockAlertEnabled,
         alertSoundEnabled: currentAlertSoundEnabled,
-        alertSoundPath: currentAlertSoundPath
+        alertSoundPath: currentAlertSoundPath,
+        holidaySubscriptionFiles: currentHolidaySubscriptionFiles,
+        holidaySubscriptionCatalog: currentHolidaySubscriptionCatalog
       };
 
       const overlay = document.createElement("div");
@@ -1494,6 +1658,9 @@
       const alertSoundPathInput = document.createElement("input");
       alertSoundPathInput.type = "text";
       alertSoundPathInput.value = normalizeAlertSoundPath(currentAlertSoundPath);
+      const holidaySubscriptionListBox = document.createElement("div");
+      holidaySubscriptionListBox.className = "settingsSubscriptionList";
+      let holidaySubscriptionEntries = [];
 
 
 
@@ -1515,9 +1682,13 @@
       const alertSettings = createSection("Alert");
       alertSettings.appendChild(createRow("Sound", alertSoundEnabledWrap, ""));
       alertSettings.appendChild(createRow("Sound file", alertSoundPathInput, "Default: C:\\Windows\\Media\\notify.wav"));
+      const holidaySettings = createSection("Holiday");
+      holidaySettings.appendChild(createRow("Providers", holidaySubscriptionListBox, ""));
+      const holidaySectionTitle = holidaySettings.querySelector("h4");
 
 
 
+      body.appendChild(holidaySettings);
       body.appendChild(typography);
       body.appendChild(layout);
       body.appendChild(alertSettings);
@@ -1548,7 +1719,9 @@
         uiShowTaskPanel: !!showTaskPanelInput.checked,
         tclockAlertEnabled: !!tclockAlertInput.checked,
         alertSoundEnabled: !!alertSoundEnabledInput.checked,
-        alertSoundPath: normalizeAlertSoundPath(alertSoundPathInput.value)
+        alertSoundPath: normalizeAlertSoundPath(alertSoundPathInput.value),
+        holidaySubscriptionFiles: encodeHolidaySubscriptionFiles(holidaySubscriptionEntries),
+        holidaySubscriptionCatalog: ""
       });
 
       const applyDraft = (draft) => {
@@ -1560,6 +1733,8 @@
         currentTclockAlertEnabled = !!draft.tclockAlertEnabled;
         currentAlertSoundEnabled = !!draft.alertSoundEnabled;
         currentAlertSoundPath = normalizeAlertSoundPath(draft.alertSoundPath);
+        currentHolidaySubscriptionFiles = String(draft.holidaySubscriptionFiles || "");
+        currentHolidaySubscriptionCatalog = String(draft.holidaySubscriptionCatalog || "");
         applyUiStyleConfig();
         applyTaskPanelVisibility();
       };
@@ -1573,6 +1748,73 @@
         resolve(value);
       };
 
+      const renderHolidaySubscriptionStatus = (items) => {
+        const statusMap = new Map();
+        items.forEach((item) => {
+          statusMap.set(normalizeHolidaySubscriptionPath(item.path), item);
+        });
+        if (holidaySectionTitle) {
+          const activeCount = holidaySubscriptionEntries.filter((entry) => entry.enabled).length;
+          holidaySectionTitle.textContent = activeCount ? `Holiday (${activeCount})` : "Holiday";
+        }
+        holidaySubscriptionListBox.innerHTML = "";
+        if (!holidaySubscriptionEntries.length) {
+          const empty = document.createElement("div");
+          empty.className = "settingsSubscriptionEmpty";
+          empty.textContent = "No providers";
+          holidaySubscriptionListBox.appendChild(empty);
+          return;
+        }
+        holidaySubscriptionEntries.forEach((entry, index) => {
+          const item = statusMap.get(normalizeHolidaySubscriptionPath(entry.path)) || null;
+          const row = document.createElement("div");
+          row.className = "settingsSubscriptionItem";
+          const label = document.createElement("label");
+          label.className = "settingsSubscriptionToggle";
+          const toggle = document.createElement("input");
+          toggle.type = "checkbox";
+          toggle.checked = !!entry.enabled;
+          const pathText = document.createElement("span");
+          pathText.className = "settingsSubscriptionPathText";
+          pathText.textContent = entry.name || entry.path;
+          label.appendChild(toggle);
+          label.appendChild(pathText);
+          const status = document.createElement("span");
+          status.className = "settingsSubscriptionBadge";
+          if (!entry.enabled) {
+            status.textContent = "Off";
+          } else {
+            status.textContent = item ? (item.loaded ? "On" : (item.exists ? "Error" : "Missing")) : "Loading";
+          }
+
+          toggle.addEventListener("change", () => {
+            holidaySubscriptionEntries[index].enabled = !!toggle.checked;
+            applyDraft(collectDraft());
+            refreshHolidaySubscriptionStatus();
+          });
+
+          row.appendChild(label);
+          row.appendChild(status);
+          holidaySubscriptionListBox.appendChild(row);
+        });
+      };
+
+      let holidayStatusLoadSeq = 0;
+      const refreshHolidaySubscriptionStatus = () => {
+        const seq = ++holidayStatusLoadSeq;
+        holidaySubscriptionListBox.innerHTML = "";
+        const loading = document.createElement("div");
+        loading.className = "settingsSubscriptionEmpty";
+        loading.textContent = "Loading...";
+        holidaySubscriptionListBox.appendChild(loading);
+        fetchHolidaySubscriptionStatus(encodeHolidaySubscriptionFiles(holidaySubscriptionEntries)).then((items) => {
+          if (seq !== holidayStatusLoadSeq || !document.body.contains(overlay)) {
+            return;
+          }
+          renderHolidaySubscriptionStatus(items);
+        });
+      };
+
       [fontFamilyInput, baseFontInput, calendarDateFontInput, taskFontInput].forEach((el) => {
         el.addEventListener("input", () => applyDraft(collectDraft()));
       });
@@ -1580,6 +1822,27 @@
       tclockAlertInput.addEventListener("change", () => applyDraft(collectDraft()));
       alertSoundEnabledInput.addEventListener("change", () => applyDraft(collectDraft()));
       alertSoundPathInput.addEventListener("input", () => applyDraft(collectDraft()));
+      fetchHolidayProviderCatalog().then((items) => {
+        if (!document.body.contains(overlay)) {
+          return;
+        }
+        const activeSet = new Set(
+          String(currentHolidaySubscriptionFiles || "")
+            .split("|")
+            .map((entry) => normalizeHolidaySubscriptionPath(entry))
+            .filter(Boolean)
+        );
+        holidaySubscriptionEntries = items.map((item) => {
+          const path = normalizeHolidaySubscriptionPath(item && item.id);
+          return {
+            path,
+            name: String(item?.name || path),
+            enabled: activeSet.has(path)
+          };
+        });
+        applyDraft(collectDraft());
+        refreshHolidaySubscriptionStatus();
+      });
 
       cancelButton.addEventListener("click", () => {
         restoreSnapshot();
@@ -1602,6 +1865,8 @@
         applyDraft(draft);
         close(draft);
       });
+
+      refreshHolidaySubscriptionStatus();
 
       modal.tabIndex = -1;
       modal.focus();
@@ -1697,48 +1962,124 @@
     input.select();
   }
 
+  function applyViewConfigData(data) {
+    const mode = data.defaultViewMode === "timeline" ? "timeline" : "list";
+    setViewMode(mode);
+
+    const preset = String(data.defaultRangePresetDays || 1);
+    if (["1", "7", "14", "30"].includes(preset)) {
+      setRangePreset(preset);
+    }
+
+    setCustomRangeDays(Number(data.defaultCustomRangeDays || 7));
+    if (data.defaultUseCustomRange) {
+      setRangePreset("custom");
+    }
+
+    currentUiFontFamily = normalizeUiFontFamily(data.uiFontFamily);
+    currentUiBaseFontSize = normalizeUiFontSize(data.uiBaseFontSize, 14);
+    currentUiCalendarDateFontSize = normalizeUiFontSize(data.uiCalendarDateFontSize, 13);
+    currentUiTaskFontSize = normalizeUiFontSize(data.uiTaskFontSize, 14);
+    applyUiStyleConfig();
+    currentUiShowTaskPanel = !!data.uiShowTaskPanel;
+    currentTclockAlertEnabled = !!data.tclockAlertEnabled;
+    currentAlertSoundEnabled = data.alertSoundEnabled !== false;
+    currentAlertSoundPath = normalizeAlertSoundPath(data.alertSoundPath);
+    currentHolidaySubscriptionFiles = String(data.holidaySubscriptionFiles || "");
+    currentHolidaySubscriptionCatalog = String(data.holidaySubscriptionCatalog || "");
+    applyTaskPanelVisibility();
+
+    const iniPanelRightWidth = Number(data.uiPanelRightWidth || 0);
+    if (currentUiShowTaskPanel && Number.isFinite(iniPanelRightWidth) && iniPanelRightWidth > 0) {
+      applyPanelRightWidth(iniPanelRightWidth, false);
+    }
+
+    const iniCalendarHeight = Number(data.uiCalendarHeight || 0);
+    if (Number.isFinite(iniCalendarHeight) && iniCalendarHeight > 0) {
+      applyCalendarHeight(iniCalendarHeight, false);
+    }
+  }
+
   async function loadViewConfig() {
     if (!hasHostBridge) {
       return;
     }
     try {
       const response = await hostCall("system.getViewConfig", {});
-      const data = response?.data || {};
-
-      const mode = data.defaultViewMode === "timeline" ? "timeline" : "list";
-      setViewMode(mode);
-
-      const preset = String(data.defaultRangePresetDays || 1);
-      if (["1", "7", "14", "30"].includes(preset)) {
-        setRangePreset(preset);
-      }
-
-      setCustomRangeDays(Number(data.defaultCustomRangeDays || 7));
-      if (data.defaultUseCustomRange) {
-        setRangePreset("custom");
-      }
-
-      currentUiFontFamily = normalizeUiFontFamily(data.uiFontFamily);
-      currentUiBaseFontSize = normalizeUiFontSize(data.uiBaseFontSize, 14);
-      currentUiCalendarDateFontSize = normalizeUiFontSize(data.uiCalendarDateFontSize, 13);
-      currentUiTaskFontSize = normalizeUiFontSize(data.uiTaskFontSize, 14);
-      applyUiStyleConfig();
-      currentUiShowTaskPanel = !!data.uiShowTaskPanel;
-      currentTclockAlertEnabled = !!data.tclockAlertEnabled;
-      currentAlertSoundEnabled = data.alertSoundEnabled !== false;
-      currentAlertSoundPath = normalizeAlertSoundPath(data.alertSoundPath);
-      applyTaskPanelVisibility();
-
-      const iniPanelRightWidth = Number(data.uiPanelRightWidth || 0);
-      if (currentUiShowTaskPanel && Number.isFinite(iniPanelRightWidth) && iniPanelRightWidth > 0) {
-        applyPanelRightWidth(iniPanelRightWidth, false);
-      }
-
-      const iniCalendarHeight = Number(data.uiCalendarHeight || 0);
-      if (Number.isFinite(iniCalendarHeight) && iniCalendarHeight > 0) {
-        applyCalendarHeight(iniCalendarHeight, false);
-      }
+      applyViewConfigData(response?.data || {});
     } catch (_) {
+    }
+  }
+
+  function applyTaskItemsForRange(items, range) {
+    currentLoadedTasks = (Array.isArray(items) ? items : []).map(normalizeTask).sort(compareTasksForList);
+    renderCurrentView(range);
+    notifyAppReadyOnce("firstTaskRender");
+  }
+
+  function applyMonthMarkerItems(items) {
+    const markerSet = new Set();
+    for (const raw of Array.isArray(items) ? items : []) {
+      const t = normalizeTask(raw);
+      if (t.date) {
+        markerSet.add(t.date);
+      }
+    }
+    currentMonthTaskDateSet = markerSet;
+  }
+
+  function applyMonthHolidayItems(items) {
+    const holidayMap = new Map();
+    for (const raw of Array.isArray(items) ? items : []) {
+      const dateKey = String(raw?.date || "");
+      const name = String(raw?.name || "").trim();
+      if (dateKey && name && !holidayMap.has(dateKey)) {
+        holidayMap.set(dateKey, name);
+      }
+    }
+    currentMonthHolidayMap = holidayMap;
+  }
+
+  function applyRangeHolidayItems(items) {
+    const holidayMap = new Map();
+    for (const raw of Array.isArray(items) ? items : []) {
+      const dateKey = String(raw?.date || "");
+      const name = String(raw?.name || "").trim();
+      if (dateKey && name && !holidayMap.has(dateKey)) {
+        holidayMap.set(dateKey, name);
+      }
+    }
+    currentRangeHolidayMap = holidayMap;
+  }
+
+  async function loadStartupState() {
+    if (!hasHostBridge) {
+      return false;
+    }
+
+    const monthRange = buildMonthRange();
+    try {
+      const response = await hostCall("system.getStartupState", {
+        selectedDate: keyOf(selectedDate),
+        monthFrom: monthRange.fromKey,
+        monthTo: monthRange.toKey
+      });
+      const data = response?.data || {};
+      applyViewConfigData(data.config || {});
+      applyMonthMarkerItems(data.monthItems || []);
+      applyMonthHolidayItems(data.monthHolidayItems || []);
+      renderMonthTitle();
+      renderMonthGrid();
+
+      const taskRange = data.taskRange
+        ? { fromKey: data.taskRange.dateFrom, toKey: data.taskRange.dateTo, days: Number(data.taskRange.days || 1) }
+        : buildCurrentRange();
+      applyTaskItemsForRange(data.taskItems || [], taskRange);
+      applyRangeHolidayItems(data.taskHolidayItems || []);
+      renderCurrentView(taskRange);
+      return true;
+    } catch (_) {
+      return false;
     }
   }
 
@@ -1758,7 +2099,9 @@
         uiShowTaskPanel: currentUiShowTaskPanel ? "1" : "0",
         tclockAlertEnabled: currentTclockAlertEnabled ? "1" : "0",
         alertSoundEnabled: currentAlertSoundEnabled ? "1" : "0",
-        alertSoundPath: currentAlertSoundPath
+        alertSoundPath: currentAlertSoundPath,
+        holidaySubscriptionFiles: currentHolidaySubscriptionFiles,
+        holidaySubscriptionCatalog: currentHolidaySubscriptionCatalog
       });
     } catch (_) {
     }
@@ -1766,9 +2109,17 @@
 
   async function renderMonth() {
     renderMonthTitle();
-    await loadMonthTaskDateSet();
+    currentMonthTaskDateSet = new Set();
+    currentMonthHolidayMap = new Map();
     renderMonthGrid();
-    await loadTasksForCurrentRange();
+    const markerLoad = loadMonthTaskDateSet().then(() => {
+      renderMonthGrid();
+    });
+    const holidayLoad = fetchHolidaysForRange(buildMonthRange()).then((items) => {
+      applyMonthHolidayItems(items);
+      renderMonthGrid();
+    });
+    await Promise.all([markerLoad, holidayLoad, loadTasksForCurrentRange()]);
   }
 
   taskForm.addEventListener("submit", async (e) => {
@@ -1888,7 +2239,9 @@
   syncLayoutSplitterHeight();
 
   (async () => {
-    await loadViewConfig();
-    await renderMonth();
+    if (!(await loadStartupState())) {
+      await loadViewConfig();
+      await renderMonth();
+    }
   })();
 })();

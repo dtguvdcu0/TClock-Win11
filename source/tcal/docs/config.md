@@ -24,6 +24,7 @@ All documented runtime keys are under `[TCalendar]`.
 ### WebView and navigation
 - `BlockExternalNavigation`: `0` or `1`, default `1`
 - `EnableWebView2Bootstrap`: `0` or `1`, default `1`
+- `StartupLogEnabled`: `0` or `1`, default `0`. When enabled, startup timing marks are appended to `tcalendar\logs\startup.log`.
 
 ### Window state
 - `WindowWidth`: window width, default `960`, valid load range `320..3840`
@@ -51,6 +52,37 @@ All documented runtime keys are under `[TCalendar]`.
 - `AlertGraceMinutes`: clamped to `0..5`, default `1`
 - `AlertSoundEnabled`: `0` or `1`, default `1`
 - `AlertSoundPath`: default `C:\Windows\Media\notify.wav`
+
+### Holiday subscription
+- `HolidaySubscriptionFiles`: optional multi-entry subscription list
+- `HolidaySubscriptionCatalog`: optional saved checklist state for the Settings file list
+- Storage format: a single string with `|` separators between subscription entries
+- UI editing format:
+  - provider checklist in Settings
+  - only providers from the fixed `tcalendar\providers\` directory are shown
+  - checked rows contribute to `HolidaySubscriptionFiles`
+  - free-form add/remove path editing is not part of the Settings UI
+- Provider aliases:
+  - `jp-public-holiday`
+- `jp-public-holiday` resolves to:
+  - `tcalendar\providers\jp-public-holiday.ini`
+  - runtime then loads the same-basename script `tcalendar\providers\jp-public-holiday.js`
+- File subscription loading scope:
+  - current provider reads UTF-8 text files
+  - one record per line
+  - format: `YYYY-MM-DD|Name|Kind`
+  - `Kind` is optional
+  - blank lines and lines starting with `#` or `;` are ignored
+- Merge rule:
+  - subscription entries are applied in listed order
+  - later entries override earlier entries for the same date
+- Relative path rule:
+  - relative file paths are resolved from the directory containing `tcalendar.ini`
+- Important:
+  - `jp-public-holiday` is not enabled unless it is listed here
+  - the runtime loads `jp-public-holiday` from the manifest/script pair, not from an always-on built-in holiday set
+  - `HolidaySubscriptionCatalog` keeps unchecked files in the saved Settings list without activating them
+  - the shipped `jp-public-holiday` provider currently mirrors the workbook historical holiday table from `1873+`, including workbook year-end rows and historical pre-1948 observances
 
 ## Integration-Owned Key
 The alert startup toggle is not owned by `tcalendar.ini`.
@@ -89,6 +121,7 @@ UiCalendarHeight=420
 UiShowTaskPanel=1
 BlockExternalNavigation=1
 EnableWebView2Bootstrap=1
+StartupLogEnabled=0
 TemplateUser=tcalendar\template\user\index.html
 StorageDbPath=tcalendar\data\tasks.db
 AlertDispatchTickSeconds=60
@@ -96,4 +129,5 @@ AlertRefreshMinutes=10
 AlertGraceMinutes=1
 AlertSoundEnabled=1
 AlertSoundPath=C:\Windows\Media\notify.wav
+HolidaySubscriptionFiles=
 ```

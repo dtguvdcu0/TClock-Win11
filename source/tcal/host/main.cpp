@@ -2,6 +2,7 @@
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <shellapi.h>
 #include <objbase.h>
 #include <mmsystem.h>
 #pragma comment(lib, "winmm.lib")
@@ -1250,7 +1251,7 @@ int RunStandaloneWindowMode(tcalendar::TCalendarHost& host, const tcalendar::Hos
 
 } // namespace
 
-int wmain(int argc, wchar_t** argv) {
+int RunEntryMain(int argc, wchar_t** argv) {
     RuntimeArgs args{};
     std::wstring arg_error;
     if (!ParseRuntimeArgs(argc, argv, args, arg_error)) {
@@ -1333,5 +1334,21 @@ int wmain(int argc, wchar_t** argv) {
     if (single_instance_mutex) {
         CloseHandle(single_instance_mutex);
     }
+    return rc;
+}
+
+int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
+    int argc = 0;
+    LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+    if (!argv || argc <= 0) {
+        MessageBoxW(nullptr, L"Failed to parse command line.", L"TCalendar", MB_OK | MB_ICONERROR);
+        if (argv) {
+            LocalFree(argv);
+        }
+        return 2;
+    }
+
+    const int rc = RunEntryMain(argc, argv);
+    LocalFree(argv);
     return rc;
 }

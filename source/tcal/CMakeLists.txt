@@ -31,7 +31,7 @@ if(NOT EXISTS "${PROVIDER_ASSETS_DIR}/jp-public-holiday.js")
   message(FATAL_ERROR "Provider assets not found: ${PROVIDER_ASSETS_DIR}/jp-public-holiday.js")
 endif()
 
-add_executable(TCalendar
+add_executable(TCalendar WIN32
   host/main.cpp
   host/tcalendar_host.cpp
   host/bridge_contract.cpp

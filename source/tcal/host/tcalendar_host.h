@@ -39,6 +39,7 @@ struct HostConfig {
     bool startup_log_enabled = false;
     std::wstring startup_log_path;
 };
+bool CanonicalizeTCalendarIni(const std::wstring& ini_file_path);
 class TCalendarHost {
 public:
     explicit TCalendarHost(const HostConfig& config);

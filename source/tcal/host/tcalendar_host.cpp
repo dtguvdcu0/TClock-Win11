@@ -337,14 +337,48 @@ bool ReadUtf8TextFile(const std::filesystem::path& path, std::wstring& out_value
     return DecodeUtf8Text(bytes, out_value);
 }
 
-bool EncodeUtf8Text(const std::wstring& text, std::string& out_value) {
+bool DecodeIniByteText(const std::string& text, std::wstring& out_value) {
     out_value.clear();
-    if (text.empty()) return true;
-    const int count = WideCharToMultiByte(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), nullptr, 0, nullptr, nullptr);
-    if (count <= 0) return false;
-    out_value.resize(static_cast<size_t>(count));
-    return WideCharToMultiByte(CP_UTF8, 0, text.data(), static_cast<int>(text.size()),
-                               out_value.data(), count, nullptr, nullptr) > 0;
+    out_value.reserve(text.size());
+    for (unsigned char ch : text) {
+        out_value.push_back(static_cast<wchar_t>(ch));
+    }
+    return true;
+}
+
+bool ReadIniTextFile(const std::filesystem::path& path, std::wstring& out_value) {
+    std::ifstream input(path, std::ios::binary);
+    if (!input) return false;
+    std::string bytes((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+    if (bytes.size() >= 2 &&
+        static_cast<unsigned char>(bytes[0]) == 0xFF &&
+        static_cast<unsigned char>(bytes[1]) == 0xFE) {
+        const size_t wchar_count = (bytes.size() - 2) / sizeof(wchar_t);
+        out_value.assign(reinterpret_cast<const wchar_t*>(bytes.data() + 2), wchar_count);
+        return true;
+    }
+    if (bytes.size() >= 3 &&
+        static_cast<unsigned char>(bytes[0]) == 0xEF &&
+        static_cast<unsigned char>(bytes[1]) == 0xBB &&
+        static_cast<unsigned char>(bytes[2]) == 0xBF) {
+        bytes.erase(0, 3);
+        return DecodeUtf8Text(bytes, out_value);
+    }
+    if (DecodeUtf8Text(bytes, out_value)) {
+        return true;
+    }
+    return DecodeIniByteText(bytes, out_value);
+}
+
+bool WriteIniTextFileUtf16(const std::filesystem::path& path, const std::wstring& text) {
+    std::ofstream output(path, std::ios::binary | std::ios::trunc);
+    if (!output) return false;
+    static constexpr unsigned char kUtf16LeBom[] = {0xFF, 0xFE};
+    output.write(reinterpret_cast<const char*>(kUtf16LeBom), sizeof(kUtf16LeBom));
+    if (!text.empty()) {
+        output.write(reinterpret_cast<const char*>(text.data()), static_cast<std::streamsize>(text.size() * sizeof(wchar_t)));
+    }
+    return !!output;
 }
 
 std::vector<std::wstring> SplitString(const std::wstring& value, wchar_t delimiter) {
@@ -1124,15 +1158,13 @@ bool EvaluateJScriptHolidayProvider(const std::filesystem::path& script_path,
     return ok;
 }
 
-bool CanonicalizeHolidaySubscriptionKeys(const std::wstring& ini_file_path,
-                                         const std::wstring& holiday_subscription_files,
-                                         const std::wstring& holiday_subscription_catalog) {
+bool CanonicalizeTCalendarIniImpl(const std::wstring& ini_file_path) {
     if (ini_file_path.empty()) {
         return true;
     }
 
     std::wstring text;
-    if (!ReadUtf8TextFile(std::filesystem::path(ini_file_path), text)) {
+    if (!ReadIniTextFile(std::filesystem::path(ini_file_path), text)) {
         return false;
     }
 
@@ -1153,10 +1185,20 @@ bool CanonicalizeHolidaySubscriptionKeys(const std::wstring& ini_file_path,
     }
 
     std::vector<std::wstring> output;
-    output.reserve(lines.size() + 6);
+    output.reserve(lines.size() + 8);
     std::wstring current_section;
+    size_t first_tcalendar_insert_index = std::wstring::npos;
     bool saw_tcalendar = false;
-    size_t last_tcalendar_header_index = std::wstring::npos;
+    std::vector<std::wstring> key_order;
+    std::unordered_map<std::wstring, std::wstring> merged_values;
+
+    auto canonical_key = [](const std::wstring& value) {
+        std::wstring key = TrimWhitespace(value);
+        for (wchar_t& ch : key) {
+            ch = static_cast<wchar_t>(towlower(ch));
+        }
+        return key;
+    };
 
     for (const std::wstring& raw_line : lines) {
         const std::wstring trimmed = TrimWhitespace(raw_line);
@@ -1164,40 +1206,52 @@ bool CanonicalizeHolidaySubscriptionKeys(const std::wstring& ini_file_path,
             current_section = TrimWhitespace(trimmed.substr(1, trimmed.size() - 2));
             if (_wcsicmp(current_section.c_str(), L"TCalendar") == 0) {
                 saw_tcalendar = true;
-                last_tcalendar_header_index = output.size();
+                if (first_tcalendar_insert_index == std::wstring::npos) {
+                    first_tcalendar_insert_index = output.size();
+                }
+                continue;
             }
             output.push_back(raw_line);
             continue;
         }
 
         if (_wcsicmp(current_section.c_str(), L"TCalendar") == 0) {
-            const size_t eq = trimmed.find(L'=');
-            if (eq != std::wstring::npos) {
-                const std::wstring key = TrimWhitespace(trimmed.substr(0, eq));
-                if (_wcsicmp(key.c_str(), L"HolidaySubscriptionFiles") == 0 ||
-                    _wcsicmp(key.c_str(), L"HolidaySubscriptionCatalog") == 0) {
-                    continue;
-                }
+            if (trimmed.empty() || trimmed.front() == L';' || trimmed.front() == L'#') {
+                continue;
             }
+            const size_t eq = raw_line.find(L'=');
+            if (eq == std::wstring::npos) {
+                continue;
+            }
+            const std::wstring raw_key = TrimWhitespace(raw_line.substr(0, eq));
+            const std::wstring raw_value = raw_line.substr(eq + 1);
+            const std::wstring key = canonical_key(raw_key);
+            if (merged_values.find(key) == merged_values.end()) {
+                key_order.push_back(key);
+            }
+            merged_values[key] = raw_key + L"=" + raw_value;
+            continue;
         }
 
         output.push_back(raw_line);
     }
 
-    if (saw_tcalendar) {
-        const size_t insert_at = last_tcalendar_header_index + 1;
-        output.insert(output.begin() + static_cast<std::ptrdiff_t>(insert_at),
-                      std::wstring(L"HolidaySubscriptionCatalog=") + holiday_subscription_catalog);
-        output.insert(output.begin() + static_cast<std::ptrdiff_t>(insert_at),
-                      std::wstring(L"HolidaySubscriptionFiles=") + holiday_subscription_files);
-    } else {
-        if (!output.empty() && !output.back().empty()) {
-            output.push_back(L"");
-        }
-        output.push_back(L"[TCalendar]");
-        output.push_back(std::wstring(L"HolidaySubscriptionFiles=") + holiday_subscription_files);
-        output.push_back(std::wstring(L"HolidaySubscriptionCatalog=") + holiday_subscription_catalog);
+    if (!saw_tcalendar) {
+        return true;
     }
+
+    std::vector<std::wstring> merged_section;
+    merged_section.reserve(key_order.size() + 1);
+    merged_section.push_back(L"[TCalendar]");
+    for (const std::wstring& key : key_order) {
+        const auto it = merged_values.find(key);
+        if (it != merged_values.end()) {
+            merged_section.push_back(it->second);
+        }
+    }
+
+    const size_t insert_at = (first_tcalendar_insert_index == std::wstring::npos) ? output.size() : first_tcalendar_insert_index;
+    output.insert(output.begin() + static_cast<std::ptrdiff_t>(insert_at), merged_section.begin(), merged_section.end());
 
     std::wstring normalized;
     for (size_t i = 0; i < output.size(); ++i) {
@@ -1207,23 +1261,9 @@ bool CanonicalizeHolidaySubscriptionKeys(const std::wstring& ini_file_path,
         }
     }
 
-    std::string utf8;
-    if (!EncodeUtf8Text(normalized, utf8)) {
-        return false;
-    }
-
-    std::ofstream out(std::filesystem::path(ini_file_path), std::ios::binary | std::ios::trunc);
-    if (!out) {
-        return false;
-    }
-
-    static constexpr unsigned char kUtf8Bom[] = {0xEF, 0xBB, 0xBF};
-    out.write(reinterpret_cast<const char*>(kUtf8Bom), sizeof(kUtf8Bom));
-    if (!utf8.empty()) {
-        out.write(utf8.data(), static_cast<std::streamsize>(utf8.size()));
-    }
-    return !!out;
+    return WriteIniTextFileUtf16(std::filesystem::path(ini_file_path), normalized);
 }
+
 
 void MergeHolidaySubscriptionFile(std::map<std::wstring, HolidayItem>& items,
                                   const std::filesystem::path& path,
@@ -1598,7 +1638,11 @@ bool CompareJpHolidayProviders(const std::wstring& years_csv,
     return true;
 }
 
-} // namespace
+ } // namespace
+
+bool CanonicalizeTCalendarIni(const std::wstring& ini_file_path) {
+    return CanonicalizeTCalendarIniImpl(ini_file_path);
+}
 
 TCalendarHost::TCalendarHost(const HostConfig& config) : config_(config) {}
 
@@ -1947,10 +1991,7 @@ bool TCalendarHost::HandleWebMessage(const std::wstring& request_json, std::wstr
             write_ok = write_ok && (WritePrivateProfileStringW(L"TCalendar", L"HolidaySubscriptionFiles", config_.holiday_subscription_files.c_str(), config_.ini_file_path.c_str()) != FALSE);
             write_ok = write_ok && (WritePrivateProfileStringW(L"TCalendar", L"HolidaySubscriptionCatalog", config_.holiday_subscription_catalog.c_str(), config_.ini_file_path.c_str()) != FALSE);
             if (write_ok) {
-                write_ok = CanonicalizeHolidaySubscriptionKeys(
-                    config_.ini_file_path,
-                    config_.holiday_subscription_files,
-                    config_.holiday_subscription_catalog);
+                write_ok = CanonicalizeTCalendarIni(config_.ini_file_path);
             }
             if (!config_.tclock_ini_file_path.empty()) {
                 const wchar_t* tclock_alert = config_.tclock_alert_enabled ? L"1" : L"0";

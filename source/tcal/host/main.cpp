@@ -496,18 +496,23 @@ std::wstring TrimAsciiWhitespace(const std::wstring& value) {
     return value.substr(start, end - start);
 }
 
-bool DecodeIniUtf8Text(const std::string& text, std::wstring& out_value) {
+bool DecodeIniText(const std::string& text, std::wstring& out_value) {
     out_value.clear();
     if (text.empty()) {
         return true;
     }
-    const int count = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text.data(), static_cast<int>(text.size()), nullptr, 0);
-    if (count <= 0) {
-        return false;
+    const int utf8_count = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text.data(), static_cast<int>(text.size()), nullptr, 0);
+    if (utf8_count > 0) {
+        out_value.resize(static_cast<size_t>(utf8_count));
+        return MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text.data(), static_cast<int>(text.size()),
+                                   out_value.data(), utf8_count) > 0;
     }
-    out_value.resize(static_cast<size_t>(count));
-    return MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text.data(), static_cast<int>(text.size()),
-                               out_value.data(), count) > 0;
+    out_value.clear();
+    out_value.reserve(text.size());
+    for (unsigned char ch : text) {
+        out_value.push_back(static_cast<wchar_t>(ch));
+    }
+    return true;
 }
 
 std::wstring ReadMergedIniValue(const std::wstring& ini_path, const std::wstring& section, const std::wstring& key) {
@@ -517,16 +522,22 @@ std::wstring ReadMergedIniValue(const std::wstring& ini_path, const std::wstring
     }
 
     std::string bytes((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
-    if (bytes.size() >= 3 &&
-        static_cast<unsigned char>(bytes[0]) == 0xEF &&
-        static_cast<unsigned char>(bytes[1]) == 0xBB &&
-        static_cast<unsigned char>(bytes[2]) == 0xBF) {
-        bytes.erase(0, 3);
-    }
-
     std::wstring text;
-    if (!DecodeIniUtf8Text(bytes, text)) {
-        return L"";
+    if (bytes.size() >= 2 &&
+        static_cast<unsigned char>(bytes[0]) == 0xFF &&
+        static_cast<unsigned char>(bytes[1]) == 0xFE) {
+        const size_t wchar_count = (bytes.size() - 2) / sizeof(wchar_t);
+        text.assign(reinterpret_cast<const wchar_t*>(bytes.data() + 2), wchar_count);
+    } else {
+        if (bytes.size() >= 3 &&
+            static_cast<unsigned char>(bytes[0]) == 0xEF &&
+            static_cast<unsigned char>(bytes[1]) == 0xBB &&
+            static_cast<unsigned char>(bytes[2]) == 0xBF) {
+            bytes.erase(0, 3);
+        }
+        if (!DecodeIniText(bytes, text)) {
+            return L"";
+        }
     }
 
     std::wstring current_section;
@@ -617,6 +628,7 @@ void LoadHostConfigFromIni(const std::filesystem::path& exe_dir, bool smoke_mode
     const std::filesystem::path ini_path = exe_dir / kTCalendarIniFileName;
     const std::wstring ini_file = ini_path.wstring();
     out_config.ini_file_path = ini_file;
+    (void)tcalendar::CanonicalizeTCalendarIni(ini_file);
 
     // Migration cleanup: alert startup ownership moved to tclock-win11.ini [TCalendar].
     WritePrivateProfileStringW(L"TCalendar", L"Enable", nullptr, ini_file.c_str());
@@ -856,6 +868,7 @@ void SaveWindowPlacementToIni(HWND hwnd, const std::wstring& ini_file) {
     WritePrivateProfileStringW(L"TCalendar", L"WindowHeight", hbuf, ini_file.c_str());
     WritePrivateProfileStringW(L"TCalendar", L"WindowLeft", xbuf, ini_file.c_str());
     WritePrivateProfileStringW(L"TCalendar", L"WindowTop", ybuf, ini_file.c_str());
+    (void)tcalendar::CanonicalizeTCalendarIni(ini_file);
 }
 
 void ResizeWebViewToClient(WindowContext* context, HWND hwnd) {

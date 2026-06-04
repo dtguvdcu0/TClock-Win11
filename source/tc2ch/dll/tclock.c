@@ -75,6 +75,7 @@ void GetTaskbarSize(void);
 void RestartOnRefresh(void);
 static void NormalizeUtf8InPlaceNoWriteback(char* value, int valueBytes);
 static void RefreshAutoBackColors(BOOL force, const char* reason);
+static int ReadTaskbarEdgeFromRegistry(void);
 static void RefreshClockWorkFont(void);
 static void StartupAutoAdjustPass(void);
 static void ReadDataMinimal(void);
@@ -574,6 +575,12 @@ static void RemoveTraySubclassMain(SUBCLASSPROC proc)
 
 int     g_winver = WIN10;              // Windows version, currently set as WIN10(non AU)
 BOOL    g_bVertTaskbar = FALSE;        // vertical taskbar ?
+#define TC_TASKBAR_EDGE_UNKNOWN (-1)
+#define TC_TASKBAR_EDGE_LEFT 0
+#define TC_TASKBAR_EDGE_TOP 1
+#define TC_TASKBAR_EDGE_RIGHT 2
+#define TC_TASKBAR_EDGE_BOTTOM 3
+
 int     prevWidthMainClock;      // original clock width
 int     prevHeightMainClock;      // original clock height
 int		origSubClockWidth[MAX_SUBSCREEN], origSubClockHeight[MAX_SUBSCREEN];
@@ -965,8 +972,11 @@ static BOOL SampleTaskbarColorsAtX(int posX, COLORREF* outMain, COLORREF* outEdg
 	RECT taskRect;
 	RECT desktopRect;
 	HDC tempDC;
-	int posY;
+	int sampleMainY;
+	int sampleEdgeY;
 	int maxX;
+	int taskHeight;
+	int edge;
 
 	if (!outMain || !outEdge) return FALSE;
 	*outMain = CLR_INVALID;
@@ -977,7 +987,8 @@ static BOOL SampleTaskbarColorsAtX(int posX, COLORREF* outMain, COLORREF* outEdg
 	maxX = taskRect.right - taskRect.left - 1;
 	if (maxX < 0) return FALSE;
 	posX = ClampInt(posX, 0, maxX);
-	posY = taskRect.top;
+	taskHeight = taskRect.bottom - taskRect.top;
+	edge = ReadTaskbarEdgeFromRegistry();
 
 	if (bSuppressGetTaskbarColor_Win11Type2) {
 		bSuppressGetTaskbarColor_Win11Type2 = FALSE;
@@ -988,11 +999,48 @@ static BOOL SampleTaskbarColorsAtX(int posX, COLORREF* outMain, COLORREF* outEdg
 	tempDC = GetDC(GetDesktopWindow());
 	if (!tempDC) return FALSE;
 
-	*outMain = GetPixel(tempDC, posX, desktopRect.bottom - 1);
-	*outEdge = GetPixel(tempDC, posX, posY);
+	if (edge == TC_TASKBAR_EDGE_TOP && taskHeight > 0) {
+		sampleMainY = taskRect.top + ClampInt(taskHeight / 2, 0, taskHeight - 1);
+		sampleEdgeY = taskRect.bottom - 1;
+	}
+	else {
+		sampleMainY = desktopRect.bottom - 1;
+		sampleEdgeY = taskRect.top;
+	}
+	*outMain = GetPixel(tempDC, posX, sampleMainY);
+	*outEdge = GetPixel(tempDC, posX, sampleEdgeY);
 	ReleaseDC(GetDesktopWindow(), tempDC);
 
 	return ((*outMain != CLR_INVALID) && (*outEdge != CLR_INVALID));
+}
+
+static int ReadTaskbarEdgeFromRegistry(void)
+{
+	HKEY hkey;
+	DWORD regType;
+	DWORD size;
+	DWORD value;
+	LONG status;
+
+	regType = 0;
+	size = sizeof(value);
+	value = 0;
+	status = RegOpenKeyExW(HKEY_CURRENT_USER,
+		L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced",
+		0, KEY_QUERY_VALUE, &hkey);
+	if (status != ERROR_SUCCESS) {
+		return TC_TASKBAR_EDGE_UNKNOWN;
+	}
+
+	status = RegQueryValueExW(hkey, L"TaskbarLocation", NULL, &regType, (LPBYTE)&value, &size);
+	RegCloseKey(hkey);
+	if (status != ERROR_SUCCESS || regType != REG_DWORD || size != sizeof(value)) {
+		return TC_TASKBAR_EDGE_UNKNOWN;
+	}
+	if (value > TC_TASKBAR_EDGE_BOTTOM) {
+		return TC_TASKBAR_EDGE_UNKNOWN;
+	}
+	return (int)value;
 }
 
 #define CLKH_WIN11_MAIN          0x0001

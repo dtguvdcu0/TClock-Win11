@@ -1666,6 +1666,50 @@ void LogCursorPos(void)
 }
 
 //Win11でメインクロックの配置と周辺調整
+
+static BOOL w11_is_vert(void)
+{
+	RECT rect;
+
+	if (!IsWindow(hwndTaskBarMain) || !GetWindowRect(hwndTaskBarMain, &rect)) return FALSE;
+	return (rect.bottom - rect.top) > (rect.right - rect.left);
+}
+
+
+static void w11_place_vert(void)
+{
+	RECT taskbarRect;
+	RECT trayRect;
+	int clockHeight = heightMainClockFrame;
+	int clockY;
+	int trayY;
+
+	if (clockHeight < 1 || widthTaskbar < 1 || heightTaskbar < 1) return;
+	if (!GetWindowRect(hwndTaskBarMain, &taskbarRect)) return;
+	if (clockHeight > heightTaskbar) clockHeight = heightTaskbar;
+	clockY = heightTaskbar - clockHeight;
+	posXMainClock = 0;
+
+	if (IsWindow(hwndTrayMain)
+		&& GetWindowRect(hwndTaskBarMain, &taskbarRect)
+		&& GetWindowRect(hwndTrayMain, &trayRect)) {
+		trayY = trayRect.top - taskbarRect.top;
+		if (trayY >= clockHeight) clockY = trayY - clockHeight;
+	}
+
+	if (GetParent(hwndClockMain) != NULL) {
+		SetWindowLongPtr(hwndClockMain, GWL_STYLE,
+			(GetWindowLongPtr(hwndClockMain, GWL_STYLE) & ~WS_CHILD) | WS_POPUP | WS_VISIBLE);
+		SetParent(hwndClockMain, NULL);
+	}
+	SetWindowPos(hwndClockMain, HWND_TOPMOST, taskbarRect.left, taskbarRect.top + clockY, widthTaskbar, clockHeight,
+		SWP_NOACTIVATE | SWP_NOSENDCHANGING | SWP_SHOWWINDOW);
+	if (IsWindow(hwndWin11Notify)) ShowWindow(hwndWin11Notify, SW_HIDE);
+	if (b_DebugLog) writeDebugLog_Win10("[for_win11.c] Applied vertical taskbar clock layout.", clockY);
+}
+
+
+
 void SetMainClockOnTasktray_Win11(void)
 {
 	BOOL bCanUseWin11Layout;
@@ -1689,10 +1733,21 @@ void SetMainClockOnTasktray_Win11(void)
 	RefreshWin11TaskbarHandles();
 
 	//Win11タスクトレイ切り落とし幅を決定
-	SetModifiedWidthWin11Tray();
-
 	//確保すべき時計のサイズを取得
 	CalcMainClockSize();
+	if (w11_is_vert()) {
+		w11_place_vert();
+		CreateClockDC();
+		if (bEnableSubClks) SetTimer(hwndClockMain, IDTIMERDLL_DELEYED_RESPONSE, 500, NULL);
+		return;
+	}
+	if (GetParent(hwndClockMain) != hwndTaskBarMain) {
+		SetWindowLongPtr(hwndClockMain, GWL_STYLE,
+			(GetWindowLongPtr(hwndClockMain, GWL_STYLE) & ~WS_POPUP) | WS_CHILD | WS_VISIBLE);
+		SetParent(hwndClockMain, hwndTaskBarMain);
+	}
+
+	SetModifiedWidthWin11Tray();
 
 	bCanUseWin11Layout = (IsWindow(hwndTrayMain)
 		&& IsWindow(hwndWin11ReBarWin)
@@ -1811,6 +1866,10 @@ void MoveWin11ContentBridge(int operation)	//Win11 Type2 (build 22579および�
 {
 	if (b_DebugLog)writeDebugLog_Win10("[for_win11.c] MoveWin11ContentBridge called. operation =", operation);
 
+	if (w11_is_vert()) {
+		if (b_DebugLog) WriteDebugDLL_New("[for_win11.c] MoveWin11ContentBridge skipped for vertical taskbar.");
+		return;
+	}
 	if (bWin11LayoutDegraded) {
 		if (b_DebugLog) WriteDebugDLL_New("[for_win11.c] MoveWin11ContentBridge skipped in degraded mode.");
 		return;

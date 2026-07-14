@@ -332,6 +332,8 @@ void TooltipOnTimer(HWND hwnd, BOOL bForce);
 void TooltipOnRefresh(HWND hwnd);
 BOOL TooltipOnNotify(LRESULT *plRes, LPARAM lParam);
 void TooltipOnMouseEvent(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam, int uid);
+BOOL WuiShowTip(const WCHAR* text, BOOL visible, HFONT font, COLORREF backColor);
+BOOL WuiIsTip(HWND hwnd);
 
 void TooltipAddSubClock(int index);
 void TooltipRemoveSubClock(int index);

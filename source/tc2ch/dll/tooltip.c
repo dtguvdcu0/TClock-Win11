@@ -267,15 +267,15 @@ void TooltipInit(HWND hwnd)
 {
 	TOOLINFO ti;
 	extern int widthMainClockFrame, heightMainClockFrame;
-	UNREFERENCED_PARAMETER(hwnd);
 
+	ZeroMemory(&ti, sizeof(ti));
 
 	dwTooltipTypeCur = dwTooltipType;
 
 	hwndTooltip = CreateWindowEx(0, TOOLTIPS_CLASS, (LPSTR)NULL,
 		WS_POPUP | TTS_ALWAYSTIP | TTS_NOPREFIX | ((dwTooltipTypeCur == TOOLTIPTYPE_BALLOON) ? TTS_BALLOON : 0),
 		CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
-		NULL, NULL, hmod, NULL);
+		hwnd, NULL, hmod, NULL);
 
 	if (!hwndTooltip) return;
 
@@ -398,6 +398,7 @@ void TooltipEnd(HWND hwnd)
 
 void TooltipOnRefresh(HWND hwnd)
 {
+	TooltipReadData();
 	//if (dwTooltipTypeCur == dwTooltipType)
 	//	TooltipApplySetting();
 	//else
@@ -808,7 +809,6 @@ static void TooltipUpdateText(void)
 void TooltipOnTimer(HWND hwnd, BOOL bForce)
 {
 	UNREFERENCED_PARAMETER(hwnd);
-
 	//Ver 4.1以降はOnTimer_Win10から行うこととする。
 	//そのための元の200msごとのカウントは無効化
 	//if (++iTooltipDispIntervalCount < iTooltipDispInterval * 5) return;		//200ms単位なので5回に1回しか通過しない。
@@ -923,7 +923,8 @@ BOOL TooltipOnNotify(LRESULT *plRes, LPARAM lParam)
 
 
 
-	if (!hwndTooltip || hwndTooltip != ((LPNMHDR)lParam)->hwndFrom) return FALSE;
+	if ((!hwndTooltip || hwndTooltip != ((LPNMHDR)lParam)->hwndFrom)
+	 && !WuiIsTip(((LPNMHDR)lParam)->hwndFrom)) return FALSE;
 	switch (((LPNMHDR)lParam)->code)
 	{
 		case NM_CUSTOMDRAW:
@@ -1191,14 +1192,28 @@ void TooltipOnMouseEvent(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam, 
 	msg.wParam = wParam;
 	msg.lParam = lParam;
 	msg.time = GetMessageTime();
-	msg.pt.x = GET_X_LPARAM(GetMessagePos());
-	msg.pt.y = GET_Y_LPARAM(GetMessagePos());
+	GetCursorPos(&msg.pt);
 
 	//マウスがTClock内部で左に移動する場合、どうやってもツールチップが最初に一回消えるため、点滅してしまう。
 	//ここで座標を細工しても実際には新たにマウス座標を取得して処理するため解決できない。
 	//結局は、ツール登録の際にti.uFlagsにTTF_SUBCLASSを入れたら解決した。
 
 
+	if (hwnd == hwndClockMain) {
+		if (message == WM_MOUSEMOVE) {
+			TooltipUpdateText();
+			if (WuiShowTip(formatTooltipW, TRUE, TooltipGetBodyFont(), colTooltipBack)) {
+				hwndCurrentTooltipOwner = hwnd;
+				uIdCurrentTooltipOwner = uid;
+				return;
+			}
+		}
+		else if (WuiShowTip(NULL, FALSE, NULL, 0)) {
+			hwndCurrentTooltipOwner = hwnd;
+			uIdCurrentTooltipOwner = uid;
+			return;
+		}
+	}
 	if (hwndTooltip)
 	{
 		SendMessage(hwndTooltip, TTM_RELAYEVENT, 0, (LPARAM)&msg);

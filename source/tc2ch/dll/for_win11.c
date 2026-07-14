@@ -1697,12 +1697,7 @@ static void w11_place_vert(void)
 		if (trayY >= clockHeight) clockY = trayY - clockHeight;
 	}
 
-	if (GetParent(hwndClockMain) != NULL) {
-		SetWindowLongPtr(hwndClockMain, GWL_STYLE,
-			(GetWindowLongPtr(hwndClockMain, GWL_STYLE) & ~WS_CHILD) | WS_POPUP | WS_VISIBLE);
-		SetParent(hwndClockMain, NULL);
-	}
-	SetWindowPos(hwndClockMain, HWND_TOPMOST, taskbarRect.left, taskbarRect.top + clockY, widthTaskbar, clockHeight,
+	SetWindowPos(hwndClockMain, HWND_TOP, 0, clockY, widthTaskbar, clockHeight,
 		SWP_NOACTIVATE | SWP_NOSENDCHANGING | SWP_SHOWWINDOW);
 	if (IsWindow(hwndWin11Notify)) ShowWindow(hwndWin11Notify, SW_HIDE);
 	if (b_DebugLog) writeDebugLog_Win10("[for_win11.c] Applied vertical taskbar clock layout.", clockY);
@@ -1741,12 +1736,6 @@ void SetMainClockOnTasktray_Win11(void)
 		if (bEnableSubClks) SetTimer(hwndClockMain, IDTIMERDLL_DELEYED_RESPONSE, 500, NULL);
 		return;
 	}
-	if (GetParent(hwndClockMain) != hwndTaskBarMain) {
-		SetWindowLongPtr(hwndClockMain, GWL_STYLE,
-			(GetWindowLongPtr(hwndClockMain, GWL_STYLE) & ~WS_POPUP) | WS_CHILD | WS_VISIBLE);
-		SetParent(hwndClockMain, hwndTaskBarMain);
-	}
-
 	SetModifiedWidthWin11Tray();
 
 	bCanUseWin11Layout = (IsWindow(hwndTrayMain)

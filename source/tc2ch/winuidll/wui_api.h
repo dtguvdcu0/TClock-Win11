@@ -34,6 +34,8 @@ WUI_API BOOL WINAPI WuiCreateHost(HWND hwndTargetClock);
 WUI_API void WINAPI WuiDestroyHost(void);
 WUI_API BOOL WINAPI WuiUpdateState(const TC_DISPLAY_BACKEND_RENDER_STATE* state);
 WUI_API BOOL WINAPI WuiRefresh(void);
+WUI_API BOOL WINAPI WuiSetTooltip(const WCHAR* text, BOOL visible, HFONT font, COLORREF backColor);
+WUI_API BOOL WINAPI WuiIsTooltip(HWND hwnd);
 
 #ifdef __cplusplus
 }

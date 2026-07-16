@@ -372,7 +372,8 @@ static BOOL(WINAPI* g_wuiCreateHost)(HWND) = NULL;
 static void (WINAPI* g_wuiDestroyHost)(void) = NULL;
 static BOOL(WINAPI* g_wuiUpdateState)(const TC_DISPLAY_BACKEND_RENDER_STATE*) = NULL;
 static BOOL(WINAPI* g_wuiRefreshHost)(void) = NULL;
-static BOOL(WINAPI* g_wuiSetTooltip)(const WCHAR*, BOOL, HFONT, COLORREF) = NULL;
+static BOOL(WINAPI* g_wuiSetTooltip)(const WCHAR*, BOOL, HFONT, COLORREF, UINT, UINT, UINT, BOOL) = NULL;
+static BOOL(WINAPI* g_wuiRefreshTooltipText)(const WCHAR*) = NULL;
 static BOOL(WINAPI* g_wuiIsTooltip)(HWND) = NULL;
 static BOOL g_wuiDllLive = FALSE;
 static BOOL g_wuiHostOn = FALSE;
@@ -1601,9 +1602,10 @@ static BOOL wui_load_dll(void)
 	g_wuiDestroyHost = (void (WINAPI*)(void))GetProcAddress(g_wuiDll, "WuiDestroyHost");
 	g_wuiUpdateState = (BOOL(WINAPI*)(const TC_DISPLAY_BACKEND_RENDER_STATE*))GetProcAddress(g_wuiDll, "WuiUpdateState");
 	g_wuiRefreshHost = (BOOL(WINAPI*)(void))GetProcAddress(g_wuiDll, "WuiRefresh");
-	g_wuiSetTooltip = (BOOL(WINAPI*)(const WCHAR*, BOOL, HFONT, COLORREF))GetProcAddress(g_wuiDll, "WuiSetTooltip");
+	g_wuiSetTooltip = (BOOL(WINAPI*)(const WCHAR*, BOOL, HFONT, COLORREF, UINT, UINT, UINT, BOOL))GetProcAddress(g_wuiDll, "WuiSetTooltip");
+	g_wuiRefreshTooltipText = (BOOL(WINAPI*)(const WCHAR*))GetProcAddress(g_wuiDll, "WuiRefreshTooltipText");
 	g_wuiIsTooltip = (BOOL(WINAPI*)(HWND))GetProcAddress(g_wuiDll, "WuiIsTooltip");
-	if (!g_wuiCreateHost || !g_wuiDestroyHost || !g_wuiUpdateState || !g_wuiRefreshHost || !g_wuiSetTooltip || !g_wuiIsTooltip) {
+	if (!g_wuiCreateHost || !g_wuiDestroyHost || !g_wuiUpdateState || !g_wuiRefreshHost || !g_wuiSetTooltip || !g_wuiRefreshTooltipText || !g_wuiIsTooltip) {
 		wui_unload_dll();
 		return FALSE;
 	}
@@ -1659,6 +1661,7 @@ static void wui_unload_dll(void)
 	g_wuiUpdateState = NULL;
 	g_wuiRefreshHost = NULL;
 	g_wuiSetTooltip = NULL;
+	g_wuiRefreshTooltipText = NULL;
 	g_wuiIsTooltip = NULL;
 	if (g_wuiDll) {
 		FreeLibrary(g_wuiDll);
@@ -1666,10 +1669,17 @@ static void wui_unload_dll(void)
 	}
 }
 
-BOOL WuiShowTip(const WCHAR* text, BOOL visible, HFONT font, COLORREF backColor)
+BOOL WuiShowTip(const WCHAR* text, BOOL visible, HFONT font, COLORREF backColor,
+	UINT initialDelay, UINT reshowDelay, UINT autoPopDelay, BOOL legacyMode)
 {
 	if (!bWin11Main || !IsVertTaskbar(hwndTaskBarMain) || !g_wuiDllLive || !g_wuiSetTooltip) return FALSE;
-	return g_wuiSetTooltip(text, visible, font, backColor);
+	return g_wuiSetTooltip(text, visible, font, backColor, initialDelay, reshowDelay, autoPopDelay, legacyMode);
+}
+
+BOOL WuiRefreshTipText(const WCHAR* text)
+{
+	if (!bWin11Main || !IsVertTaskbar(hwndTaskBarMain) || !g_wuiDllLive || !g_wuiRefreshTooltipText) return FALSE;
+	return g_wuiRefreshTooltipText(text);
 }
 
 BOOL WuiIsTip(HWND hwnd)

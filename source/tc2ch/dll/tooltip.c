@@ -91,6 +91,10 @@ static HWND hwndHTMLParent = NULL;
 static ATOM atomHTMLParent = 0;
 static BOOL bEmbedBrowserObject = FALSE;
 static BOOL bTooltipUseAAFont = FALSE;
+// TEMP_VERIFY_START: remove after comparing vertical tooltip activation backends.
+static BOOL bWin11VerticalTooltipLegacy = FALSE;
+static BOOL bWin11VerticalTipActive = FALSE;
+// TEMP_VERIFY_END
 
 extern char g_mydir_dll[];	//added by TTTT
 
@@ -393,11 +397,17 @@ void TooltipEnd(HWND hwnd)
 		DestroyWindow(hwndTooltip);
 		hwndTooltip = NULL;
 	}
+	bWin11VerticalTipActive = FALSE;
 
 }
 
 void TooltipOnRefresh(HWND hwnd)
 {
+	BOOL wasShowing = bTooltipShow;
+	BOOL wasVerticalActive = bWin11VerticalTipActive;
+	HWND owner = hwndCurrentTooltipOwner;
+	int ownerId = uIdCurrentTooltipOwner;
+
 	TooltipReadData();
 	//if (dwTooltipTypeCur == dwTooltipType)
 	//	TooltipApplySetting();
@@ -405,6 +415,27 @@ void TooltipOnRefresh(HWND hwnd)
 	{
 		TooltipEnd(hwnd);
 		TooltipInit(hwnd);
+	}
+	if (!bEnableTooltip) {
+		WuiShowTip(NULL, FALSE, NULL, 0, 0, 0, 0, bWin11VerticalTooltipLegacy);
+		bTooltipShow = FALSE;
+		bTooltipUpdated = FALSE;
+		bWin11VerticalTipActive = FALSE;
+		return;
+	}
+	if (wasShowing || wasVerticalActive) {
+		UINT initialDelay = hwndTooltip ? (UINT)SendMessage(hwndTooltip, TTM_GETDELAYTIME, TTDT_INITIAL, 0) : 0;
+		UINT reshowDelay = hwndTooltip ? (UINT)SendMessage(hwndTooltip, TTM_GETDELAYTIME, TTDT_RESHOW, 0) : 0;
+		UINT autoPopDelay = hwndTooltip ? (UINT)SendMessage(hwndTooltip, TTM_GETDELAYTIME, TTDT_AUTOPOP, 0) : 0;
+		TooltipApplySetting();
+		TooltipUpdateText();
+		if (WuiShowTip(formatTooltipW, TRUE, TooltipGetBodyFont(), colTooltipBack,
+			initialDelay, reshowDelay, autoPopDelay, bWin11VerticalTooltipLegacy)) {
+			bTooltipShow = TRUE;
+			bWin11VerticalTipActive = TRUE;
+			hwndCurrentTooltipOwner = owner ? owner : hwndClockMain;
+			uIdCurrentTooltipOwner = ownerId;
+		}
 	}
 }
 
@@ -824,7 +855,11 @@ void TooltipOnTimer(HWND hwnd, BOOL bForce)
 	if (hwndTooltip)
 	{
 		TooltipUpdateText();
-
+		if (bWin11VerticalTipActive) {
+			if (!WuiRefreshTipText(formatTooltipW)) {
+				bWin11VerticalTipActive = FALSE;
+			}
+		}
 		//以下の行を行うことで、ツールチップがタイムアウトで消えなくなる。hwndとuIdをツールチップを出している時計に合わせる必要あり。
 		TOOLINFO ti;
 		ti.cbSize = sizeof(TOOLINFO);
@@ -883,6 +918,9 @@ void TooltipReadData(void)
 	bTooltipTate = GetMyRegLong("Tooltip", "TipTateFlg", FALSE);
 
 	bEnableTooltip = GetMyRegLong("Tooltip", "EnableTooltip", TRUE);
+	// TEMP_VERIFY_START: hidden INI switch for vertical tooltip backend comparison.
+	bWin11VerticalTooltipLegacy = GetMyRegLong("Tooltip", "Win11VerticalTooltipMode", 0) == 1;
+	// TEMP_VERIFY_END
 
 	GetMyRegStr("Tooltip", "Tooltip", fmtToolTip1, sizeof(fmtToolTip1), "");
 	GetMyRegStr("Tooltip", "Tooltip2", fmtToolTip2, sizeof(fmtToolTip1), "");
@@ -1201,14 +1239,23 @@ void TooltipOnMouseEvent(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam, 
 
 	if (hwnd == hwndClockMain) {
 		if (message == WM_MOUSEMOVE) {
+			UINT initialDelay = hwndTooltip ? (UINT)SendMessage(hwndTooltip, TTM_GETDELAYTIME, TTDT_INITIAL, 0) : 0;
+			UINT reshowDelay = hwndTooltip ? (UINT)SendMessage(hwndTooltip, TTM_GETDELAYTIME, TTDT_RESHOW, 0) : 0;
+			UINT autoPopDelay = hwndTooltip ? (UINT)SendMessage(hwndTooltip, TTM_GETDELAYTIME, TTDT_AUTOPOP, 0) : 0;
 			TooltipUpdateText();
-			if (WuiShowTip(formatTooltipW, TRUE, TooltipGetBodyFont(), colTooltipBack)) {
+			if (WuiShowTip(formatTooltipW, TRUE, TooltipGetBodyFont(), colTooltipBack,
+				initialDelay, reshowDelay, autoPopDelay, bWin11VerticalTooltipLegacy)) {
+				bTooltipShow = TRUE;
+				bWin11VerticalTipActive = TRUE;
 				hwndCurrentTooltipOwner = hwnd;
 				uIdCurrentTooltipOwner = uid;
 				return;
 			}
 		}
-		else if (WuiShowTip(NULL, FALSE, NULL, 0)) {
+		else if (WuiShowTip(NULL, FALSE, NULL, 0, 0, 0, 0, bWin11VerticalTooltipLegacy)) {
+			bTooltipShow = FALSE;
+			bTooltipUpdated = FALSE;
+			bWin11VerticalTipActive = FALSE;
 			hwndCurrentTooltipOwner = hwnd;
 			uIdCurrentTooltipOwner = uid;
 			return;

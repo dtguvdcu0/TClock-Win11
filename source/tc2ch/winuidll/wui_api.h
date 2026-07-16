@@ -35,7 +35,7 @@ WUI_API void WINAPI WuiDestroyHost(void);
 WUI_API BOOL WINAPI WuiUpdateState(const TC_DISPLAY_BACKEND_RENDER_STATE* state);
 WUI_API BOOL WINAPI WuiRefresh(void);
 WUI_API BOOL WINAPI WuiSetTooltip(const WCHAR* text, BOOL visible, HFONT font, COLORREF backColor,
-	UINT initialDelay, UINT reshowDelay, UINT autoPopDelay, BOOL legacyMode);
+	UINT initialDelay, UINT reshowDelay, UINT autoPopDelay);
 WUI_API BOOL WINAPI WuiRefreshTooltipText(const WCHAR* text);
 WUI_API BOOL WINAPI WuiIsTooltip(HWND hwnd);
 

@@ -372,7 +372,7 @@ static BOOL(WINAPI* g_wuiCreateHost)(HWND) = NULL;
 static void (WINAPI* g_wuiDestroyHost)(void) = NULL;
 static BOOL(WINAPI* g_wuiUpdateState)(const TC_DISPLAY_BACKEND_RENDER_STATE*) = NULL;
 static BOOL(WINAPI* g_wuiRefreshHost)(void) = NULL;
-static BOOL(WINAPI* g_wuiSetTooltip)(const WCHAR*, BOOL, HFONT, COLORREF, UINT, UINT, UINT, BOOL) = NULL;
+static BOOL(WINAPI* g_wuiSetTooltip)(const WCHAR*, BOOL, HFONT, COLORREF, UINT, UINT, UINT) = NULL;
 static BOOL(WINAPI* g_wuiRefreshTooltipText)(const WCHAR*) = NULL;
 static BOOL(WINAPI* g_wuiIsTooltip)(HWND) = NULL;
 static BOOL g_wuiDllLive = FALSE;
@@ -1602,7 +1602,7 @@ static BOOL wui_load_dll(void)
 	g_wuiDestroyHost = (void (WINAPI*)(void))GetProcAddress(g_wuiDll, "WuiDestroyHost");
 	g_wuiUpdateState = (BOOL(WINAPI*)(const TC_DISPLAY_BACKEND_RENDER_STATE*))GetProcAddress(g_wuiDll, "WuiUpdateState");
 	g_wuiRefreshHost = (BOOL(WINAPI*)(void))GetProcAddress(g_wuiDll, "WuiRefresh");
-	g_wuiSetTooltip = (BOOL(WINAPI*)(const WCHAR*, BOOL, HFONT, COLORREF, UINT, UINT, UINT, BOOL))GetProcAddress(g_wuiDll, "WuiSetTooltip");
+	g_wuiSetTooltip = (BOOL(WINAPI*)(const WCHAR*, BOOL, HFONT, COLORREF, UINT, UINT, UINT))GetProcAddress(g_wuiDll, "WuiSetTooltip");
 	g_wuiRefreshTooltipText = (BOOL(WINAPI*)(const WCHAR*))GetProcAddress(g_wuiDll, "WuiRefreshTooltipText");
 	g_wuiIsTooltip = (BOOL(WINAPI*)(HWND))GetProcAddress(g_wuiDll, "WuiIsTooltip");
 	if (!g_wuiCreateHost || !g_wuiDestroyHost || !g_wuiUpdateState || !g_wuiRefreshHost || !g_wuiSetTooltip || !g_wuiRefreshTooltipText || !g_wuiIsTooltip) {
@@ -1670,10 +1670,10 @@ static void wui_unload_dll(void)
 }
 
 BOOL WuiShowTip(const WCHAR* text, BOOL visible, HFONT font, COLORREF backColor,
-	UINT initialDelay, UINT reshowDelay, UINT autoPopDelay, BOOL legacyMode)
+	UINT initialDelay, UINT reshowDelay, UINT autoPopDelay)
 {
 	if (!bWin11Main || !IsVertTaskbar(hwndTaskBarMain) || !g_wuiDllLive || !g_wuiSetTooltip) return FALSE;
-	return g_wuiSetTooltip(text, visible, font, backColor, initialDelay, reshowDelay, autoPopDelay, legacyMode);
+	return g_wuiSetTooltip(text, visible, font, backColor, initialDelay, reshowDelay, autoPopDelay);
 }
 
 BOOL WuiRefreshTipText(const WCHAR* text)

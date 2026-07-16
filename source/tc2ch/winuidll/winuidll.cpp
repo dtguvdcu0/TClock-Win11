@@ -27,15 +27,14 @@ static int g_wuiContentWidth = 0;
 static BOOL g_wuiHasTarget = FALSE;
 static BOOL g_wuiHasPlace = FALSE;
 static BOOL g_wuiHoverInside = FALSE;
+static BOOL g_wuiTipSuppressed = FALSE;
 static BOOL g_wuiTipPending = FALSE;
 static BOOL g_wuiTipVisible = FALSE;
 static BOOL g_wuiTipShownOnce = FALSE;
 static UINT g_wuiTipAutoPopDelay = 0;
 static UINT g_wuiTipStage = 0;
-// TEMP_VERIFY_START: remove after comparing vertical tooltip activation backends.
-static BOOL g_wuiLegacyTip = FALSE;
-static POINT g_wuiLastHover = { 0, 0 };
-// TEMP_VERIFY_END
+static HFONT g_wuiTipFont = NULL;
+static COLORREF g_wuiTipBackColor = RGB(255, 255, 225);
 
 // TEMP_VERIFY_START: remove after mode0 vertical tooltip runtime investigation is complete.
 static void wui_tip_trace(const WCHAR* tag)
@@ -52,7 +51,6 @@ static void wui_tip_trace(const WCHAR* tag)
 	int tipOk = 0;
 	int tipVisible = 0;
 
-	if (g_wuiLegacyTip) return;
 	if (!g_wuiInst) return;
 	if (!GetModuleFileNameW(g_wuiInst, path, _countof(path))) return;
 	for (int i = lstrlenW(path) - 1; i >= 0; --i) {
@@ -117,6 +115,17 @@ static void wui_tip_trace_reset(void)
 static Gdiplus::Color wui_argb(COLORREF color)
 {
 	return Gdiplus::Color(255, GetRValue(color), GetGValue(color), GetBValue(color));
+}
+
+static int wui_tip_width(const WCHAR* text, HFONT font)
+{
+	UNREFERENCED_PARAMETER(text);
+	UNREFERENCED_PARAMETER(font);
+	int limitWidth;
+
+	limitWidth = GetSystemMetrics(SM_CXSCREEN) - 64;
+	if (limitWidth < 120) limitWidth = 120;
+	return limitWidth;
 }
 
 static void wui_draw_text(Gdiplus::Graphics& graphics, const RECT& rcClient)
@@ -424,7 +433,7 @@ static void wui_hide_tip(void)
 	g_wuiTipPending = FALSE;
 	g_wuiTipVisible = FALSE;
 	g_wuiTipStage = 0;
-	if (!g_wuiLegacyTip) g_wuiTipShownOnce = FALSE;
+	g_wuiTipShownOnce = FALSE;
 	wui_tip_trace(L"hide_tip");
 	if (!g_wuiTooltip || !g_wuiTarget) return;
 	ZeroMemory(&ti, sizeof(ti));
@@ -434,6 +443,53 @@ static void wui_hide_tip(void)
 	ti.uId = 1;
 	SendMessageW(g_wuiTooltip, TTM_TRACKACTIVATE, FALSE, (LPARAM)&ti);
 	ShowWindow(g_wuiTooltip, SW_HIDE);
+}
+
+static BOOL wui_make_tip(void)
+{
+	INITCOMMONCONTROLSEX icc = { sizeof(icc), ICC_WIN95_CLASSES };
+	TOOLINFOW ti;
+
+	if (g_wuiTooltip && IsWindow(g_wuiTooltip)) return TRUE;
+	if (!g_wuiTarget || !IsWindow(g_wuiTarget)) return FALSE;
+	InitCommonControlsEx(&icc);
+	g_wuiTooltip = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
+		TOOLTIPS_CLASSW, NULL, WS_POPUP | TTS_ALWAYSTIP | TTS_NOPREFIX,
+		0, 0, 0, 0, g_wuiTarget, NULL, g_wuiInst, NULL);
+	if (!g_wuiTooltip) return FALSE;
+	ZeroMemory(&ti, sizeof(ti));
+	ti.cbSize = sizeof(ti);
+	ti.uFlags = TTF_TRACK;
+	ti.hwnd = g_wuiTarget;
+	ti.uId = 1;
+	ti.lpszText = g_wuiTooltipText;
+	SendMessageW(g_wuiTooltip, TTM_ADDTOOLW, 0, (LPARAM)&ti);
+	return TRUE;
+}
+
+static void wui_fit_tip(void)
+{
+	TOOLINFOW ti;
+	RECT rcTip;
+	DWORD bubble;
+	int width;
+	int height;
+
+	if (!g_wuiTooltip || !IsWindow(g_wuiTooltip) || !g_wuiTarget || !g_wuiTooltipText[0]) return;
+	ZeroMemory(&ti, sizeof(ti));
+	ti.cbSize = sizeof(ti);
+	ti.uFlags = TTF_TRACK;
+	ti.hwnd = g_wuiTarget;
+	ti.uId = 1;
+	ti.lpszText = g_wuiTooltipText;
+	bubble = (DWORD)SendMessageW(g_wuiTooltip, TTM_GETBUBBLESIZE, 0, (LPARAM)&ti);
+	width = (int)(short)LOWORD(bubble);
+	height = (int)(short)HIWORD(bubble);
+	if (width <= 0 || height <= 0) return;
+	height += 4;
+	if (!GetWindowRect(g_wuiTooltip, &rcTip)) return;
+	SetWindowPos(g_wuiTooltip, HWND_TOPMOST, rcTip.left, rcTip.top, width, height,
+		SWP_NOACTIVATE | SWP_NOOWNERZORDER);
 }
 
 static void wui_activate_tip(void)
@@ -462,6 +518,7 @@ static void wui_activate_tip(void)
 	ti.lpszText = g_wuiTooltipText;
 	SendMessageW(g_wuiTooltip, TTM_TRACKPOSITION, 0, MAKELPARAM(x, y));
 	SendMessageW(g_wuiTooltip, TTM_TRACKACTIVATE, TRUE, (LPARAM)&ti);
+	wui_fit_tip();
 	wui_tip_trace(L"activate_tip");
 }
 
@@ -474,26 +531,6 @@ static void wui_show_tip(void)
 	g_wuiTipShownOnce = TRUE;
 	if (g_wuiTipAutoPopDelay) SetTimer(g_wuiHost, WUI_TIP_TIMER_ID, g_wuiTipAutoPopDelay, NULL);
 }
-
-// TEMP_VERIFY_START: committed 9b211ce hover activation sequence for comparison only.
-static void wui_sync_hover(void)
-{
-	POINT point;
-	RECT rect;
-	BOOL inside;
-
-	if (!g_wuiTarget || !IsWindow(g_wuiTarget)) return;
-	if (!GetCursorPos(&point) || !GetWindowRect(g_wuiTarget, &rect)) return;
-	inside = PtInRect(&rect, point);
-	if (!inside && !g_wuiHoverInside) return;
-	if (inside && g_wuiHoverInside
-		&& point.x == g_wuiLastHover.x && point.y == g_wuiLastHover.y) return;
-	if (inside) g_wuiLastHover = point;
-	ScreenToClient(g_wuiTarget, &point);
-	SendMessageW(g_wuiTarget, WM_MOUSEMOVE, 0, MAKELPARAM(point.x, point.y));
-	g_wuiHoverInside = inside;
-}
-// TEMP_VERIFY_END
 
 static void wui_track_leave(HWND hwnd)
 {
@@ -528,19 +565,18 @@ static LRESULT CALLBACK wui_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 	case WM_MOUSEACTIVATE:
 		return MA_NOACTIVATE;
 	case WM_MOUSEMOVE:
-		if (!g_wuiLegacyTip) {
-			KillTimer(hwnd, WUI_TIP_LEAVE_TIMER_ID);
-			wui_track_leave(hwnd);
-			wui_tip_trace(L"host_mousemove");
-			if (g_wuiTipVisible) return 0;
-		}
+		KillTimer(hwnd, WUI_TIP_LEAVE_TIMER_ID);
+		wui_track_leave(hwnd);
+		wui_tip_trace(L"host_mousemove");
+		if (g_wuiTipVisible) return 0;
+		if (g_wuiTipSuppressed) return 0;
 	case WM_MOUSEWHEEL:
 	case WM_MOUSEHWHEEL:
 		wui_forward_mouse(hwnd, msg, wParam, lParam);
 		return 0;
 	case WM_MOUSELEAVE:
-		if (g_wuiLegacyTip) return 0;
 		g_wuiHoverInside = FALSE;
+		g_wuiTipSuppressed = FALSE;
 		wui_tip_trace(L"host_mouseleave");
 		if (g_wuiTipVisible) SetTimer(hwnd, WUI_TIP_LEAVE_TIMER_ID, WUI_TIP_LEAVE_MS, NULL);
 		else wui_hide_tip();
@@ -549,6 +585,10 @@ static LRESULT CALLBACK wui_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 	case WM_RBUTTONDOWN:
 	case WM_MBUTTONDOWN:
 	case WM_XBUTTONDOWN:
+		if (msg == WM_RBUTTONDOWN) {
+			g_wuiTipSuppressed = TRUE;
+			wui_hide_tip();
+		}
 		SetCapture(hwnd);
 		wui_forward_mouse(hwnd, msg, wParam, lParam);
 		return 0;
@@ -582,7 +622,6 @@ static LRESULT CALLBACK wui_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 				g_wuiTipStage = 1;
 				if (!wui_post_tip_move()) wui_hide_tip();
 			}
-			else if (g_wuiLegacyTip) wui_hide_tip();
 			return 0;
 		}
 		if (wParam == WUI_TIMER_ID) {
@@ -594,7 +633,6 @@ static LRESULT CALLBACK wui_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 				wui_place(hwnd);
 				if (!IsWindowVisible(hwnd)) wui_show_front(hwnd);
 				wui_present(hwnd);
-				if (g_wuiLegacyTip) wui_sync_hover();
 			}
 			return 0;
 		}
@@ -715,9 +753,8 @@ extern "C" BOOL WINAPI WuiRefresh(void)
 }
 
 extern "C" BOOL WINAPI WuiSetTooltip(const WCHAR* text, BOOL visible, HFONT font, COLORREF backColor,
-	UINT initialDelay, UINT reshowDelay, UINT autoPopDelay, BOOL legacyMode)
+	UINT initialDelay, UINT reshowDelay, UINT autoPopDelay)
 {
-	INITCOMMONCONTROLSEX icc = { sizeof(icc), ICC_WIN95_CLASSES };
 	TOOLINFOW ti;
 
 	if (!g_wuiTarget || !IsWindow(g_wuiTarget)) return FALSE;
@@ -731,35 +768,18 @@ extern "C" BOOL WINAPI WuiSetTooltip(const WCHAR* text, BOOL visible, HFONT font
 		return TRUE;
 	}
 	if (!text || !text[0]) return FALSE;
-	if (g_wuiLegacyTip != legacyMode) {
-		wui_hide_tip();
-		g_wuiHoverInside = FALSE;
-		g_wuiLegacyTip = legacyMode;
-	}
 	BOOL textChanged = lstrcmpW(g_wuiTooltipText, text) != 0;
 	if (textChanged) lstrcpynW(g_wuiTooltipText, text, _countof(g_wuiTooltipText));
-	if (!g_wuiTooltip) {
-		InitCommonControlsEx(&icc);
-		g_wuiTooltip = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
-			TOOLTIPS_CLASSW, NULL, WS_POPUP | TTS_ALWAYSTIP | TTS_NOPREFIX,
-			0, 0, 0, 0, g_wuiTarget, NULL, g_wuiInst, NULL);
-		if (!g_wuiTooltip) return FALSE;
-		ti.lpszText = g_wuiTooltipText;
-		SendMessageW(g_wuiTooltip, TTM_ADDTOOLW, 0, (LPARAM)&ti);
-	}
+	if (!wui_make_tip()) return FALSE;
+	g_wuiTipFont = font;
+	g_wuiTipBackColor = backColor;
 	if (font) SendMessageW(g_wuiTooltip, WM_SETFONT, (WPARAM)font, TRUE);
 	SendMessageW(g_wuiTooltip, TTM_SETTIPBKCOLOR, backColor, 0);
 	SendMessageW(g_wuiTooltip, TTM_SETTIPTEXTCOLOR, backColor, 0);
-	SendMessageW(g_wuiTooltip, TTM_SETMAXTIPWIDTH, 0, 420);
+	SendMessageW(g_wuiTooltip, TTM_SETMAXTIPWIDTH, 0, wui_tip_width(g_wuiTooltipText, font));
 	ti.lpszText = g_wuiTooltipText;
 	if (textChanged) SendMessageW(g_wuiTooltip, TTM_UPDATETIPTEXTW, 0, (LPARAM)&ti);
 	g_wuiTipAutoPopDelay = autoPopDelay;
-	if (g_wuiLegacyTip) {
-		wui_activate_tip();
-		g_wuiTipVisible = TRUE;
-		g_wuiTipShownOnce = TRUE;
-		return TRUE;
-	}
 	wui_tip_trace(L"set_tooltip_visible");
 	if (g_wuiTipStage == 1 && g_wuiTipPending) {
 		wui_tip_trace(L"stage1_show");
@@ -787,11 +807,25 @@ extern "C" BOOL WINAPI WuiSetTooltip(const WCHAR* text, BOOL visible, HFONT font
 
 extern "C" BOOL WINAPI WuiRefreshTooltipText(const WCHAR* text)
 {
+	TOOLINFOW ti;
+
 	if (!g_wuiTooltip || !g_wuiTipVisible) return FALSE;
 	if (!text || !text[0]) return FALSE;
 	if (lstrcmpW(g_wuiTooltipText, text) == 0) return TRUE;
 	lstrcpynW(g_wuiTooltipText, text, _countof(g_wuiTooltipText));
-	SendMessageW(g_wuiTooltip, TTM_UPDATE, 0, 0);
+	ZeroMemory(&ti, sizeof(ti));
+	ti.cbSize = sizeof(ti);
+	ti.uFlags = TTF_TRACK;
+	ti.hwnd = g_wuiTarget;
+	ti.uId = 1;
+	ti.lpszText = g_wuiTooltipText;
+	if (g_wuiTipFont) SendMessageW(g_wuiTooltip, WM_SETFONT, (WPARAM)g_wuiTipFont, TRUE);
+	SendMessageW(g_wuiTooltip, TTM_SETTIPBKCOLOR, g_wuiTipBackColor, 0);
+	SendMessageW(g_wuiTooltip, TTM_SETTIPTEXTCOLOR, g_wuiTipBackColor, 0);
+	SendMessageW(g_wuiTooltip, TTM_SETMAXTIPWIDTH, 0, wui_tip_width(g_wuiTooltipText, g_wuiTipFont));
+	SendMessageW(g_wuiTooltip, TTM_UPDATETIPTEXTW, 0, (LPARAM)&ti);
+	wui_activate_tip();
+	g_wuiTipVisible = TRUE;
 	return TRUE;
 }
 

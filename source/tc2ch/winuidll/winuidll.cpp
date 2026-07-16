@@ -36,82 +36,6 @@ static UINT g_wuiTipStage = 0;
 static HFONT g_wuiTipFont = NULL;
 static COLORREF g_wuiTipBackColor = RGB(255, 255, 225);
 
-// TEMP_VERIFY_START: remove after mode0 vertical tooltip runtime investigation is complete.
-static void wui_tip_trace(const WCHAR* tag)
-{
-	WCHAR path[MAX_PATH];
-	WCHAR line[512];
-	DWORD written;
-	HANDLE file;
-	POINT cursor = { 0, 0 };
-	RECT rcHost = { 0, 0, 0, 0 };
-	RECT rcTip = { 0, 0, 0, 0 };
-	int hostOk = 0;
-	int cursorOk = 0;
-	int tipOk = 0;
-	int tipVisible = 0;
-
-	if (!g_wuiInst) return;
-	if (!GetModuleFileNameW(g_wuiInst, path, _countof(path))) return;
-	for (int i = lstrlenW(path) - 1; i >= 0; --i) {
-		if (path[i] == L'\\' || path[i] == L'/') {
-			path[i + 1] = L'\0';
-			break;
-		}
-	}
-	lstrcatW(path, L"wui_tip_trace.log");
-	if (g_wuiHost && IsWindow(g_wuiHost)) hostOk = GetWindowRect(g_wuiHost, &rcHost) ? 1 : 0;
-	if (g_wuiTooltip && IsWindow(g_wuiTooltip)) {
-		tipOk = GetWindowRect(g_wuiTooltip, &rcTip) ? 1 : 0;
-		tipVisible = IsWindowVisible(g_wuiTooltip) ? 1 : 0;
-	}
-	cursorOk = GetCursorPos(&cursor) ? 1 : 0;
-	wsprintfW(line,
-		L"%lu %ls stage=%u pending=%d visible=%d hover=%d shown=%d cursor=%d,%d cursor_ok=%d host=%d,%d,%d,%d host_ok=%d tip=%d,%d,%d,%d tip_ok=%d tip_visible=%d\r\n",
-		GetTickCount(),
-		tag ? tag : L"(null)",
-		g_wuiTipStage,
-		g_wuiTipPending,
-		g_wuiTipVisible,
-		g_wuiHoverInside,
-		g_wuiTipShownOnce,
-		cursor.x,
-		cursor.y,
-		cursorOk,
-		rcHost.left,
-		rcHost.top,
-		rcHost.right,
-		rcHost.bottom,
-		hostOk,
-		rcTip.left,
-		rcTip.top,
-		rcTip.right,
-		rcTip.bottom,
-		tipOk,
-		tipVisible);
-	file = CreateFileW(path, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-	if (file == INVALID_HANDLE_VALUE) return;
-	WriteFile(file, line, lstrlenW(line) * sizeof(WCHAR), &written, NULL);
-	CloseHandle(file);
-}
-
-static void wui_tip_trace_reset(void)
-{
-	WCHAR path[MAX_PATH];
-
-	if (!g_wuiInst) return;
-	if (!GetModuleFileNameW(g_wuiInst, path, _countof(path))) return;
-	for (int i = lstrlenW(path) - 1; i >= 0; --i) {
-		if (path[i] == L'\\' || path[i] == L'/') {
-			path[i + 1] = L'\0';
-			break;
-		}
-	}
-	lstrcatW(path, L"wui_tip_trace.log");
-	DeleteFileW(path);
-}
-// TEMP_VERIFY_END
-
 static Gdiplus::Color wui_argb(COLORREF color)
 {
 	return Gdiplus::Color(255, GetRValue(color), GetGValue(color), GetBValue(color));
@@ -434,7 +358,6 @@ static void wui_hide_tip(void)
 	g_wuiTipVisible = FALSE;
 	g_wuiTipStage = 0;
 	g_wuiTipShownOnce = FALSE;
-	wui_tip_trace(L"hide_tip");
 	if (!g_wuiTooltip || !g_wuiTarget) return;
 	ZeroMemory(&ti, sizeof(ti));
 	ti.cbSize = sizeof(ti);
@@ -519,7 +442,6 @@ static void wui_activate_tip(void)
 	SendMessageW(g_wuiTooltip, TTM_TRACKPOSITION, 0, MAKELPARAM(x, y));
 	SendMessageW(g_wuiTooltip, TTM_TRACKACTIVATE, TRUE, (LPARAM)&ti);
 	wui_fit_tip();
-	wui_tip_trace(L"activate_tip");
 }
 
 static void wui_show_tip(void)
@@ -546,14 +468,13 @@ static BOOL wui_post_tip_move(void)
 	POINT point;
 	RECT rcHost;
 
-	if (!g_wuiHost || !IsWindow(g_wuiHost)) { wui_tip_trace(L"post_move_no_host"); return FALSE; }
-	if (!g_wuiTarget || !IsWindow(g_wuiTarget)) { wui_tip_trace(L"post_move_no_target"); return FALSE; }
-	if (!GetCursorPos(&point)) { wui_tip_trace(L"post_move_no_cursor"); return FALSE; }
-	if (!GetWindowRect(g_wuiHost, &rcHost)) { wui_tip_trace(L"post_move_no_rect"); return FALSE; }
-	if (!PtInRect(&rcHost, point)) { wui_tip_trace(L"post_move_outside"); return FALSE; }
+	if (!g_wuiHost || !IsWindow(g_wuiHost)) return FALSE;
+	if (!g_wuiTarget || !IsWindow(g_wuiTarget)) return FALSE;
+	if (!GetCursorPos(&point)) return FALSE;
+	if (!GetWindowRect(g_wuiHost, &rcHost)) return FALSE;
+	if (!PtInRect(&rcHost, point)) return FALSE;
 	ScreenToClient(g_wuiTarget, &point);
 	SendMessageW(g_wuiTarget, WM_MOUSEMOVE, 0, MAKELPARAM(point.x, point.y));
-	wui_tip_trace(L"post_move_sent");
 	return TRUE;
 }
 
@@ -567,7 +488,6 @@ static LRESULT CALLBACK wui_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 	case WM_MOUSEMOVE:
 		KillTimer(hwnd, WUI_TIP_LEAVE_TIMER_ID);
 		wui_track_leave(hwnd);
-		wui_tip_trace(L"host_mousemove");
 		if (g_wuiTipVisible) return 0;
 		if (g_wuiTipSuppressed) return 0;
 	case WM_MOUSEWHEEL:
@@ -577,7 +497,6 @@ static LRESULT CALLBACK wui_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 	case WM_MOUSELEAVE:
 		g_wuiHoverInside = FALSE;
 		g_wuiTipSuppressed = FALSE;
-		wui_tip_trace(L"host_mouseleave");
 		if (g_wuiTipVisible) SetTimer(hwnd, WUI_TIP_LEAVE_TIMER_ID, WUI_TIP_LEAVE_MS, NULL);
 		else wui_hide_tip();
 		return 0;
@@ -602,13 +521,11 @@ static LRESULT CALLBACK wui_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 	case WM_TIMER:
 		if (wParam == WUI_TIP_LEAVE_TIMER_ID) {
 			KillTimer(hwnd, WUI_TIP_LEAVE_TIMER_ID);
-			wui_tip_trace(L"leave_timer");
 			if (!g_wuiHoverInside) wui_hide_tip();
 			return 0;
 		}
 		if (wParam == WUI_TIP_FOLLOWUP_TIMER_ID) {
 			KillTimer(hwnd, WUI_TIP_FOLLOWUP_TIMER_ID);
-			wui_tip_trace(L"followup_timer");
 			if (g_wuiTipStage == 2 && g_wuiTipVisible && g_wuiHoverInside) {
 				if (!wui_post_tip_move()) wui_hide_tip();
 			}
@@ -617,7 +534,6 @@ static LRESULT CALLBACK wui_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 		}
 		if (wParam == WUI_TIP_TIMER_ID) {
 			KillTimer(hwnd, WUI_TIP_TIMER_ID);
-			wui_tip_trace(L"tip_timer");
 			if (g_wuiTipPending && g_wuiHoverInside) {
 				g_wuiTipStage = 1;
 				if (!wui_post_tip_move()) wui_hide_tip();
@@ -686,7 +602,6 @@ extern "C" BOOL WINAPI WuiCreateHost(HWND hwndTargetClock)
 	RegisterClassExW(&wcx);
 	g_wuiHost = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_LAYERED | WS_EX_NOACTIVATE,
 		wcx.lpszClassName, L"TClockWinUIDllHost", WS_POPUP, 0, 0, 1, 1, g_wuiTarget, NULL, g_wuiInst, NULL);
-	wui_tip_trace_reset();
 	if (!g_wuiHost) return FALSE;
 	ShowWindow(g_wuiHost, SW_HIDE);
 	wui_place(g_wuiHost);
@@ -780,16 +695,13 @@ extern "C" BOOL WINAPI WuiSetTooltip(const WCHAR* text, BOOL visible, HFONT font
 	ti.lpszText = g_wuiTooltipText;
 	if (textChanged) SendMessageW(g_wuiTooltip, TTM_UPDATETIPTEXTW, 0, (LPARAM)&ti);
 	g_wuiTipAutoPopDelay = autoPopDelay;
-	wui_tip_trace(L"set_tooltip_visible");
 	if (g_wuiTipStage == 1 && g_wuiTipPending) {
-		wui_tip_trace(L"stage1_show");
 		wui_show_tip();
 		g_wuiTipStage = 2;
 		SetTimer(g_wuiHost, WUI_TIP_FOLLOWUP_TIMER_ID, WUI_TIMER_MS, NULL);
 		return TRUE;
 	}
 	if (g_wuiTipStage == 2 && g_wuiTipVisible) {
-		wui_tip_trace(L"stage2_refresh");
 		KillTimer(g_wuiHost, WUI_TIP_FOLLOWUP_TIMER_ID);
 		g_wuiTipStage = 0;
 		wui_activate_tip();
@@ -798,7 +710,6 @@ extern "C" BOOL WINAPI WuiSetTooltip(const WCHAR* text, BOOL visible, HFONT font
 	if (!g_wuiTipPending && !g_wuiTipVisible) {
 		UINT delay = g_wuiTipShownOnce ? reshowDelay : initialDelay;
 		g_wuiTipPending = TRUE;
-		wui_tip_trace(delay ? L"arm_delay" : L"show_now");
 		if (delay) SetTimer(g_wuiHost, WUI_TIP_TIMER_ID, delay, NULL);
 		else wui_show_tip();
 	}

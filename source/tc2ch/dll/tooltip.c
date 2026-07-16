@@ -91,10 +91,7 @@ static HWND hwndHTMLParent = NULL;
 static ATOM atomHTMLParent = 0;
 static BOOL bEmbedBrowserObject = FALSE;
 static BOOL bTooltipUseAAFont = FALSE;
-// TEMP_VERIFY_START: remove after comparing vertical tooltip activation backends.
-static BOOL bWin11VerticalTooltipLegacy = FALSE;
 static BOOL bWin11VerticalTipActive = FALSE;
-// TEMP_VERIFY_END
 
 extern char g_mydir_dll[];	//added by TTTT
 
@@ -417,7 +414,7 @@ void TooltipOnRefresh(HWND hwnd)
 		TooltipInit(hwnd);
 	}
 	if (!bEnableTooltip) {
-		WuiShowTip(NULL, FALSE, NULL, 0, 0, 0, 0, bWin11VerticalTooltipLegacy);
+		WuiShowTip(NULL, FALSE, NULL, 0, 0, 0, 0);
 		bTooltipShow = FALSE;
 		bTooltipUpdated = FALSE;
 		bWin11VerticalTipActive = FALSE;
@@ -430,7 +427,7 @@ void TooltipOnRefresh(HWND hwnd)
 		TooltipApplySetting();
 		TooltipUpdateText();
 		if (WuiShowTip(formatTooltipW, TRUE, TooltipGetBodyFont(), colTooltipBack,
-			initialDelay, reshowDelay, autoPopDelay, bWin11VerticalTooltipLegacy)) {
+			initialDelay, reshowDelay, autoPopDelay)) {
 			bTooltipShow = TRUE;
 			bWin11VerticalTipActive = TRUE;
 			hwndCurrentTooltipOwner = owner ? owner : hwndClockMain;
@@ -918,9 +915,6 @@ void TooltipReadData(void)
 	bTooltipTate = GetMyRegLong("Tooltip", "TipTateFlg", FALSE);
 
 	bEnableTooltip = GetMyRegLong("Tooltip", "EnableTooltip", TRUE);
-	// TEMP_VERIFY_START: hidden INI switch for vertical tooltip backend comparison.
-	bWin11VerticalTooltipLegacy = GetMyRegLong("Tooltip", "Win11VerticalTooltipMode", 0) == 1;
-	// TEMP_VERIFY_END
 
 	GetMyRegStr("Tooltip", "Tooltip", fmtToolTip1, sizeof(fmtToolTip1), "");
 	GetMyRegStr("Tooltip", "Tooltip2", fmtToolTip2, sizeof(fmtToolTip1), "");
@@ -1244,7 +1238,7 @@ void TooltipOnMouseEvent(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam, 
 			UINT autoPopDelay = hwndTooltip ? (UINT)SendMessage(hwndTooltip, TTM_GETDELAYTIME, TTDT_AUTOPOP, 0) : 0;
 			TooltipUpdateText();
 			if (WuiShowTip(formatTooltipW, TRUE, TooltipGetBodyFont(), colTooltipBack,
-				initialDelay, reshowDelay, autoPopDelay, bWin11VerticalTooltipLegacy)) {
+				initialDelay, reshowDelay, autoPopDelay)) {
 				bTooltipShow = TRUE;
 				bWin11VerticalTipActive = TRUE;
 				hwndCurrentTooltipOwner = hwnd;
@@ -1252,7 +1246,7 @@ void TooltipOnMouseEvent(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam, 
 				return;
 			}
 		}
-		else if (WuiShowTip(NULL, FALSE, NULL, 0, 0, 0, 0, bWin11VerticalTooltipLegacy)) {
+		else if (WuiShowTip(NULL, FALSE, NULL, 0, 0, 0, 0)) {
 			bTooltipShow = FALSE;
 			bTooltipUpdated = FALSE;
 			bWin11VerticalTipActive = FALSE;

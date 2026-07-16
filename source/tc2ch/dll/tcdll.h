@@ -333,7 +333,7 @@ void TooltipOnRefresh(HWND hwnd);
 BOOL TooltipOnNotify(LRESULT *plRes, LPARAM lParam);
 void TooltipOnMouseEvent(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam, int uid);
 BOOL WuiShowTip(const WCHAR* text, BOOL visible, HFONT font, COLORREF backColor,
-	UINT initialDelay, UINT reshowDelay, UINT autoPopDelay, BOOL legacyMode);
+	UINT initialDelay, UINT reshowDelay, UINT autoPopDelay);
 BOOL WuiRefreshTipText(const WCHAR* text);
 BOOL WuiIsTip(HWND hwnd);
 

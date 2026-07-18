@@ -1669,16 +1669,21 @@ static void wui_unload_dll(void)
 	}
 }
 
+static BOOL wui_tip_route(void)
+{
+	return bWin11Main && g_wuiDllLive;
+}
+
 BOOL WuiShowTip(const WCHAR* text, BOOL visible, HFONT font, COLORREF backColor,
 	UINT initialDelay, UINT reshowDelay, UINT autoPopDelay)
 {
-	if (!bWin11Main || !IsVertTaskbar(hwndTaskBarMain) || !g_wuiDllLive || !g_wuiSetTooltip) return FALSE;
+	if (!wui_tip_route() || !g_wuiSetTooltip) return FALSE;
 	return g_wuiSetTooltip(text, visible, font, backColor, initialDelay, reshowDelay, autoPopDelay);
 }
 
 BOOL WuiRefreshTipText(const WCHAR* text)
 {
-	if (!bWin11Main || !IsVertTaskbar(hwndTaskBarMain) || !g_wuiDllLive || !g_wuiRefreshTooltipText) return FALSE;
+	if (!wui_tip_route() || !g_wuiRefreshTooltipText) return FALSE;
 	return g_wuiRefreshTooltipText(text);
 }
 

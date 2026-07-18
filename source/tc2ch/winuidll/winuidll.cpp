@@ -421,6 +421,7 @@ static void wui_activate_tip(void)
 	RECT rcTarget;
 	RECT rcWork;
 	MONITORINFO monitor = { sizeof(monitor) };
+	int gap = 8;
 	int x;
 	int y;
 
@@ -428,11 +429,28 @@ static void wui_activate_tip(void)
 	if (!GetWindowRect(g_wuiTarget, &rcTarget)) return;
 	if (!GetMonitorInfoW(MonitorFromWindow(g_wuiTarget, MONITOR_DEFAULTTONEAREST), &monitor)) return;
 	rcWork = monitor.rcWork;
-	x = rcTarget.right + 8;
-	if (x > rcWork.right - 8) x = rcTarget.left - 8;
-	if (x < rcWork.left) x = rcWork.left;
-	y = rcTarget.bottom - 8;
-	if (y > rcWork.bottom - 8) y = rcWork.bottom - 8;
+	if (rcTarget.top <= monitor.rcMonitor.top) {
+		x = rcTarget.left + gap;
+		y = rcTarget.bottom + gap;
+		if (x > rcWork.right - gap) x = rcWork.right - gap;
+		if (x < rcWork.left) x = rcWork.left;
+		if (y > rcWork.bottom - gap) y = rcWork.bottom - gap;
+	}
+	else if (rcTarget.bottom >= monitor.rcMonitor.bottom) {
+		x = rcTarget.left + gap;
+		y = rcTarget.top - gap;
+		if (x > rcWork.right - gap) x = rcWork.right - gap;
+		if (x < rcWork.left) x = rcWork.left;
+		if (y < rcWork.top) y = rcWork.top;
+	}
+	else {
+		x = rcTarget.right + gap;
+		if (x > rcWork.right - gap) x = rcTarget.left - gap;
+		if (x < rcWork.left) x = rcWork.left;
+		y = rcTarget.bottom - gap;
+		if (y > rcWork.bottom - gap) y = rcWork.bottom - gap;
+		if (y < rcWork.top) y = rcWork.top;
+	}
 	ZeroMemory(&ti, sizeof(ti));
 	ti.cbSize = sizeof(ti);
 	ti.uFlags = TTF_TRACK;

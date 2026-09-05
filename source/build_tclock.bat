@@ -3,25 +3,27 @@ setlocal
 
 set "SLN=%~dp0tc2ch.sln"
 
-if not defined VSINSTALL (
-    set "VSINSTALL=C:\Program Files\Microsoft Visual Studio\18\Community"
-)
+if defined VSINSTALL goto HAVE_VS
 
-if defined VSINSTALL goto SKIP_VSWHERE
 set "VSWHERE=C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe"
-if not exist "%VSWHERE%" goto NO_VSWHERE
+if exist "%VSWHERE%" goto QUERY_VSWHERE
+goto TRY_FALLBACK
 
+:QUERY_VSWHERE
 set "TMPFILE=%TEMP%\vswhere_install.txt"
 "%VSWHERE%" -latest -products * -requires Microsoft.Component.MSBuild -property installationPath > "%TMPFILE%"
 if errorlevel 1 goto VSWHERE_FAIL
-
 set /p VSINSTALL=<"%TMPFILE%"
 del /q "%TMPFILE%" >nul 2>&1
+if defined VSINSTALL goto HAVE_VS
 
-if not defined VSINSTALL goto NO_VS
+:TRY_FALLBACK
+set "VSINSTALL=C:\Program Files\Microsoft Visual Studio\18\Community"
+if exist "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat" goto HAVE_VS
+set "VSINSTALL="
+goto NO_VS
 
-:SKIP_VSWHERE
-
+:HAVE_VS
 set "VCVARS=%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
 if not exist "%VCVARS%" goto NO_VCVARS
 call "%VCVARS%"
@@ -42,9 +44,11 @@ if not exist "%REL_DIR%\tclang-win11.lib" set "REPAIR_MISSING_LIBS=1"
 if defined REPAIR_MISSING_LIBS (
     echo INFO: Required import libs are missing. Rebuilding language/dll projects...
     "%MSBUILD%" "%LANG_PROJ%" /m /t:Rebuild /p:Configuration=Release;Platform=x64
-    if errorlevel 1 goto BUILD_FAIL
+    set "ERR=%ERRORLEVEL%"
+    if not "%ERR%"=="0" goto BUILD_FAIL
     "%MSBUILD%" "%DLL_PROJ%" /m /t:Rebuild /p:Configuration=Release;Platform=x64
-    if errorlevel 1 goto BUILD_FAIL
+    set "ERR=%ERRORLEVEL%"
+    if not "%ERR%"=="0" goto BUILD_FAIL
 )
 
 "%MSBUILD%" "%SLN%" /m /t:Build /p:Configuration=Release;Platform=x64

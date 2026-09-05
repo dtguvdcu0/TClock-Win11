@@ -15,6 +15,7 @@
 #include <chrono>
 #include <filesystem>
 #include <system_error>
+#include <shlwapi.h>
 #include <shellscalingapi.h>
 #include <wincodec.h>
 #include <objbase.h>
@@ -35,14 +36,20 @@ struct DisplayInfo {
     HMONITOR monitor = nullptr;
 };
 
-bool saveImageWic(const std::string& filename, int width, int height,
+std::wstring makeCollisionFilename(const std::wstring& filename, unsigned int sequence) {
+    if (sequence <= 1) return filename;
+    fs::path path(filename);
+    return (path.parent_path() / (path.stem().wstring() + L"_" + std::to_wstring(sequence) + path.extension().wstring())).wstring();
+}
+
+bool saveImageWic(const std::wstring& filename, int width, int height,
                   std::vector<uint8_t>& bgr, int stride,
-                  const std::string& format, int compression) {
+                  const std::string& format, int compression, std::wstring& savedFilename) {
     IWICImagingFactory* factory = nullptr;
     IWICBitmapEncoder* encoder = nullptr;
     IWICBitmapFrameEncode* frame = nullptr;
     IPropertyBag2* props = nullptr;
-    IWICStream* stream = nullptr;
+    IStream* stream = nullptr;
 
     auto cleanup = [&]() {
         if (frame) frame->Release();
@@ -52,13 +59,6 @@ bool saveImageWic(const std::string& filename, int width, int height,
         if (factory) factory->Release();
     };
 
-    std::wstring wpath = utf8ToWide(filename);
-    if (wpath.empty()) {
-        std::cerr << "Failed to convert path to wide string." << std::endl;
-        cleanup();
-        return false;
-    }
-
     HRESULT hr = CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
                                   IID_PPV_ARGS(&factory));
     if (FAILED(hr)) {
@@ -67,16 +67,21 @@ bool saveImageWic(const std::string& filename, int width, int height,
         return false;
     }
 
-    hr = factory->CreateStream(&stream);
-    if (FAILED(hr)) {
-        std::cerr << "Failed to create WIC stream. HRESULT: " << std::hex << hr << std::endl;
-        cleanup();
-        return false;
+    std::wstring candidate;
+    for (unsigned int sequence = 1; sequence <= 10000; ++sequence) {
+        candidate = makeCollisionFilename(filename, sequence);
+        hr = SHCreateStreamOnFileEx(candidate.c_str(),
+                                    STGM_WRITE | STGM_SHARE_DENY_WRITE | STGM_FAILIFTHERE,
+                                    FILE_ATTRIBUTE_NORMAL, TRUE, nullptr, &stream);
+        if (SUCCEEDED(hr)) break;
+        if (hr != HRESULT_FROM_WIN32(ERROR_FILE_EXISTS)) {
+            std::cerr << "Failed to reserve output file. HRESULT: " << std::hex << hr << std::endl;
+            cleanup();
+            return false;
+        }
     }
-
-    hr = stream->InitializeFromFilename(wpath.c_str(), GENERIC_WRITE);
-    if (FAILED(hr)) {
-        std::cerr << "Failed to open output file. HRESULT: " << std::hex << hr << std::endl;
+    if (!stream) {
+        std::cerr << "Could not reserve a unique output filename." << std::endl;
         cleanup();
         return false;
     }
@@ -187,6 +192,7 @@ bool saveImageWic(const std::string& filename, int width, int height,
         return false;
     }
 
+    savedFilename = candidate;
     cleanup();
     return true;
 }
@@ -249,9 +255,9 @@ public:
         return -1;
     }
 
-    std::string generateFilename(const std::string& displayLabel, const std::string& outputDir,
-                                 const std::string& format, std::time_t timestamp,
-                                 int frameNumber, bool includeFrame) const {
+    std::wstring generateFilename(const std::string& displayLabel, const std::string& outputDir,
+                                  const std::string& format, std::time_t timestamp,
+                                  int frameNumber, bool includeFrame) const {
         auto tm = *std::localtime(&timestamp);
 
         std::ostringstream oss;
@@ -263,9 +269,11 @@ public:
         }
         oss << "." << ext;
 
-        fs::path path = outputDir.empty() ? fs::path(".") : fs::path(outputDir);
-        path /= oss.str();
-        return path.string();
+        std::wstring outputPath = outputDir.empty() ? L"." : utf8ToWide(outputDir);
+        if (outputPath.empty()) return {};
+        fs::path path(outputPath);
+        path /= utf8ToWide(oss.str());
+        return path.wstring();
     }
 
     bool captureDisplay(int displayIndex, const AppSettings& settings, std::time_t timestamp, int frameNumber, bool includeFrame) {
@@ -429,17 +437,22 @@ private:
         DeleteDC(memDC);
         ReleaseDC(nullptr, screenDC);
 
-        std::string filename = generateFilename(displayLabel, settings.outputDir, settings.format, timestamp, frameNumber, includeFrame);
+        std::wstring filename = generateFilename(displayLabel, settings.outputDir, settings.format, timestamp, frameNumber, includeFrame);
+        if (filename.empty()) {
+            std::cerr << "Failed to build output path." << std::endl;
+            return false;
+        }
+        std::wstring savedFilename;
         int effectiveCompression = (toLower(settings.format) == "png") ? settings.pngCompression : settings.jpgQuality;
-        if (!saveImageWic(filename, width, height, buffer, rowStride, settings.format, effectiveCompression)) {
-            std::cerr << "Failed to save file: " << filename << std::endl;
+        if (!saveImageWic(filename, width, height, buffer, rowStride, settings.format, effectiveCompression, savedFilename)) {
+            std::cerr << "Failed to save file: " << wideToUtf8(filename) << std::endl;
             return false;
         }
 
         std::error_code ec;
-        auto fileSize = fs::file_size(filename, ec);
+        auto fileSize = fs::file_size(fs::path(savedFilename), ec);
         double kb = ec ? 0.0 : static_cast<double>(fileSize) / 1024.0;
-        std::cout << "Saved: " << filename;
+        std::cout << "Saved: " << wideToUtf8(savedFilename);
         if (!ec) {
             std::cout << " (" << std::fixed << std::setprecision(1) << kb << " KB)";
         }

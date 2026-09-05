@@ -37,6 +37,7 @@ struct WindowContext {
     std::wstring initial_uri;
     std::wstring webview_user_data_dir;
     std::wstring ini_file_path;
+    bool block_external_navigation = true;
     Microsoft::WRL::ComPtr<ICoreWebView2Environment> environment;
     Microsoft::WRL::ComPtr<ICoreWebView2Controller> controller;
     Microsoft::WRL::ComPtr<ICoreWebView2> webview;
@@ -885,6 +886,10 @@ void ResizeWebViewToClient(WindowContext* context, HWND hwnd) {
     InvalidateRect(hwnd, nullptr, FALSE);
 }
 
+bool IsTrustedWebViewUri(const WindowContext* context, const std::wstring& uri) {
+    return context && _wcsicmp(uri.c_str(), context->initial_uri.c_str()) == 0;
+}
+
 bool StartWebView2ForWindow(WindowContext* context, HWND hwnd) {
     if (!context) return false;
 
@@ -917,6 +922,19 @@ bool StartWebView2ForWindow(WindowContext* context, HWND hwnd) {
                             ResizeWebViewToClient(context, hwnd);
 
                             if (context->webview) {
+                                EventRegistrationToken navigation_token{};
+                                context->webview->add_NavigationStarting(
+                                    Microsoft::WRL::Callback<ICoreWebView2NavigationStartingEventHandler>(
+                                        [context](ICoreWebView2*, ICoreWebView2NavigationStartingEventArgs* args) -> HRESULT {
+                                            if (!context || !args || !context->block_external_navigation) return S_OK;
+                                            LPWSTR uri = nullptr;
+                                            const HRESULT uri_hr = args->get_Uri(&uri);
+                                            const bool trusted = SUCCEEDED(uri_hr) && uri && IsTrustedWebViewUri(context, uri);
+                                            if (uri) CoTaskMemFree(uri);
+                                            if (!trusted) args->put_Cancel(TRUE);
+                                            return S_OK;
+                                        }).Get(), &navigation_token);
+
                                 EventRegistrationToken web_message_token{};
                                 context->webview->add_WebMessageReceived(
                                     Microsoft::WRL::Callback<ICoreWebView2WebMessageReceivedEventHandler>(
@@ -924,6 +942,12 @@ bool StartWebView2ForWindow(WindowContext* context, HWND hwnd) {
                                             if (!context || !context->host || !sender || !args) {
                                                 return S_OK;
                                             }
+
+                                            LPWSTR source_uri = nullptr;
+                                            const HRESULT source_hr = args->get_Source(&source_uri);
+                                            const bool trusted = SUCCEEDED(source_hr) && source_uri && IsTrustedWebViewUri(context, source_uri);
+                                            if (source_uri) CoTaskMemFree(source_uri);
+                                            if (!trusted) return S_OK;
 
                                             LPWSTR message_text = nullptr;
                                             const HRESULT message_hr = args->TryGetWebMessageAsString(&message_text);
@@ -1196,6 +1220,7 @@ int RunStandaloneWindowMode(tcalendar::TCalendarHost& host, const tcalendar::Hos
     context.initial_uri = BuildFileUriFromPath(std::filesystem::absolute(config.default_template_path).wstring());
     context.webview_user_data_dir = (std::filesystem::absolute(config.storage_db_path).parent_path() / L"webview2").wstring();
     context.ini_file_path = (exe_dir / kTCalendarIniFileName).wstring();
+    context.block_external_navigation = config.block_external_navigation;
 
     int window_x = CW_USEDEFAULT;
     int window_y = CW_USEDEFAULT;

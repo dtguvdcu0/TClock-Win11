@@ -68,18 +68,25 @@ static const INIR_LEGACY_FAMILY k_inirLegacyFamilies[] = {
 static void inir_append(char* report, int cchReport, const char* fmt, ...)
 {
 	va_list ap;
-	char tmp[512];
+	char tmp[1024];
 	int used;
 	int remain;
+	int n;
 
 	if (!report || cchReport <= 0 || !fmt) return;
 	used = lstrlen(report);
 	if (used >= cchReport - 1) return;
 	remain = cchReport - used;
 	va_start(ap, fmt);
+	// Compatibility formatter: User32 limits wvsprintfA output to this buffer size.
 	wvsprintfA(tmp, fmt, ap);
 	va_end(ap);
-	lstrcpynA(report + used, tmp, remain);
+	n = 0;
+	while (n < remain - 1 && tmp[n]) {
+		report[used + n] = tmp[n];
+		n++;
+	}
+	report[used + n] = '\0';
 }
 
 static BOOL inir_is_checked(HWND hDlg, int id)
@@ -1026,7 +1033,7 @@ static int inir_scan_legacy_families(char* report, int cchReport)
 		foundCombined = FALSE;
 		inir_find_entry(k_inirLegacyFamilies[i].section, k_inirLegacyFamilies[i].combinedKey, NULL, 0, &foundCombined);
 		for (j = k_inirLegacyFamilies[i].firstIndex; j <= k_inirLegacyFamilies[i].lastIndex; j++) {
-			wsprintfA(key, "%s%d", k_inirLegacyFamilies[i].legacyPrefix, j);
+			inir_build_legacy_key(key, (int)sizeof(key), k_inirLegacyFamilies[i].legacyPrefix, j);
 			foundLegacy = FALSE;
 			value[0] = '\0';
 			inir_find_entry(k_inirLegacyFamilies[i].section, key, value, (int)sizeof(value), &foundLegacy);
@@ -1079,7 +1086,7 @@ static int inir_apply_legacy_families(char* report, int cchReport)
 		foundCombined = FALSE;
 		inir_find_entry(k_inirLegacyFamilies[i].section, k_inirLegacyFamilies[i].combinedKey, NULL, 0, &foundCombined);
 		for (j = k_inirLegacyFamilies[i].firstIndex; j <= k_inirLegacyFamilies[i].lastIndex; j++) {
-			wsprintfA(key, "%s%d", k_inirLegacyFamilies[i].legacyPrefix, j);
+			inir_build_legacy_key(key, (int)sizeof(key), k_inirLegacyFamilies[i].legacyPrefix, j);
 			foundLegacy = FALSE;
 			value[0] = '\0';
 			inir_find_entry(k_inirLegacyFamilies[i].section, key, value, (int)sizeof(value), &foundLegacy);
@@ -1103,6 +1110,12 @@ static BOOL inir_utf8hex_target_exists(const INIR_UTF8HEX_KEY* target)
 	if (!target) return FALSE;
 	inir_find_entry(target->section, target->baseKey, NULL, 0, &found);
 	return found;
+}
+
+static BOOL inir_has_utf8hex(const char* key, int keyLen)
+{
+	if (!key || keyLen <= 7) return FALSE;
+	return _strnicmp(key + keyLen - 7, "Utf8Hex", 7) == 0 ? TRUE : FALSE;
 }
 
 static int inir_scan_utf8hex_fixed(char* report, int cchReport)
@@ -1158,16 +1171,19 @@ static int inir_scan_utf8hex_section(char* report, int cchReport, const char* se
 		while (*eq && *eq != '=') ++eq;
 		if (eq) {
 			int keyLen = (int)(eq - p);
-			if (*eq == '=' && keyLen > 7 && _stricmp(p + keyLen - 7, "Utf8Hex") == 0) {
+			if (*eq == '=' && inir_has_utf8hex(p, keyLen)) {
+				char keyName[128];
 				char baseKey[128];
 				BOOL found = FALSE;
 
 				if (keyLen < (int)sizeof(baseKey)) {
+					memcpy(keyName, p, (size_t)keyLen);
+					keyName[keyLen] = '\0';
 					memcpy(baseKey, p, (size_t)(keyLen - 7));
 					baseKey[keyLen - 7] = '\0';
 					inir_find_entry(section, baseKey, NULL, 0, &found);
 					if (found) {
-						inir_append(report, cchReport, "  removable: [%s] %.*s\r\n", section, keyLen, p);
+						inir_append(report, cchReport, "  removable: [%s] %s\r\n", section, keyName);
 						foundCount++;
 					}
 				}
@@ -1193,7 +1209,7 @@ static int inir_apply_utf8hex_section(char* report, int cchReport, const char* s
 		while (*eq && *eq != '=') ++eq;
 		if (eq) {
 			int keyLen = (int)(eq - p);
-			if (*eq == '=' && keyLen > 7 && _stricmp(p + keyLen - 7, "Utf8Hex") == 0) {
+			if (*eq == '=' && inir_has_utf8hex(p, keyLen)) {
 				char keyName[128];
 				char baseKey[128];
 				BOOL found = FALSE;

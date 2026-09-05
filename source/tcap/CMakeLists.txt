@@ -23,6 +23,7 @@ target_link_libraries(TCapture PRIVATE
     Shell32
     Comctl32
     Shcore
+    Shlwapi
     Ole32
     OleAut32
     Windowscodecs

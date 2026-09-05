@@ -36,6 +36,21 @@ std::wstring NormalizePath(std::wstring s) {
     return s;
 }
 
+std::wstring GetSystemToolPath(const wchar_t* relativePath) {
+    std::vector<wchar_t> buffer(MAX_PATH);
+    UINT length = GetSystemDirectoryW(buffer.data(), static_cast<UINT>(buffer.size()));
+    if (length == 0) return {};
+    if (length >= buffer.size()) {
+        buffer.resize(static_cast<size_t>(length) + 1);
+        length = GetSystemDirectoryW(buffer.data(), static_cast<UINT>(buffer.size()));
+        if (length == 0 || length >= buffer.size()) return {};
+    }
+    std::wstring path(buffer.data(), length);
+    path.push_back(L'\\');
+    path.append(relativePath);
+    return path;
+}
+
 bool IsDriveExePath(const std::wstring& path) {
     if (path.size() < 7) return false;
     const wchar_t drive = path[0];
@@ -263,7 +278,11 @@ bool LaunchTask(const TaskConfig& task, std::wstring& outError) {
             cmdLine.append(task.actionArgs);
         }
     } else if (mode == L"command") {
-        app = L"C:\\Windows\\System32\\cmd.exe";
+        app = GetSystemToolPath(L"cmd.exe");
+        if (app.empty()) {
+            outError = L"GetSystemDirectoryW failed for cmd.exe";
+            return false;
+        }
         std::wstring merged = task.actionPath;
         if (!task.actionArgs.empty()) {
             merged.push_back(L' ');
@@ -272,7 +291,11 @@ bool LaunchTask(const TaskConfig& task, std::wstring& outError) {
         cmdLine = L"cmd.exe /C ";
         cmdLine.append(merged);
     } else { // shell
-        app = L"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";
+        app = GetSystemToolPath(L"WindowsPowerShell\\v1.0\\powershell.exe");
+        if (app.empty()) {
+            outError = L"GetSystemDirectoryW failed for powershell.exe";
+            return false;
+        }
         std::wstring merged = task.actionPath;
         if (!task.actionArgs.empty()) {
             merged.push_back(L' ');

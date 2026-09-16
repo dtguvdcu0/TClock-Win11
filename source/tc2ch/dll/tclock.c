@@ -373,7 +373,7 @@ static void (WINAPI* g_wuiDestroyHost)(void) = NULL;
 static BOOL(WINAPI* g_wuiUpdateState)(const TC_DISPLAY_BACKEND_RENDER_STATE*) = NULL;
 static BOOL(WINAPI* g_wuiRefreshHost)(void) = NULL;
 static BOOL(WINAPI* g_wuiSetTooltip)(const WCHAR*, BOOL, HFONT, COLORREF, UINT, UINT, UINT) = NULL;
-static BOOL(WINAPI* g_wuiRefreshTooltipText)(const WCHAR*) = NULL;
+static BOOL(WINAPI* g_wuiRefreshTooltip)(const WUI_TOOLTIP_STATE*) = NULL;
 static BOOL(WINAPI* g_wuiIsTooltip)(HWND) = NULL;
 static BOOL g_wuiDllLive = FALSE;
 static BOOL g_wuiHostOn = FALSE;
@@ -1603,9 +1603,9 @@ static BOOL wui_load_dll(void)
 	g_wuiUpdateState = (BOOL(WINAPI*)(const TC_DISPLAY_BACKEND_RENDER_STATE*))GetProcAddress(g_wuiDll, "WuiUpdateState");
 	g_wuiRefreshHost = (BOOL(WINAPI*)(void))GetProcAddress(g_wuiDll, "WuiRefresh");
 	g_wuiSetTooltip = (BOOL(WINAPI*)(const WCHAR*, BOOL, HFONT, COLORREF, UINT, UINT, UINT))GetProcAddress(g_wuiDll, "WuiSetTooltip");
-	g_wuiRefreshTooltipText = (BOOL(WINAPI*)(const WCHAR*))GetProcAddress(g_wuiDll, "WuiRefreshTooltipText");
+	g_wuiRefreshTooltip = (BOOL(WINAPI*)(const WUI_TOOLTIP_STATE*))GetProcAddress(g_wuiDll, "WuiRefreshTooltip");
 	g_wuiIsTooltip = (BOOL(WINAPI*)(HWND))GetProcAddress(g_wuiDll, "WuiIsTooltip");
-	if (!g_wuiCreateHost || !g_wuiDestroyHost || !g_wuiUpdateState || !g_wuiRefreshHost || !g_wuiSetTooltip || !g_wuiRefreshTooltipText || !g_wuiIsTooltip) {
+	if (!g_wuiCreateHost || !g_wuiDestroyHost || !g_wuiUpdateState || !g_wuiRefreshHost || !g_wuiSetTooltip || !g_wuiRefreshTooltip || !g_wuiIsTooltip) {
 		wui_unload_dll();
 		return FALSE;
 	}
@@ -1661,7 +1661,7 @@ static void wui_unload_dll(void)
 	g_wuiUpdateState = NULL;
 	g_wuiRefreshHost = NULL;
 	g_wuiSetTooltip = NULL;
-	g_wuiRefreshTooltipText = NULL;
+	g_wuiRefreshTooltip = NULL;
 	g_wuiIsTooltip = NULL;
 	if (g_wuiDll) {
 		FreeLibrary(g_wuiDll);
@@ -1681,10 +1681,10 @@ BOOL WuiShowTip(const WCHAR* text, BOOL visible, HFONT font, COLORREF backColor,
 	return g_wuiSetTooltip(text, visible, font, backColor, initialDelay, reshowDelay, autoPopDelay);
 }
 
-BOOL WuiRefreshTipText(const WCHAR* text)
+BOOL WuiRefreshTip(const WUI_TOOLTIP_STATE* state)
 {
-	if (!wui_tip_route() || !g_wuiRefreshTooltipText) return FALSE;
-	return g_wuiRefreshTooltipText(text);
+	if (!wui_tip_route() || !g_wuiRefreshTooltip) return FALSE;
+	return g_wuiRefreshTooltip(state);
 }
 
 BOOL WuiIsTip(HWND hwnd)

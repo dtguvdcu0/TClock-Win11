@@ -5,6 +5,7 @@
 -------------------------------------------------------*/
 #define COBJMACROS
 #include "tcdll.h"
+#include "../winuidll/wui_api.h"
 #include "../common/text_codec.h"
 #include "../common/text_file_utf8.h"
 #include <stdio.h>
@@ -155,11 +156,16 @@ static BOOL tip_wui_route(void)
 	return bWin11Main;
 }
 
+static BOOL tip_wui_refresh(void);
+
 static BOOL tip_wui_show(UINT initialDelay, UINT reshowDelay, UINT autoPopDelay)
 {
+	BOOL shown;
 	if (!tip_wui_route()) return FALSE;
-	return WuiShowTip(formatTooltipW, TRUE, TooltipGetBodyFont(), colTooltipBack,
+	shown = WuiShowTip(formatTooltipW, TRUE, TooltipGetBodyFont(), colTooltipBack,
 		initialDelay, reshowDelay, autoPopDelay);
+	if (shown) tip_wui_refresh();
+	return shown;
 }
 
 static BOOL tip_wui_hide(void)
@@ -170,9 +176,18 @@ static BOOL tip_wui_hide(void)
 
 static BOOL tip_wui_refresh(void)
 {
-	if (!bWin11VerticalTipActive) return FALSE;
+	WUI_TOOLTIP_STATE state;
 	if (!tip_wui_route()) return FALSE;
-	return WuiRefreshTipText(formatTooltipW);
+	ZeroMemory(&state, sizeof(state));
+	state.cb = sizeof(state);
+	state.text = formatTooltipW;
+	state.title = titleTooltipW;
+	state.font = TooltipGetBodyFont();
+	state.titleFont = hFonTooltipTitle;
+	state.backColor = colTooltipBack;
+	state.textColor = colTooltipText;
+	state.titleColor = colTooltipTitle;
+	return WuiRefreshTip(&state);
 }
 
 static void tip_read_delays(UINT* initialDelay, UINT* reshowDelay, UINT* autoPopDelay)
@@ -762,7 +777,7 @@ static void TooltipUpdateText(void)
 
 
 	bTooltipUseAAFont = FALSE;
-	if (TooltipGetBodyFont()) {
+	if (!bWin11VerticalTipActive && TooltipGetBodyFont()) {
 		SendMessage(hwndTooltip, WM_SETFONT, (WPARAM)TooltipGetBodyFont(), TRUE);	//アップデートのたびにフォントを設定しなおす。(2022/3/14 5ch指摘対応)
 	}
 
@@ -821,7 +836,7 @@ static void TooltipUpdateText(void)
 	{
 		filePath = fmt + 5;
 		bTooltipUseAAFont = TooltipIsAAPath(filePath);
-		if (TooltipGetBodyFont()) {
+		if (!bWin11VerticalTipActive && TooltipGetBodyFont()) {
 			SendMessage(hwndTooltip, WM_SETFONT, (WPARAM)TooltipGetBodyFont(), TRUE);
 		}
 		memmove( fmt, fmt + 5, (size_t)((strchr(fmt,'\0')-1)-fmt));
@@ -892,7 +907,8 @@ void TooltipOnTimer(HWND hwnd, BOOL bForce)
 	if (hwndTooltip)
 	{
 		TooltipUpdateText();
-		if (bWin11VerticalTipActive && !tip_wui_refresh()) {
+		if (bWin11VerticalTipActive) {
+			if (tip_wui_refresh()) return;
 			bWin11VerticalTipActive = FALSE;
 		}
 		//以下の行を行うことで、ツールチップがタイムアウトで消えなくなる。hwndとuIdをツールチップを出している時計に合わせる必要あり。

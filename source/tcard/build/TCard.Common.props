@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <TCardRoot Condition="'$(TCardRoot)'==''">$(MSBuildThisFileDirectory)..\</TCardRoot>
+    <TCardBuildRoot Condition="'$(TCardBuildRoot)'==''">$(TCardRoot)out\x64\$(Configuration)\</TCardBuildRoot>
+    <TCardTestRoot Condition="'$(TCardTestRoot)'==''">$(TCardRoot)out\tests\</TCardTestRoot>
+    <TCardObjRoot Condition="'$(TCardObjRoot)'==''">$(TCardRoot)out\obj\$(Platform)\$(Configuration)\</TCardObjRoot>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(ProjectName)'=='tcard-native-host' Or '$(ProjectName)'=='winuidll-card' Or '$(ProjectName)'=='tcwui-card-smoke'">
+    <ClCompile Include="$(TCardRoot)third_party\md4c\md4c.c"><PreprocessorDefinitions>MD4C_USE_UTF16;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions><WarningLevel>Level3</WarningLevel></ClCompile>
+    <ClCompile Include="$(TCardRoot)third_party\md4c\entity.c"><WarningLevel>Level3</WarningLevel></ClCompile>
+  </ItemGroup>
+  <ItemGroup Condition="'$(ProjectName)'=='tcard-native-core-tests'">
+    <ClCompile Include="$(TCardRoot)third_party\md4c\md4c.c"><PreprocessorDefinitions>MD4C_USE_UTF16;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions><WarningLevel>Level3</WarningLevel></ClCompile>
+    <ClCompile Include="$(TCardRoot)third_party\md4c\entity.c"><WarningLevel>Level3</WarningLevel></ClCompile>
+  </ItemGroup>
+  <Target Name="TCardMarkdownLicense" AfterTargets="Build" Condition="'$(ProjectName)'=='tcard-native-host'">
+    <MakeDir Directories="$(TCardBuildRoot)plugins\tcard\licenses\md4c" />
+    <Copy SourceFiles="$(TCardRoot)third_party\md4c\LICENSE.md;$(TCardRoot)third_party\md4c\NOTICE.txt" DestinationFolder="$(TCardBuildRoot)plugins\tcard\licenses\md4c" />
+  </Target>
+</Project>

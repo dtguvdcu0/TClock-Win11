@@ -1,0 +1,5 @@
+[TCard]
+RefreshSeconds=1
+; Language is inherited from ../tclock-win11.ini when unset.
+; Set Language=ja or Language=en to override; restart TCard after changing.
+TClockIni=..\tclock-win11.ini

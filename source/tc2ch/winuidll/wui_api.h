@@ -26,6 +26,17 @@ typedef struct TC_DISPLAY_BACKEND_RENDER_STATE {
 	WCHAR text[4096];
 } TC_DISPLAY_BACKEND_RENDER_STATE;
 
+typedef struct WUI_TOOLTIP_STATE {
+	DWORD cb;
+	const WCHAR* text;
+	const WCHAR* title;
+	HFONT font;
+	HFONT titleFont;
+	COLORREF backColor;
+	COLORREF textColor;
+	COLORREF titleColor;
+} WUI_TOOLTIP_STATE;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -37,6 +48,7 @@ WUI_API BOOL WINAPI WuiRefresh(void);
 WUI_API BOOL WINAPI WuiSetTooltip(const WCHAR* text, BOOL visible, HFONT font, COLORREF backColor,
 	UINT initialDelay, UINT reshowDelay, UINT autoPopDelay);
 WUI_API BOOL WINAPI WuiRefreshTooltipText(const WCHAR* text);
+WUI_API BOOL WINAPI WuiRefreshTooltip(const WUI_TOOLTIP_STATE* state);
 WUI_API BOOL WINAPI WuiIsTooltip(HWND hwnd);
 
 #ifdef __cplusplus

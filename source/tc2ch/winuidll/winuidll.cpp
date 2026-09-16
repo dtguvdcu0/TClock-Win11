@@ -9,7 +9,6 @@
 #define WUI_TIMER_ID 1
 #define WUI_TIMER_MS 100
 #define WUI_TIP_TIMER_ID 2
-#define WUI_TIP_FOLLOWUP_TIMER_ID 3
 #define WUI_TIP_LEAVE_TIMER_ID 4
 #define WUI_TIP_LEAVE_MS 320
 
@@ -32,9 +31,16 @@ static BOOL g_wuiTipPending = FALSE;
 static BOOL g_wuiTipVisible = FALSE;
 static BOOL g_wuiTipShownOnce = FALSE;
 static UINT g_wuiTipAutoPopDelay = 0;
-static UINT g_wuiTipStage = 0;
 static HFONT g_wuiTipFont = NULL;
 static COLORREF g_wuiTipBackColor = RGB(255, 255, 225);
+static WCHAR g_wuiTipTitle[300];
+static LOGFONTW g_wuiTipFontInfo = {};
+static LOGFONTW g_wuiTipTitleInfo = {};
+static HFONT g_wuiTipTitleFont = NULL;
+static COLORREF g_wuiTipTextColor = 0;
+static COLORREF g_wuiTipTitleColor = 0;
+static UINT g_wuiTipDpi = 0;
+static BOOL g_wuiTipHasStyle = FALSE;
 
 static Gdiplus::Color wui_argb(COLORREF color)
 {
@@ -229,29 +235,22 @@ cleanup:
 	if (hdcScreen) ReleaseDC(NULL, hdcScreen);
 }
 
-static BOOL wui_is_fullscreen(void)
+static BOOL wui_sync_order(HWND hwnd)
 {
-	HWND foreground;
-	RECT rect;
-	LONG_PTR style;
-	WCHAR className[64];
-	MONITORINFO monitor = { sizeof(monitor) };
-
-	foreground = GetForegroundWindow();
-	if (!foreground || foreground == g_wuiHost || foreground == g_wuiTarget) return FALSE;
-	className[0] = L'\0';
-	GetClassNameW(foreground, className, _countof(className));
-	if (lstrcmpW(className, L"WorkerW") == 0
-	 || lstrcmpW(className, L"Progman") == 0
-	 || lstrcmpW(className, L"Shell_TrayWnd") == 0) return FALSE;
-	style = GetWindowLongPtrW(foreground, GWL_STYLE);
-	if (style & (WS_CAPTION | WS_THICKFRAME)) return FALSE;
-	if (!GetWindowRect(foreground, &rect)) return FALSE;
-	if (!GetMonitorInfoW(MonitorFromWindow(foreground, MONITOR_DEFAULTTONEAREST), &monitor)) return FALSE;
-	return rect.left <= monitor.rcMonitor.left && rect.top <= monitor.rcMonitor.top
-		&& rect.right >= monitor.rcMonitor.right && rect.bottom >= monitor.rcMonitor.bottom;
+	HWND owner = GetAncestor(g_wuiTarget, GA_ROOT);
+	HWND previous;
+	if (!owner || !IsWindowVisible(owner) || !IsWindowVisible(g_wuiTarget)) {
+		if (IsWindowVisible(hwnd)) ShowWindow(hwnd, SW_HIDE);
+		return FALSE;
+	}
+	previous = GetWindow(owner, GW_HWNDPREV);
+	// Keep the host directly above the taskbar without promoting its owner.
+	if (previous == hwnd && IsWindowVisible(hwnd)) return TRUE;
+	if (previous == hwnd) previous = GetWindow(hwnd, GW_HWNDPREV);
+	SetWindowPos(hwnd, previous ? previous : HWND_TOP, 0, 0, 0, 0,
+		SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_SHOWWINDOW);
+	return TRUE;
 }
-
 
 static void wui_place(HWND hwnd)
 {
@@ -317,20 +316,12 @@ apply_place:
 	g_wuiLastPlace = rcPlace;
 	g_wuiHasPlace = TRUE;
 	SetWindowPos(hwnd,
-		HWND_TOPMOST,
+		NULL,
 		rcPlace.left,
 		rcPlace.top,
 		width,
 		height,
-		SWP_NOACTIVATE);
-}
-
-static void wui_show_front(HWND hwnd)
-{
-	if (!hwnd || !IsWindow(hwnd)) return;
-	ShowWindow(hwnd, SW_SHOWNOACTIVATE);
-	SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0,
-		SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_SHOWWINDOW);
+		SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOOWNERZORDER);
 }
 
 static void wui_forward_mouse(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
@@ -352,11 +343,9 @@ static void wui_hide_tip(void)
 	TOOLINFOW ti;
 
 	if (g_wuiHost) KillTimer(g_wuiHost, WUI_TIP_TIMER_ID);
-	if (g_wuiHost) KillTimer(g_wuiHost, WUI_TIP_FOLLOWUP_TIMER_ID);
 	if (g_wuiHost) KillTimer(g_wuiHost, WUI_TIP_LEAVE_TIMER_ID);
 	g_wuiTipPending = FALSE;
 	g_wuiTipVisible = FALSE;
-	g_wuiTipStage = 0;
 	g_wuiTipShownOnce = FALSE;
 	if (!g_wuiTooltip || !g_wuiTarget) return;
 	ZeroMemory(&ti, sizeof(ti));
@@ -385,7 +374,7 @@ static BOOL wui_make_tip(void)
 	ti.uFlags = TTF_TRACK;
 	ti.hwnd = g_wuiTarget;
 	ti.uId = 1;
-	ti.lpszText = g_wuiTooltipText;
+	ti.lpszText = LPSTR_TEXTCALLBACKW;
 	SendMessageW(g_wuiTooltip, TTM_ADDTOOLW, 0, (LPARAM)&ti);
 	return TRUE;
 }
@@ -404,15 +393,42 @@ static void wui_fit_tip(void)
 	ti.uFlags = TTF_TRACK;
 	ti.hwnd = g_wuiTarget;
 	ti.uId = 1;
-	ti.lpszText = g_wuiTooltipText;
+	ti.lpszText = LPSTR_TEXTCALLBACKW;
 	bubble = (DWORD)SendMessageW(g_wuiTooltip, TTM_GETBUBBLESIZE, 0, (LPARAM)&ti);
 	width = (int)(short)LOWORD(bubble);
 	height = (int)(short)HIWORD(bubble);
 	if (width <= 0 || height <= 0) return;
 	height += 4;
+	// The title is custom drawn, so the control's body measurement excludes its width.
+	if (g_wuiTipTitle[0]) {
+		HDC dc = GetDC(g_wuiTooltip);
+		if (dc) {
+			HGDIOBJ oldFont = g_wuiTipTitleFont ? SelectObject(dc, g_wuiTipTitleFont) : NULL;
+			RECT title = {};
+			DrawTextW(dc, g_wuiTipTitle, -1, &title, DT_CALCRECT | DT_SINGLELINE | DT_NOPREFIX);
+			if (SendMessageW(g_wuiTooltip, TTM_ADJUSTRECT, TRUE, (LPARAM)&title))
+				width = max(width, title.right - title.left);
+			if (oldFont) SelectObject(dc, oldFont);
+			ReleaseDC(g_wuiTooltip, dc);
+		}
+	}
 	if (!GetWindowRect(g_wuiTooltip, &rcTip)) return;
-	SetWindowPos(g_wuiTooltip, HWND_TOPMOST, rcTip.left, rcTip.top, width, height,
-		SWP_NOACTIVATE | SWP_NOOWNERZORDER);
+	RECT target;
+	MONITORINFO monitor = { sizeof(monitor) };
+	int x = rcTip.left, y = rcTip.top;
+	if (GetWindowRect(g_wuiTarget, &target)
+	 && GetMonitorInfoW(MonitorFromWindow(g_wuiTarget, MONITOR_DEFAULTTONEAREST), &monitor)) {
+		if (target.top <= monitor.rcMonitor.top) { x = target.left + 8; y = target.bottom + 8; }
+		else if (target.bottom >= monitor.rcMonitor.bottom) { x = target.left + 8; y = target.top - height - 8; }
+		else { x = target.right + 8; y = target.bottom - height;
+			if (x + width > monitor.rcWork.right) x = target.left - width - 8; }
+		x = max(monitor.rcWork.left, min(x, monitor.rcWork.right - width));
+		y = max(monitor.rcWork.top, min(y, monitor.rcWork.bottom - height));
+	}
+	if (rcTip.left == x && rcTip.top == y
+	 && rcTip.right - rcTip.left == width && rcTip.bottom - rcTip.top == height) return;
+	SetWindowPos(g_wuiTooltip, NULL, x, y, width, height,
+		SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOZORDER);
 }
 
 static void wui_activate_tip(void)
@@ -456,7 +472,7 @@ static void wui_activate_tip(void)
 	ti.uFlags = TTF_TRACK;
 	ti.hwnd = g_wuiTarget;
 	ti.uId = 1;
-	ti.lpszText = g_wuiTooltipText;
+	ti.lpszText = LPSTR_TEXTCALLBACKW;
 	SendMessageW(g_wuiTooltip, TTM_TRACKPOSITION, 0, MAKELPARAM(x, y));
 	SendMessageW(g_wuiTooltip, TTM_TRACKACTIVATE, TRUE, (LPARAM)&ti);
 	wui_fit_tip();
@@ -542,32 +558,22 @@ static LRESULT CALLBACK wui_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 			if (!g_wuiHoverInside) wui_hide_tip();
 			return 0;
 		}
-		if (wParam == WUI_TIP_FOLLOWUP_TIMER_ID) {
-			KillTimer(hwnd, WUI_TIP_FOLLOWUP_TIMER_ID);
-			if (g_wuiTipStage == 2 && g_wuiTipVisible && g_wuiHoverInside) {
-				if (!wui_post_tip_move()) wui_hide_tip();
-			}
-			else wui_hide_tip();
-			return 0;
-		}
 		if (wParam == WUI_TIP_TIMER_ID) {
 			KillTimer(hwnd, WUI_TIP_TIMER_ID);
 			if (g_wuiTipPending && g_wuiHoverInside) {
-				g_wuiTipStage = 1;
-				if (!wui_post_tip_move()) wui_hide_tip();
+				if (wui_post_tip_move()) wui_show_tip();
+				else wui_hide_tip();
+			}
+			else if (g_wuiTipVisible) {
+				wui_hide_tip();
+				g_wuiTipSuppressed = TRUE;
 			}
 			return 0;
 		}
 		if (wParam == WUI_TIMER_ID) {
-			if (wui_is_fullscreen()) {
-				ShowWindow(hwnd, SW_HIDE);
-				wui_hide_tip();
-			}
-			else {
-				wui_place(hwnd);
-				if (!IsWindowVisible(hwnd)) wui_show_front(hwnd);
-				wui_present(hwnd);
-			}
+			wui_place(hwnd);
+			if (wui_sync_order(hwnd)) wui_present(hwnd);
+			else wui_hide_tip();
 			return 0;
 		}
 		break;
@@ -635,6 +641,8 @@ extern "C" void WINAPI WuiDestroyHost(void)
 		DestroyWindow(g_wuiTooltip);
 	}
 	g_wuiTooltip = NULL;
+	g_wuiTipHasStyle = FALSE;
+	g_wuiTipTitle[0] = L'\0';
 	if (g_wuiHost && IsWindow(g_wuiHost)) {
 		KillTimer(g_wuiHost, WUI_TIMER_ID);
 		DestroyWindow(g_wuiHost);
@@ -674,14 +682,9 @@ extern "C" BOOL WINAPI WuiUpdateState(const TC_DISPLAY_BACKEND_RENDER_STATE* sta
 extern "C" BOOL WINAPI WuiRefresh(void)
 {
 	if (!g_wuiHost || !IsWindow(g_wuiHost)) return FALSE;
-	if (wui_is_fullscreen()) {
-		ShowWindow(g_wuiHost, SW_HIDE);
-		wui_hide_tip();
-		return TRUE;
-	}
-	if (!IsWindowVisible(g_wuiHost)) wui_show_front(g_wuiHost);
 	wui_place(g_wuiHost);
-	wui_present(g_wuiHost);
+	if (wui_sync_order(g_wuiHost)) wui_present(g_wuiHost);
+	else wui_hide_tip();
 	return TRUE;
 }
 
@@ -704,27 +707,19 @@ extern "C" BOOL WINAPI WuiSetTooltip(const WCHAR* text, BOOL visible, HFONT font
 	BOOL textChanged = lstrcmpW(g_wuiTooltipText, text) != 0;
 	if (textChanged) lstrcpynW(g_wuiTooltipText, text, _countof(g_wuiTooltipText));
 	if (!wui_make_tip()) return FALSE;
+	if (!g_wuiTipHasStyle || g_wuiTipFont != font)
+		SendMessageW(g_wuiTooltip, WM_SETFONT, (WPARAM)font, FALSE);
+	if (!g_wuiTipHasStyle || g_wuiTipBackColor != backColor) {
+		SendMessageW(g_wuiTooltip, TTM_SETTIPBKCOLOR, backColor, 0);
+		SendMessageW(g_wuiTooltip, TTM_SETTIPTEXTCOLOR, backColor, 0);
+	}
 	g_wuiTipFont = font;
 	g_wuiTipBackColor = backColor;
-	if (font) SendMessageW(g_wuiTooltip, WM_SETFONT, (WPARAM)font, TRUE);
-	SendMessageW(g_wuiTooltip, TTM_SETTIPBKCOLOR, backColor, 0);
-	SendMessageW(g_wuiTooltip, TTM_SETTIPTEXTCOLOR, backColor, 0);
-	SendMessageW(g_wuiTooltip, TTM_SETMAXTIPWIDTH, 0, wui_tip_width(g_wuiTooltipText, font));
-	ti.lpszText = g_wuiTooltipText;
+	if (!g_wuiTipVisible)
+		SendMessageW(g_wuiTooltip, TTM_SETMAXTIPWIDTH, 0, wui_tip_width(g_wuiTooltipText, font));
+	ti.lpszText = LPSTR_TEXTCALLBACKW;
 	if (textChanged) SendMessageW(g_wuiTooltip, TTM_UPDATETIPTEXTW, 0, (LPARAM)&ti);
 	g_wuiTipAutoPopDelay = autoPopDelay;
-	if (g_wuiTipStage == 1 && g_wuiTipPending) {
-		wui_show_tip();
-		g_wuiTipStage = 2;
-		SetTimer(g_wuiHost, WUI_TIP_FOLLOWUP_TIMER_ID, WUI_TIMER_MS, NULL);
-		return TRUE;
-	}
-	if (g_wuiTipStage == 2 && g_wuiTipVisible) {
-		KillTimer(g_wuiHost, WUI_TIP_FOLLOWUP_TIMER_ID);
-		g_wuiTipStage = 0;
-		wui_activate_tip();
-		return TRUE;
-	}
 	if (!g_wuiTipPending && !g_wuiTipVisible) {
 		UINT delay = g_wuiTipShownOnce ? reshowDelay : initialDelay;
 		g_wuiTipPending = TRUE;
@@ -734,28 +729,64 @@ extern "C" BOOL WINAPI WuiSetTooltip(const WCHAR* text, BOOL visible, HFONT font
 	return TRUE;
 }
 
+extern "C" BOOL WINAPI WuiRefreshTooltip(const WUI_TOOLTIP_STATE* state)
+{
+	LOGFONTW fontInfo = {}, titleInfo = {};
+	UINT dpi;
+	BOOL textChanged, titleChanged, fontChanged, styleChanged;
+	if (!state || state->cb != sizeof(*state) || !state->text || !state->title) return FALSE;
+	if (!g_wuiTooltip || (!g_wuiTipVisible && !g_wuiTipPending)) return FALSE;
+	if (state->font) GetObjectW(state->font, sizeof(fontInfo), &fontInfo);
+	if (state->titleFont) GetObjectW(state->titleFont, sizeof(titleInfo), &titleInfo);
+	dpi = GetDpiForWindow(g_wuiTooltip);
+	textChanged = lstrcmpW(g_wuiTooltipText, state->text) != 0;
+	titleChanged = lstrcmpW(g_wuiTipTitle, state->title) != 0;
+	fontChanged = !g_wuiTipHasStyle || g_wuiTipFont != state->font
+		|| memcmp(&g_wuiTipFontInfo, &fontInfo, sizeof(fontInfo)) != 0;
+	styleChanged = fontChanged || g_wuiTipDpi != dpi
+		|| g_wuiTipTitleFont != state->titleFont
+		|| memcmp(&g_wuiTipTitleInfo, &titleInfo, sizeof(titleInfo)) != 0
+		|| g_wuiTipBackColor != state->backColor
+		|| g_wuiTipTextColor != state->textColor || g_wuiTipTitleColor != state->titleColor;
+	// Enabled live updates retain the classic tooltip's extended display duration.
+	if (g_wuiTipVisible && g_wuiTipAutoPopDelay) SetTimer(g_wuiHost, WUI_TIP_TIMER_ID, g_wuiTipAutoPopDelay, NULL);
+	if (!textChanged && !titleChanged && !styleChanged) return TRUE;
+	lstrcpynW(g_wuiTooltipText, state->text, _countof(g_wuiTooltipText));
+	lstrcpynW(g_wuiTipTitle, state->title, _countof(g_wuiTipTitle));
+	if (fontChanged) SendMessageW(g_wuiTooltip, WM_SETFONT, (WPARAM)state->font, FALSE);
+	if (!g_wuiTipHasStyle || g_wuiTipBackColor != state->backColor) {
+		SendMessageW(g_wuiTooltip, TTM_SETTIPBKCOLOR, state->backColor, 0);
+		SendMessageW(g_wuiTooltip, TTM_SETTIPTEXTCOLOR, state->backColor, 0);
+	}
+	if (!g_wuiTipHasStyle || g_wuiTipDpi != dpi)
+		SendMessageW(g_wuiTooltip, TTM_SETMAXTIPWIDTH, 0, wui_tip_width(state->text, state->font));
+	g_wuiTipFont = state->font;
+	g_wuiTipTitleFont = state->titleFont;
+	g_wuiTipFontInfo = fontInfo;
+	g_wuiTipTitleInfo = titleInfo;
+	g_wuiTipBackColor = state->backColor;
+	g_wuiTipTextColor = state->textColor;
+	g_wuiTipTitleColor = state->titleColor;
+	g_wuiTipDpi = dpi;
+	g_wuiTipHasStyle = TRUE;
+	if (!g_wuiTipVisible) return TRUE;
+	wui_fit_tip();
+	// Repaint content without restarting tracking or erasing the entire popup.
+	InvalidateRect(g_wuiTooltip, NULL, FALSE);
+	return TRUE;
+}
+
 extern "C" BOOL WINAPI WuiRefreshTooltipText(const WCHAR* text)
 {
-	TOOLINFOW ti;
-
-	if (!g_wuiTooltip || !g_wuiTipVisible) return FALSE;
-	if (!text || !text[0]) return FALSE;
-	if (lstrcmpW(g_wuiTooltipText, text) == 0) return TRUE;
-	lstrcpynW(g_wuiTooltipText, text, _countof(g_wuiTooltipText));
-	ZeroMemory(&ti, sizeof(ti));
-	ti.cbSize = sizeof(ti);
-	ti.uFlags = TTF_TRACK;
-	ti.hwnd = g_wuiTarget;
-	ti.uId = 1;
-	ti.lpszText = g_wuiTooltipText;
-	if (g_wuiTipFont) SendMessageW(g_wuiTooltip, WM_SETFONT, (WPARAM)g_wuiTipFont, TRUE);
-	SendMessageW(g_wuiTooltip, TTM_SETTIPBKCOLOR, g_wuiTipBackColor, 0);
-	SendMessageW(g_wuiTooltip, TTM_SETTIPTEXTCOLOR, g_wuiTipBackColor, 0);
-	SendMessageW(g_wuiTooltip, TTM_SETMAXTIPWIDTH, 0, wui_tip_width(g_wuiTooltipText, g_wuiTipFont));
-	SendMessageW(g_wuiTooltip, TTM_UPDATETIPTEXTW, 0, (LPARAM)&ti);
-	wui_activate_tip();
-	g_wuiTipVisible = TRUE;
-	return TRUE;
+	WUI_TOOLTIP_STATE state = { sizeof(state) };
+	state.text = text;
+	state.title = g_wuiTipTitle;
+	state.font = g_wuiTipFont;
+	state.titleFont = g_wuiTipTitleFont;
+	state.backColor = g_wuiTipBackColor;
+	state.textColor = g_wuiTipTextColor;
+	state.titleColor = g_wuiTipTitleColor;
+	return WuiRefreshTooltip(&state);
 }
 
 extern "C" BOOL WINAPI WuiIsTooltip(HWND hwnd)

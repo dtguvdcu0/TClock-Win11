@@ -329,7 +329,7 @@ static void begin_edit(TCARD_WUI_HOST host)
     if (!host->uiFont) host->uiFont = CreateFontW(-15, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
         DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
         DEFAULT_PITCH, L"Segoe UI");
-    if (!host->buttonFont) host->buttonFont = CreateFontW(-13, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+    if (!host->buttonFont) host->buttonFont = CreateFontW(tcard_lang::g_code == L"ja" ? -12 : -13, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
         DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
         DEFAULT_PITCH, L"Segoe UI");
     tcard_ui::create_label(host->window, 5021, tcard_text(L"label.font", L"Font"), host->uiFont);

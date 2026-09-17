@@ -27,7 +27,6 @@ These keys are the normalized keys written by the current implementation.
 - `auto_capture`: `true` or `false`
 - `auto_seconds`: timer interval for agent mode
 - `displays`: display selector text
-- `hotkey_capture`: capture hotkey
 
 ## Accepted Compatibility Keys
 These aliases are accepted while reading the INI.
@@ -130,7 +129,22 @@ Any other value is treated as false by the current parser.
 TClockIniPath=..\tclock-win11.ini
 ```
 
-This path is used when TCapture resolves the TClock INI for integration-related behavior.
+This reserved section is not a capture profile. The settings writer preserves its
+contents, including the destination path, when rewriting profiles. Relative paths
+are resolved against the TCapture.ini directory.
+
+The GUI saves shortcut assignments in the resolved TClock INI under `[TCapture]`,
+using `HotkeyCount`, `HotkeyNProfile`, and `HotkeyNValue`. These mappings override
+legacy per-profile hotkey keys when loading. The normalized TCapture.ini writer
+does not write `hotkey_capture`; it remains a compatibility input.
+
+If no integration path is configured, the resolver uses `tclock-win11.ini` beside
+the executable when present, otherwise in its parent directory. Preserving an
+explicit path is required to reload assignments from the same destination.
+
+TClock owns shortcut registration. The current GUI save does not notify TClock to
+re-register changed assignments; saving the file and activating the new shortcut
+are separate operations.
 
 ## CLI Override Rule
 CLI options override profile values for the current run.

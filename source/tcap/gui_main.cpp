@@ -39,6 +39,7 @@
 
 #include "settings.h"
 #include "resource.h"
+#include "../common/native_edit.h"
 
 namespace fs = std::filesystem;
 
@@ -1588,11 +1589,14 @@ bool promptRenameProfile(SettingsDialog* dlg, int index) {
                                      CW_USEDEFAULT, CW_USEDEFAULT, 260, 120,
                                      dlg->hwnd, nullptr, dlg->app->hInstance, &state);
     if (!promptWnd) return false;
+    native_edit::prepare(promptWnd);
 
     SetWindowPos(promptWnd, HWND_TOP, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE | SWP_SHOWWINDOW);
     SetForegroundWindow(promptWnd);
     MSG msg;
     while (IsWindow(promptWnd) && GetMessageW(&msg, nullptr, 0, 0)) {
+        if (native_edit::translate(msg)) continue;
+        if (IsDialogMessageW(promptWnd, &msg)) continue;
         TranslateMessage(&msg);
         DispatchMessageW(&msg);
     }
@@ -1679,6 +1683,7 @@ bool beginInlineRenameProfile(SettingsDialog* dlg, int index) {
                                       reinterpret_cast<HMENU>(static_cast<INT_PTR>(kCtrlProfileInlineRename)),
                                       dlg->app->hInstance, nullptr);
     if (!dlg->inlineEdit) return false;
+    native_edit::attach(dlg->inlineEdit);
 
     dlg->inlineEditIndex = index;
     SendMessageW(dlg->inlineEdit, WM_SETFONT, SendMessageW(dlg->tab, WM_GETFONT, 0, 0), TRUE);
@@ -1881,10 +1886,10 @@ void buildSettingsLayout(SettingsDialog* dlg) {
     dlg->addBtn = CreateWindowExW(0, L"BUTTON", L"+", WS_CHILD | WS_VISIBLE,
                                   btnX, btnY, addBtnWidth, rowHeight, dlg->hwnd,
                                   reinterpret_cast<HMENU>(130), dlg->app->hInstance, nullptr);
-    dlg->deleteBtn = CreateWindowExW(0, L"BUTTON", L"Del", WS_CHILD | WS_VISIBLE,
+    dlg->deleteBtn = CreateWindowExW(0, L"BUTTON", translateId(*dlg->app, L"button_delete", L"Delete").c_str(), WS_CHILD | WS_VISIBLE,
                                      btnX + addBtnWidth + taskBtnGap, btnY, deleteBtnWidth, rowHeight, dlg->hwnd,
                                      reinterpret_cast<HMENU>(132), dlg->app->hInstance, nullptr);
-    dlg->renameBtn = CreateWindowExW(0, L"BUTTON", L"Rename", WS_CHILD | WS_VISIBLE,
+    dlg->renameBtn = CreateWindowExW(0, L"BUTTON", translateId(*dlg->app, L"button_rename", L"Rename").c_str(), WS_CHILD | WS_VISIBLE,
                                      btnX + addBtnWidth + taskBtnGap + deleteBtnWidth + taskBtnGap, btnY, renameBtnWidth, rowHeight, dlg->hwnd,
                                      reinterpret_cast<HMENU>(131), dlg->app->hInstance, nullptr);
     int captureBtnWidth = sidebarWidth;
@@ -2080,7 +2085,7 @@ void buildSettingsLayout(SettingsDialog* dlg) {
     int displayBtnWidth = 44;
     int displayEditWidth = std::max(0, fieldWidth - displayBtnWidth - 6);
     dlg->displaysEdit = createEdit(sectionY, displayEditWidth, 104, groupPadding);
-    dlg->displaysHelpBtn = CreateWindowExW(0, L"BUTTON", L"List", WS_CHILD | WS_VISIBLE,
+    dlg->displaysHelpBtn = CreateWindowExW(0, L"BUTTON", translateId(*dlg->app, L"button_list", L"List").c_str(), WS_CHILD | WS_VISIBLE,
                                            fieldX + displayEditWidth + 4, sectionY,
                                            displayBtnWidth, rowHeight, dlg->hwnd,
                                            reinterpret_cast<HMENU>(141), dlg->app->hInstance, nullptr);
@@ -2105,10 +2110,12 @@ void buildSettingsLayout(SettingsDialog* dlg) {
     SendMessageW(dlg->hotkeyModCombo, CB_SETEXTENDEDUI, TRUE, 0);
     SendMessageW(dlg->hotkeyKeyCombo, CB_SETEXTENDEDUI, TRUE, 0);
     for (const auto& opt : modOptions()) {
-        SendMessageW(dlg->hotkeyModCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(opt.label.c_str()));
+        const auto label = opt.label == L"None" ? translateId(*dlg->app, L"option_none", L"None") : opt.label;
+        SendMessageW(dlg->hotkeyModCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label.c_str()));
     }
     for (const auto& opt : keyOptions()) {
-        SendMessageW(dlg->hotkeyKeyCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(opt.label.c_str()));
+        const auto label = opt.label == L"(None)" ? translateId(*dlg->app, L"option_none", L"None") : opt.label;
+        SendMessageW(dlg->hotkeyKeyCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label.c_str()));
     }
     SendMessageW(dlg->hotkeyModCombo, CB_SETMINVISIBLE, 8, 0);
     SendMessageW(dlg->hotkeyKeyCombo, CB_SETMINVISIBLE, 14, 0);
@@ -2132,6 +2139,7 @@ void buildSettingsLayout(SettingsDialog* dlg) {
     SendMessageW(dlg->captureBtn, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
     applyControlTheme(dlg, dlg->captureBtn, false);
     dlg->layoutClientHeight = plannedClientHeight;
+    native_edit::prepare(dlg->hwnd);
 }
 
 bool persistActiveProfile(SettingsDialog* dlg, bool showErrors) {
@@ -2373,7 +2381,7 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
             }
             int idx = dlg->activeProfile;
             if (idx < 0 || idx >= static_cast<int>(dlg->app->profiles.size())) return 0;
-            std::wstring prompt = L"Delete profile \"" + utf8ToWide(dlg->app->profiles[idx].name) + L"\"?";
+            std::wstring prompt = translateId(*dlg->app, L"delete_profile_confirm", L"Delete the selected profile?") + L"\n" + utf8ToWide(dlg->app->profiles[idx].name);
             int confirm = MessageBoxW(dlg->hwnd, prompt.c_str(), L"Confirm delete", MB_ICONQUESTION | MB_YESNO);
             if (confirm != IDYES) return 0;
             dlg->app->profiles.erase(dlg->app->profiles.begin() + idx);
@@ -2809,6 +2817,7 @@ int APIENTRY wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int) {
 
     MSG msg;
     while (GetMessageW(&msg, nullptr, 0, 0)) {
+        if (native_edit::translate(msg)) continue;
         if (app.settingsWindow && IsDialogMessageW(app.settingsWindow, &msg)) {
             continue;
         }

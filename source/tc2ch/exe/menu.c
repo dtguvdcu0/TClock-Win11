@@ -66,6 +66,66 @@ extern BOOL g_ExitRequestedFromMenu;
 #define IDC_TCAP_CAPTURE 45989
 #define IDC_TCAL_OPEN 45991
 #define IDC_TCYC_OPEN 45992
+#define IDC_TCARD_OPEN 45995
+
+void tc_card_seed(void)
+{
+    char encodedValue[4096];
+    if (GetMyRegLong("TCard", "Enable", -1) == -1) SetMyRegLong("TCard", "Enable", 0);
+    GetMyRegStr("TCard", "Path", encodedValue, sizeof(encodedValue), "");
+    if (!encodedValue[0]) SetMyRegStr("TCard", "Path", "plugins\\TCard.exe");
+}
+
+typedef struct { WCHAR path[MAX_PATH]; HWND window; } TC_CARD_TARGET;
+
+static BOOL CALLBACK tc_card_find(HWND window, LPARAM parameter)
+{
+    TC_CARD_TARGET* target = (TC_CARD_TARGET*)parameter;
+    WCHAR name[64], image[MAX_PATH];
+    DWORD pid = 0, length = _countof(image);
+    HANDLE process;
+    if (!GetClassNameW(window, name, _countof(name)) || lstrcmpW(name, L"TCardNativeHost") != 0) return TRUE;
+    GetWindowThreadProcessId(window, &pid);
+    process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (!process) return TRUE;
+    if (QueryFullProcessImageNameW(process, 0, image, &length) && lstrcmpiW(image, target->path) == 0)
+        target->window = window;
+    CloseHandle(process);
+    return target->window == NULL;
+}
+
+void tc_card_launch(void)
+{
+    char encodedValue[4096];
+    WCHAR configured[MAX_PATH], directory[MAX_PATH], combined[MAX_PATH];
+    TC_CARD_TARGET target = {0};
+    DWORD length, attributes;
+    tc_card_seed();
+    if (!GetMyRegLong("TCard", "Enable", 0)) return;
+    // Decode at the existing UTF-8 INI serialization boundary; all path operations use UTF-16.
+    GetMyRegStr("TCard", "Path", encodedValue, sizeof(encodedValue), "plugins\\TCard.exe");
+    if (tc_utf8_to_utf16(encodedValue, configured, _countof(configured)) <= 0) return;
+    length = GetModuleFileNameW(NULL, directory, _countof(directory));
+    if (!length || length >= _countof(directory) || !PathRemoveFileSpecW(directory)) return;
+    if (!PathCombineW(combined, directory, configured)) return;
+    length = GetFullPathNameW(combined, _countof(target.path), target.path, NULL);
+    if (!length || length >= _countof(target.path)) return;
+    attributes = GetFileAttributesW(target.path);
+    if (attributes == INVALID_FILE_ATTRIBUTES || (attributes & FILE_ATTRIBUTE_DIRECTORY)) {
+        if (b_DebugLog) WriteDebug_New2("[menu.c] TCard target was not found");
+        return;
+    }
+    EnumWindows(tc_card_find, (LPARAM)&target);
+    if (target.window) {
+        ShowWindow(target.window, IsIconic(target.window) ? SW_RESTORE : SW_SHOW);
+        SetForegroundWindow(target.window);
+        return;
+    }
+    if ((INT_PTR)ShellExecuteW(g_hwndMain, L"open", target.path, NULL, directory, SW_SHOWNORMAL) <= 32 && b_DebugLog)
+        WriteDebug_New2("[menu.c] Failed to launch TCard");
+}
+
+
 
 typedef struct {
 	UINT id;
@@ -796,7 +856,7 @@ static void tc_menu_launch_with_delay(const char* file, const char* args, const 
 
 static BOOL tc_menu_is_fixed_id(UINT id)
 {
-	return id == IDC_SHOWPROP || id == IDC_SHOWDIR || id == IDC_RESTART || id == IDC_EXIT || id == IDC_REMOVE_DRIVE0 || id == IDC_TCAP_SETTINGS || id == IDC_TCAP_CAPTURE || id == IDC_TCAL_OPEN || id == IDC_TCYC_OPEN;
+	return id == IDC_SHOWPROP || id == IDC_SHOWDIR || id == IDC_RESTART || id == IDC_EXIT || id == IDC_REMOVE_DRIVE0 || id == IDC_TCAP_SETTINGS || id == IDC_TCAP_CAPTURE || id == IDC_TCAL_OPEN || id == IDC_TCYC_OPEN || id == IDC_TCARD_OPEN;
 }
 
 static int tc_menu_find_position_by_id(HMENU hMenu, UINT id)
@@ -1977,10 +2037,13 @@ void OnContextMenu(HWND hwnd, HWND hwndClicked, int xPos, int yPos)
 	}
 	tc_menu_dynamic_reset();
 	{
+		LONG tcardEnabled;
+		tc_card_seed();
+		tcardEnabled = GetMyRegLong("TCard", "Enable", 0);
 		LONG tcycleEnabled = tc_menu_get_tcycle_enable();
 		LONG tcalendarEnabled = tc_menu_get_tcalendar_enable();
 		LONG tcaptureEnabled = tc_menu_get_tcapture_enable();
-		if (tcycleEnabled || tcalendarEnabled || tcaptureEnabled) {
+		if (tcycleEnabled || tcalendarEnabled || tcaptureEnabled || tcardEnabled) {
 			int anchorPos = tc_menu_find_position_by_id(hPopupMenu, IDC_REMOVE_DRIVE0);
 			if (anchorPos < 0) {
 				anchorPos = tc_menu_find_position_by_id(hPopupMenu, IDC_SHOWPROP);
@@ -2000,6 +2063,9 @@ void OnContextMenu(HWND hwnd, HWND hwndClicked, int xPos, int yPos)
 				/* Insert launcher block before removable-drive slot to keep Property block stable. */
 				InsertMenu(hPopupMenu, insertPos, MF_BYPOSITION | MF_SEPARATOR, 0, NULL);
 				itemPos = insertPos + 1;
+				if (tcardEnabled) {
+					tc_menu_insert_string_utf8(hPopupMenu, itemPos++, MF_BYPOSITION | MF_STRING, IDC_TCARD_OPEN, MyStringUTF8(IDS_TCARD_OPEN));
+				}
 				if (tcycleEnabled) {
 					char tcycleLabel[128];
 					lstrcpyn(tcycleLabel, MyStringUTF8(IDS_TCYC_OPEN), (int)sizeof(tcycleLabel));
@@ -2305,6 +2371,9 @@ void OnTClockCommand(HWND hwnd, WORD wID, WORD wCode)
 			if (b_DebugLog) WriteDebug_New2("[menu.c][OnTClockCommand] IDC_SHOWDIR received");
 			ShellExecuteUtf8Strict(g_hwndMain, NULL, g_mydir, NULL, NULL, SW_SHOWNORMAL);
 			break;
+		case IDC_TCARD_OPEN:
+			tc_card_launch();
+			return;
 		case IDC_TCYC_OPEN: // TCycle open
 		{
 			char tcycPathCfg[MAX_PATH];
@@ -2674,6 +2743,7 @@ void InitializeMenuItems(void)
 		lstrcpyn(tcalendarLabel, MyStringUTF8(IDS_TCAL_OPEN), (int)sizeof(tcalendarLabel));
 		lstrcpyn(tcapCaptureLabel, MyStringUTF8(IDS_TCAP_CAPTURE), (int)sizeof(tcapCaptureLabel));
 		lstrcpyn(tcapSettingsLabel, MyStringUTF8(IDS_TCAP_SETTING), (int)sizeof(tcapSettingsLabel));
+		tc_menu_modify_string_utf8(hPopupMenu, IDC_TCARD_OPEN, MF_BYCOMMAND, IDC_TCARD_OPEN, MyStringUTF8(IDS_TCARD_OPEN));
 		tc_menu_modify_string_utf8(hPopupMenu, IDC_TCYC_OPEN, MF_BYCOMMAND, IDC_TCYC_OPEN, tcycleLabel);
 		tc_menu_modify_string_utf8(hPopupMenu, IDC_TCAL_OPEN, MF_BYCOMMAND, IDC_TCAL_OPEN, tcalendarLabel);
 		tc_menu_modify_string_utf8(hPopupMenu, IDC_TCAP_CAPTURE, MF_BYCOMMAND, IDC_TCAP_CAPTURE, tcapCaptureLabel);

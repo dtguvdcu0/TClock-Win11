@@ -506,6 +506,7 @@ static MOUSE_FUNC_INFO mouse_func_list[] = {
 	{ MOUSEFUNC_SETTING,		IDS_SETTING },	//Added by TTTT
 	{ MOUSEFUNC_NETWORKSTG,		IDS_NETWORKSTG},	//Added by TTTT
 	{ MOUSEFUNC_DATAUSAGE,		IDS_DATAUSAGE },	//Added by TTTT
+	{ MOUSEFUNC_TCARD_OPEN,		IDS_TCARD_OPEN },
 	{ MOUSEFUNC_TCALENDAR_OPEN,	IDS_TCAL_OPEN },
 	{ MOUSEFUNC_TCAPTURE_SETTINGS,	IDS_TCAP_SETTING },
 	{ MOUSEFUNC_DATETIME,		IDS_PROPDATE },
@@ -1504,6 +1505,7 @@ LRESULT CALLBACK WndProc(HWND hwnd,	UINT message, WPARAM wParam, LPARAM lParam)	
 				bcontractTimer = FALSE;							//起動タイマー動作中フラグFALSE
 				HookStart(hwnd);				// install a hook	dllmain.cの中にある。重要。タスクトレイのメッセージをフック。コア機能の起動
 				EnsureTCalendarConfigDefaults();	// seed TCalendar config keys for existing INI
+				tc_card_seed();
 				LaunchTCycleAgentIfEnabled();	// launch TCycle runtime when enabled
 				LaunchTCaptureAgentIfEnabled();	// launch TCapture agent when enabled
 				LaunchTCalendarAlertIfEnabled();	// launch TCalendar alert runtime when enabled
@@ -2392,6 +2394,7 @@ void CreateDefaultIniFile_Win10(const wchar_t* fnameW)
 			SetMyRegLong("TCalendar", "Enable", 0);
 			SetMyRegLong("TCalendar", "Alart", 1);
 			SetMyRegStr("TCalendar", "Path", "plugins\\TCalendar.exe");
+			tc_card_seed();
 			SetMyRegLong("TCycle", "Enable", 0);
 			SetMyRegStr("TCycle", "Path", "plugins\\TCycle.exe");
 		}

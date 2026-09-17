@@ -186,6 +186,7 @@
 #define IDS_TCAP_SETTING                258
 #define IDS_TCAL_OPEN                   259
 #define IDS_TCYC_OPEN                   260
+#define IDS_TCARD_OPEN                  261
 #define IDC_DATETIME_Win10              406
 #define IDC_DATETIME                    408
 #define IDC_TASKBARPROP                 413
@@ -573,6 +574,7 @@
 #define IDS_TCAP_SETTING_ENG            1258
 #define IDS_TCAL_OPEN_ENG               1259
 #define IDS_TCYC_OPEN_ENG               1260
+#define IDS_TCARD_OPEN_ENG              1261
 #define IDC_DROPFILES                   1401
 #define IDC_LABDROPFILESAPP             1402
 #define IDC_DROPFILESAPP                1403
@@ -731,6 +733,7 @@
 #define IDC_ETC_TCALENDAR_INTEGRATION   1622
 #define IDC_ETC_TCAPTURE_INTEGRATION    1623
 #define IDC_ETC_TCYCLE_INTEGRATION      1624
+#define IDC_ETC_TCARD_INTEGRATION       1625
 #define IDC_ABOUTICON                   1701
 #define IDC_EDITINI                     1702
 #define IDC_README2                     1703

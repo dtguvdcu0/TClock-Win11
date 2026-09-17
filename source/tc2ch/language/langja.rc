@@ -1193,13 +1193,15 @@ BEGIN
     CONTROL         "",IDC_SPIN_THERMALZONE,"msctls_updown32",UDS_WRAP | UDS_SETBUDDYINT | UDS_ALIGNRIGHT | UDS_AUTOBUDDY | UDS_ARROWKEYS,101,72,10,13
     LTEXT           "現在のデータ: ** ℃",IDC_LABEL_CURRENT_TEMP,114,75,73,8
     LTEXT           "*機種によっては固定値しか取得できません。",-1,62,89,142,11
-    GROUPBOX        "拡張機能",IDC_STATIC,6,145,208,58
+    GROUPBOX        "拡張機能",IDC_STATIC,6,145,208,74
     CONTROL         "タスクスケジューラ",IDC_ETC_TCYCLE_INTEGRATION,
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,9,161,62,11
     CONTROL         "カレンダー",IDC_ETC_TCALENDAR_INTEGRATION,
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,72,161,60,11
     CONTROL         "キャプチャー",IDC_ETC_TCAPTURE_INTEGRATION,
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,124,161,60,11
+    CONTROL         "TCard",IDC_ETC_TCARD_INTEGRATION,
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,9,177,60,11
 END
 
 IDD_PAGE_ETC_ENG DIALOGEX 0, 0, 210, 230
@@ -1217,13 +1219,15 @@ BEGIN
     CONTROL         "",IDC_SPIN_THERMALZONE,"msctls_updown32",UDS_WRAP | UDS_SETBUDDYINT | UDS_ALIGNRIGHT | UDS_AUTOBUDDY | UDS_ARROWKEYS,101,72,10,13
     LTEXT           "Current Value: ** deg.",IDC_LABEL_CURRENT_TEMP,114,75,92,8
     LTEXT           "*Availability is device-dependent.",-1,70,89,134,11
-    GROUPBOX        "Extensions",IDC_STATIC,6,145,198,58
+    GROUPBOX        "Extensions",IDC_STATIC,6,145,198,74
     CONTROL         "TCycle",IDC_ETC_TCYCLE_INTEGRATION,
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,8,161,52,11
     CONTROL         "TCalendar",IDC_ETC_TCALENDAR_INTEGRATION,
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,70,161,60,11
     CONTROL         "TCapture",IDC_ETC_TCAPTURE_INTEGRATION,
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,134,161,60,11
+    CONTROL         "TCard",IDC_ETC_TCARD_INTEGRATION,
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,9,177,60,11
 END
 
 IDD_INI_RECOVERY DIALOGEX 0, 0, 244, 184
@@ -2098,6 +2102,7 @@ BEGIN
     IDS_TCAP_SETTING_ENG    "TCapture Settings"
     IDS_TCAL_OPEN_ENG       "TCalendar(β)"
     IDS_TCYC_OPEN_ENG       "TCycle"
+    IDS_TCARD_OPEN_ENG      "TCard"
 END
 
 STRINGTABLE
@@ -2107,6 +2112,7 @@ BEGIN
     IDS_TCAP_SETTING        "TCapture 設定"
     IDS_TCAL_OPEN           "TCalendar(β)"
     IDS_TCYC_OPEN           "TCycle"
+    IDS_TCARD_OPEN          "TCard"
 END
 
 #endif    // 日本語 (日本) resources

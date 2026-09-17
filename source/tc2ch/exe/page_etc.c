@@ -66,6 +66,7 @@ static void EnsureExitExtensionsOnExitControl(HWND hDlg)
 		HWND h1 = GetDlgItem(hDlg, IDC_ETC_TCYCLE_INTEGRATION);
 		HWND h2 = GetDlgItem(hDlg, IDC_ETC_TCALENDAR_INTEGRATION);
 		HWND h3 = GetDlgItem(hDlg, IDC_ETC_TCAPTURE_INTEGRATION);
+		HWND h4 = GetDlgItem(hDlg, IDC_ETC_TCARD_INTEGRATION);
 		int rowPitch = MapDluY(hDlg, 16);
 		int x = 9, y = 188, w = 210;
 		GetClientRect(hDlg, &rcClient);
@@ -81,11 +82,18 @@ static void EnsureExitExtensionsOnExitControl(HWND hDlg)
 				MapWindowPoints(NULL, hDlg, (POINT*)&rc3, 2);
 				if (rc3.bottom > rcBase.bottom) rcBase.bottom = rc3.bottom;
 			}
+			if (h4 && GetWindowRect(h4, &rc2)) {
+				MapWindowPoints(NULL, hDlg, (POINT*)&rc2, 2);
+				rcBase.top = max(rcBase.top, rc2.top);
+			}
 			y = rcBase.top + rowPitch;
 			w = rcClient.right - x - 6;
 			if (w < 120) w = 120;
 		}
-		SetWindowPos(hCtrl, NULL, x, y, w, 11, SWP_NOZORDER | SWP_NOACTIVATE);
+		// Keep the last row inside both localized extension group boxes.
+		RECT limit = { 0, 0, 186, 11 };
+		MapDialogRect(hDlg, &limit);
+		SetWindowPos(hCtrl, NULL, x, y, min(w, limit.right), limit.bottom, SWP_NOZORDER | SWP_NOACTIVATE);
 		HFONT hFont = (HFONT)SendMessage(hDlg, WM_GETFONT, 0, 0);
 		if (hFont) SendMessage(hCtrl, WM_SETFONT, (WPARAM)hFont, TRUE);
 	}
@@ -180,6 +188,8 @@ static void OnInit(HWND hDlg)
 	CheckDlgButton(hDlg, IDC_USE_SUBCLKS, GetMyRegLong(NULL, "EnableOnSubDisplay", TRUE));
 
 	CheckDlgButton(hDlg, IDC_ETC_SHOWTRAYICON, GetMyRegLong(NULL, "ShowTrayIcon", TRUE));
+	tc_card_seed();
+	CheckDlgButton(hDlg, IDC_ETC_TCARD_INTEGRATION, GetMyRegLong("TCard", "Enable", 0));
 	CheckDlgButton(hDlg, IDC_ETC_TCYCLE_INTEGRATION, GetMyRegLong("TCycle", "Enable", 0));
 	CheckDlgButton(hDlg, IDC_ETC_TCALENDAR_INTEGRATION, GetMyRegLong("TCalendar", "Enable", 0));
 	CheckDlgButton(hDlg, IDC_ETC_TCAPTURE_INTEGRATION, GetMyRegLong("TCapture", "Enable", 0));
@@ -294,6 +304,7 @@ static void OnApply(HWND hDlg)
 	SetMyRegLong(NULL, "ShowTrayIcon", bTemp);
 	CreateTClockTrayIcon(bTemp);
 
+	SetMyRegLong("TCard", "Enable", IsDlgButtonChecked(hDlg, IDC_ETC_TCARD_INTEGRATION));
 	SetMyRegLong("TCycle", "Enable", IsDlgButtonChecked(hDlg, IDC_ETC_TCYCLE_INTEGRATION));
 	LaunchTCycleRuntimeFromEtcIfEnabled(hDlg);
 

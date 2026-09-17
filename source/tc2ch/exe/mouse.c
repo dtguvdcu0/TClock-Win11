@@ -1118,6 +1118,10 @@ void ExecuteMouseFunction(HWND hwnd, LONG fnc, int btn, int clk)
 			break;
 		}
 
+		case MOUSEFUNC_TCARD_OPEN:
+			tc_card_launch();
+			break;
+
 		case MOUSEFUNC_TCALENDAR_OPEN:
 		{
 			char tcalExePath[MAX_PATH];

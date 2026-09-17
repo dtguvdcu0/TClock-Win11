@@ -48,4 +48,17 @@ additional_files/tclock_customtip.txt
 *.jpg
 UPDATE.md
 source/x64/
+source/tcard/out/
+source/tcard/legacy/managed/bin/
+source/tcard/legacy/managed/obj/
+source/tcard-native/**/x64/
+source/tcard-native-host/x64/
+source/tc2ch/winuidll-card/**/x64/
+source/tc2ch/winuidll-card/tests/bin/
 *.org
+source/tcard/docs/
+
+# TCard local-only sources
+/source/tcard/legacy/
+/source/tcard/tests/
+additional_files/tcard-integration.txt

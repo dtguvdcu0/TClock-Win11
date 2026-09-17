@@ -188,6 +188,7 @@ int r_strcmp(const char* d, const char* s);
 
 #define MOUSEFUNC_ALARM_CLOCK			209		//added by TTTT
 #define MOUSEFUNC_PULLBACK			210		//Introduced from TClock Light in 2022
+#define MOUSEFUNC_TCARD_OPEN		214		//Open TCard on demand when enabled
 #define MOUSEFUNC_TCALENDAR_OPEN		211		//Open TCalendar when enabled
 #define MOUSEFUNC_TCAPTURE_SETTINGS	212		//Open TCapture settings when enabled
 #define MOUSEFUNC_CUSTOMPROGRAM	213		//Layout-first custom program placeholder
@@ -234,6 +235,8 @@ extern char      g_mydir[];         // path to tclock.exe
 extern char      g_langdllname[];   // language dll name
 extern BOOL      g_bIniSetting;
 extern char      g_inifile[];
+void tc_card_seed(void);
+void tc_card_launch(void);
 MOUSE_FUNC_INFO *GetMouseFuncList(void);
 int GetMouseFuncCount(void);
 HINSTANCE LoadLanguageDLL(char *fname); // load language dll (compat: writable output buffer)

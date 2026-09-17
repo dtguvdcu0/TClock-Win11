@@ -1392,6 +1392,7 @@ void InitMouseFuncCombo(HWND hDlg, int ctrlId)
 	pmfl = GetMouseFuncList();
 	for (i = 0; i < cnt; i++)
 	{
+		if (pmfl[i].mousefunc == MOUSEFUNC_TCARD_OPEN && !GetMyRegLong("TCard", "Enable", 0)) continue;
 		if (pmfl[i].mousefunc == MOUSEFUNC_TCALENDAR_OPEN && !tcalEnabled) continue;
 		if (pmfl[i].mousefunc == MOUSEFUNC_TCAPTURE_SETTINGS && !tcapEnabled) continue;
 		//リストの各項目を追加

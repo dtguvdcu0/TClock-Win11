@@ -1,6 +1,7 @@
 #include "gui_main.h"
 #include "ini_utf8_util.h"
 #include "runner.h"
+#include "../common/native_edit.h"
 
 #include <windows.h>
 #include <commctrl.h>
@@ -502,10 +503,15 @@ bool TryComputeNextRunTime(const tcyc::TaskConfig& t, time_t now, time_t& outNex
 }
 
 std::wstring BuildNextRunStatusSuffix(WindowState* st, const tcyc::TaskConfig& t) {
+    if (!t.enabled) return L"  " + Tr(st, L"status_task_disabled", L"Task disabled");
+    if (tcyc::IsTClockGateDisabled(st->config)) return L"  " + Tr(st, L"status_gate_disabled", L"Disabled in TClock settings");
+    const int mask = t.triggerMask ? t.triggerMask : TriggerTypeToBit(t.trigger);
+    if ((mask & TriggerTypeToBit(tcyc::TriggerType::Interval)) && t.intervalSec > 0)
+        return L"  " + Tr(st, L"status_interval_prefix", L"Interval (seconds):") + L" " + std::to_wstring(t.intervalSec);
     time_t now = time(nullptr);
     time_t next = 0;
     if (!TryComputeNextRunTime(t, now, next)) return L"";
-    std::wstring prefix = Tr(st, L"status_next_run_prefix", L"  次回起動予定: ");
+    std::wstring prefix = Tr(st, L"status_schedule_estimate", L"  Estimated schedule:") + L" ";
     return prefix + FormatLocalYmdHm(next);
 }
 
@@ -1301,6 +1307,7 @@ bool PromptRename(HWND owner, const std::wstring& title, const std::wstring& cur
         WS_POPUP | WS_CAPTION | WS_SYSMENU, CW_USEDEFAULT, CW_USEDEFAULT, 350, 115,
         owner, nullptr, GetModuleHandleW(nullptr), &state);
     if (!wnd) return false;
+    native_edit::prepare(wnd);
 
     EnableWindow(owner, FALSE);
     ShowWindow(wnd, SW_SHOW);
@@ -1308,6 +1315,7 @@ bool PromptRename(HWND owner, const std::wstring& title, const std::wstring& cur
 
     MSG msg{};
     while (IsWindow(wnd) && GetMessageW(&msg, nullptr, 0, 0) > 0) {
+        if (native_edit::translate(msg)) continue;
         if (!IsDialogMessageW(wnd, &msg)) {
             TranslateMessage(&msg);
             DispatchMessageW(&msg);
@@ -1371,6 +1379,7 @@ bool BeginInlineRenameTask(WindowState* st) {
         x, y, w, h,
         st->taskList, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kCtrlTaskInlineRename)), nullptr, nullptr);
     if (!st->inlineEdit) return false;
+    native_edit::attach(st->inlineEdit);
 
     st->inlineEditIndex = idx;
     SendMessageW(st->inlineEdit, WM_SETFONT, SendMessageW(st->taskList, WM_GETFONT, 0, 0), TRUE);
@@ -1475,10 +1484,12 @@ void InitializeCombos(WindowState* st) {
     SendMessageW(st->actionMode, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(Tr(st, L"action_mode_shell", L"Shell").c_str()));
 
     for (const auto& m : HotkeyModOptions()) {
-        SendMessageW(st->hotkeyMod, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(m.label));
+        const std::wstring label = wcscmp(m.label, L"(none)") == 0 ? Tr(st, L"option_none", L"None") : m.label;
+        SendMessageW(st->hotkeyMod, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label.c_str()));
     }
     for (const auto& k : HotkeyKeyOptions()) {
-        SendMessageW(st->hotkeyKey, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(k.label.c_str()));
+        const auto label = k.label == L"(none)" ? Tr(st, L"option_none", L"None") : k.label;
+        SendMessageW(st->hotkeyKey, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label.c_str()));
     }
 }
 
@@ -1555,8 +1566,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         st->taskListOldProc = reinterpret_cast<WNDPROC>(
             SetWindowLongPtrW(st->taskList, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(TaskListSubclassProc)));
         st->taskAdd = createBtn(kCtrlTaskAdd, L"+", listX + 10, listY + listH - 34, 32, 24, BS_PUSHBUTTON);
-        st->taskDelete = createBtn(kCtrlTaskDelete, L"Del", listX + 46, listY + listH - 34, 40, 24, BS_PUSHBUTTON);
-        st->taskRename = createBtn(kCtrlTaskRename, L"Rename", listX + 90, listY + listH - 34, 76, 24, BS_PUSHBUTTON);
+        st->taskDelete = createBtn(kCtrlTaskDelete, Tr(st, L"button_delete", L"Delete").c_str(), listX + 46, listY + listH - 34, 48, 24, BS_PUSHBUTTON);
+        st->taskRename = createBtn(kCtrlTaskRename, Tr(st, L"button_rename", L"Rename").c_str(), listX + 98, listY + listH - 34, 68, 24, BS_PUSHBUTTON);
 
         createBtn(0, Tr(st, L"group_schedule", L"Schedule").c_str(), detailX, detailY, detailW, detailH, BS_GROUPBOX);
         st->taskEnabled = createBtn(kCtrlTaskEnabled, Tr(st, L"label_task_enabled", L"Task Enabled").c_str(), detailX + 12, detailY + 22, 118, 22, BS_AUTOCHECKBOX);
@@ -1633,6 +1644,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         RefreshAll(st);
         SetStatus(st, BuildStatusWithNextRun(st, Tr(st, L"status_ready", L"Ready."), st->selectedTask));
         SetTimer(hwnd, kTaskListTimerId, 1000, nullptr);
+        native_edit::prepare(hwnd);
         return 0;
     }
     case WM_TIMER:
@@ -1931,6 +1943,8 @@ int tcyc::RunReadOnlySettingsWindow(const RuntimeConfig& cfg, const std::wstring
 
     MSG msg{};
     while (GetMessageW(&msg, nullptr, 0, 0) > 0) {
+        if (native_edit::translate(msg)) continue;
+        if (IsDialogMessageW(hwnd, &msg)) continue;
         TranslateMessage(&msg);
         DispatchMessageW(&msg);
     }

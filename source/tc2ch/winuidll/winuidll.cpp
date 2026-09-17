@@ -429,6 +429,9 @@ static void wui_fit_tip(void)
 	 && rcTip.right - rcTip.left == width && rcTip.bottom - rcTip.top == height) return;
 	SetWindowPos(g_wuiTooltip, NULL, x, y, width, height,
 		SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOZORDER);
+	// The native tooltip region retains its old size after manual resizing.
+	if (rcTip.right - rcTip.left != width || rcTip.bottom - rcTip.top != height)
+		SetWindowRgn(g_wuiTooltip, NULL, TRUE);
 }
 
 static void wui_activate_tip(void)
@@ -704,6 +707,19 @@ extern "C" BOOL WINAPI WuiSetTooltip(const WCHAR* text, BOOL visible, HFONT font
 		return TRUE;
 	}
 	if (!text || !text[0]) return FALSE;
+	if (g_wuiTipVisible || g_wuiTipPending) {
+		// Preserve the previous snapshot until refresh has compared and fitted it.
+		WUI_TOOLTIP_STATE state = { sizeof(state) };
+		state.text = text;
+		state.title = g_wuiTipTitle;
+		state.font = font;
+		state.titleFont = g_wuiTipTitleFont;
+		state.backColor = backColor;
+		state.textColor = g_wuiTipTextColor;
+		state.titleColor = g_wuiTipTitleColor;
+		g_wuiTipAutoPopDelay = autoPopDelay;
+		return WuiRefreshTooltip(&state);
+	}
 	BOOL textChanged = lstrcmpW(g_wuiTooltipText, text) != 0;
 	if (textChanged) lstrcpynW(g_wuiTooltipText, text, _countof(g_wuiTooltipText));
 	if (!wui_make_tip()) return FALSE;

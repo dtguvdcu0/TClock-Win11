@@ -1,5 +1,10 @@
 [TCard]
 RefreshSeconds=1
+; Used only when creating notes; existing notes retain their own fonts.
+; Read on each creation. Size accepts 8-48 points, including decimals.
+; Missing/invalid values use Yu Gothic UI and 10 points.
+DefaultFontFamily=Yu Gothic UI
+DefaultFontSize=10
 ; Language is inherited from ../tclock-win11.ini when unset.
 ; Set Language=ja or Language=en to override; restart TCard after changing.
 TClockIni=..\tclock-win11.ini

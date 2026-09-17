@@ -24,6 +24,23 @@ inline COLORREF shade_color(COLORREF color, float factor)
     return RGB(red, green, blue);
 }
 
+inline void paint_swatch(const DRAWITEMSTRUCT& item, COLORREF color, bool active, COLORREF ink)
+{
+    HBRUSH brush = CreateSolidBrush(item.itemState & ODS_SELECTED ? RGB(225, 222, 208) : color);
+    FillRect(item.hDC, &item.rcItem, brush); DeleteObject(brush);
+    HBRUSH border = CreateSolidBrush(active ? RGB(0, 95, 184) : shade_color(color, 0.78f));
+    FrameRect(item.hDC, &item.rcItem, border); DeleteObject(border);
+    if (active) {
+        HPEN pen = CreatePen(PS_SOLID, 2, ink);
+        HGDIOBJ old = SelectObject(item.hDC, pen);
+        const int x = (item.rcItem.left + item.rcItem.right) / 2;
+        const int y = (item.rcItem.top + item.rcItem.bottom) / 2;
+        MoveToEx(item.hDC, x - 5, y, nullptr); LineTo(item.hDC, x - 1, y + 4); LineTo(item.hDC, x + 6, y - 5);
+        SelectObject(item.hDC, old); DeleteObject(pen);
+    }
+    if (item.itemState & ODS_FOCUS) DrawFocusRect(item.hDC, &item.rcItem);
+}
+
 inline int dip_to_px(int dip, UINT dpi)
 {
     return MulDiv(dip, static_cast<int>(dpi ? dpi : USER_DEFAULT_SCREEN_DPI), USER_DEFAULT_SCREEN_DPI);

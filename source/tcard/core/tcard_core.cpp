@@ -6,6 +6,8 @@
 #include "card_assets.h"
 
 #include <algorithm>
+#include <any>
+#include <map>
 #include <cwctype>
 #include <memory>
 #include <string_view>
@@ -25,6 +27,59 @@ using winrt::Windows::Data::Json::JsonArray;
 using winrt::Windows::Data::Json::JsonObject;
 using winrt::Windows::Data::Json::JsonValue;
 using winrt::Windows::Data::Json::IJsonValue;
+
+struct RenderSnapshot {
+    SYSTEMTIME time{};
+    std::map<std::wstring, std::any> samples;
+    std::map<std::wstring, std::wstring> rendered;
+};
+static thread_local RenderSnapshot* g_snapshot = nullptr;
+struct RenderBatch::Impl {
+    RenderSnapshot snapshot;
+    RenderSnapshot* previous = nullptr;
+};
+RenderBatch::RenderBatch(const SYSTEMTIME& localTime) : impl_(std::make_unique<Impl>())
+{
+    impl_->snapshot.time = localTime;
+    impl_->previous = g_snapshot;
+    g_snapshot = &impl_->snapshot;
+}
+RenderBatch::~RenderBatch() { g_snapshot = impl_->previous; }
+
+template<class Query>
+static auto tcard_sample(const std::wstring& key, Query query) -> decltype(query())
+{
+    if (!g_snapshot) return query();
+    auto found = g_snapshot->samples.find(key);
+    if (found == g_snapshot->samples.end())
+        found = g_snapshot->samples.emplace(key, query()).first;
+    return std::any_cast<decltype(query())>(found->second);
+}
+
+static std::vector<BYTE> tcard_query_interfaces()
+{
+    return tcard_sample(L"interfaces", [] {
+        ULONG size = 0;
+        if (GetIfTable(nullptr, &size, FALSE) != ERROR_INSUFFICIENT_BUFFER || !size)
+            return std::vector<BYTE>{};
+        std::vector<BYTE> bytes(size);
+        DWORD result = GetIfTable(reinterpret_cast<PMIB_IFTABLE>(bytes.data()), &size, FALSE);
+        if (result == ERROR_INSUFFICIENT_BUFFER) {
+            bytes.resize(size);
+            result = GetIfTable(reinterpret_cast<PMIB_IFTABLE>(bytes.data()), &size, FALSE);
+        }
+        if (result != NO_ERROR) bytes.clear();
+        return bytes;
+    });
+}
+static std::pair<BOOL, SYSTEM_POWER_STATUS> tcard_query_power()
+{
+    return tcard_sample(L"power", [] {
+        SYSTEM_POWER_STATUS value{};
+        const BOOL ok = GetSystemPowerStatus(&value);
+        return std::make_pair(ok, value);
+    });
+}
 
 static std::wstring g_tclockIniPath;
 
@@ -99,43 +154,49 @@ static bool write_utf8(const std::wstring& path, const std::wstring& text)
 
 static std::wstring locale_separator(LCTYPE type)
 {
-    wchar_t buffer[16]{};
-    const int length = GetLocaleInfoEx(LOCALE_NAME_USER_DEFAULT, type, buffer, ARRAYSIZE(buffer));
-    return length > 1 ? std::wstring(buffer, static_cast<size_t>(length - 1)) : std::wstring();
+    return tcard_sample(L"locale:" + std::to_wstring(type), [&]() -> std::wstring {
+        wchar_t buffer[16]{};
+        const int length = GetLocaleInfoEx(LOCALE_NAME_USER_DEFAULT, type, buffer, ARRAYSIZE(buffer));
+        return length > 1 ? std::wstring(buffer, static_cast<size_t>(length - 1)) : std::wstring();
+    });
 }
 
 static int provider_cpu_usage()
 {
-    FILETIME idle{}, kernel{}, user{};
-    static ULONGLONG oldIdle = 0;
-    static ULONGLONG oldTotal = 0;
-    if (!GetSystemTimes(&idle, &kernel, &user)) return 0;
-    const ULONGLONG idleNow = (static_cast<ULONGLONG>(idle.dwHighDateTime) << 32) | idle.dwLowDateTime;
-    const ULONGLONG totalNow = ((static_cast<ULONGLONG>(kernel.dwHighDateTime) << 32) | kernel.dwLowDateTime) +
-        ((static_cast<ULONGLONG>(user.dwHighDateTime) << 32) | user.dwLowDateTime);
-    if (oldTotal == 0 || totalNow <= oldTotal || idleNow < oldIdle) { oldTotal = totalNow; oldIdle = idleNow; return 0; }
-    const ULONGLONG totalDelta = totalNow - oldTotal;
-    const ULONGLONG idleDelta = idleNow - oldIdle;
-    oldTotal = totalNow;
-    oldIdle = idleNow;
-    return static_cast<int>(((totalDelta > idleDelta ? totalDelta - idleDelta : 0) * 100ULL) / totalDelta);
+    return tcard_sample(L"cpu", [&]() -> int {
+        FILETIME idle{}, kernel{}, user{};
+        static ULONGLONG oldIdle = 0;
+        static ULONGLONG oldTotal = 0;
+        if (!GetSystemTimes(&idle, &kernel, &user)) return 0;
+        const ULONGLONG idleNow = (static_cast<ULONGLONG>(idle.dwHighDateTime) << 32) | idle.dwLowDateTime;
+        const ULONGLONG totalNow = ((static_cast<ULONGLONG>(kernel.dwHighDateTime) << 32) | kernel.dwLowDateTime) +
+            ((static_cast<ULONGLONG>(user.dwHighDateTime) << 32) | user.dwLowDateTime);
+        if (oldTotal == 0 || totalNow <= oldTotal || idleNow < oldIdle) { oldTotal = totalNow; oldIdle = idleNow; return 0; }
+        const ULONGLONG totalDelta = totalNow - oldTotal;
+        const ULONGLONG idleDelta = idleNow - oldIdle;
+        oldTotal = totalNow;
+        oldIdle = idleNow;
+        return static_cast<int>(((totalDelta > idleDelta ? totalDelta - idleDelta : 0) * 100ULL) / totalDelta);
+    });
 }
 
 static std::wstring provider_ip_address()
 {
-    ULONG size = 0;
-    if (GetAdaptersInfo(nullptr, &size) != ERROR_BUFFER_OVERFLOW || size == 0) return L"N/A";
-    std::vector<BYTE> buffer(size);
-    auto* adapters = reinterpret_cast<IP_ADAPTER_INFO*>(buffer.data());
-    if (GetAdaptersInfo(adapters, &size) != NO_ERROR) return L"N/A";
-    for (auto* adapter = adapters; adapter; adapter = adapter->Next) {
-        const char* value = adapter->IpAddressList.IpAddress.String;
-        if (!value || value[0] == '\0' || (value[0] == '0' && value[1] == '\0')) continue;
-        std::wstring result;
-        while (*value) result.push_back(static_cast<unsigned char>(*value++));
-        return result;
-    }
-    return L"N/A";
+    return tcard_sample(L"ip", [&]() -> std::wstring {
+        ULONG size = 0;
+        if (GetAdaptersInfo(nullptr, &size) != ERROR_BUFFER_OVERFLOW || size == 0) return L"N/A";
+        std::vector<BYTE> buffer(size);
+        auto* adapters = reinterpret_cast<IP_ADAPTER_INFO*>(buffer.data());
+        if (GetAdaptersInfo(adapters, &size) != NO_ERROR) return L"N/A";
+        for (auto* adapter = adapters; adapter; adapter = adapter->Next) {
+            const char* value = adapter->IpAddressList.IpAddress.String;
+            if (!value || value[0] == '\0' || (value[0] == '0' && value[1] == '\0')) continue;
+            std::wstring result;
+            while (*value) result.push_back(static_cast<unsigned char>(*value++));
+            return result;
+        }
+        return L"N/A";
+    });
 }
 
 static std::wstring provider_number(ULONGLONG value, const std::wstring& body, size_t& index)
@@ -184,61 +245,62 @@ static std::wstring network_utf8_to_wide(const unsigned char* bytes, size_t leng
 
 static NetworkState query_network_state()
 {
-    static ULONGLONG refreshedTick = 0;
-    static NetworkState cached;
-    const ULONGLONG now = GetTickCount64();
-    if (refreshedTick != 0 && now - refreshedTick < 500) return cached;
-    NetworkState state;
-    HANDLE wlan = nullptr;
-    DWORD negotiatedVersion = 0;
-    if (WlanOpenHandle(2, nullptr, &negotiatedVersion, &wlan) == ERROR_SUCCESS) {
-        PWLAN_INTERFACE_INFO_LIST interfaces = nullptr;
-        if (WlanEnumInterfaces(wlan, nullptr, &interfaces) == ERROR_SUCCESS && interfaces) {
-            for (DWORD i = 0; i < interfaces->dwNumberOfItems; ++i) {
-                const WLAN_INTERFACE_INFO& info = interfaces->InterfaceInfo[i];
-                if (info.isState != wlan_interface_state_not_ready) state.wifiAdapter = true;
-                if (info.isState != wlan_interface_state_connected) continue;
-                state.wifiConnected = true;
-                DWORD dataSize = 0;
-                PWLAN_CONNECTION_ATTRIBUTES attributes = nullptr;
-                if (WlanQueryInterface(wlan, &info.InterfaceGuid, wlan_intf_opcode_current_connection, nullptr, &dataSize, reinterpret_cast<PVOID*>(&attributes), nullptr) == ERROR_SUCCESS && attributes) {
-                    state.wifiQuality = attributes->wlanAssociationAttributes.wlanSignalQuality;
-                    const DOT11_SSID& ssid = attributes->wlanAssociationAttributes.dot11Ssid;
-                    state.ssid = network_utf8_to_wide(ssid.ucSSID, ssid.uSSIDLength);
-                    WlanFreeMemory(attributes);
+    return tcard_sample(L"network", [&]() -> NetworkState {
+        static ULONGLONG refreshedTick = 0;
+        static NetworkState cached;
+        const ULONGLONG now = GetTickCount64();
+        if (refreshedTick != 0 && now - refreshedTick < 500) return cached;
+        NetworkState state;
+        HANDLE wlan = nullptr;
+        DWORD negotiatedVersion = 0;
+        if (WlanOpenHandle(2, nullptr, &negotiatedVersion, &wlan) == ERROR_SUCCESS) {
+            PWLAN_INTERFACE_INFO_LIST interfaces = nullptr;
+            if (WlanEnumInterfaces(wlan, nullptr, &interfaces) == ERROR_SUCCESS && interfaces) {
+                for (DWORD i = 0; i < interfaces->dwNumberOfItems; ++i) {
+                    const WLAN_INTERFACE_INFO& info = interfaces->InterfaceInfo[i];
+                    if (info.isState != wlan_interface_state_not_ready) state.wifiAdapter = true;
+                    if (info.isState != wlan_interface_state_connected) continue;
+                    state.wifiConnected = true;
+                    DWORD dataSize = 0;
+                    PWLAN_CONNECTION_ATTRIBUTES attributes = nullptr;
+                    if (WlanQueryInterface(wlan, &info.InterfaceGuid, wlan_intf_opcode_current_connection, nullptr, &dataSize, reinterpret_cast<PVOID*>(&attributes), nullptr) == ERROR_SUCCESS && attributes) {
+                        state.wifiQuality = attributes->wlanAssociationAttributes.wlanSignalQuality;
+                        const DOT11_SSID& ssid = attributes->wlanAssociationAttributes.dot11Ssid;
+                        state.ssid = network_utf8_to_wide(ssid.ucSSID, ssid.uSSIDLength);
+                        WlanFreeMemory(attributes);
+                    }
                 }
+                WlanFreeMemory(interfaces);
             }
-            WlanFreeMemory(interfaces);
+            WlanCloseHandle(wlan, nullptr);
         }
-        WlanCloseHandle(wlan, nullptr);
-    }
 
-    ULONG tableBytes = 0;
-    if (GetIfTable(nullptr, &tableBytes, FALSE) == ERROR_INSUFFICIENT_BUFFER && tableBytes > 0) {
-        std::vector<BYTE> bytes(tableBytes);
-        auto* table = reinterpret_cast<PMIB_IFTABLE>(bytes.data());
-        if (GetIfTable(table, &tableBytes, FALSE) == NO_ERROR) {
-            for (DWORD i = 0; i < table->dwNumEntries; ++i) {
-                const MIB_IFROW& row = table->table[i];
-                const bool up = row.dwOperStatus == IF_OPER_STATUS_OPERATIONAL;
-                if (row.dwType == MIB_IF_TYPE_ETHERNET) {
-                    state.ethernetAdapter = true;
-                    state.ethernetConnected = state.ethernetConnected || up;
-                } else if (row.dwType == IF_TYPE_WWANPP || row.dwType == IF_TYPE_WWANPP2) {
-                    state.lteConnected = state.lteConnected || up;
+        const auto bytes = tcard_query_interfaces();
+        if (!bytes.empty()) {
+            const auto* table = reinterpret_cast<const MIB_IFTABLE*>(bytes.data());
+            {
+                for (DWORD i = 0; i < table->dwNumEntries; ++i) {
+                    const MIB_IFROW& row = table->table[i];
+                    const bool up = row.dwOperStatus == IF_OPER_STATUS_OPERATIONAL;
+                    if (row.dwType == MIB_IF_TYPE_ETHERNET) {
+                        state.ethernetAdapter = true;
+                        state.ethernetConnected = state.ethernetConnected || up;
+                    } else if (row.dwType == IF_TYPE_WWANPP || row.dwType == IF_TYPE_WWANPP2) {
+                        state.lteConnected = state.lteConnected || up;
+                    }
+                    if (up && (row.dwType == IF_TYPE_TUNNEL || row.dwType == IF_TYPE_PPP)) state.vpnConnected = true;
                 }
-                if (up && (row.dwType == IF_TYPE_TUNNEL || row.dwType == IF_TYPE_PPP)) state.vpnConnected = true;
             }
         }
-    }
-    cached = state;
-    refreshedTick = now;
-    return cached;
+        cached = state;
+        refreshedTick = now;
+        return cached;
+    });
 }
 
 static std::wstring network_fixed_ssid(const std::wstring& ssid)
 {
-    int width = static_cast<int>(GetPrivateProfileIntW(L"ETC", L"SSID_AP_Length", 10, g_tclockIniPath.c_str()));
+    int width = tcard_sample(L"ssid-width", [] { return static_cast<int>(GetPrivateProfileIntW(L"ETC", L"SSID_AP_Length", 10, g_tclockIniPath.c_str())); });
     width = std::clamp(width, 1, 64);
     std::wstring value = ssid.substr(0, static_cast<size_t>(width));
     if (value.size() < static_cast<size_t>(width)) value.append(static_cast<size_t>(width) - value.size(), L' ');
@@ -255,34 +317,34 @@ struct NetworkTraffic
 
 static NetworkTraffic query_network_traffic()
 {
-    static ULONGLONG previousTick = 0;
-    static ULONGLONG previousReceived = 0;
-    static ULONGLONG previousSent = 0;
-    static NetworkTraffic cached;
-    const ULONGLONG now = GetTickCount64();
-    if (previousTick != 0 && now - previousTick < 500) return cached;
-    ULONG bytes = 0;
-    if (GetIfTable(nullptr, &bytes, FALSE) != ERROR_INSUFFICIENT_BUFFER || bytes == 0) return cached;
-    std::vector<BYTE> buffer(bytes);
-    auto* table = reinterpret_cast<PMIB_IFTABLE>(buffer.data());
-    if (GetIfTable(table, &bytes, FALSE) != NO_ERROR) return cached;
-    ULONGLONG received = 0;
-    ULONGLONG sent = 0;
-    for (DWORD i = 0; i < table->dwNumEntries; ++i) {
-        received += table->table[i].dwInOctets;
-        sent += table->table[i].dwOutOctets;
-    }
-    if (previousTick != 0 && now > previousTick) {
-        const ULONGLONG elapsed = now - previousTick;
-        cached.receivedRate = received >= previousReceived ? (received - previousReceived) * 1000ULL / elapsed : 0;
-        cached.sentRate = sent >= previousSent ? (sent - previousSent) * 1000ULL / elapsed : 0;
-    }
-    cached.received = received;
-    cached.sent = sent;
-    previousTick = now;
-    previousReceived = received;
-    previousSent = sent;
-    return cached;
+    return tcard_sample(L"traffic", [&]() -> NetworkTraffic {
+        static ULONGLONG previousTick = 0;
+        static ULONGLONG previousReceived = 0;
+        static ULONGLONG previousSent = 0;
+        static NetworkTraffic cached;
+        const ULONGLONG now = GetTickCount64();
+        if (previousTick != 0 && now - previousTick < 500) return cached;
+        const auto buffer = tcard_query_interfaces();
+        if (buffer.empty()) return cached;
+        const auto* table = reinterpret_cast<const MIB_IFTABLE*>(buffer.data());
+        ULONGLONG received = 0;
+        ULONGLONG sent = 0;
+        for (DWORD i = 0; i < table->dwNumEntries; ++i) {
+            received += table->table[i].dwInOctets;
+            sent += table->table[i].dwOutOctets;
+        }
+        if (previousTick != 0 && now > previousTick) {
+            const ULONGLONG elapsed = now - previousTick;
+            cached.receivedRate = received >= previousReceived ? (received - previousReceived) * 1000ULL / elapsed : 0;
+            cached.sentRate = sent >= previousSent ? (sent - previousSent) * 1000ULL / elapsed : 0;
+        }
+        cached.received = received;
+        cached.sent = sent;
+        previousTick = now;
+        previousReceived = received;
+        previousSent = sent;
+        return cached;
+    });
 }
 
 static std::wstring network_auto_label(ULONGLONG bytes)
@@ -312,7 +374,11 @@ static bool network_token(const std::wstring& body, size_t& index, std::wstring&
         (index + 3 < body.size() && (body[index] == L'N' || body[index] == L'n') && (body[index + 1] == L'R' || body[index + 1] == L'S') &&
          (body[index + 2] == L'A' || body[index + 2] == L'S'));
     if (!candidate) return false;
-    const NetworkState state = query_network_state();
+    const bool trafficToken = body.compare(index, 4, L"NRAA") == 0 || body.compare(index, 4, L"NSAA") == 0 ||
+        (index + 3 < body.size() && (body[index] == L'N' || body[index] == L'n') &&
+         (body[index + 1] == L'R' || body[index + 1] == L'S') &&
+         (body[index + 2] == L'A' || body[index + 2] == L'S'));
+    const NetworkState state = trafficToken ? NetworkState{} : query_network_state();
     if (body.compare(index, 4, L"SSID") == 0) { index += 4; result = network_fixed_ssid(state.wifiConnected ? state.ssid : L""); return true; }
     if (body.compare(index, 4, L"WiFi") == 0) { index += 4; result = state.wifiConnected ? L"WiFi*" : state.wifiAdapter ? L"WiFi " : L"     "; return true; }
     if (body.compare(index, 4, L"EthS") == 0) { index += 4; result = state.ethernetConnected ? L"Eth " : state.ethernetAdapter ? L"Eth " : L"    "; return true; }
@@ -368,9 +434,15 @@ static bool provider_token(const std::wstring& body, size_t& index, std::wstring
         const wchar_t mode = body[index + 1];
         const wchar_t unit = body[index + 3];
         wchar_t root[] = { body[index + 2], L':', L'\\', L'\0' };
-        ULARGE_INTEGER available{}, total{}, freeBytes{};
+        struct DiskSample { BOOL ok; ULARGE_INTEGER available{}, total{}, freeBytes{}; };
+        const auto disk = tcard_sample(std::wstring(L"disk:") + root, [&] {
+            DiskSample value{};
+            value.ok = GetDiskFreeSpaceExW(root, &value.available, &value.total, &value.freeBytes);
+            return value;
+        });
+        const auto total = disk.total, freeBytes = disk.freeBytes;
         index += 4;
-        if (!GetDiskFreeSpaceExW(root, &available, &total, &freeBytes)) { result = L"0"; return true; }
+        if (!disk.ok) { result = L"0"; return true; }
         const ULONGLONG totalBytes = total.QuadPart;
         const ULONGLONG freeValue = unit == L'M' ? freeBytes.QuadPart / (1024ULL * 1024ULL) : unit == L'G' ? freeBytes.QuadPart / (1024ULL * 1024ULL * 1024ULL) : unit == L'T' ? freeBytes.QuadPart / (1024ULL * 1024ULL * 1024ULL * 1024ULL) : totalBytes ? freeBytes.QuadPart * 100ULL / totalBytes : 0ULL;
         const ULONGLONG usedBytes = totalBytes > freeBytes.QuadPart ? totalBytes - freeBytes.QuadPart : 0ULL;
@@ -386,7 +458,7 @@ static bool provider_token(const std::wstring& body, size_t& index, std::wstring
     }
     if (body.compare(index, 2, L"ST") == 0) {
         index += 2;
-        const ULONGLONG seconds = GetTickCount64() / 1000ULL;
+        const ULONGLONG seconds = tcard_sample(L"uptime", [] { return GetTickCount64(); }) / 1000ULL;
         result = std::to_wstring((seconds / 3600ULL) % 100ULL) + L":" +
             (seconds / 60ULL % 60ULL < 10 ? L"0" : L"") + std::to_wstring((seconds / 60ULL) % 60ULL) + L":" +
             (seconds % 60ULL < 10 ? L"0" : L"") + std::to_wstring(seconds % 60ULL);
@@ -396,7 +468,7 @@ static bool provider_token(const std::wstring& body, size_t& index, std::wstring
         body.compare(index, 2, L"Sh") == 0 || body.compare(index, 2, L"Sn") == 0 || body.compare(index, 2, L"Ss") == 0) {
         const wchar_t unit = body[index + 1];
         index += 2;
-        const ULONGLONG ticks = GetTickCount64();
+        const ULONGLONG ticks = tcard_sample(L"uptime", [] { return GetTickCount64(); });
         ULONGLONG value = unit == L'd' ? ticks / 86400000ULL : unit == L'a' ? ticks / 3600000ULL :
             unit == L'h' ? ticks / 3600000ULL % 24ULL : unit == L'n' ? ticks / 60000ULL % 60ULL : ticks / 1000ULL % 60ULL;
         result = provider_number(value, body, index);
@@ -410,38 +482,49 @@ static bool provider_token(const std::wstring& body, size_t& index, std::wstring
     }
     if (body.compare(index, 5, L"PCORE") == 0 || body.compare(index, 5, L"LPROC") == 0) {
         index += 5;
-        SYSTEM_INFO info{};
-        GetSystemInfo(&info);
+        const auto info = tcard_sample(L"system-info", [] {
+            SYSTEM_INFO value{};
+            GetSystemInfo(&value);
+            return value;
+        });
         result = provider_number(info.dwNumberOfProcessors, body, index);
         return true;
     }
     if (body.compare(index, 2, L"BL") == 0) {
         index += 2;
-        SYSTEM_POWER_STATUS power{};
-        const DWORD level = GetSystemPowerStatus(&power) && power.BatteryLifePercent != 255 ? power.BatteryLifePercent : 0;
+        const auto sample = tcard_query_power();
+        const auto& power = sample.second;
+        const DWORD level = sample.first && power.BatteryLifePercent != 255 ? power.BatteryLifePercent : 0;
         result = provider_number(level, body, index);
         return true;
     }
     if (body.compare(index, 2, L"AD") == 0 || body.compare(index, 2, L"ad") == 0) {
         const bool upper = body[index] == L'A';
         index += 2;
-        SYSTEM_POWER_STATUS power{};
-        const bool online = GetSystemPowerStatus(&power) && power.ACLineStatus == 1;
+        const auto sample = tcard_query_power();
+        const auto& power = sample.second;
+        const bool online = sample.first && power.ACLineStatus == 1;
         result = upper ? (online ? L"AC" : L"DC") : (online ? L"A" : L"D");
         return true;
     }
     if (body.compare(index, 3, L"BCS") == 0) {
         index += 3;
-        SYSTEM_POWER_STATUS power{};
-        result = GetSystemPowerStatus(&power) && power.BatteryFlag != 128 && power.BatteryFlag != 255 ? L"*" : L" ";
+        const auto sample = tcard_query_power();
+        const auto& power = sample.second;
+        result = sample.first && power.BatteryFlag != 128 && power.BatteryFlag != 255 ? L"*" : L" ";
         return true;
     }
     if (index + 3 < body.size() && body.compare(index, 3, L"MAP") == 0 && (body[index + 3] == L'K' || body[index + 3] == L'M' || body[index + 3] == L'P' || body[index + 3] == L'G')) {
         const wchar_t unit = body[index + 3];
         index += 4;
-        MEMORYSTATUSEX memory{};
-        memory.dwLength = sizeof(memory);
-        if (!GlobalMemoryStatusEx(&memory)) { index = begin; return false; }
+        const auto sample = tcard_sample(L"memory", [] {
+            MEMORYSTATUSEX value{};
+            value.dwLength = sizeof(value);
+            const BOOL ok = GlobalMemoryStatusEx(&value);
+            return std::make_pair(ok, value);
+        });
+        const auto& memory = sample.second;
+        if (!sample.first) { index = begin; return false; }
         const ULONGLONG value = unit == L'K' ? memory.ullAvailPhys / 1024ULL : unit == L'M' ? memory.ullAvailPhys / (1024ULL * 1024ULL) : unit == L'P' ? memory.ullAvailPhys * 100ULL / (memory.ullTotalPhys ? memory.ullTotalPhys : 1ULL) : memory.ullAvailPhys / (1024ULL * 1024ULL * 1024ULL);
         result = std::to_wstring(value);
         return true;
@@ -693,7 +776,7 @@ void RefreshCustomVariables()
             continue;
         }
         if (!variable.jsonMode) {
-            std::wstring text = read_custom_text(variable.path, false);
+            std::wstring text = tcard_sample(L"custom:" + variable.path, [&] { return read_custom_text(variable.path, false); });
             const size_t lineEnd = text.find_first_of(L"\r\n");
             if (lineEnd != std::wstring::npos) text.resize(lineEnd);
             variable.value = variable.keepWhitespace ? text : trim_custom_text(text);
@@ -702,7 +785,7 @@ void RefreshCustomVariables()
             variable.nextRefreshTick = now + static_cast<ULONGLONG>(variable.refreshSeconds) * 1000ULL;
             continue;
         }
-        const std::wstring json = read_custom_text(variable.path, false);
+        const std::wstring json = tcard_sample(L"custom:" + variable.path, [&] { return read_custom_text(variable.path, false); });
         std::wstring extracted;
         if (json.empty() || !read_custom_json(variable, json, extracted)) {
             variable.value = variable.jsonDefault.empty() ? variable.failValue : variable.jsonDefault;
@@ -830,7 +913,7 @@ std::wstring RenderMarkdown(const std::wstring& source)
     return output;
 }
 
-std::wstring Render(const std::wstring& source, const SYSTEMTIME& localTime)
+static std::wstring tcard_render_source(const std::wstring& source, const SYSTEMTIME& localTime)
 {
     std::wstring output;
     size_t offset = 0;
@@ -912,6 +995,18 @@ std::wstring Render(const std::wstring& source, const SYSTEMTIME& localTime)
         offset = end + 2;
     }
     return output;
+}
+
+std::wstring Render(const std::wstring& source, const SYSTEMTIME& localTime)
+{
+    if (!g_snapshot) {
+        RenderBatch batch(localTime);
+        return Render(source, localTime);
+    }
+    auto found = g_snapshot->rendered.find(source);
+    if (found == g_snapshot->rendered.end())
+        found = g_snapshot->rendered.emplace(source, tcard_render_source(source, g_snapshot->time)).first;
+    return found->second;
 }
 
 static std::wstring storage_directory(const std::wstring& path)

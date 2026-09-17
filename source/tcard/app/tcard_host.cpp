@@ -202,6 +202,37 @@ UINT refresh_interval_ms()
     return static_cast<UINT>(seconds * 1000UL);
 }
 
+void tcard_initialize_defaults()
+{
+    const std::wstring ini = module_dir() + L"\\TCard.ini";
+    HANDLE file = CreateFileW(ini.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (file == INVALID_HANDLE_VALUE) return;
+    const wchar_t defaults[] = L"\ufeff[TCard]\r\nRefreshSeconds=1\r\nDefaultFontFamily=Yu Gothic UI\r\nDefaultFontSize=10\r\nTClockIni=..\\tclock-win11.ini\r\n";
+    const DWORD bytes = static_cast<DWORD>(sizeof(defaults) - sizeof(wchar_t));
+    DWORD written = 0;
+    const BOOL complete = WriteFile(file, defaults, bytes, &written, nullptr) && written == bytes;
+    CloseHandle(file);
+    if (!complete) DeleteFileW(ini.c_str());
+}
+
+void tcard_apply_defaults(tcard::CardRecord& card)
+{
+    card.fontFamily = L"Yu Gothic UI";
+    card.fontSize = 10.0;
+    const std::wstring ini = module_dir() + L"\\TCard.ini";
+    wchar_t family[256]{}, size[64]{};
+    GetPrivateProfileStringW(L"TCard", L"DefaultFontFamily", L"", family, ARRAYSIZE(family), ini.c_str());
+    GetPrivateProfileStringW(L"TCard", L"DefaultFontSize", L"", size, ARRAYSIZE(size), ini.c_str());
+    const std::wstring name(family);
+    const auto first = name.find_first_not_of(L" \t");
+    if (first != std::wstring::npos) {
+        const std::wstring trimmed = name.substr(first, name.find_last_not_of(L" \t") - first + 1);
+        if (trimmed.size() < LF_FACESIZE) card.fontFamily = trimmed;
+    }
+    double points = 0;
+    if (tcard_ui::valid_size(size, points)) card.fontSize = points;
+}
+
 std::wstring resolve_tclock_ini()
 {
     const std::wstring cardIni = module_dir() + L"\\TCard.ini";
@@ -264,18 +295,21 @@ void seed_cards_if_empty()
 {
     if (!g_cards.empty()) return;
     tcard::CardRecord first;
+    tcard_apply_defaults(first);
     first.id = L"welcome";
     first.title = L"Welcome to TCard";
     first.source = L"A native Sticky Notes-like card.\r\n\r\nNow: <%yyyy/mm/dd(ddd) hh:nn:ss%>";
     first.color = L"#FFF5A8";
     g_cards.push_back(first);
     tcard::CardRecord second;
+    tcard_apply_defaults(second);
     second.id = L"edit";
     second.title = L"Make yourself a note";
     second.source = L"Double-click a note to place it on your desktop.\r\n\r\nRight-click a detached note to edit it, keep it on top, or return to the list.\r\n\r\nChoose Appearance while editing to change the paper and text.";
     second.color = L"#CDEBFF";
     g_cards.push_back(second);
     tcard::CardRecord fixture;
+    tcard_apply_defaults(fixture);
     fixture.id = L"format-check";
     fixture.title = L"Format quick check";
     fixture.source = L"[Clock] <%yyyy/mm/dd hh:nn:ss%>\r\n[Weekday] <%ddd%>\r\n[Locale] <%DATE%> <%TIME%> <%AMPM%> <%AM/PM%>\r\n[Offset] <%w+01hh:nn%> | <%td-01:30hh:nn%>\r\n[System] CPU <%CU%> | Memory <%MAPM%> | Uptime <%ST%>\r\n[Power] Battery <%BL%> | Cores <%PCORE%>\r\n[Custom] <%CUSTOM1%>\r\n[Escaped] literal <%\"yyyy\"%> | line <%yyyy\\nmm%>\r\n[Fallback] <%UNSUPPORTED%>";
@@ -536,7 +570,7 @@ void set_editing(bool editing)
         const auto& target = g_cards[static_cast<size_t>(selected)];
         for (const auto& entry : g_card_windows) {
             if (entry->id == target.id && entry->handle && g_is_card_editing(entry->handle)) {
-                MessageBoxW(g_main, tcard_text(L"message.already_editing", L"This note is already being edited in its standalone window."), tcard_text(L"app.title", L"TCard"), MB_OK | MB_ICONINFORMATION);
+                MessageBoxW(g_main, tcard_text(L"message.already_editing", L"This note is already being edited in its standalone window."), tcard_lang::text(L"app.title", L"TCard").c_str(), MB_OK | MB_ICONINFORMATION);
                 return;
             }
         }
@@ -585,7 +619,7 @@ void save_edit()
     double validatedSize = 0;
     if (!tcard_ui::valid_size(window_text(g_font_size_editor), validatedSize)) {
         if (!g_appearance_open) SendMessageW(g_main, WM_COMMAND, kAppearance, 0);
-        MessageBoxW(g_main, tcard_text(L"message.font_size", L"Enter a font size from 8 to 48."), tcard_text(L"app.title", L"TCard"), MB_OK | MB_ICONWARNING);
+        MessageBoxW(g_main, tcard_text(L"message.font_size", L"Enter a font size from 8 to 48."), tcard_lang::text(L"app.title", L"TCard").c_str(), MB_OK | MB_ICONWARNING);
         SetFocus(g_font_size_editor);
         SendMessageW(g_font_size_editor, EM_SETSEL, 0, -1);
         return;
@@ -602,7 +636,7 @@ void save_edit()
     card.markdown = SendMessageW(g_markdown, CB_GETCURSEL, 0, 0) == 1;
     if (!tcard::SaveCards(g_file_path, g_cards)) {
         card = previous;
-        MessageBoxW(g_main, tcard_text(L"message.save_failed", L"Save failed; the draft remains open."), tcard_text(L"app.title", L"TCard"), MB_OK | MB_ICONERROR);
+        MessageBoxW(g_main, tcard_text(L"message.save_failed", L"Save failed; the draft remains open."), tcard_lang::text(L"app.title", L"TCard").c_str(), MB_OK | MB_ICONERROR);
         return;
     }
     fill_list();
@@ -670,9 +704,9 @@ bool delete_card_id(const std::wstring& id)
     std::wstring prompt = tcard_lang::text(L"message.delete_prompt", L"Delete '%s'?");
     const size_t marker = prompt.find(L"%s");
     if (marker != std::wstring::npos) prompt.replace(marker, 2, card->title.empty() ? tcard_text(L"status.untitled_card", L"Untitled card") : card->title);
-    if (MessageBoxW(g_main, prompt.c_str(), tcard_text(L"app.title", L"TCard"), MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES) return false;
+    if (MessageBoxW(g_main, prompt.c_str(), tcard_lang::text(L"app.title", L"TCard").c_str(), MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES) return false;
     if (!tcard::DeleteCard(g_file_path, id)) {
-        MessageBoxW(g_main, tcard_text(L"message.delete_failed", L"Delete failed; the note was kept."), tcard_text(L"app.title", L"TCard"), MB_OK | MB_ICONERROR);
+        MessageBoxW(g_main, tcard_text(L"message.delete_failed", L"Delete failed; the note was kept."), tcard_lang::text(L"app.title", L"TCard").c_str(), MB_OK | MB_ICONERROR);
         return false;
     }
     for (auto it = g_card_windows.begin(); it != g_card_windows.end(); ++it) {
@@ -824,7 +858,7 @@ void choose_color(COLORREF color)
     card.color = color_hex(color);
     if (!tcard::SaveCards(g_file_path, g_cards)) {
         card.color = previous;
-        MessageBoxW(g_main, tcard_text(L"message.color_failed", L"The color change could not be saved."), tcard_text(L"app.title", L"TCard"), MB_OK | MB_ICONERROR);
+        MessageBoxW(g_main, tcard_text(L"message.color_failed", L"The color change could not be saved."), tcard_lang::text(L"app.title", L"TCard").c_str(), MB_OK | MB_ICONERROR);
         return;
     }
     fill_list();
@@ -950,6 +984,7 @@ void import_clip(UINT command, const std::wstring& targetId, const tcard_clip::C
         GUID guid{}; wchar_t id[40]{};
         if (FAILED(CoCreateGuid(&guid)) || !StringFromGUID2(guid, id, ARRAYSIZE(id))) return;
         next.id = ready && !targetId.empty() ? targetId : id;
+        tcard_apply_defaults(next);
         next.title = tcard_text(L"clip.title", L"Web clip"); undo.created = true;
     } else { next = *target; undo.previous = *target; }
     next.source = command == 7 && !next.source.empty() ? next.source + L"\r\n\r\n---\r\n\r\n" + clip.source : clip.source;
@@ -1037,7 +1072,7 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
                     if (!tcard::SaveCards(g_file_path, g_cards)) {
                         *card = previous;
                         apply_card_state(entry, *card);
-                        MessageBoxW(g_main, tcard_text(L"message.save_failed", L"Save failed; the standalone draft remains open."), tcard_text(L"app.title", L"TCard"), MB_OK | MB_ICONERROR);
+                        MessageBoxW(g_main, tcard_text(L"message.save_failed", L"Save failed; the standalone draft remains open."), tcard_lang::text(L"app.title", L"TCard").c_str(), MB_OK | MB_ICONERROR);
                         return FALSE;
                     }
                     apply_card_state(entry, *card);
@@ -1063,7 +1098,7 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
         return 0;
     case kRendererEdit:
         if (g_editing) {
-            MessageBoxW(g_main, tcard_text(L"message.finish_edit", L"Finish the current list edit before editing a standalone note."), tcard_text(L"app.title", L"TCard"), MB_OK | MB_ICONINFORMATION);
+            MessageBoxW(g_main, tcard_text(L"message.finish_edit", L"Finish the current list edit before editing a standalone note."), tcard_lang::text(L"app.title", L"TCard").c_str(), MB_OK | MB_ICONINFORMATION);
             return 0;
         }
         if (wParam) {
@@ -1122,7 +1157,7 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
     case WM_CLOSE:
         {
         if (g_editing) {
-            const int choice = MessageBoxW(hwnd, tcard_text(L"message.save_changes", L"Save changes to this card?"), tcard_text(L"app.title", L"TCard"), MB_ICONQUESTION | MB_YESNOCANCEL | MB_DEFBUTTON3);
+            const int choice = MessageBoxW(hwnd, tcard_text(L"message.save_changes", L"Save changes to this card?"), tcard_lang::text(L"app.title", L"TCard").c_str(), MB_ICONQUESTION | MB_YESNOCANCEL | MB_DEFBUTTON3);
             if (choice == IDCANCEL) return 0;
             if (choice == IDYES) {
                 save_edit();
@@ -1353,19 +1388,7 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
                 const LRESULT selected = g_list ? SendMessageW(g_list, LB_GETCURSEL, 0, 0) : -1;
                 const bool active = selected >= 0 && static_cast<size_t>(selected) < g_visible_indices.size() &&
                     (g_editing ? g_preview_color : parse_color(g_cards[g_visible_indices[static_cast<size_t>(selected)]].color)) == choice->color;
-                HBRUSH brush = CreateSolidBrush(item.itemState & ODS_SELECTED ? RGB(225, 222, 208) : choice->color);
-                FillRect(item.hDC, &item.rcItem, brush); DeleteObject(brush);
-                HBRUSH border = CreateSolidBrush(active ? RGB(0, 95, 184) : color_shade(choice->color, 0.78f));
-                FrameRect(item.hDC, &item.rcItem, border); DeleteObject(border);
-                if (active) {
-                    HPEN pen = CreatePen(PS_SOLID, 2, tile_ink(choice->color));
-                    HGDIOBJ old = SelectObject(item.hDC, pen);
-                    const int x = (item.rcItem.left + item.rcItem.right) / 2;
-                    const int y = (item.rcItem.top + item.rcItem.bottom) / 2;
-                    MoveToEx(item.hDC, x - 5, y, nullptr); LineTo(item.hDC, x - 1, y + 4); LineTo(item.hDC, x + 6, y - 5);
-                    SelectObject(item.hDC, old); DeleteObject(pen);
-                }
-                if (item.itemState & ODS_FOCUS) DrawFocusRect(item.hDC, &item.rcItem);
+                tcard_ui::paint_swatch(item, choice->color, active, tile_ink(choice->color));
                 return TRUE;
             }
             const COLORREF paper = item.CtlID == kNew || item.CtlID == kDelete || item.CtlID == kClearSearch || item.CtlID == kSortField ? RGB(246, 245, 242) : g_preview_color;
@@ -1416,6 +1439,7 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
         else if (LOWORD(wParam) == kNew) {
             if (g_editing) return 0;
             tcard::CardRecord card;
+            tcard_apply_defaults(card);
             card.id = std::to_wstring(GetTickCount64());
             card.title = L"New";
             card.source = L"";
@@ -1423,7 +1447,7 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
             g_cards.insert(g_cards.begin(), card);
             if (!tcard::SaveCards(g_file_path, g_cards)) {
                 g_cards.erase(g_cards.begin());
-                MessageBoxW(g_main, tcard_text(L"message.create_failed", L"Could not create a note. Check the storage location."), tcard_text(L"app.title", L"TCard"), MB_OK | MB_ICONERROR);
+                MessageBoxW(g_main, tcard_text(L"message.create_failed", L"Could not create a note. Check the storage location."), tcard_lang::text(L"app.title", L"TCard").c_str(), MB_OK | MB_ICONERROR);
                 return 0;
             }
             SetWindowTextW(g_search, L"");
@@ -1453,7 +1477,14 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
             SetWindowTextW(hwnd, tcard_text(L"app.title", L"TCard"));
             import_clip(job->command, job->target, &job->clip, &job->previous);
         }
-        if (wParam == kTimer) { tcard::RefreshCustomVariables(); refresh_preview(); update_open_card(); }
+        if (wParam == kTimer) {
+            SYSTEMTIME now{};
+            GetLocalTime(&now);
+            tcard::RenderBatch batch(now);
+            tcard::RefreshCustomVariables();
+            refresh_preview();
+            update_open_card();
+        }
         return 0;
     case WM_DESTROY:
         KillTimer(hwnd, kClipTimer);
@@ -1483,6 +1514,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show)
 {
     const HRESULT ole = OleInitialize(nullptr);
     struct OleScope { bool active; ~OleScope() { if (active) OleUninitialize(); } } oleScope{SUCCEEDED(ole)};
+    tcard_initialize_defaults();
     const std::wstring iconPath = module_dir() + L"\\icon3.ico";
     g_app_icon = static_cast<HICON>(LoadImageW(nullptr, iconPath.c_str(), IMAGE_ICON, 0, 0, LR_LOADFROMFILE | LR_DEFAULTSIZE));
     g_owns_app_icon = g_app_icon != nullptr;

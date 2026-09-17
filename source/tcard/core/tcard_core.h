@@ -1,5 +1,6 @@
 #pragma once
 
+#include <memory>
 #include <string>
 #include <vector>
 #include <windows.h>
@@ -19,6 +20,19 @@ struct CardRecord {
     int windowHeightDip = 0;
     FILETIME updatedUtc{};
     FILETIME createdUtc{};
+};
+
+// A thread-bound update scope. Values are sampled lazily once per scope.
+// All renders in the scope use its time; destroy it before the next update.
+class RenderBatch {
+public:
+    explicit RenderBatch(const SYSTEMTIME& localTime);
+    ~RenderBatch();
+    RenderBatch(const RenderBatch&) = delete;
+    RenderBatch& operator=(const RenderBatch&) = delete;
+private:
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
 };
 
 std::wstring Render(const std::wstring& source, const SYSTEMTIME& localTime);

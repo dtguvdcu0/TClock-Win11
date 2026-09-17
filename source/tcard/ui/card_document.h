@@ -338,7 +338,10 @@ inline void render(HWND control, const std::wstring& source, bool enabled, float
     CHARRANGE selection{}; POINT scroll{};
     SendMessageW(control, EM_EXGETSEL, 0, reinterpret_cast<LPARAM>(&selection)); SendMessageW(control, EM_GETSCROLLPOS, 0, reinterpret_cast<LPARAM>(&scroll));
     const bool readonly = (GetWindowLongPtrW(control, GWL_STYLE) & ES_READONLY) != 0;
-    SendMessageW(control, EM_SETREADONLY, FALSE, 0); SendMessageW(control, WM_SETREDRAW, FALSE, 0);
+    // WM_SETREDRAW(TRUE) would reveal a reader hidden during source editing.
+    const bool redraw = (GetWindowLongPtrW(control, GWL_STYLE) & WS_VISIBLE) != 0;
+    SendMessageW(control, EM_SETREADONLY, FALSE, 0);
+    if (redraw) SendMessageW(control, WM_SETREDRAW, FALSE, 0);
     if (enabled) {
         const auto doc = document(source, size, family, width, paper);
         state->anchors = doc.anchors;
@@ -387,7 +390,8 @@ inline void render(HWND control, const std::wstring& source, bool enabled, float
     SendMessageW(control, EM_SETEVENTMASK, 0, SendMessageW(control, EM_GETEVENTMASK, 0, 0) | ENM_LINK);
     SendMessageW(control, EM_SETREADONLY, readonly, 0); SendMessageW(control, EM_EXSETSEL, 0, reinterpret_cast<LPARAM>(&selection));
     SendMessageW(control, EM_SETSCROLLPOS, 0, reinterpret_cast<LPARAM>(&scroll)); SendMessageW(control, EM_EMPTYUNDOBUFFER, 0, 0);
-    SendMessageW(control, WM_SETREDRAW, TRUE, 0); InvalidateRect(control, nullptr, TRUE); state->valid = true; state->busy = false;
+    if (redraw) { SendMessageW(control, WM_SETREDRAW, TRUE, 0); InvalidateRect(control, nullptr, TRUE); }
+    state->valid = true; state->busy = false;
 }
 inline bool matches(HWND control, const std::wstring& source)
 {

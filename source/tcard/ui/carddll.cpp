@@ -36,6 +36,7 @@ struct TCARD_WUI_HOST__ {
     bool topmost = false;
     bool editing = false;
     bool editDirty = false;
+    COLORREF editColor = 0;
     HWND titleEditor = nullptr;
     HWND sourceEditor = nullptr;
     HWND saveButton = nullptr;
@@ -82,6 +83,16 @@ constexpr int kEditFontFamily = 5007;
 constexpr int kEditFontSize = 5008;
 constexpr int kEditMarkdown = 5010;
 constexpr int kReadBody = 5009;
+constexpr int kColorFirst = 5030;
+struct CardColorChoice { COLORREF color; const wchar_t* key; const wchar_t* name; };
+constexpr CardColorChoice kCardColors[] = {
+    {RGB(255,245,168), L"color.yellow", L"Yellow"},
+    {RGB(217,242,217), L"color.green", L"Green"},
+    {RGB(205,235,255), L"color.blue", L"Blue"},
+    {RGB(244,213,232), L"color.pink", L"Pink"},
+    {RGB(233,221,247), L"color.lavender", L"Lavender"},
+    {RGB(243,241,235), L"color.neutral", L"Neutral"}
+};
 
 static D2D1_COLOR_F card_color(COLORREF color)
 {
@@ -261,9 +272,7 @@ static void end_edit(TCARD_WUI_HOST host, bool save)
         host->sourceText = read_window_text(host->sourceEditor);
         host->textText = host->sourceText;
         host->markdown = SendMessageW(GetDlgItem(host->window, kEditMarkdown), CB_GETCURSEL, 0, 0) == 1;
-        HWND colors = GetDlgItem(host->window, 5025);
-        const LRESULT colorIndex = SendMessageW(colors, CB_GETCURSEL, 0, 0);
-        if (colorIndex != CB_ERR) host->state.backColor = static_cast<COLORREF>(SendMessageW(colors, CB_GETITEMDATA, colorIndex, 0));
+        host->state.backColor = host->editColor;
         update_read_brush(host);
         const std::wstring family = read_window_text(host->fontFamilyEditor);
         host->fontFamilyText = family.empty() ? L"Segoe UI" : family;
@@ -292,7 +301,8 @@ static void end_edit(TCARD_WUI_HOST host, bool save)
     DestroyWindow(host->fontFamilyEditor);
     DestroyWindow(host->fontSizeEditor);
     DestroyWindow(GetDlgItem(host->window, kEditMarkdown));
-    for (int id : {5021, 5022, 5023, 5024, 5025, 5026}) DestroyWindow(GetDlgItem(host->window, id));
+    for (int id : {5021, 5022, 5023, 5024, 5026}) DestroyWindow(GetDlgItem(host->window, id));
+    for (int i = 0; i < static_cast<int>(ARRAYSIZE(kCardColors)); ++i) DestroyWindow(GetDlgItem(host->window, kColorFirst + i));
     if (host->editorBrush) { DeleteObject(host->editorBrush); host->editorBrush = nullptr; }
     host->titleEditor = nullptr;
     host->sourceEditor = nullptr;
@@ -323,6 +333,7 @@ static void begin_edit(TCARD_WUI_HOST host)
     const int height = max(140L, client.bottom - client.top);
     host->editing = true;
     host->editDirty = false;
+    host->editColor = host->state.backColor;
     if (host->readEditor) ShowWindow(host->readEditor, SW_HIDE);
     host->editorBrush = CreateSolidBrush(host->state.backColor);
     host->appearanceOpen = false;
@@ -336,16 +347,14 @@ static void begin_edit(TCARD_WUI_HOST host)
     tcard_ui::create_label(host->window, 5022, tcard_text(L"label.size", L"Size"), host->uiFont);
     tcard_ui::create_label(host->window, 5023, tcard_text(L"label.text_format", L"Text format"), host->uiFont);
     tcard_ui::create_label(host->window, 5026, tcard_text(L"label.paper_color", L"Paper color"), host->uiFont);
-    HWND colors = CreateWindowExW(0, L"COMBOBOX", nullptr, WS_CHILD | CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP,
-        0, 0, 160, 240, host->window, reinterpret_cast<HMENU>(5025), g_instance, nullptr);
-    SendMessageW(colors, WM_SETFONT, reinterpret_cast<WPARAM>(host->uiFont), TRUE);
-    const std::wstring names[] = {tcard_lang::text(L"color.current", L"Current color"), tcard_lang::text(L"color.yellow", L"Yellow"), tcard_lang::text(L"color.green", L"Green"), tcard_lang::text(L"color.blue", L"Blue"), tcard_lang::text(L"color.pink", L"Pink"), tcard_lang::text(L"color.lavender", L"Lavender"), tcard_lang::text(L"color.neutral", L"Neutral")};
-    const COLORREF values[] = {host->state.backColor, RGB(255,245,168), RGB(217,242,217), RGB(205,235,255), RGB(244,213,232), RGB(233,221,247), RGB(243,241,235)};
-    for (int i = 0; i < 7; ++i) {
-        SendMessageW(colors, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(names[i].c_str()));
-        SendMessageW(colors, CB_SETITEMDATA, i, values[i]);
+    for (int i = 0; i < static_cast<int>(ARRAYSIZE(kCardColors)); ++i) {
+        const auto& choice = kCardColors[i];
+        HWND swatch = CreateWindowExW(0, L"BUTTON", tcard_text(choice.key, choice.name),
+            WS_CHILD | WS_TABSTOP | BS_OWNERDRAW, 0, 0, 26, 26, host->window,
+            reinterpret_cast<HMENU>(static_cast<INT_PTR>(kColorFirst + i)), g_instance, nullptr);
+        SendMessageW(swatch, WM_SETFONT, reinterpret_cast<WPARAM>(host->uiFont), FALSE);
+        SetWindowSubclass(swatch, tcard_ui::button_proc, 1, 0);
     }
-    SendMessageW(colors, CB_SETCURSEL, 0, 0);
     ShowWindow(tcard_ui::create_label(host->window, 5024, L"", host->uiFont), SW_SHOW);
     host->titleEditor = CreateWindowExW(0, L"EDIT", host->titleText.c_str(), WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL | WS_TABSTOP, tcard_ui::kPaperInsetDip, tcard_ui::kPaperHeaderDip + 8, width - tcard_ui::kPaperInsetDip * 2, 28, host->window, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kEditTitle)), g_instance, nullptr);
     host->sourceEditor = tcard_edit::create(host->window, kEditSource, kEditSave, host->sourceText.c_str(), tcard_ui::kPaperInsetDip, tcard_ui::kPaperHeaderDip + 40, width - tcard_ui::kPaperInsetDip * 2, max(80, height - tcard_ui::kPaperHeaderDip - tcard_ui::kEditorCommandDip - 40), g_instance);
@@ -429,6 +438,11 @@ static LRESULT CALLBACK card_wnd_proc(HWND hwnd, UINT message, WPARAM wParam, LP
     case WM_DRAWITEM:
         {
             auto* item = reinterpret_cast<DRAWITEMSTRUCT*>(lParam);
+            if (item->CtlID >= kColorFirst && item->CtlID < kColorFirst + ARRAYSIZE(kCardColors)) {
+                const COLORREF color = kCardColors[item->CtlID - kColorFirst].color;
+                tcard_ui::paint_swatch(*item, color, host->editColor == color, RGB(36,36,36));
+                return TRUE;
+            }
             if (item->CtlID != kEditClose && item->CtlID != kEditSave && item->CtlID != kEditCancel && item->CtlID != kEditAppearance) break;
             if (item->CtlID != kEditClose) {
                 tcard_ui::paint_button(*item, host->state.backColor, host->state.textColor, host->buttonFont ? host->buttonFont : host->uiFont, item->CtlID == kEditSave);
@@ -467,7 +481,9 @@ static LRESULT CALLBACK card_wnd_proc(HWND hwnd, UINT message, WPARAM wParam, LP
             ShowWindow(host->fontFamilyEditor, host->appearanceOpen ? SW_SHOW : SW_HIDE);
             ShowWindow(host->fontSizeEditor, host->appearanceOpen ? SW_SHOW : SW_HIDE);
             ShowWindow(GetDlgItem(hwnd, kEditMarkdown), host->appearanceOpen ? SW_SHOW : SW_HIDE);
-            for (int id : {5021, 5022, 5023, 5025, 5026}) ShowWindow(GetDlgItem(hwnd, id), host->appearanceOpen ? SW_SHOW : SW_HIDE);
+            for (int id : {5021, 5022, 5023, 5026}) ShowWindow(GetDlgItem(hwnd, id), host->appearanceOpen ? SW_SHOW : SW_HIDE);
+            for (int i = 0; i < static_cast<int>(ARRAYSIZE(kCardColors)); ++i)
+                ShowWindow(GetDlgItem(hwnd, kColorFirst + i), host->appearanceOpen ? SW_SHOW : SW_HIDE);
             ShowWindow(host->titleEditor, host->appearanceOpen ? SW_HIDE : SW_SHOW);
             ShowWindow(host->sourceEditor, host->appearanceOpen ? SW_HIDE : SW_SHOW);
             SetWindowTextW(host->appearanceButton, host->appearanceOpen ? tcard_text(L"button.back_to_note", L"Back to note") : tcard_text(L"button.appearance", L"Appearance"));
@@ -483,7 +499,12 @@ static LRESULT CALLBACK card_wnd_proc(HWND hwnd, UINT message, WPARAM wParam, LP
         }
         else if (LOWORD(wParam) == kEditMarkdown && HIWORD(wParam) == CBN_SELCHANGE) host->editDirty = true;
         else if (LOWORD(wParam) == kEditFontFamily && HIWORD(wParam) == CBN_SELCHANGE) host->editDirty = true;
-        else if (LOWORD(wParam) == 5025 && HIWORD(wParam) == CBN_SELCHANGE) host->editDirty = true;
+        else if (host->editing && LOWORD(wParam) >= kColorFirst && LOWORD(wParam) < kColorFirst + ARRAYSIZE(kCardColors) && HIWORD(wParam) == BN_CLICKED) {
+            host->editColor = kCardColors[LOWORD(wParam) - kColorFirst].color;
+            host->editDirty = true;
+            for (int i = 0; i < static_cast<int>(ARRAYSIZE(kCardColors)); ++i)
+                InvalidateRect(GetDlgItem(hwnd, kColorFirst + i), nullptr, FALSE);
+        }
         return 0;
     case WM_CTLCOLORSTATIC:
     case WM_CTLCOLOREDIT:
@@ -504,7 +525,7 @@ static LRESULT CALLBACK card_wnd_proc(HWND hwnd, UINT message, WPARAM wParam, LP
         }
     case WM_CLOSE:
         if (host->editing && host->editDirty) {
-            const int choice = MessageBoxW(hwnd, tcard_text(L"message.save_changes", L"Save changes to this card?"), tcard_text(L"app.title", L"TCard"), MB_ICONQUESTION | MB_YESNOCANCEL | MB_DEFBUTTON3);
+            const int choice = MessageBoxW(hwnd, tcard_text(L"message.save_changes", L"Save changes to this card?"), tcard_lang::text(L"app.title", L"TCard").c_str(), MB_ICONQUESTION | MB_YESNOCANCEL | MB_DEFBUTTON3);
             if (choice == IDCANCEL) return 0;
             if (choice == IDYES) {
                 end_edit(host, true);
@@ -571,7 +592,10 @@ static LRESULT CALLBACK card_wnd_proc(HWND hwnd, UINT message, WPARAM wParam, LP
                 tcard_ui::layout_setting(GetDlgItem(hwnd, 5021), host->fontFamilyEditor, 16, 60, settingsWidth, true);
                 tcard_ui::layout_setting(GetDlgItem(hwnd, 5022), host->fontSizeEditor, 16, 100, 176, false);
                 tcard_ui::layout_setting(GetDlgItem(hwnd, 5023), GetDlgItem(hwnd, kEditMarkdown), 16, 140, settingsWidth, true);
-                tcard_ui::layout_setting(GetDlgItem(hwnd, 5026), GetDlgItem(hwnd, 5025), 16, 180, settingsWidth, true);
+                // Match the list appearance palette: 26px swatches on a 30px pitch.
+                MoveWindow(GetDlgItem(hwnd, 5026), 16, 183, 84, 22, TRUE);
+                for (int i = 0; i < static_cast<int>(ARRAYSIZE(kCardColors)); ++i)
+                    MoveWindow(GetDlgItem(hwnd, kColorFirst + i), 108 + i * 30, 180, 26, 26, TRUE);
                 MoveWindow(GetDlgItem(hwnd, 5024), 16, height - 76, width - 32, 28, TRUE);
                 MoveWindow(host->sourceEditor, tcard_ui::kPaperInsetDip, sourceTop, max(1, width - 32), max(1, height - sourceTop - 84), TRUE);
                 MoveWindow(host->cancelButton, max(16, width - 184), max(60, height - 40), 80, 28, TRUE);

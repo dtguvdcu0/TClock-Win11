@@ -35,15 +35,16 @@ https://web.archive.org/web/20260000000000*/http://tclock2ch.no.land.to/
 Program Files等のWindows管理下のフォルダではなく、個人フォルダに置いて利用してください。
 (Program Filesの中でも動くかもしれませんが、確認していません。)
 
-・VC++ラインタイムパッケージについて
-本ソフトウェアは、VC++のランタイムパッケージを必要とします。tclock-win11.exeをダブルクリックして
-『VCRUNTIME140.dllが見つからないため、コードの実行を続行できません。…』
-『MSVCP140.dllが見つからないため、コードの実行を続行できません。…』
-というメッセージが出た場合は、Microsoftが配布している、
-Visual Studio 2015 Visual C++ 再頒布可能パッケージ
-https://www.microsoft.com/ja-jp/download/details.aspx?id=48145
-をインストールしてください(64bit版ならvc_redist.x64.exe)。
-(2019/4月現在のURL)
+・Visual C++ ランタイムパッケージについて
+本ソフトウェア（64bit版）の実行には、最新の Microsoft Visual C++ v14 再頒布可能パッケージ（x64）が必要です。
+TClock-Win11.exe の起動時に、VCRUNTIME140.dll、VCRUNTIME140_1.dll、MSVCP140.dll などが
+見つからないというメッセージが出る場合は、次の Microsoft 公式リンクから
+vc_redist.x64.exe をダウンロードしてインストールしてください。
+https://aka.ms/vc14/vc_redist.x64.exe
+
+古い Visual C++ 再頒布可能パッケージが入っている場合も、上記の最新版へ更新してください。
+配布元の案内：
+https://learn.microsoft.com/ja-jp/cpp/windows/latest-supported-vc-redist?view=msvc-170
 
 ********************
 アンインストール方法

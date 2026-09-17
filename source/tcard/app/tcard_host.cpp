@@ -103,6 +103,7 @@ std::wstring g_file_path;
 COLORREF g_preview_color = RGB(255, 245, 168);
 HBRUSH g_preview_brush = nullptr;
 HFONT g_ui_font = nullptr;
+HFONT g_button_font = nullptr;
 HFONT g_heading_font = nullptr;
 HFONT g_detail_title_font = nullptr;
 HFONT g_tile_title_font = nullptr;
@@ -1185,6 +1186,8 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
         tcard_lang::initialize();
         g_ui_font = CreateFontW(-15, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
             OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
+        g_button_font = CreateFontW(tcard_lang::g_code == L"ja" ? -12 : -13, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+            OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
         g_heading_font = CreateFontW(-18, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
             OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
         g_tile_title_font = CreateFontW(-14, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
@@ -1366,7 +1369,7 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
                 return TRUE;
             }
             const COLORREF paper = item.CtlID == kNew || item.CtlID == kDelete || item.CtlID == kClearSearch || item.CtlID == kSortField ? RGB(246, 245, 242) : g_preview_color;
-            tcard_ui::paint_button(item, paper, tile_ink(paper), g_tile_excerpt_font ? g_tile_excerpt_font : g_ui_font, item.CtlID == kSave || item.CtlID == kNew);
+            tcard_ui::paint_button(item, paper, tile_ink(paper), g_button_font ? g_button_font : g_ui_font, item.CtlID == kSave || item.CtlID == kNew);
             return TRUE;
         }
         if (reinterpret_cast<DRAWITEMSTRUCT*>(lParam)->CtlID == kList) {
@@ -1411,9 +1414,10 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
             SendMessageW(hwnd, WM_SIZE, SIZE_RESTORED, MAKELPARAM(client.right, client.bottom));
         }
         else if (LOWORD(wParam) == kNew) {
+            if (g_editing) return 0;
             tcard::CardRecord card;
             card.id = std::to_wstring(GetTickCount64());
-            card.title = L"";
+            card.title = L"New";
             card.source = L"";
             card.color = L"#FFF5A8";
             g_cards.insert(g_cards.begin(), card);
@@ -1424,9 +1428,14 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
             }
             SetWindowTextW(g_search, L"");
             fill_list();
-            SendMessageW(g_list, LB_SETCURSEL, 0, 0);
+            for (size_t row = 0; row < g_visible_indices.size(); ++row) {
+                if (g_cards[g_visible_indices[row]].id == card.id) {
+                    SendMessageW(g_list, LB_SETCURSEL, row, 0);
+                    break;
+                }
+            }
             refresh_preview();
-            set_editing(true);
+            SetFocus(g_list);
         }
         else if (HIWORD(wParam) == BN_CLICKED) {
             if (const auto* choice = color_choice(LOWORD(wParam))) choose_color(choice->color);
@@ -1460,6 +1469,7 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
         if (g_heading_font) DeleteObject(g_heading_font);
         if (g_tile_title_font) DeleteObject(g_tile_title_font);
         if (g_tile_excerpt_font) DeleteObject(g_tile_excerpt_font);
+        if (g_button_font) DeleteObject(g_button_font);
         if (g_ui_font) DeleteObject(g_ui_font);
         PostQuitMessage(0);
         return 0;

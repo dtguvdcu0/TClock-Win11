@@ -1,5 +1,13 @@
 # TCycle Configuration
 
+## Safe settings persistence
+
+The settings UI commits all changed configuration fields in one batch. Unknown keys and comments are retained. The writer validates input, writes a same-directory temporary file, flushes it, and replaces the destination only after writing succeeds. `TCycle.ini.bak` holds the immediately previous complete configuration; unchanged saves do not rotate that backup. Restore a backup only with TCycle and its settings window closed, and preserve the current file before manual recovery.
+
+Missing files can be initialized with defaults. Locked/unreadable files, invalid text encoding and directories are errors, not empty configurations. Failed load keeps the caller's previous configuration; failed saves are reported by the existing settings status/error path. UTF-8 (with or without BOM) and complete UTF-16 LE/BE inputs remain supported; successful changed saves use UTF-8 with BOM and CRLF. Temporary-file creation failure, including unsupported long-directory paths, fails without truncating the existing INI.
+
+Runtime-state persistence (`StateEnabled`) is separate and unchanged. This is per-save protection, not multi-editor merge support; avoid simultaneous edits in separate processes. Local regression fixtures are in `source/scripts/tcycle_ini_checks.cpp`.
+
 ## Primary Files
 - Runtime INI: `TCycle.ini`
 - Optional state INI: `tcycle.state.ini`

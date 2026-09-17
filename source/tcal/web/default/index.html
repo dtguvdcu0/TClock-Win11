@@ -15,19 +15,24 @@
         <button id="nextMonth" type="button" aria-label="Next month">&gt;</button>
       </div>
       <div class="topbarActions">
-        <button id="settingsButton" type="button">Settings</button>
+        <button id="settingsButton" type="button" aria-label="Settings" title="Settings"><span class="settingsText">Settings</span><span class="settingsIcon" aria-hidden="true">&#9881;</span></button>
         <button id="closeButton" class="windowCloseButton" type="button" aria-label="Close window">&times;</button>
       </div>
     </header>
 
-    <section class="gridWrap">
+    <nav class="compactPanels" aria-label="View">
+      <button id="showCalendar" type="button" aria-pressed="true" aria-controls="calendarPanel">Calendar</button>
+      <button id="showTasks" type="button" aria-pressed="false" aria-controls="tasksPanel">Tasks</button>
+    </nav>
+
+    <section id="calendarPanel" class="gridWrap">
       <div id="monthGrid" class="monthGrid"></div>
       <div id="calendarHeightSplitter" class="calendarHeightSplitter" role="separator" aria-orientation="horizontal" aria-label="Resize calendar height"></div>
     </section>
 
     <div id="layoutSplitter" class="layoutSplitter" role="separator" aria-orientation="vertical" aria-label="Resize panels"></div>
 
-    <section class="dayPanel">
+    <section id="tasksPanel" class="dayPanel" aria-labelledby="dayTitle">
       <div class="viewControls" id="viewControls">
         <label>
           <span>Mode</span>
@@ -66,7 +71,7 @@
       <h2 id="dayTitle">Tasks</h2>
 
       <form id="taskForm">
-        <input id="taskTitle" type="text" placeholder="Task title" maxlength="120" />
+        <input id="taskTitle" type="text" placeholder="Task title" aria-label="Task title" maxlength="120" />
         <button type="submit">Add</button>
       </form>
 

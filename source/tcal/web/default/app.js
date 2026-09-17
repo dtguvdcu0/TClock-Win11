@@ -21,6 +21,22 @@
   const timelineHourStartInput = document.getElementById("timelineHourStartInput");
   const settingsButton = document.getElementById("settingsButton");
   const closeButton = document.getElementById("closeButton");
+  const showCalendar = document.getElementById("showCalendar");
+  const showTasks = document.getElementById("showTasks");
+  const compactMedia = window.matchMedia("(max-width: 900px)");
+  let compactPanel = "calendar";
+
+  function syncCompactPanel() {
+    const tasks = currentUiShowTaskPanel && compactPanel === "tasks";
+    document.body.classList.toggle("compactTasks", tasks);
+    if (showCalendar) showCalendar.setAttribute("aria-pressed", String(!tasks));
+    if (showTasks) showTasks.setAttribute("aria-pressed", String(tasks));
+    if (compactMedia.matches) {
+      const hiddenPanel = document.getElementById(tasks ? "calendarPanel" : "tasksPanel");
+      if (hiddenPanel && hiddenPanel.contains(document.activeElement))
+        (tasks ? showTasks : showCalendar)?.focus();
+    }
+  }
 
   let cursor = new Date();
   let selectedDate = new Date();
@@ -253,6 +269,7 @@
   function applyTaskPanelVisibility() {
     if (!appRoot) return;
     document.body.classList.toggle("hideTaskPanel", !currentUiShowTaskPanel);
+    syncCompactPanel();
     if (currentUiShowTaskPanel) {
       applyPanelRightWidth(readSavedPanelRightWidth() ?? 420, false);
       syncLayoutSplitterHeight();
@@ -2251,6 +2268,9 @@
     window.close();
   });
 
+  showCalendar?.addEventListener("click", () => { compactPanel = "calendar"; syncCompactPanel(); });
+  showTasks?.addEventListener("click", () => { compactPanel = "tasks"; syncCompactPanel(); });
+  compactMedia.addEventListener("change", syncCompactPanel);
   applyUiStyleConfig();
   applyTaskPanelVisibility();
   setViewMode("list");

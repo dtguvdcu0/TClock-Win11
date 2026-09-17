@@ -993,11 +993,17 @@ taskList,
   }
 }
 
+.compactPanels,
+.settingsIcon {
+  display: none;
+}
+
 @media (max-width: 900px) {
   .app {
     grid-template-columns: 1fr;
     grid-template-areas:
       "topbar"
+      "switcher"
       "grid"
       "panel";
   }
@@ -1006,27 +1012,54 @@ taskList,
     display: none;
   }
 
-  .topbar {
-    position: relative;
-    grid-template-columns: 1fr;
+  .topbar,
+  body.hideTaskPanel .topbar {
+    grid-template-columns: minmax(0, 1fr) auto;
     gap: 8px;
-    padding-right: 44px;
   }
 
-  .calendarTopbar,
-  .topbarActions {
+  .calendarTopbar {
     grid-column: 1;
+    grid-template-columns: 32px minmax(0, 1fr) 32px;
+    gap: 4px;
   }
 
-  .topbarActions {
-    justify-content: flex-start;
+  #monthTitle { font-size: clamp(18px, 4vw, 26px); }
+  .topbarActions,
+  body.hideTaskPanel .topbarActions {
+    grid-column: 2;
+    justify-content: flex-end;
+    gap: 4px;
   }
 
   .windowCloseButton {
-    position: absolute;
-    top: 0;
-    right: 0;
+    position: static;
   }
+  .compactPanels {
+    grid-area: switcher;
+    display: flex;
+    gap: 8px;
+  }
+  .compactPanels button { flex: 1; }
+  .compactPanels button[aria-pressed="true"] {
+    color: #fff;
+    background: #0969da;
+    border-color: #0969da;
+  }
+  body:not(.compactTasks) .dayPanel,
+  body.compactTasks .gridWrap,
+  body.hideTaskPanel .compactPanels {
+    display: none;
+  }
+  body.hideTaskPanel .app {
+    grid-template-areas: "topbar" "grid";
+  }
+}
+
+@media (max-width: 480px) {
+  .settingsText { display: none; }
+  .settingsIcon { display: inline; }
+  #settingsButton { min-width: 36px; padding-inline: 6px; }
 }
 
 

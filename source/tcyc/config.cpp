@@ -4,6 +4,7 @@
 #include <windows.h>
 #include <shlwapi.h>
 #include <time.h>
+#include <stdexcept>
 
 #pragma comment(lib, "Shlwapi.lib")
 
@@ -28,7 +29,7 @@ std::wstring ToLower(const std::wstring& s) {
 std::wstring ReadIniString(const std::wstring& iniPath, const wchar_t* section, const wchar_t* key, const wchar_t* defval) {
     std::wstring out;
     if (ReadIniUtf8Value(iniPath, section ? section : L"", key ? key : L"", defval ? defval : L"", out)) return out;
-    return defval ? std::wstring(defval) : L"";
+    throw std::runtime_error("INI read failed");
 }
 
 int ReadIniInt(const std::wstring& iniPath, const wchar_t* section, const wchar_t* key, int defval) {
@@ -280,23 +281,23 @@ std::wstring ResolvePathFromExe(const std::wstring& exeDir, const std::wstring& 
 bool EnsureDefaultIni(const std::wstring& iniPath) {
     DWORD attrs = GetFileAttributesW(iniPath.c_str());
     if (attrs != INVALID_FILE_ATTRIBUTES && !(attrs & FILE_ATTRIBUTE_DIRECTORY)) {
-        return true;
+        std::wstring probe;
+        return ReadIniUtf8Value(iniPath, L"TCycle", L"PollSec", L"1", probe);
     }
-    if (!WriteIniUtf8Value(iniPath, L"TCycle", L"PollSec", L"1")) return false;
-    if (!WriteIniUtf8Value(iniPath, L"TCycle", L"GraceSec", L"60")) return false;
-    if (!WriteIniUtf8Value(iniPath, L"TCycle", L"LogLevel", L"0")) return false;
-    if (!WriteIniUtf8Value(iniPath, L"TCycle", L"LogFile", L"tcycle.log")) return false;
-    if (!WriteIniUtf8Value(iniPath, L"TCycle", L"StateEnabled", L"0")) return false;
-    if (!WriteIniUtf8Value(iniPath, L"TCycle", L"StateFile", L"tcycle.state.ini")) return false;
-    if (!WriteIniUtf8Value(iniPath, L"Debug", L"ForceCmdlineReadFail", L"0")) return false;
-    if (!WriteIniUtf8Value(iniPath, L"Integration", L"TClockIniPath", L"..\\tclock-win11.ini")) return false;
-    return true;
+    if (attrs != INVALID_FILE_ATTRIBUTES || GetLastError() != ERROR_FILE_NOT_FOUND) return false;
+    return WriteIniUtf8Values(iniPath, {
+        {L"TCycle", L"PollSec", L"1"}, {L"TCycle", L"GraceSec", L"60"},
+        {L"TCycle", L"LogLevel", L"0"}, {L"TCycle", L"LogFile", L"tcycle.log"},
+        {L"TCycle", L"StateEnabled", L"0"}, {L"TCycle", L"StateFile", L"tcycle.state.ini"},
+        {L"Debug", L"ForceCmdlineReadFail", L"0"},
+        {L"Integration", L"TClockIniPath", L"..\\tclock-win11.ini"}});
 }
 
 bool LoadRuntimeConfig(const std::wstring& iniPath, const std::wstring& exeDir, RuntimeConfig& outConfig, std::wstring& outError) {
     outError.clear();
+    try {
     if (!EnsureDefaultIni(iniPath)) {
-        outError = L"Failed to create default ini: " + iniPath;
+        outError = L"Failed to read or create ini: " + iniPath;
         return false;
     }
 
@@ -329,6 +330,10 @@ bool LoadRuntimeConfig(const std::wstring& iniPath, const std::wstring& exeDir, 
 
     outConfig = cfg;
     return true;
+    } catch (const std::exception&) {
+        outError = L"Failed to read ini; previous configuration was kept: " + iniPath;
+        return false;
+    }
 }
 
 bool IsTClockGateDisabled(const RuntimeConfig& config) {

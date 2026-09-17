@@ -907,12 +907,6 @@ void SetHotkeyCombosFromString(WindowState* st, const std::wstring& hotkey) {
     }
 }
 
-bool WriteIniInt(const std::wstring& iniPath, const wchar_t* sec, const wchar_t* key, int v) {
-    wchar_t buf[64] = {0};
-    swprintf_s(buf, L"%d", v);
-    return tcyc::WriteIniUtf8Value(iniPath, sec ? sec : L"", key ? key : L"", buf);
-}
-
 long long UnixNowSec() {
     FILETIME ft{};
     GetSystemTimeAsFileTime(&ft);
@@ -1160,26 +1154,17 @@ bool SaveAllToIni(WindowState* st, std::wstring& err) {
         }
     }
 
-    if (!WriteIniInt(iniPath, L"TCycle", L"PollSec", st->config.pollSec) ||
-        !WriteIniInt(iniPath, L"TCycle", L"GraceSec", st->config.graceSec) ||
-        !tcyc::WriteIniUtf8Value(iniPath, L"TCycle", L"Language", Utf8ToWide(st->languageCode))) {
-        err = Tr(st, L"err_save_global", L"Failed to save global settings to ini.");
-        return false;
-    }
-
-    auto setTaskSaveError = [&](const wchar_t* sec, const wchar_t* key) {
-        std::wstring base = Tr(st, L"err_save_task", L"Failed to save task settings to ini.");
-        err = base + L" [" + sec + L":" + key + L"]";
-    };
+    std::vector<tcyc::IniUpdate> updates{
+        {L"TCycle", L"PollSec", std::to_wstring(st->config.pollSec)},
+        {L"TCycle", L"GraceSec", std::to_wstring(st->config.graceSec)},
+        {L"TCycle", L"Language", Utf8ToWide(st->languageCode)}};
     auto writeTaskInt = [&](const wchar_t* sec, const wchar_t* key, int value) -> bool {
-        if (WriteIniInt(iniPath, sec, key, value)) return true;
-        setTaskSaveError(sec, key);
-        return false;
+        updates.push_back({sec, key, std::to_wstring(value)});
+        return true;
     };
     auto writeTaskStr = [&](const wchar_t* sec, const wchar_t* key, const std::wstring& value) -> bool {
-        if (tcyc::WriteIniUtf8Value(iniPath, sec ? sec : L"", key ? key : L"", value)) return true;
-        setTaskSaveError(sec, key);
-        return false;
+        updates.push_back({sec, key, value});
+        return true;
     };
 
     for (const auto& t : st->config.tasks) {
@@ -1209,6 +1194,10 @@ bool SaveAllToIni(WindowState* st, std::wstring& err) {
         if (!writeTaskInt(sec, L"TimeEnabled", t.timeEnabled ? 1 : 0)) return false;
         if (!writeTaskStr(sec, L"TimeOfDay", TimeOfDayToString(t.timeOfDaySec))) return false;
         if (!writeTaskStr(sec, L"Hotkey", t.hotkey)) return false;
+    }
+    if (!tcyc::WriteIniUtf8Values(iniPath, updates)) {
+        err = Tr(st, L"err_save_global", L"Failed to save global settings to ini.");
+        return false;
     }
     st->actionPathDirty = false;
     st->actionArgsDirty = false;

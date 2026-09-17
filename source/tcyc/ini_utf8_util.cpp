@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <string>
 #include <vector>
+#include <mutex>
 
 namespace tcyc {
 namespace {
@@ -26,26 +27,28 @@ std::wstring ToLower(std::wstring s) {
 
 bool ReadAllBytes(const std::wstring& path, std::vector<unsigned char>& out) {
     out.clear();
-    HANDLE h = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    HANDLE h = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (h == INVALID_HANDLE_VALUE) return false;
     LARGE_INTEGER li{};
     if (!GetFileSizeEx(h, &li) || li.QuadPart < 0 || li.QuadPart > 64 * 1024 * 1024) {
         CloseHandle(h);
+        SetLastError(ERROR_INVALID_DATA);
         return false;
     }
     const DWORD size = static_cast<DWORD>(li.QuadPart);
     out.resize(size);
     DWORD rd = 0;
     const BOOL ok = (size == 0) ? TRUE : ReadFile(h, out.data(), size, &rd, nullptr);
+    const DWORD error = ok ? ERROR_HANDLE_EOF : GetLastError();
     CloseHandle(h);
-    if (!ok) return false;
-    out.resize(rd);
+    if (!ok || rd != size) { SetLastError(error); return false; }
     return true;
 }
 
 bool BytesToWideBestEffort(const std::vector<unsigned char>& bytes, std::wstring& out) {
     out.clear();
     if (bytes.size() >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE) {
+        if (bytes.size() % 2) return false;
         const size_t chars = (bytes.size() - 2) / 2;
         out.resize(chars);
         for (size_t i = 0; i < chars; ++i) {
@@ -54,6 +57,7 @@ bool BytesToWideBestEffort(const std::vector<unsigned char>& bytes, std::wstring
         return true;
     }
     if (bytes.size() >= 2 && bytes[0] == 0xFE && bytes[1] == 0xFF) {
+        if (bytes.size() % 2) return false;
         const size_t chars = (bytes.size() - 2) / 2;
         out.resize(chars);
         for (size_t i = 0; i < chars; ++i) {
@@ -63,9 +67,9 @@ bool BytesToWideBestEffort(const std::vector<unsigned char>& bytes, std::wstring
     }
 
     const int offset = (bytes.size() >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF) ? 3 : 0;
-    const char* p = reinterpret_cast<const char*>(bytes.data() + offset);
     const int n = static_cast<int>(bytes.size() - offset);
     if (n <= 0) return true;
+    const char* p = reinterpret_cast<const char*>(bytes.data() + offset);
 
     int wlen = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, p, n, nullptr, 0);
     if (wlen > 0) {
@@ -79,10 +83,10 @@ bool BytesToWideBestEffort(const std::vector<unsigned char>& bytes, std::wstring
 bool WideToUtf8(const std::wstring& s, std::string& out) {
     out.clear();
     if (s.empty()) return true;
-    const int n = WideCharToMultiByte(CP_UTF8, 0, s.c_str(), static_cast<int>(s.size()), nullptr, 0, nullptr, nullptr);
+    const int n = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, s.c_str(), static_cast<int>(s.size()), nullptr, 0, nullptr, nullptr);
     if (n <= 0) return false;
     out.resize(static_cast<size_t>(n));
-    return WideCharToMultiByte(CP_UTF8, 0, s.c_str(), static_cast<int>(s.size()), out.data(), n, nullptr, nullptr) > 0;
+    return WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, s.c_str(), static_cast<int>(s.size()), out.data(), n, nullptr, nullptr) > 0;
 }
 
 void SplitLines(const std::wstring& text, std::vector<std::wstring>& lines) {
@@ -121,10 +125,11 @@ bool LoadIniLines(const std::wstring& iniPath, std::vector<std::wstring>& lines)
     std::vector<unsigned char> bytes;
     if (!ReadAllBytes(iniPath, bytes)) {
         lines.clear();
-        return true;
+        return GetLastError() == ERROR_FILE_NOT_FOUND;
     }
     std::wstring text;
     if (!BytesToWideBestEffort(bytes, text)) return false;
+    if (text.find(L'\0') != std::wstring::npos) return false;
     SplitLines(text, lines);
     return true;
 }
@@ -138,23 +143,45 @@ bool SaveIniLinesUtf8(const std::wstring& iniPath, const std::vector<std::wstrin
     std::string utf8;
     if (!WideToUtf8(joined, utf8)) return false;
 
-    HANDLE h = CreateFileW(iniPath.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (h == INVALID_HANDLE_VALUE) return false;
+    wchar_t full[32768]{};
+    const DWORD length = GetFullPathNameW(iniPath.c_str(), 32768, full, nullptr);
+    if (!length || length >= 32768) return false;
+    const std::wstring target(full);
+    const auto slash = target.find_last_of(L'\\');
+    if (slash == std::wstring::npos) return false;
+    wchar_t temporary[MAX_PATH]{};
+    if (!GetTempFileNameW(target.substr(0, slash + 1).c_str(), L"cyc", 0, temporary)) return false;
+    HANDLE h = CreateFileW(temporary, GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h == INVALID_HANDLE_VALUE) { DeleteFileW(temporary); return false; }
 
     const unsigned char bom[3] = {0xEF, 0xBB, 0xBF};
     DWORD wr = 0;
     if (!WriteFile(h, bom, 3, &wr, nullptr) || wr != 3) {
         CloseHandle(h);
+        DeleteFileW(temporary);
         return false;
     }
     if (!utf8.empty()) {
         if (!WriteFile(h, utf8.data(), static_cast<DWORD>(utf8.size()), &wr, nullptr) || wr != static_cast<DWORD>(utf8.size())) {
             CloseHandle(h);
+            DeleteFileW(temporary);
             return false;
         }
     }
+    const bool flushed = FlushFileBuffers(h) != FALSE;
     CloseHandle(h);
-    return true;
+    bool saved = false;
+    if (flushed) {
+        const DWORD attributes = GetFileAttributesW(target.c_str());
+        if (attributes != INVALID_FILE_ATTRIBUTES) {
+            // Keep the immediately previous complete INI for explicit recovery.
+            saved = ReplaceFileW(target.c_str(), temporary, (target + L".bak").c_str(), 0, nullptr, nullptr) != FALSE;
+        } else if (GetLastError() == ERROR_FILE_NOT_FOUND) {
+            saved = MoveFileExW(temporary, target.c_str(), MOVEFILE_WRITE_THROUGH) != FALSE;
+        }
+    }
+    if (!saved) DeleteFileW(temporary);
+    return saved;
 }
 
 }
@@ -194,13 +221,10 @@ bool ReadIniUtf8Value(const std::wstring& iniPath,
     return true;
 }
 
-bool WriteIniUtf8Value(const std::wstring& iniPath,
+static void UpdateIniLines(std::vector<std::wstring>& lines,
                        const std::wstring& section,
                        const std::wstring& key,
                        const std::wstring& value) {
-    std::vector<std::wstring> lines;
-    if (!LoadIniLines(iniPath, lines)) return false;
-
     const std::wstring sectionN = Trim(section);
     const std::wstring sectionL = ToLower(sectionN);
     const std::wstring keyN = Trim(key);
@@ -248,7 +272,30 @@ bool WriteIniUtf8Value(const std::wstring& iniPath,
         out.push_back(newLine);
     }
 
-    return SaveIniLinesUtf8(iniPath, out);
+    lines = std::move(out);
+}
+
+bool WriteIniUtf8Values(const std::wstring& iniPath, const std::vector<IniUpdate>& updates) {
+    static std::mutex writer;
+    const std::lock_guard<std::mutex> guard(writer);
+    std::vector<std::wstring> lines;
+    if (!LoadIniLines(iniPath, lines)) return false;
+    const auto original = lines;
+    for (const auto& update : updates) {
+        if (Trim(update.section).empty() || Trim(update.key).empty() ||
+            update.section.find_first_of(L"\r\n[]") != std::wstring::npos ||
+            update.key.find_first_of(L"\r\n=") != std::wstring::npos ||
+            update.value.find_first_of(L"\r\n") != std::wstring::npos ||
+            update.section.find(L'\0') != std::wstring::npos || update.key.find(L'\0') != std::wstring::npos ||
+            update.value.find(L'\0') != std::wstring::npos) return false;
+        UpdateIniLines(lines, update.section, update.key, update.value);
+    }
+    return lines == original || SaveIniLinesUtf8(iniPath, lines);
+}
+
+bool WriteIniUtf8Value(const std::wstring& iniPath, const std::wstring& section,
+                       const std::wstring& key, const std::wstring& value) {
+    return WriteIniUtf8Values(iniPath, {{section, key, value}});
 }
 
 }

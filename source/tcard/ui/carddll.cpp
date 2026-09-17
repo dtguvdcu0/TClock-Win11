@@ -629,7 +629,6 @@ extern "C" TCARD_WUI_HOST WINAPI TCardWuiCreateCard(HWND owner)
     host->sourceText = host->state.source;
     host->state.textColor = RGB(37, 37, 37);
     host->state.secondaryColor = RGB(102, 102, 102);
-    update_read_brush(host);
     g_rich_edit = LoadLibraryW(L"Msftedit.dll");
     tcard_lang::initialize();
     host->window = CreateWindowExW(WS_EX_TOOLWINDOW, L"TCardWuiWindow", tcard_text(L"app.title", L"TCard"), WS_POPUP | WS_THICKFRAME | WS_SYSMENU | WS_CLIPCHILDREN,
@@ -637,6 +636,7 @@ extern "C" TCARD_WUI_HOST WINAPI TCardWuiCreateCard(HWND owner)
     if (!host->window) { delete host; return nullptr; }
     host->readEditor = CreateWindowExW(0, g_rich_edit ? L"RICHEDIT50W" : L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN | ES_READONLY | ES_NOHIDESEL | WS_VSCROLL | WS_TABSTOP, 0, 0, 120, 80, host->window, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kReadBody)), g_instance, nullptr);
     if (!host->readEditor) { DestroyWindow(host->window); delete host; return nullptr; }
+    update_read_brush(host);
     tcard_ui::attach_scroll(host->readEditor, host->state.backColor);
     update_read_font(host);
     SendMessageW(host->readEditor, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, 0);

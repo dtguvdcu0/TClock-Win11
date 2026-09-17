@@ -62,3 +62,62 @@ source/tcard/docs/
 /source/tcard/legacy/
 /source/tcard/tests/
 additional_files/tcard-integration.txt
+
+# TCard scoped exclusions (centralized from source/tcard/.gitignore).
+# Generated build output (keep build/ scripts and project files).
+/source/tcard/**/bin/
+/source/tcard/**/obj/
+/source/tcard/**/out/
+/source/tcard/**/x64/
+/source/tcard/**/x86/
+/source/tcard/**/Debug/
+/source/tcard/**/Release/
+/source/tcard/**/*.exe
+/source/tcard/**/*.dll
+/source/tcard/**/*.lib
+/source/tcard/**/*.exp
+/source/tcard/**/*.obj
+/source/tcard/**/*.pdb
+/source/tcard/**/*.ilk
+/source/tcard/**/*.ipdb
+/source/tcard/**/*.iobj
+/source/tcard/**/*.tlog
+/source/tcard/**/*.lastbuildstate
+/source/tcard/**/*.msix
+/source/tcard/**/*.appx
+
+# IDE and language-tool caches.
+/source/tcard/**/.vs/
+/source/tcard/**/*.user
+/source/tcard/**/*.suo
+/source/tcard/**/*.VC.db
+/source/tcard/**/*.VC.opendb
+/source/tcard/**/ipch/
+/source/tcard/**/__pycache__/
+/source/tcard/**/*.pyc
+
+# Private runtime settings and note bundles, including images/history/trash.
+# Keep config/TCard.ini.example and lang/*.ini public.
+/source/tcard/**/tcard/
+/source/tcard/**/cards/
+/source/tcard/**/cards.json
+/source/tcard/**/TCard.ini
+/source/tcard/**/tclock-win11.ini
+
+# Local recovery copies, diagnostics and test captures.
+/source/tcard/**/*.old
+/source/tcard/**/*.old[0-9]*
+/source/tcard/**/*.org
+/source/tcard/**/*.bak
+/source/tcard/**/*.tmp
+/source/tcard/**/*.dmp
+/source/tcard/**/*.log
+/source/tcard/**/*.bmp
+
+# Local environment files and private signing material.
+/source/tcard/**/.env
+/source/tcard/**/.env.*
+!/source/tcard/**/.env.example
+/source/tcard/**/*.pfx
+/source/tcard/**/*.p12
+/source/tcard/**/*.key

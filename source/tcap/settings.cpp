@@ -265,13 +265,14 @@ static std::vector<ProfileSettings> parseIniProfiles(std::ifstream& in) {
     current.name = "default";
     ParseCompressionState compState{};
     bool hasLines = false;
+    bool inIntegration = false;
 
     std::string line;
     while (std::getline(in, line)) {
         line = trim(line);
         if (line.empty() || line[0] == '#' || line[0] == ';') continue;
         if (line.front() == '[' && line.back() == ']') {
-            if (hasLines || profiles.empty()) {
+            if (!inIntegration && (hasLines || profiles.empty())) {
                 if (compState.legacySet && !compState.jpgSet && toLower(current.settings.format) == "jpg") {
                     current.settings.jpgQuality = compState.legacyValue;
                 }
@@ -282,9 +283,11 @@ static std::vector<ProfileSettings> parseIniProfiles(std::ifstream& in) {
             compState = ParseCompressionState{};
             std::string sectionName = trim(line.substr(1, line.size() - 2));
             current.name = sectionName.empty() ? "default" : sectionName;
+            inIntegration = (toLower(current.name) == "integration");
             hasLines = false;
             continue;
         }
+        if (inIntegration) continue;
         const auto eqPos = line.find('=');
         if (eqPos == std::string::npos) continue;
         hasLines = true;
@@ -293,12 +296,14 @@ static std::vector<ProfileSettings> parseIniProfiles(std::ifstream& in) {
         applyKeyValue(current.settings, compState, key, value);
     }
 
-    // Push the last section.
-    if (compState.legacySet && !compState.jpgSet && toLower(current.settings.format) == "jpg") {
-        current.settings.jpgQuality = compState.legacyValue;
+    // Integration metadata is not a capture profile.
+    if (!inIntegration) {
+        if (compState.legacySet && !compState.jpgSet && toLower(current.settings.format) == "jpg") {
+            current.settings.jpgQuality = compState.legacyValue;
+        }
+        normalizeSettings(current.settings);
+        profiles.push_back(current);
     }
-    normalizeSettings(current.settings);
-    profiles.push_back(current);
     return profiles;
 }
 
@@ -330,6 +335,22 @@ bool saveSettingsProfiles(const std::vector<ProfileSettings>& profiles, const fs
     if (!parent.empty() && !fs::exists(parent)) {
         fs::create_directories(parent);
     }
+    // Preserve the integration destination before rewriting normalized profiles.
+    std::string integration;
+    {
+        std::ifstream previous(path);
+        if (!previous.is_open() && fs::exists(path)) return false;
+        bool inIntegration = false;
+        std::string line;
+        while (std::getline(previous, line)) {
+            const std::string clean = trim(line);
+            if (!clean.empty() && clean.front() == '[' && clean.back() == ']') {
+                inIntegration = (toLower(trim(clean.substr(1, clean.size() - 2))) == "integration");
+            }
+            if (inIntegration) integration += line + "\n";
+        }
+        if (previous.bad()) return false;
+    }
     std::ofstream out(path);
     if (!out.is_open()) return false;
 
@@ -358,7 +379,9 @@ bool saveSettingsProfiles(const std::vector<ProfileSettings>& profiles, const fs
     for (size_t i = 0; i < profiles.size(); ++i) {
         writeProfile(profiles[i]);
     }
-    return true;
+    out << integration;
+    out.close();
+    return !out.fail();
 }
 
 bool loadSettings(AppSettings& settings, const fs::path& path, const std::string& profile) {

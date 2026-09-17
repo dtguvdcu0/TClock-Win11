@@ -7172,7 +7172,11 @@ void CalcMainClockSize(void)
 
 	g_bVertTaskbar = IsVertTaskbar(hwndTaskBarMain);
 
-	GetWindowRect(hwndTaskBarMain, &tempRect);
+	if (!GetWindowRect(hwndTaskBarMain, &tempRect)) return;
+	if (tempRect.right <= tempRect.left || tempRect.bottom <= tempRect.top) return;
+	// Content minimums must use the current taskbar thickness, not the previous orientation.
+	if (g_bVertTaskbar) widthMainClockFrame = tempRect.right - tempRect.left;
+	else heightMainClockFrame = tempRect.bottom - tempRect.top;
 	CalcMainClockContentSize();
 
 	if (g_bVertTaskbar) {

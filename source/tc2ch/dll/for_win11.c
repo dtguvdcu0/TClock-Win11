@@ -1870,9 +1870,10 @@ void MoveWin11ContentBridge(int operation)	//Win11 Type2 (build 22579および�
 	}
 
 	SetWindowPos(hwndWin11ContentBridge, NULL, 0, 0, posXMainClock, heightMainClockFrame,
-		SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOMOVE | SWP_NOSENDCHANGING | SWP_NOREDRAW | SWP_DEFERERASE);
+		SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOSENDCHANGING);
 
-	if (adjustWin11TrayYpos != 0 && IsWindow(hwndWin11InnerTrayContentBridge))
+	// Restore horizontal geometry even when no vertical offset is configured.
+	if (IsWindow(hwndWin11InnerTrayContentBridge))
 	{
 		//改めて移動して、表示する。
 		SetWindowPos(hwndWin11InnerTrayContentBridge, NULL, 0, -adjustWin11TrayYpos, modifiedWidthWin11Tray, heightMainClockFrame + adjustWin11TrayYpos,

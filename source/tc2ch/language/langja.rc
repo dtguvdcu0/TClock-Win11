@@ -1200,7 +1200,7 @@ BEGIN
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,72,161,60,11
     CONTROL         "キャプチャー",IDC_ETC_TCAPTURE_INTEGRATION,
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,124,161,60,11
-    CONTROL         "TCard",IDC_ETC_TCARD_INTEGRATION,
+    CONTROL         "付箋",IDC_ETC_TCARD_INTEGRATION,
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,9,177,60,11
 END
 
@@ -1226,7 +1226,7 @@ BEGIN
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,70,161,60,11
     CONTROL         "TCapture",IDC_ETC_TCAPTURE_INTEGRATION,
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,134,161,60,11
-    CONTROL         "TCard",IDC_ETC_TCARD_INTEGRATION,
+    CONTROL         "Sticky notes",IDC_ETC_TCARD_INTEGRATION,
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,9,177,60,11
 END
 

@@ -53,7 +53,9 @@ constexpr UINT kRendererShowList = WM_APP + 3;
 constexpr UINT kRendererClip = WM_APP + 6;
 constexpr UINT kRendererDelete = WM_APP + 4;
 HICON g_app_icon = nullptr;
+HICON g_app_icon_small = nullptr;
 bool g_owns_app_icon = false;
+bool g_owns_app_icon_small = false;
 
 std::vector<tcard::CardRecord> g_cards;
 struct CardWindow {
@@ -1050,15 +1052,15 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
             state.cb = sizeof(state);
             state.version = TCARD_WUI_STATE_ABI_VERSION;
             if (g_get_card_text_state(entry->handle, &state)) {
-                std::wstring title(state.titleLength, L'\0');
-                std::wstring source(state.sourceLength, L'\0');
-                state.title = title.empty() ? nullptr : title.data();
-                state.titleCapacity = static_cast<DWORD>(title.size() + 1);
-                state.source = source.empty() ? nullptr : source.data();
-                state.sourceCapacity = static_cast<DWORD>(source.size() + 1);
-                std::wstring family(state.fontFamilyLength, L'\0');
-                state.fontFamily = family.empty() ? nullptr : family.data();
-                state.fontFamilyCapacity = static_cast<DWORD>(family.size() + 1);
+                std::wstring title(static_cast<size_t>(state.titleLength) + 1, L'\0');
+                std::wstring source(static_cast<size_t>(state.sourceLength) + 1, L'\0');
+                state.title = &title[0];
+                state.titleCapacity = static_cast<DWORD>(title.size());
+                state.source = &source[0];
+                state.sourceCapacity = static_cast<DWORD>(source.size());
+                std::wstring family(static_cast<size_t>(state.fontFamilyLength) + 1, L'\0');
+                state.fontFamily = &family[0];
+                state.fontFamilyCapacity = static_cast<DWORD>(family.size());
                 if (!g_get_card_text_state(entry->handle, &state)) return FALSE;
                 auto card = std::find_if(g_cards.begin(), g_cards.end(), [&](const auto& value) { return value.id == entry->id; });
                 if (card != g_cards.end()) {
@@ -1515,10 +1517,33 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show)
     const HRESULT ole = OleInitialize(nullptr);
     struct OleScope { bool active; ~OleScope() { if (active) OleUninitialize(); } } oleScope{SUCCEEDED(ole)};
     tcard_initialize_defaults();
-    const std::wstring iconPath = module_dir() + L"\\icon3.ico";
-    g_app_icon = static_cast<HICON>(LoadImageW(nullptr, iconPath.c_str(), IMAGE_ICON, 0, 0, LR_LOADFROMFILE | LR_DEFAULTSIZE));
+    auto release_icons = []() {
+        if (g_owns_app_icon && g_app_icon) DestroyIcon(g_app_icon);
+        if (g_owns_app_icon_small && g_app_icon_small && g_app_icon_small != g_app_icon) DestroyIcon(g_app_icon_small);
+        g_app_icon = nullptr;
+        g_app_icon_small = nullptr;
+        g_owns_app_icon = false;
+        g_owns_app_icon_small = false;
+    };
+    const int icon_width = GetSystemMetrics(SM_CXICON);
+    const int icon_height = GetSystemMetrics(SM_CYICON);
+    const int icon_small_width = GetSystemMetrics(SM_CXSMICON);
+    const int icon_small_height = GetSystemMetrics(SM_CYSMICON);
+    g_app_icon = static_cast<HICON>(LoadImageW(instance, MAKEINTRESOURCEW(1), IMAGE_ICON, icon_width, icon_height, 0));
     g_owns_app_icon = g_app_icon != nullptr;
+    g_app_icon_small = static_cast<HICON>(LoadImageW(instance, MAKEINTRESOURCEW(1), IMAGE_ICON, icon_small_width, icon_small_height, 0));
+    g_owns_app_icon_small = g_app_icon_small != nullptr;
+    const std::wstring iconPath = module_dir() + L"\\icon3.ico";
+    if (!g_app_icon) {
+        g_app_icon = static_cast<HICON>(LoadImageW(nullptr, iconPath.c_str(), IMAGE_ICON, icon_width, icon_height, LR_LOADFROMFILE));
+        g_owns_app_icon = g_app_icon != nullptr;
+    }
+    if (!g_app_icon_small) {
+        g_app_icon_small = static_cast<HICON>(LoadImageW(nullptr, iconPath.c_str(), IMAGE_ICON, icon_small_width, icon_small_height, LR_LOADFROMFILE));
+        g_owns_app_icon_small = g_app_icon_small != nullptr;
+    }
     if (!g_app_icon) g_app_icon = LoadIconW(nullptr, IDI_APPLICATION);
+    if (!g_app_icon_small) g_app_icon_small = LoadIconW(nullptr, IDI_APPLICATION);
     INITCOMMONCONTROLSEX controls{ sizeof(controls), ICC_STANDARD_CLASSES };
     InitCommonControlsEx(&controls);
     WNDCLASSEXW wc{ sizeof(wc) };
@@ -1526,16 +1551,21 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show)
     wc.lpfnWndProc = wnd_proc;
     wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
     wc.hIcon = g_app_icon;
-    wc.hIconSm = g_app_icon;
+    wc.hIconSm = g_app_icon_small;
     wc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
     wc.lpszClassName = L"TCardNativeHost";
-    if (!RegisterClassExW(&wc)) return 1;
+    if (!RegisterClassExW(&wc)) {
+        release_icons();
+        return 1;
+    }
     HWND hwnd = CreateWindowExW(0, wc.lpszClassName, tcard_text(L"app.title", L"TCard"), WS_OVERLAPPEDWINDOW,
         CW_USEDEFAULT, CW_USEDEFAULT, 900, 640, nullptr, nullptr, instance, nullptr);
     if (!hwnd) {
-        if (g_owns_app_icon) DestroyIcon(g_app_icon);
+        release_icons();
         return 1;
     }
+    SendMessageW(hwnd, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(g_app_icon));
+    SendMessageW(hwnd, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(g_app_icon_small));
     ShowWindow(hwnd, show);
     UpdateWindow(hwnd);
     MSG message{};
@@ -1564,6 +1594,6 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show)
             DispatchMessageW(&message);
         }
     }
-    if (g_owns_app_icon) DestroyIcon(g_app_icon);
+    release_icons();
     return static_cast<int>(message.wParam);
 }

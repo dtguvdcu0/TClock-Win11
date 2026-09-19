@@ -28,6 +28,8 @@ struct TCARD_WUI_HOST__ {
     std::wstring assetRoot;
     std::wstring fontFamilyText = L"Segoe UI";
     float fontSize = 14.0f;
+    float titleFontScale = 1.6f;
+    bool titleBold = true;
     bool markdown = false;
     TCARD_WUI_COMMAND_CALLBACK callback = nullptr;
     void* callbackContext = nullptr;
@@ -121,6 +123,29 @@ static float card_font_size(const TCARD_WUI_HOST host)
     return host && host->fontSize >= 8.0f && host->fontSize <= 48.0f ? host->fontSize : 14.0f;
 }
 
+static constexpr float kDefaultTitleFontScale = 1.6f;
+static constexpr float kMinTitleFontScale = 0.5f;
+static constexpr float kMaxTitleFontScale = 3.0f;
+
+static float read_title_scale()
+{
+    wchar_t configured[64]{};
+    GetPrivateProfileStringW(L"TCard", L"TitleFontScale", L"1.6", configured, ARRAYSIZE(configured), tcard_lang::config_path().c_str());
+    wchar_t* end = nullptr;
+    const double value = wcstod(configured, &end);
+    while (end && (*end == L' ' || *end == L'\t')) ++end;
+    if (!end || end == configured || *end != L'\0' || value != value || value < kMinTitleFontScale || value > kMaxTitleFontScale)
+        return kDefaultTitleFontScale;
+    return static_cast<float>(value);
+}
+
+static void load_title_preferences(TCARD_WUI_HOST host)
+{
+    if (!host) return;
+    host->titleFontScale = read_title_scale();
+    host->titleBold = GetPrivateProfileIntW(L"TCard", L"TitleBold", 1, tcard_lang::config_path().c_str()) != 0;
+}
+
 static int CALLBACK collect_font_family(const LOGFONTW* font, const TEXTMETRICW*, DWORD, LPARAM parameter)
 {
     HWND combo = reinterpret_cast<HWND>(parameter);
@@ -175,8 +200,10 @@ static BOOL create_render(TCARD_WUI_HOST host)
     if (FAILED(host->target->CreateSolidColorBrush(card_color(host->state.textColor), &host->textBrush))) return FALSE;
     const wchar_t* family = host->fontFamilyText.empty() ? L"Segoe UI" : host->fontFamilyText.c_str();
     const float bodySize = card_font_size(host);
-    if (!host->titleFormat && FAILED(g_writeFactory->CreateTextFormat(family, nullptr, DWRITE_FONT_WEIGHT_SEMI_BOLD,
-        DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, bodySize * 1.6f, L"", &host->titleFormat))) return FALSE;
+    const float titleSize = bodySize * host->titleFontScale;
+    if (!host->titleFormat && FAILED(g_writeFactory->CreateTextFormat(family, nullptr,
+        host->titleBold ? DWRITE_FONT_WEIGHT_SEMI_BOLD : DWRITE_FONT_WEIGHT_NORMAL,
+        DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, titleSize, L"", &host->titleFormat))) return FALSE;
     if (!host->bodyFormat && FAILED(g_writeFactory->CreateTextFormat(family, nullptr, DWRITE_FONT_WEIGHT_NORMAL,
         DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, bodySize, L"", &host->bodyFormat))) return FALSE;
     host->titleFormat->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
@@ -234,7 +261,7 @@ static void update_read_brush(TCARD_WUI_HOST host)
 
 static int title_height_dip(TCARD_WUI_HOST host)
 {
-    const int height = static_cast<int>(card_font_size(host) * 1.6f * 1.35f + 0.5f);
+    const int height = static_cast<int>(card_font_size(host) * host->titleFontScale * 1.35f + 0.5f);
     return max(24, height + 4);
 }
 
@@ -390,10 +417,6 @@ static void begin_edit(TCARD_WUI_HOST host)
     SendMessageW(host->titleEditor, EM_SETCUEBANNER, TRUE, reinterpret_cast<LPARAM>(tcard_text(L"title.placeholder", L"Title")));
     SendMessageW(host->fontSizeEditor, EM_SETLIMITTEXT, 16, 0);
     tcard_edit::attach(host->fontSizeEditor, false, kEditSave);
-    RECT bounds{};
-    GetWindowRect(host->window, &bounds);
-    SetWindowPos(host->window, nullptr, 0, 0, max(320L, bounds.right - bounds.left),
-        max(340L, bounds.bottom - bounds.top), SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
     GetClientRect(host->window, &client);
     SendMessageW(host->window, WM_SIZE, SIZE_RESTORED, MAKELPARAM(client.right, client.bottom));
 }
@@ -433,7 +456,7 @@ static LRESULT CALLBACK card_wnd_proc(HWND hwnd, UINT message, WPARAM wParam, LP
             return HTCLIENT;
         }
     case WM_GETMINMAXINFO:
-        reinterpret_cast<MINMAXINFO*>(lParam)->ptMinTrackSize = host->editing ? POINT{320, 340} : POINT{260, 200};
+        reinterpret_cast<MINMAXINFO*>(lParam)->ptMinTrackSize = POINT{260, 200};
         return 0;
     case WM_DRAWITEM:
         {
@@ -655,6 +678,7 @@ extern "C" TCARD_WUI_HOST WINAPI TCardWuiCreateCard(HWND owner)
     host->state.secondaryColor = RGB(102, 102, 102);
     g_rich_edit = LoadLibraryW(L"Msftedit.dll");
     tcard_lang::initialize();
+    load_title_preferences(host);
     host->window = CreateWindowExW(WS_EX_TOOLWINDOW, L"TCardWuiWindow", tcard_text(L"app.title", L"TCard"), WS_POPUP | WS_THICKFRAME | WS_SYSMENU | WS_CLIPCHILDREN,
         120, 120, 340, 320, nullptr, nullptr, g_instance, host);
     if (!host->window) { delete host; return nullptr; }

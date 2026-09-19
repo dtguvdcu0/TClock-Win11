@@ -207,7 +207,7 @@ void tcard_initialize_defaults()
     const std::wstring ini = module_dir() + L"\\TCard.ini";
     HANDLE file = CreateFileW(ini.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (file == INVALID_HANDLE_VALUE) return;
-    const wchar_t defaults[] = L"\ufeff[TCard]\r\nRefreshSeconds=1\r\nDefaultFontFamily=Yu Gothic UI\r\nDefaultFontSize=10\r\nTClockIni=..\\tclock-win11.ini\r\n";
+    const wchar_t defaults[] = L"\ufeff[TCard]\r\nRefreshSeconds=1\r\nDefaultFontFamily=Yu Gothic UI\r\nDefaultFontSize=10\r\nTitleFontScale=1.6\r\nTitleBold=1\r\nTClockIni=..\\tclock-win11.ini\r\n";
     const DWORD bytes = static_cast<DWORD>(sizeof(defaults) - sizeof(wchar_t));
     DWORD written = 0;
     const BOOL complete = WriteFile(file, defaults, bytes, &written, nullptr) && written == bytes;
@@ -761,7 +761,7 @@ LRESULT CALLBACK card_size_proc(HWND hwnd, UINT message, WPARAM w, LPARAM l, UIN
     auto* entry = reinterpret_cast<CardWindow*>(data);
     if (message == WM_ENTERSIZEMOVE) entry->sizing = false;
     if (message == WM_SIZING) entry->sizing = true;
-    if (message == WM_EXITSIZEMOVE && entry->sizing && card_window_live(entry) && !g_is_card_editing(entry->handle) && !IsIconic(hwnd) && !IsZoomed(hwnd)) {
+    if (message == WM_EXITSIZEMOVE && entry->sizing && card_window_live(entry) && !IsIconic(hwnd) && !IsZoomed(hwnd)) {
         auto card = std::find_if(g_cards.begin(), g_cards.end(), [&](const auto& value) { return value.id == entry->id; });
         RECT rect{};
         if (card != g_cards.end() && GetWindowRect(hwnd, &rect)) {

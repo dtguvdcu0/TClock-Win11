@@ -86,6 +86,13 @@ constexpr int kEditFontSize = 5008;
 constexpr int kEditMarkdown = 5010;
 constexpr int kReadBody = 5009;
 constexpr int kColorFirst = 5030;
+constexpr int kReadCloseWidthDip = 28;
+constexpr int kReadCloseHeightDip = 24;
+constexpr int kReadCloseSlotDip = 40;
+constexpr int kEditCloseWidthDip = 36;
+constexpr int kEditCloseHeightDip = 32;
+constexpr int kEditCloseSlotDip = 48;
+constexpr int kCloseRightInsetDip = 8;
 struct CardColorChoice { COLORREF color; const wchar_t* key; const wchar_t* name; };
 constexpr CardColorChoice kCardColors[] = {
     {RGB(255,245,168), L"color.yellow", L"Yellow"},
@@ -171,6 +178,7 @@ static void populate_font_families(HWND combo, HWND owner)
 }
 
 static int title_height_dip(TCARD_WUI_HOST host);
+static int read_header_dip(TCARD_WUI_HOST host);
 
 static void update_read_font(TCARD_WUI_HOST host)
 {
@@ -207,6 +215,7 @@ static BOOL create_render(TCARD_WUI_HOST host)
     if (!host->bodyFormat && FAILED(g_writeFactory->CreateTextFormat(family, nullptr, DWRITE_FONT_WEIGHT_NORMAL,
         DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, bodySize, L"", &host->bodyFormat))) return FALSE;
     host->titleFormat->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
+    host->titleFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
     host->bodyFormat->SetWordWrapping(DWRITE_WORD_WRAPPING_WRAP);
     return TRUE;
 }
@@ -216,15 +225,14 @@ static void paint_card(TCARD_WUI_HOST host)
     if (!create_render(host)) return;
     const D2D1_SIZE_F size = host->target->GetSize();
     const float inset = static_cast<float>(tcard_ui::kPaperInsetDip);
-    const float header = static_cast<float>(tcard_ui::kPaperHeaderDip);
-    const float titleTop = header + 8.0f;
-    const float titleHeight = static_cast<float>(title_height_dip(host));
+    const int headerDip = host->editing ? tcard_ui::kEditHeaderDip : read_header_dip(host);
+    const float header = static_cast<float>(headerDip);
     host->target->BeginDraw();
     host->target->Clear(card_color(host->state.backColor));
     host->target->FillRectangle(D2D1::RectF(0, 0, size.width, header), host->edgeBrush.Get());
     host->target->DrawRectangle(D2D1::RectF(0.5f, 0.5f, max(1.0f, size.width - 0.5f), max(1.0f, size.height - 0.5f)), host->edgeBrush.Get(), 1.0f);
     if (!host->editing && !host->titleText.empty()) {
-        host->target->DrawTextW(host->titleText.c_str(), static_cast<UINT32>(host->titleText.size()), host->titleFormat.Get(), D2D1::RectF(inset, titleTop, max(inset + 1.0f, size.width - inset), titleTop + titleHeight), host->textBrush.Get(), D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT);
+        host->target->DrawTextW(host->titleText.c_str(), static_cast<UINT32>(host->titleText.size()), host->titleFormat.Get(), D2D1::RectF(inset, 0.0f, max(inset + 1.0f, size.width - static_cast<float>(kReadCloseSlotDip)), header), host->textBrush.Get(), D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT);
     }
     if (host->target->EndDraw() == D2DERR_RECREATE_TARGET) release_render(host);
 }
@@ -265,10 +273,26 @@ static int title_height_dip(TCARD_WUI_HOST host)
     return max(24, height + 4);
 }
 
+static int read_header_dip(TCARD_WUI_HOST host)
+{
+    return max(tcard_ui::kPaperHeaderDip, title_height_dip(host) + 2);
+}
+
+static void layout_close_button(TCARD_WUI_HOST host, int width)
+{
+    if (!host || !host->closeButton) return;
+    const bool editing = host->editing;
+    const int header = editing ? tcard_ui::kEditHeaderDip : read_header_dip(host);
+    const int buttonWidth = editing ? kEditCloseWidthDip : kReadCloseWidthDip;
+    const int buttonHeight = editing ? kEditCloseHeightDip : kReadCloseHeightDip;
+    const int top = editing ? 2 : max(2, (header - buttonHeight) / 2);
+    MoveWindow(host->closeButton, max(0, width - buttonWidth - kCloseRightInsetDip), top, buttonWidth, buttonHeight, TRUE);
+}
+
 static void layout_read_editor(TCARD_WUI_HOST host, int width, int height)
 {
     if (!host || !host->readEditor) return;
-    const int bodyTop = host->titleText.empty() ? tcard_ui::kPaperHeaderDip + 8 : tcard_ui::kPaperHeaderDip + 8 + title_height_dip(host) + 8;
+    const int bodyTop = read_header_dip(host) + tcard_ui::kPaperInsetDip;
     MoveWindow(host->readEditor, tcard_ui::kPaperInsetDip, bodyTop,
         max(120, width - tcard_ui::kPaperInsetDip * 2),
         max(1, height - bodyTop - tcard_ui::kPaperInsetDip), TRUE);
@@ -346,7 +370,7 @@ static void end_edit(TCARD_WUI_HOST host, bool save)
         ShowWindow(host->readEditor, SW_SHOW);
         RECT client{};
         GetClientRect(host->window, &client);
-        layout_read_editor(host, client.right - client.left, client.bottom - client.top);
+        SendMessageW(host->window, WM_SIZE, SIZE_RESTORED, MAKELPARAM(client.right, client.bottom));
     }
     InvalidateRect(host->window, nullptr, FALSE);
 }
@@ -383,19 +407,19 @@ static void begin_edit(TCARD_WUI_HOST host)
         SetWindowSubclass(swatch, tcard_ui::button_proc, 1, 0);
     }
     ShowWindow(tcard_ui::create_label(host->window, 5024, L"", host->uiFont), SW_SHOW);
-    host->titleEditor = CreateWindowExW(0, L"EDIT", host->titleText.c_str(), WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL | WS_TABSTOP, tcard_ui::kPaperInsetDip, tcard_ui::kPaperHeaderDip + 8, width - tcard_ui::kPaperInsetDip * 2, 28, host->window, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kEditTitle)), g_instance, nullptr);
-    host->sourceEditor = tcard_edit::create(host->window, kEditSource, kEditSave, host->sourceText.c_str(), tcard_ui::kPaperInsetDip, tcard_ui::kPaperHeaderDip + 40, width - tcard_ui::kPaperInsetDip * 2, max(80, height - tcard_ui::kPaperHeaderDip - tcard_ui::kEditorCommandDip - 40), g_instance);
+    host->titleEditor = CreateWindowExW(0, L"EDIT", host->titleText.c_str(), WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL | WS_TABSTOP, tcard_ui::kPaperInsetDip, tcard_ui::kEditHeaderDip + 8, width - tcard_ui::kPaperInsetDip * 2, 28, host->window, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kEditTitle)), g_instance, nullptr);
+    host->sourceEditor = tcard_edit::create(host->window, kEditSource, kEditSave, host->sourceText.c_str(), tcard_ui::kPaperInsetDip, tcard_ui::kEditHeaderDip + 40, width - tcard_ui::kPaperInsetDip * 2, max(80, height - tcard_ui::kEditHeaderDip - tcard_ui::kEditorCommandDip - 40), g_instance);
     tcard_ui::attach_scroll(host->sourceEditor, host->state.backColor);
     tcard_edit::attach(host->titleEditor, false, kEditSave);
     SendMessageW(host->sourceEditor, EM_SETBKGNDCOLOR, 0, host->state.backColor);
     host->appearanceButton = CreateWindowExW(0, L"BUTTON", tcard_text(L"button.appearance", L"Appearance"), WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP, tcard_ui::kPaperInsetDip, 2, 100, 28, host->window, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kEditAppearance)), g_instance, nullptr);
-    host->fontFamilyEditor = CreateWindowExW(WS_EX_CLIENTEDGE, L"COMBOBOX", nullptr, WS_CHILD | CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, tcard_ui::kPaperInsetDip, tcard_ui::kPaperHeaderDip + 40, 180, 240, host->window, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kEditFontFamily)), g_instance, nullptr);
+    host->fontFamilyEditor = CreateWindowExW(WS_EX_CLIENTEDGE, L"COMBOBOX", nullptr, WS_CHILD | CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, tcard_ui::kPaperInsetDip, tcard_ui::kEditHeaderDip + 40, 180, 240, host->window, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kEditFontFamily)), g_instance, nullptr);
     populate_font_families(host->fontFamilyEditor, host->window);
     SendMessageW(host->fontFamilyEditor, CB_SELECTSTRING, static_cast<WPARAM>(-1), reinterpret_cast<LPARAM>(host->fontFamilyText.c_str()));
     wchar_t fontSizeText[32]{};
     swprintf_s(fontSizeText, ARRAYSIZE(fontSizeText), L"%.1f", card_font_size(host));
-    host->fontSizeEditor = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", fontSizeText, WS_CHILD | ES_AUTOHSCROLL | WS_TABSTOP, tcard_ui::kPaperInsetDip + 188, tcard_ui::kPaperHeaderDip + 40, 68, 24, host->window, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kEditFontSize)), g_instance, nullptr);
-    HWND formatEditor = CreateWindowExW(0, L"COMBOBOX", nullptr, WS_CHILD | WS_VSCROLL | CBS_DROPDOWNLIST | WS_TABSTOP, tcard_ui::kPaperInsetDip, tcard_ui::kPaperHeaderDip + 68, 140, 180, host->window, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kEditMarkdown)), g_instance, nullptr);
+    host->fontSizeEditor = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", fontSizeText, WS_CHILD | ES_AUTOHSCROLL | WS_TABSTOP, tcard_ui::kPaperInsetDip + 188, tcard_ui::kEditHeaderDip + 40, 68, 24, host->window, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kEditFontSize)), g_instance, nullptr);
+    HWND formatEditor = CreateWindowExW(0, L"COMBOBOX", nullptr, WS_CHILD | WS_VSCROLL | CBS_DROPDOWNLIST | WS_TABSTOP, tcard_ui::kPaperInsetDip, tcard_ui::kEditHeaderDip + 68, 140, 180, host->window, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kEditMarkdown)), g_instance, nullptr);
     SendMessageW(formatEditor, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(tcard_text(L"format.plain", L"Plain text")));
     SendMessageW(formatEditor, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(tcard_text(L"format.markdown", L"Markdown")));
     SendMessageW(formatEditor, CB_SETCURSEL, host->markdown ? 1 : 0, 0);
@@ -452,7 +476,9 @@ static LRESULT CALLBACK card_wnd_proc(HWND hwnd, UINT message, WPARAM wParam, LP
             if (right) return HTRIGHT;
             if (top) return HTTOP;
             if (bottom) return HTBOTTOM;
-            if (point.y < 36 && point.x < rc.right - 48) return HTCAPTION;
+            const int header = host->editing ? tcard_ui::kEditHeaderDip : read_header_dip(host);
+            const int closeSlot = host->editing ? kEditCloseSlotDip : kReadCloseSlotDip;
+            if (point.y < header && point.x < rc.right - closeSlot) return HTCAPTION;
             return HTCLIENT;
         }
     case WM_GETMINMAXINFO:
@@ -607,10 +633,10 @@ static LRESULT CALLBACK card_wnd_proc(HWND hwnd, UINT message, WPARAM wParam, LP
         {
             const int width = LOWORD(lParam);
             const int height = HIWORD(lParam);
-            if (host->closeButton) MoveWindow(host->closeButton, max(0, width - 44), 2, 36, 32, TRUE);
+            layout_close_button(host, width);
             if (host->editing) {
-                MoveWindow(host->titleEditor, tcard_ui::kPaperInsetDip, tcard_ui::kPaperHeaderDip + 8, max(120, width - tcard_ui::kPaperInsetDip * 2), 28, TRUE);
-                const int sourceTop = tcard_ui::kPaperHeaderDip + 44;
+                MoveWindow(host->titleEditor, tcard_ui::kPaperInsetDip, tcard_ui::kEditHeaderDip + 8, max(120, width - tcard_ui::kPaperInsetDip * 2), 28, TRUE);
+                const int sourceTop = tcard_ui::kEditHeaderDip + 44;
                 const int settingsWidth = min(360, width - 32);
                 tcard_ui::layout_setting(GetDlgItem(hwnd, 5021), host->fontFamilyEditor, 16, 60, settingsWidth, true);
                 tcard_ui::layout_setting(GetDlgItem(hwnd, 5022), host->fontSizeEditor, 16, 100, 176, false);
@@ -688,11 +714,10 @@ extern "C" TCARD_WUI_HOST WINAPI TCardWuiCreateCard(HWND owner)
     tcard_ui::attach_scroll(host->readEditor, host->state.backColor);
     update_read_font(host);
     SendMessageW(host->readEditor, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, 0);
-    host->closeButton = CreateWindowExW(0, L"BUTTON", tcard_text(L"button.close", L"Close"), WS_CHILD | WS_VISIBLE | BS_OWNERDRAW | WS_TABSTOP, 0, 2, 36, 32, host->window, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kEditClose)), g_instance, nullptr);
+    host->closeButton = CreateWindowExW(0, L"BUTTON", tcard_text(L"button.close", L"Close"), WS_CHILD | WS_VISIBLE | BS_OWNERDRAW | WS_TABSTOP, 0, 2, kReadCloseWidthDip, kReadCloseHeightDip, host->window, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kEditClose)), g_instance, nullptr);
     RECT client{};
     GetClientRect(host->window, &client);
-    layout_read_editor(host, client.right - client.left, client.bottom - client.top);
-    MoveWindow(host->closeButton, max(0L, client.right - 44), 2, 36, 32, TRUE);
+    SendMessageW(host->window, WM_SIZE, SIZE_RESTORED, MAKELPARAM(client.right, client.bottom));
     return host;
 }
 

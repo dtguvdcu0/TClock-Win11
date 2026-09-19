@@ -11,7 +11,8 @@
 namespace tcard_ui {
 
 constexpr int kPaperInsetDip = 16;
-constexpr int kPaperHeaderDip = 36;
+constexpr int kPaperHeaderDip = 28;
+constexpr int kEditHeaderDip = 36;
 constexpr int kEditorCommandDip = 48;
 constexpr float kNoteTitleSizeDip = 16.0f;
 constexpr float kNoteBodySizeDip = 15.0f;

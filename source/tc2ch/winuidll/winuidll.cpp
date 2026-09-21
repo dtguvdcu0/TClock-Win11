@@ -235,12 +235,72 @@ cleanup:
 	if (hdcScreen) ReleaseDC(NULL, hdcScreen);
 }
 
+static void wui_hide_tip(void);
+
+static BOOL wui_window_above(HWND first, HWND second)
+{
+	HWND current = first;
+	int count;
+
+	for (count = 0; count < 1024 && current; count++) {
+		if (current == second) return TRUE;
+		current = GetWindow(current, GW_HWNDNEXT);
+	}
+	return FALSE;
+}
+
+static BOOL wui_covering_foreground(HWND hwnd, HWND owner)
+{
+	HWND foreground;
+	RECT hostRect;
+	RECT foregroundRect;
+	POINT hostCenter;
+	HMONITOR hostMonitor;
+	HMONITOR foregroundMonitor;
+	MONITORINFO foregroundInfo = { sizeof(foregroundInfo) };
+	WCHAR foregroundClass[64];
+	BOOL remoteDesktop;
+	LONG_PTR ownerExStyle;
+
+	foreground = GetForegroundWindow();
+	if (!foreground || foreground == hwnd || foreground == g_wuiTarget || foreground == owner) return FALSE;
+	if (!IsWindowVisible(foreground)) return FALSE;
+	foregroundClass[0] = L'\0';
+	if (GetClassNameW(foreground, foregroundClass, _countof(foregroundClass)) <= 0) return FALSE;
+	if (lstrcmpW(foregroundClass, L"Progman") == 0 || lstrcmpW(foregroundClass, L"WorkerW") == 0
+	 || lstrcmpW(foregroundClass, L"Shell_TrayWnd") == 0) return FALSE;
+	remoteDesktop = lstrcmpW(foregroundClass, L"TscShellContainerClass") == 0;
+	if (!GetWindowRect(hwnd, &hostRect) || !GetWindowRect(foreground, &foregroundRect)) return FALSE;
+	hostCenter.x = (hostRect.left + hostRect.right) / 2;
+	hostCenter.y = (hostRect.top + hostRect.bottom) / 2;
+	if (hostCenter.x < foregroundRect.left || hostCenter.x >= foregroundRect.right
+	 || hostCenter.y < foregroundRect.top || hostCenter.y >= foregroundRect.bottom) return FALSE;
+	hostMonitor = MonitorFromWindow(g_wuiTarget, MONITOR_DEFAULTTONEAREST);
+	foregroundMonitor = MonitorFromWindow(foreground, MONITOR_DEFAULTTONEAREST);
+	if (!hostMonitor || hostMonitor != foregroundMonitor) return FALSE;
+	if (!GetMonitorInfoW(foregroundMonitor, &foregroundInfo)) return FALSE;
+	if (foregroundRect.left > foregroundInfo.rcMonitor.left || foregroundRect.top > foregroundInfo.rcMonitor.top
+	 || foregroundRect.right < foregroundInfo.rcMonitor.right || foregroundRect.bottom < foregroundInfo.rcMonitor.bottom) return FALSE;
+	// Remote Desktop uses a full-monitor shell container while the local taskbar remains visible.
+	if (remoteDesktop) return TRUE;
+	if (wui_window_above(foreground, hwnd)) return FALSE;
+	ownerExStyle = GetWindowLongPtrW(owner, GWL_EXSTYLE);
+	// Remote desktop fullscreen can leave the taskbar topmost while covering the clock.
+	// Hide only for actual same-monitor coverage; ordinary fullscreen relies on stacking.
+	return (ownerExStyle & WS_EX_TOPMOST) != 0;
+}
+
 static BOOL wui_sync_order(HWND hwnd)
 {
 	HWND owner = GetAncestor(g_wuiTarget, GA_ROOT);
 	HWND previous;
 	if (!owner || !IsWindowVisible(owner) || !IsWindowVisible(g_wuiTarget)) {
 		if (IsWindowVisible(hwnd)) ShowWindow(hwnd, SW_HIDE);
+		return FALSE;
+	}
+	if (wui_covering_foreground(hwnd, owner)) {
+		if (IsWindowVisible(hwnd)) ShowWindow(hwnd, SW_HIDE);
+		wui_hide_tip();
 		return FALSE;
 	}
 	previous = GetWindow(owner, GW_HWNDPREV);

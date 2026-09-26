@@ -42,9 +42,97 @@ static COLORREF g_wuiTipTitleColor = 0;
 static UINT g_wuiTipDpi = 0;
 static BOOL g_wuiTipHasStyle = FALSE;
 
+typedef struct {
+	WCHAR face[LF_FACESIZE];
+	int pixelHeight;
+	INT fontStyle;
+	Gdiplus::FontFamily* family;
+	Gdiplus::Font* font;
+	DWORD lastUse;
+	DWORD frameUse;
+} WUI_FONT_ENTRY;
+
+static WUI_FONT_ENTRY g_wuiFonts[TC_WUI_MAX_STYLES];
+static DWORD g_wuiFontClock = 0;
+static DWORD g_wuiFontFrame = 0;
+
 static Gdiplus::Color wui_argb(COLORREF color)
 {
 	return Gdiplus::Color(255, GetRValue(color), GetGValue(color), GetBValue(color));
+}
+
+static void wui_clear_fonts(void)
+{
+	int i;
+	for (i = 0; i < (int)_countof(g_wuiFonts); i++) {
+		delete g_wuiFonts[i].font;
+		delete g_wuiFonts[i].family;
+		ZeroMemory(&g_wuiFonts[i], sizeof(g_wuiFonts[i]));
+	}
+	g_wuiFontClock = 0;
+	g_wuiFontFrame = 0;
+}
+
+static void wui_begin_font_frame(void)
+{
+	if (++g_wuiFontFrame == 0) {
+		int i;
+		g_wuiFontFrame = 1;
+		for (i = 0; i < (int)_countof(g_wuiFonts); i++) g_wuiFonts[i].frameUse = 0;
+	}
+}
+
+static Gdiplus::Font* wui_get_font(const WCHAR* face, int pixelHeight, INT fontStyle)
+{
+	const WCHAR* resolvedFace = (face && face[0]) ? face : L"Segoe UI";
+	int i;
+	int slot = -1;
+	int emptySlot = -1;
+	DWORD oldest = MAXDWORD;
+	for (i = 0; i < (int)_countof(g_wuiFonts); i++) {
+		WUI_FONT_ENTRY* entry = &g_wuiFonts[i];
+		if (entry->font && entry->pixelHeight == pixelHeight && entry->fontStyle == fontStyle &&
+			_wcsicmp(entry->face, resolvedFace) == 0) {
+			entry->lastUse = ++g_wuiFontClock;
+			entry->frameUse = g_wuiFontFrame;
+			return entry->font;
+		}
+		if (!entry->font) {
+			if (emptySlot < 0) emptySlot = i;
+		}
+	else if (entry->frameUse != g_wuiFontFrame && entry->lastUse < oldest) {
+			oldest = entry->lastUse;
+			slot = i;
+		}
+	}
+	if (emptySlot >= 0) slot = emptySlot;
+	if (slot < 0) return NULL;
+	{
+		WUI_FONT_ENTRY* entry = &g_wuiFonts[slot];
+		delete entry->font;
+		delete entry->family;
+		ZeroMemory(entry, sizeof(*entry));
+		lstrcpynW(entry->face, resolvedFace, _countof(entry->face));
+		entry->pixelHeight = pixelHeight;
+		entry->fontStyle = fontStyle;
+		entry->family = new Gdiplus::FontFamily(resolvedFace);
+		if (!entry->family || !entry->family->IsAvailable()) {
+			delete entry->family;
+			entry->family = new Gdiplus::FontFamily(L"Segoe UI");
+		}
+		if (!entry->family || !entry->family->IsAvailable()) goto fail;
+		entry->font = new Gdiplus::Font(entry->family, (Gdiplus::REAL)pixelHeight, fontStyle, Gdiplus::UnitPixel);
+		if (!entry->font || entry->font->GetLastStatus() != Gdiplus::Ok) goto fail;
+		entry->lastUse = ++g_wuiFontClock;
+		entry->frameUse = g_wuiFontFrame;
+		return entry->font;
+
+fail:
+		delete entry->font;
+		delete entry->family;
+		ZeroMemory(entry, sizeof(*entry));
+	}
+	return NULL;
 }
 
 static int wui_tip_width(const WCHAR* text, HFONT font)
@@ -56,6 +144,68 @@ static int wui_tip_width(const WCHAR* text, HFONT font)
 	limitWidth = GetSystemMetrics(SM_CXSCREEN) - 64;
 	if (limitWidth < 120) limitWidth = 120;
 	return limitWidth;
+}
+
+static BOOL wui_draw_styled(Gdiplus::Graphics& graphics, const RECT& rcClient)
+{
+	Gdiplus::Font* fonts[TC_WUI_MAX_STYLES] = {};
+	Gdiplus::StringFormat format;
+	DWORD i;
+	BOOL ok = FALSE;
+	if (g_wuiState.styleVersion != TC_WUI_STYLE_VERSION || !g_wuiState.styleCount ||
+		!g_wuiState.runCount || g_wuiState.styleCount > TC_WUI_MAX_STYLES ||
+		g_wuiState.runCount > TC_WUI_MAX_RUNS) return FALSE;
+	format.SetFormatFlags(Gdiplus::StringFormatFlagsNoClip | Gdiplus::StringFormatFlagsMeasureTrailingSpaces);
+	graphics.SetCompositingMode(Gdiplus::CompositingModeSourceOver);
+	graphics.SetCompositingQuality(Gdiplus::CompositingQualityHighQuality);
+	graphics.SetTextRenderingHint(Gdiplus::TextRenderingHintAntiAliasGridFit);
+	graphics.SetSmoothingMode(Gdiplus::SmoothingModeHighQuality);
+	wui_begin_font_frame();
+	for (i = 0; i < g_wuiState.styleCount; i++) {
+		const TC_DISPLAY_BACKEND_STYLE& style = g_wuiState.styles[i];
+		INT fontStyle = Gdiplus::FontStyleRegular;
+		int pixelHeight = abs(style.fontHeight);
+		if (style.fontWeight >= FW_BOLD) fontStyle |= Gdiplus::FontStyleBold;
+		if (style.fontItalic) fontStyle |= Gdiplus::FontStyleItalic;
+		if (pixelHeight <= 0) pixelHeight = 12;
+		fonts[i] = wui_get_font(style.fontFace, pixelHeight, fontStyle);
+		if (!fonts[i]) goto cleanup;
+	}
+	for (i = 0; i < g_wuiState.runCount; i++) {
+		const TC_DISPLAY_BACKEND_RUN& run = g_wuiState.runs[i];
+		const TC_DISPLAY_BACKEND_STYLE* style;
+		Gdiplus::SolidBrush textBrush(Gdiplus::Color(255, 255, 255, 255));
+		Gdiplus::SolidBrush shadowBrush(Gdiplus::Color(255, 0, 0, 0));
+		Gdiplus::RectF rect;
+		if (run.styleIndex >= g_wuiState.styleCount || run.textStart < 0 || run.textLength <= 0 ||
+			run.textStart + run.textLength >= (LONG)_countof(g_wuiState.text)) goto cleanup;
+		style = &g_wuiState.styles[run.styleIndex];
+		textBrush.SetColor(wui_argb(style->textColor));
+		shadowBrush.SetColor(wui_argb(style->shadowColor));
+		rect = Gdiplus::RectF((Gdiplus::REAL)(rcClient.left + run.x), (Gdiplus::REAL)run.y,
+			(Gdiplus::REAL)(rcClient.right - rcClient.left + 32), (Gdiplus::REAL)(abs(style->fontHeight) + 32));
+		if (style->clockShadow) {
+			Gdiplus::RectF shadowRect = rect;
+			shadowRect.X += (Gdiplus::REAL)style->shadowRange;
+			shadowRect.Y += (Gdiplus::REAL)style->shadowRange;
+			graphics.DrawString(g_wuiState.text + run.textStart, run.textLength, fonts[run.styleIndex], shadowRect, &format, &shadowBrush);
+		}
+		if (style->clockBorder) {
+			static const int offsets[][2] = { {-1, 1}, {1, -1}, {1, 1}, {0, -1}, {1, 0}, {-1, -1} };
+			int offsetIndex;
+			for (offsetIndex = 0; offsetIndex < (int)_countof(offsets); offsetIndex++) {
+				Gdiplus::RectF borderRect = rect;
+				borderRect.X += (Gdiplus::REAL)offsets[offsetIndex][0];
+				borderRect.Y += (Gdiplus::REAL)offsets[offsetIndex][1];
+				graphics.DrawString(g_wuiState.text + run.textStart, run.textLength, fonts[run.styleIndex], borderRect, &format, &shadowBrush);
+			}
+		}
+		graphics.DrawString(g_wuiState.text + run.textStart, run.textLength, fonts[run.styleIndex], rect, &format, &textBrush);
+	}
+	ok = TRUE;
+
+cleanup:
+	return ok;
 }
 
 static void wui_draw_text(Gdiplus::Graphics& graphics, const RECT& rcClient)
@@ -78,6 +228,7 @@ static void wui_draw_text(Gdiplus::Graphics& graphics, const RECT& rcClient)
 	INT fontStyle = Gdiplus::FontStyleRegular;
 
 	if (!g_wuiState.text[0]) return;
+	if (wui_draw_styled(graphics, rcClient)) return;
 
 	lstrcpynW(textBuffer, g_wuiState.text, _countof(textBuffer));
 	fontPixelHeight = abs(g_wuiState.fontHeight);
@@ -721,6 +872,7 @@ extern "C" void WINAPI WuiDestroyHost(void)
 		UnregisterClassW(L"TClockWinUIDllWindow", g_wuiInst);
 	}
 	if (g_wuiGdip) {
+		wui_clear_fonts();
 		Gdiplus::GdiplusShutdown(g_wuiGdip);
 		g_wuiGdip = 0;
 	}

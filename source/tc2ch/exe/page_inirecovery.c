@@ -718,6 +718,7 @@ static BOOL inir_key_is_legacy_member(const char* section, const char* key)
 
 static BOOL inir_key_is_currently_classified(const char* section, const char* key)
 {
+	if (section && _stricmp(section, "FormatStyle") == 0) return TRUE;
 	if (inir_key_is_stale_exact(section, key)) return TRUE;
 	if (inir_key_is_utf8hex_fixed(section, key)) return TRUE;
 	if (inir_key_is_legacy_member(section, key)) return TRUE;
@@ -784,6 +785,11 @@ static void inir_overlay_audit(INIR_INV_KEY* item)
 	if (!item) return;
 	item->auditBucket[0] = '\0';
 	item->auditConfidence[0] = '\0';
+	if (_stricmp(item->section, "FormatStyle") == 0) {
+		inir_copy_text(item->auditBucket, (int)_countof(item->auditBucket), "optional-feature");
+		inir_copy_text(item->auditConfidence, (int)_countof(item->auditConfidence), "proven");
+		return;
+	}
 
 	if (inir_seed_meta(item->section, item->key, &emitOnCreate, &dropEligible)) {
 		UNREFERENCED_PARAMETER(emitOnCreate);
@@ -827,6 +833,7 @@ static void inir_overlay_audit(INIR_INV_KEY* item)
 
 static const char* inir_classify_key_source(const char* section, const char* key)
 {
+	if (section && _stricmp(section, "FormatStyle") == 0) return "optional-section";
 	if (inir_key_is_stale_exact(section, key)) return "stale";
 	if (inir_key_is_utf8hex_fixed(section, key)) return "utf8hex";
 	if (inir_key_is_legacy_member(section, key)) return "legacy";

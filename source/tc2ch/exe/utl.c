@@ -6,6 +6,7 @@
 #include "tclock.h"
 #include "..\common\ini_io_utf8.h"
 #include "..\common\text_codec.h"
+#include "..\common\color_value.h"
 
 
 //#if defined(_MSC_VER) && (_MSC_VER >= 1200)
@@ -1275,6 +1276,24 @@ LONG GetMyRegLong(const char* section, const char* entry, LONG defval)
 /*-------------------------------------------
 　レジストリに文字列を書き込む
 ---------------------------------------------*/
+LONG GetMyRegColor(const char* section, const char* entry, LONG defval)
+{
+	char raw[128];
+	char* value;
+	COLORREF color;
+	TCV_KIND kind;
+	if (GetMyRegStr(section, entry, raw, (int)sizeof(raw), "") <= 0) {
+		return GetMyRegLong(section, entry, defval);
+	}
+	value = raw;
+	while (*value == ' ' || *value == '\t' || *value == '\r' || *value == '\n') value++;
+	if (*value == '#' || ((*value >= 'A' && *value <= 'Z') || (*value >= 'a' && *value <= 'z'))) {
+		if (!tcv_parse_ascii(raw, &color, &kind)) return defval;
+		return (LONG)(DWORD)color;
+	}
+	return GetMyRegLong(section, entry, defval);
+}
+
 BOOL SetMyRegStr(const char* section, const char* entry, const char* val)
 {
 	BOOL r = FALSE;

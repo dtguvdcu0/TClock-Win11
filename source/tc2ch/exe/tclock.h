@@ -331,6 +331,7 @@ void CheckNormalLog(void);		//Added by TTTT
 int GetMyRegStr(const char* section, const char* entry, char* val, int cbData,
 	const char* defval);
 LONG GetMyRegLong(const char* section, const char* entry, LONG defval);
+LONG GetMyRegColor(const char* section, const char* entry, LONG defval);
 BOOL SetMyRegStr(const char* subkey, const char* entry, const char* val);
 BOOL SetMyRegLong(const char* subkey, const char* entry, DWORD val);
 BOOL SetMyRegStrDef(const char* subkey, const char* entry, const char* val);

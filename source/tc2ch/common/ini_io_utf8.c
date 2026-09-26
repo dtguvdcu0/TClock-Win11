@@ -245,7 +245,7 @@ void tc_ini_utf8_clear_cache(void)
 }
 
 static int tc_ini_utf8_parse_section_multisz(const char* text, DWORD size, const char* sec,
-                                             char* outBuf, int outBytes)
+                                             char* outBuf, int outBytes, BOOL* truncated)
 {
     DWORD i = 0;
     int pos = 0;
@@ -253,6 +253,7 @@ static int tc_ini_utf8_parse_section_multisz(const char* text, DWORD size, const
     BOOL inTarget = FALSE;
 
     if (!text || !sec || !outBuf || outBytes <= 1) return 0;
+    if (truncated) *truncated = FALSE;
     outBuf[0] = '\0';
     outBuf[1] = '\0';
 
@@ -315,6 +316,7 @@ static int tc_ini_utf8_parse_section_multisz(const char* text, DWORD size, const
                 if (keyLen > 0) {
                     need = keyLen + 1 + (valLen > 0 ? valLen : 0) + 1;
                     if (pos + need + 1 >= outBytes) {
+                        if (truncated) *truncated = TRUE;
                         break;
                     }
                     CopyMemory(outBuf + pos, line + kl, (SIZE_T)keyLen);
@@ -840,8 +842,8 @@ cleanup:
     return r;
 }
 
-int tc_ini_utf8_read_section_multisz(const char* iniPath, const char* section,
-                                     char* outBuf, int outBytes)
+int tc_ini_utf8_read_section_multisz_ex(const char* iniPath, const char* section,
+                                        char* outBuf, int outBytes, BOOL* truncated)
 {
     HANDLE hLock = NULL;
     char* text = NULL;
@@ -855,6 +857,7 @@ int tc_ini_utf8_read_section_multisz(const char* iniPath, const char* section,
     sec = secNorm;
     int count = 0;
 
+    if (truncated) *truncated = FALSE;
     if (!outBuf || outBytes <= 1) return 0;
     outBuf[0] = '\0';
     outBuf[1] = '\0';
@@ -880,6 +883,7 @@ int tc_ini_utf8_read_section_multisz(const char* iniPath, const char* section,
             }
             outBuf[outBytes - 1] = '\0';
             outBuf[outBytes - 2] = '\0';
+            if (truncated && r == (DWORD)(outBytes - 2)) *truncated = TRUE;
             p = outBuf;
             while (*p) {
                 ++count;
@@ -889,10 +893,16 @@ int tc_ini_utf8_read_section_multisz(const char* iniPath, const char* section,
         }
     }
 
-    count = tc_ini_utf8_parse_section_multisz(text, size, sec, outBuf, outBytes);
+    count = tc_ini_utf8_parse_section_multisz(text, size, sec, outBuf, outBytes, truncated);
     if (readText) tc_free_text_buffer(readText);
     tc_ini_lock_leave(hLock);
     return count;
+}
+
+int tc_ini_utf8_read_section_multisz(const char* iniPath, const char* section,
+                                     char* outBuf, int outBytes)
+{
+    return tc_ini_utf8_read_section_multisz_ex(iniPath, section, outBuf, outBytes, NULL);
 }
 
 BOOL tc_ini_utf8_write_string(const char* iniPath, const char* section, const char* key,

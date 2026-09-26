@@ -13,6 +13,8 @@ int tc_ini_utf8_read_string(const char* iniPath, const char* section, const char
                             const char* defval, char* outVal, int outSize);
 int tc_ini_utf8_read_section_multisz(const char* iniPath, const char* section,
                                      char* outBuf, int outBytes);
+int tc_ini_utf8_read_section_multisz_ex(const char* iniPath, const char* section,
+                                        char* outBuf, int outBytes, BOOL* truncated);
 BOOL tc_ini_utf8_write_string(const char* iniPath, const char* section, const char* key,
                               const char* val);
 BOOL tc_ini_utf8_delete_key(const char* iniPath, const char* section, const char* key);

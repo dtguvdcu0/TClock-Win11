@@ -8,6 +8,7 @@
 #include "resource.h"
 #include "../version.h"
 #include "../common/text_codec.h"
+#include "../common/ini_io_utf8.h"
 #include "../winuidll/wui_api.h"
 #include <math.h>
 //#include <physicalmonitorenumerationapi.h>
@@ -25,6 +26,8 @@
 //グラフの記録数
 #define MAXGRAPHLOG 600
 #define MAX_MYCOLORS 16
+#define TC_FS_FONT_CACHE_MAX 64
+#define TC_FS_DRAW_MAX_RUNS 1024
 
 //IDTIMERDLL_CHECKNETSTAT, IDTIMERDLL_SYSINFOのオフセット(ms)	added by TTTT
 #define OFFSETMS_TIMER_SYSINFO	200
@@ -83,6 +86,8 @@ static void StartMinimalBackends(DWORD backendMask);
 static void InitSysInfoMinimal(DWORD sysMask);
 static void StartMinimalTimers(DWORD sysMask);
 static void RestartOnRefreshMinimal(void);
+static void FormatStyleLoadSettings(void);
+static void FormatStyleClearFonts(void);
 
 extern BOOL b_DebugLog;
 extern HWND hwndTaskBarMain;
@@ -318,6 +323,39 @@ HFONT hFonWork = NULL;
 HFONT hFontNotify = NULL;
 
 COLORREF colback, colback2, colfore;
+static TC_FS_RULESET g_formatStyleRules;
+static TC_FS_REPORT g_formatStyleReport;
+static TC_FS_STYLE g_formatStyleBase;
+typedef struct TC_FS_FONT_ENTRY {
+	WCHAR face[LF_FACESIZE];
+	int size;
+	BYTE bold;
+	BYTE italic;
+	HFONT font;
+} TC_FS_FONT_ENTRY;
+typedef struct TC_FS_DRAW_RUN {
+	int start;
+	int length;
+	int line;
+	int x;
+	int y;
+	int width;
+	TEXTMETRICW metrics;
+	HFONT font;
+	TC_FS_STYLE style;
+} TC_FS_DRAW_RUN;
+static TC_FS_FONT_ENTRY g_formatStyleFonts[TC_FS_FONT_CACHE_MAX];
+static int g_formatStyleFontCount = 0;
+static TC_FS_DRAW_RUN g_formatStyleRuns[TC_FS_DRAW_MAX_RUNS];
+static int g_formatStyleRunCount = 0;
+static LONG g_formatStyleWidthWatermark = 0;
+static LONG g_formatStyleHeightWatermark = 0;
+static BOOL g_formatStyleResizePending = FALSE;
+static BOOL FormatStyleBuildRuns(HDC hdc, const WCHAR* text, const char* info,
+	const TC_FORMAT_SPANS* spans, BOOL* matchedAny);
+static BOOL FormatStyleLayoutRuns(HDC hdc, const WCHAR* text, int xcenter, int yclock,
+	int wclock, int hclock, LONG* measuredWidth, LONG* measuredHeight);
+static void FormatStyleUpdateWatermark(LONG textWidth, LONG textHeight);
 BOOL fillbackcolor = FALSE;
 DWORD grad;
 BOOL bAutoBackMatchTaskbar = TRUE;
@@ -388,6 +426,13 @@ static BOOL g_wuiLocalViewOn = FALSE;
 static BOOL g_wuiLocalResOn = FALSE;
 static BOOL g_wuiBgOnly = FALSE;
 static BOOL g_wuiSubOnly = FALSE;
+static BOOL g_wuiStyleFallback = FALSE;
+static BOOL g_wuiFrameActive = FALSE;
+static BOOL g_wuiFrameValid = FALSE;
+static BOOL g_wuiFrameRunsReady = FALSE;
+static WCHAR g_wuiFrameText[4096];
+static char g_wuiFrameInfo[4096];
+static TC_FORMAT_SPANS g_wuiFrameSpans;
 static SIZE g_wuiLocalSize = { 0, 0 };
 static DWORD g_wuiLocalGen = 0;
 static DWORD g_wuiResGen = 0;
@@ -1615,9 +1660,18 @@ static BOOL wui_load_dll(void)
 static BOOL wui_fill_state(TC_DISPLAY_BACKEND_RENDER_STATE* state, SYSTEMTIME* pt, int beat100)
 {
 	WCHAR sW[4096];
+	char s_info[4096];
+	TC_FORMAT_SPANS formatSpans;
 	LOGFONT lf;
 	HDC hdcFace = NULL;
 	HFONT hOldFace = NULL;
+	BOOL releaseMeasureDC = FALSE;
+	BOOL styleMatched = FALSE;
+	RECT rcClient;
+	int xcenter;
+	int runIndex;
+	LONG styledWidth = 0;
+	LONG styledHeight = 0;
 
 	if (!state) return FALSE;
 
@@ -1649,8 +1703,75 @@ static BOOL wui_fill_state(TC_DISPLAY_BACKEND_RENDER_STATE* state, SYSTEMTIME* p
 	}
 	if (!pt || !g_formatW) return FALSE;
 
-	MakeFormatW(sW, _countof(sW), NULL, pt, beat100, g_formatW);
+	ZeroMemory(s_info, sizeof(s_info));
+	ZeroMemory(&formatSpans, sizeof(formatSpans));
+	g_wuiFrameValid = FALSE;
+	g_wuiFrameRunsReady = FALSE;
+	if (g_formatStyleRules.enabled) MakeFormatExW(sW, _countof(sW), s_info, pt, beat100, g_formatW, &formatSpans);
+	else MakeFormatW(sW, _countof(sW), s_info, pt, beat100, g_formatW);
 	lstrcpynW(state->text, sW, _countof(state->text));
+	lstrcpynW(g_wuiFrameText, sW, _countof(g_wuiFrameText));
+	CopyMemory(g_wuiFrameInfo, s_info, sizeof(g_wuiFrameInfo));
+	g_wuiFrameSpans = formatSpans;
+	g_wuiFrameValid = TRUE;
+	if (!g_formatStyleRules.enabled) return TRUE;
+	if (formatSpans.overflow || !GetClientRect(hwndClockMain, &rcClient)) return FALSE;
+	if (!hdcClock) {
+		hdcFace = GetDC(hwndClockMain);
+		if (!hdcFace) return FALSE;
+		releaseMeasureDC = TRUE;
+	}
+	else hdcFace = hdcClock;
+	if (nTextPos == 1) xcenter = 0;
+	else if (nTextPos == 2) xcenter = rcClient.right - rcClient.left - nShadowRange;
+	else xcenter = (rcClient.right - rcClient.left) / 2;
+	if (!FormatStyleBuildRuns(hdcFace, sW, s_info, &formatSpans, &styleMatched) ||
+		(styleMatched && !FormatStyleLayoutRuns(hdcFace, sW, xcenter, 0,
+			rcClient.right - rcClient.left, rcClient.bottom - rcClient.top, &styledWidth, &styledHeight))) {
+		if (releaseMeasureDC) ReleaseDC(hwndClockMain, hdcFace);
+		return FALSE;
+	}
+	if (styleMatched) {
+		g_wuiFrameRunsReady = TRUE;
+		FormatStyleUpdateWatermark(styledWidth, styledHeight);
+	}
+	if (releaseMeasureDC) ReleaseDC(hwndClockMain, hdcFace);
+	if (!styleMatched) return TRUE;
+	state->styleVersion = TC_WUI_STYLE_VERSION;
+	for (runIndex = 0; runIndex < g_formatStyleRunCount; runIndex++) {
+		TC_DISPLAY_BACKEND_STYLE apiStyle;
+		TC_DISPLAY_BACKEND_RUN* apiRun;
+		const TC_FS_DRAW_RUN* run = &g_formatStyleRuns[runIndex];
+		LOGFONTW runFont;
+		DWORD styleIndex;
+		if (state->runCount >= TC_WUI_MAX_RUNS) return FALSE;
+		ZeroMemory(&apiStyle, sizeof(apiStyle));
+		ZeroMemory(&runFont, sizeof(runFont));
+		GetObjectW(run->font, sizeof(runFont), &runFont);
+		apiStyle.textColor = run->style.foreColor;
+		apiStyle.shadowColor = run->style.shadowColor;
+		apiStyle.shadowRange = run->style.shadowRange;
+		apiStyle.fontHeight = runFont.lfHeight;
+		apiStyle.fontWeight = run->style.bold ? FW_BOLD : FW_NORMAL;
+		apiStyle.fontItalic = run->style.italic;
+		apiStyle.fontCharSet = runFont.lfCharSet;
+		apiStyle.clockShadow = run->style.shadow;
+		apiStyle.clockBorder = run->style.border;
+		lstrcpynW(apiStyle.fontFace, run->style.fontFace, LF_FACESIZE);
+		for (styleIndex = 0; styleIndex < state->styleCount; styleIndex++) {
+			if (memcmp(&state->styles[styleIndex], &apiStyle, sizeof(apiStyle)) == 0) break;
+		}
+		if (styleIndex == state->styleCount) {
+			if (state->styleCount >= TC_WUI_MAX_STYLES) return FALSE;
+			state->styles[state->styleCount++] = apiStyle;
+		}
+		apiRun = &state->runs[state->runCount++];
+		apiRun->textStart = run->start;
+		apiRun->textLength = run->length;
+		apiRun->x = run->x;
+		apiRun->y = run->y;
+		apiRun->styleIndex = (WORD)styleIndex;
+	}
 	return TRUE;
 }
 
@@ -1747,8 +1868,14 @@ static COLORREF tc_txtclr(int infoval)
 static void wui_push_text(SYSTEMTIME* pt, int beat100)
 {
 	TC_DISPLAY_BACKEND_RENDER_STATE state;
+	BOOL filled;
 
-	wui_fill_state(&state, (g_wuiCfg == TC_DISPLAY_BACKEND_WINUI) ? pt : NULL, beat100);
+	filled = wui_fill_state(&state, (g_wuiCfg == TC_DISPLAY_BACKEND_WINUI) ? pt : NULL, beat100);
+	g_wuiStyleFallback = g_formatStyleRules.enabled && !filled;
+	if (g_wuiStyleFallback) {
+		ZeroMemory(&state, sizeof(state));
+		state.cb = sizeof(state);
+	}
 	if (g_wuiUpdateState && g_wuiDll) {
 		g_wuiUpdateState(&state);
 		if (g_wuiDllLive && g_wuiRefreshHost) g_wuiRefreshHost();
@@ -2052,6 +2179,13 @@ static void wui_draw_body(HDC hdc, SYSTEMTIME* pt, int beat100)
 		++g_wuiProbeTick;
 	}
 	wui_push_text(pt, beat100);
+	g_wuiFrameActive = TRUE;
+	if (g_wuiStyleFallback) {
+		DrawClockSub(hdc, pt, beat100);
+		g_wuiFrameActive = FALSE;
+		g_wuiFrameRunsReady = FALSE;
+		return;
+	}
 	g_wuiBgOnly = TRUE;
 	g_wuiSubOnly = FALSE;
 	DrawClockSub(hdc, pt, beat100);
@@ -2059,6 +2193,8 @@ static void wui_draw_body(HDC hdc, SYSTEMTIME* pt, int beat100)
 	g_wuiSubOnly = TRUE;
 	DrawClockSub(hdc, pt, beat100);
 	g_wuiSubOnly = FALSE;
+	g_wuiFrameActive = FALSE;
+	g_wuiFrameRunsReady = FALSE;
 }
 
 static void wui_draw_main(HDC hdc, SYSTEMTIME* pt, int beat100)
@@ -2097,6 +2233,7 @@ static void RefreshClockWorkFont(void)
 void DeleteClockRes(void)
 {
 	TooltipDeleteRes();
+	FormatStyleClearFonts();
 	if (hFon) DeleteObject(hFon); hFon = NULL;
 	if (hFonWork) DeleteObject(hFonWork); hFonWork = NULL;
 	if (hFontNotify) DeleteObject(hFontNotify); hFontNotify = NULL;
@@ -2670,6 +2807,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 		//}
 		case CLOCKM_UPDATE_EXTTEXT:	//0x0404
 		{
+			g_formatStyleResizePending = FALSE;
 			// To Update "ExtTXT" in format
 			// PostMessage(****TCLOCK_MAIN_HWND****, 0x0404, NULL, (LPARAM)char* string);
 			// if lParam == NULL, text is read from tclock-win11.ini
@@ -2984,14 +3122,14 @@ static void ReadDataMinimal(void)
 	SetMyRegLong(NULL, "OffsetClockMS", (int)(short)offsetClockMS);
 	b_ModernStandbySupported = CheckModernStandbyCapability_Win10();
 
-	colfore = (COLORREF)GetMyRegLong("Color_Font", "ForeColor", GetSysColor(COLOR_BTNTEXT));
-	SetMyRegLong("Color_Font", "ForeColor", colfore);
+	colfore = (COLORREF)GetMyRegColor("Color_Font", "ForeColor", GetSysColor(COLOR_BTNTEXT));
+	SetMyRegColor("Color_Font", "ForeColor", colfore);
 	ColorWeekdayText = colfore;
 	colWin11Notify = colfore;
-	colback = (COLORREF)GetMyRegLong("Color_Font", "BackColor", GetSysColor(COLOR_3DFACE));
-	SetMyRegLong("Color_Font", "BackColor", colback);
-	colback2 = (COLORREF)GetMyRegLong("Color_Font", "BackColor2", colback);
-	SetMyRegLong("Color_Font", "BackColor2", colback2);
+	colback = (COLORREF)GetMyRegColor("Color_Font", "BackColor", GetSysColor(COLOR_3DFACE));
+	SetMyRegColor("Color_Font", "BackColor", colback);
+	colback2 = (COLORREF)GetMyRegColor("Color_Font", "BackColor2", colback);
+	SetMyRegColor("Color_Font", "BackColor2", colback2);
 	if (!GetMyRegLong("Color_Font", "UseBackColor2", FALSE)) {
 		colback2 = colback;
 	}
@@ -3030,8 +3168,8 @@ static void ReadDataMinimal(void)
 	grad = GetMyRegLong("Color_Font", "GradDir", GRADIENT_FILL_RECT_H);
 	bClockShadow = GetMyRegLong("Color_Font", "ForeColorShadow", FALSE);
 	bClockBorder = GetMyRegLong("Color_Font", "ForeColorBorder", FALSE);
-	colShadow = (COLORREF)GetMyRegLong("Color_Font", "ShadowColor", RGB(0, 0, 0));
-	SetMyRegLong("Color_Font", "ShadowColor", colShadow);
+	colShadow = (COLORREF)GetMyRegColor("Color_Font", "ShadowColor", RGB(0, 0, 0));
+	SetMyRegColor("Color_Font", "ShadowColor", colShadow);
 	nShadowRange = (int)(short)GetMyRegLong("Color_Font", "ClockShadowRange", 1);
 	bRClickMenu = TRUE;
 
@@ -3051,10 +3189,10 @@ static void ReadDataMinimal(void)
 	dwidth = (int)(short)GetMyRegLong("Color_Font", "ClockWidth", 0);
 	dvpos = (int)(short)GetMyRegLong("Color_Font", "VertPos", 0);
 	dlineheight = (int)(short)GetMyRegLong("Color_Font", "LineHeight", 0);
-	ColorSaturdayText = (COLORREF)GetMyRegLong("Color_Font", "Saturday_TextColor", 0x00C8FFC8);
-	ColorSundayText = (COLORREF)GetMyRegLong("Color_Font", "Sunday_TextColor", 0x00C8C8FF);
-	ColorHolidayText = (COLORREF)GetMyRegLong("Color_Font", "Holiday_TextColor", 0x00C8C8FF);
-	ColorVPNText = (COLORREF)GetMyRegLong("Color_Font", "VPN_TextColor", 0x00FFFF00);
+	ColorSaturdayText = (COLORREF)GetMyRegColor("Color_Font", "Saturday_TextColor", 0x00C8FFC8);
+	ColorSundayText = (COLORREF)GetMyRegColor("Color_Font", "Sunday_TextColor", 0x00C8C8FF);
+	ColorHolidayText = (COLORREF)GetMyRegColor("Color_Font", "Holiday_TextColor", 0x00C8C8FF);
+	ColorVPNText = (COLORREF)GetMyRegColor("Color_Font", "VPN_TextColor", 0x00FFFF00);
 	bUseAllColor = GetMyRegLong("Color_Font", "UseAllColor", FALSE);
 	SetMyRegLong("Color_Font", "UseAllColor", bUseAllColor);
 	bUseVPNColor = GetMyRegLong("Color_Font", "UseVPNColor", FALSE);
@@ -3129,6 +3267,7 @@ static void ReadDataMinimal(void)
 		}
 	}
 
+	FormatStyleLoadSettings();
 	dwInfoFormat = g_formatW ? FindFormatW(g_formatW) : FindFormat(format);
 	bDispSecond = (dwInfoFormat & FORMAT_SECOND) ? TRUE : FALSE;
 	nDispBeat = dwInfoFormat & (FORMAT_BEAT1 | FORMAT_BEAT2);
@@ -3331,6 +3470,125 @@ static void LoadVpnKeywordCsv(char* out, int cch_out)
 	AppendKeywordCsv(out, cch_out, "VPN");
 }
 
+static void FormatStyleClearFonts(void)
+{
+	int i;
+	HFONT stock = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
+	for (i = 0; i < g_formatStyleFontCount; i++) {
+		if (g_formatStyleFonts[i].font && g_formatStyleFonts[i].font != stock) {
+			DeleteObject(g_formatStyleFonts[i].font);
+		}
+	}
+	ZeroMemory(g_formatStyleFonts, sizeof(g_formatStyleFonts));
+	g_formatStyleFontCount = 0;
+}
+
+static void FormatStyleRefreshBase(void)
+{
+	LOGFONTW lf;
+	HDC hdc;
+	HFONT oldFont;
+	int dpi = 96;
+	ZeroMemory(&g_formatStyleBase, sizeof(g_formatStyleBase));
+	g_formatStyleBase.setMask = TC_FS_PROP_FORE_COLOR | TC_FS_PROP_FONT | TC_FS_PROP_FONT_SIZE |
+		TC_FS_PROP_BOLD | TC_FS_PROP_ITALIC | TC_FS_PROP_SHADOW | TC_FS_PROP_BORDER |
+		TC_FS_PROP_SHADOW_COLOR | TC_FS_PROP_SHADOW_RANGE;
+	g_formatStyleBase.foreColor = colfore;
+	g_formatStyleBase.shadowColor = colShadow;
+	g_formatStyleBase.fontSize = 12;
+	g_formatStyleBase.shadowRange = nShadowRange;
+	g_formatStyleBase.shadow = (BYTE)(bClockShadow ? 1 : 0);
+	g_formatStyleBase.border = (BYTE)(bClockBorder ? 1 : 0);
+	ZeroMemory(&lf, sizeof(lf));
+	if (!hFon || GetObjectW(hFon, sizeof(lf), &lf) != sizeof(lf)) return;
+	hdc = GetDC(NULL);
+	if (hdc) {
+		dpi = GetDeviceCaps(hdc, LOGPIXELSY);
+		oldFont = (HFONT)SelectObject(hdc, hFon);
+		GetTextFaceW(hdc, LF_FACESIZE, g_formatStyleBase.fontFace);
+		if (oldFont) SelectObject(hdc, oldFont);
+		ReleaseDC(NULL, hdc);
+	}
+	if (dpi <= 0) dpi = 96;
+	g_formatStyleBase.fontSize = MulDiv(abs(lf.lfHeight), 72, dpi);
+	if (g_formatStyleBase.fontSize < 1) g_formatStyleBase.fontSize = 12;
+	g_formatStyleBase.bold = (BYTE)(lf.lfWeight >= FW_BOLD ? 1 : 0);
+	g_formatStyleBase.italic = (BYTE)(lf.lfItalic ? 1 : 0);
+}
+
+static void FormatStyleLoadSettings(void)
+{
+	enum { SECTION_BYTES = 32768 };
+	char* section = NULL;
+	WCHAR* sectionW = NULL;
+	TC_FS_RULESET loaded;
+	TC_FS_REPORT report;
+	BOOL truncated = FALSE;
+	BOOL isUtf8 = FALSE;
+	UINT codePage;
+	DWORD flags;
+	int count;
+	int usedBytes;
+	int wideCount;
+	int i;
+
+	FormatStyleClearFonts();
+	FormatStyleRefreshBase();
+	g_formatStyleWidthWatermark = 0;
+	g_formatStyleHeightWatermark = 0;
+	g_formatStyleResizePending = FALSE;
+	TcFormatStyleInit(&loaded);
+	ZeroMemory(&report, sizeof(report));
+	if (b_SafeMode || b_MinimalMode || !g_inifile[0]) {
+		g_formatStyleRules = loaded;
+		ZeroMemory(&g_formatStyleReport, sizeof(g_formatStyleReport));
+		return;
+	}
+	section = (char*)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, SECTION_BYTES);
+	if (!section) goto fail;
+	count = tc_ini_utf8_read_section_multisz_ex(g_inifile, "FormatStyle", section, SECTION_BYTES, &truncated);
+	if (count <= 0) goto done;
+	if (truncated) {
+		report.errors = 1;
+		lstrcpynW(report.message, L"FormatStyle section exceeds 32 KiB", TC_FS_DIAG_CCH);
+		goto fail;
+	}
+	for (i = 0; i + 1 < SECTION_BYTES && (section[i] || section[i + 1]); i++) {}
+	if (i + 1 >= SECTION_BYTES) goto fail;
+	usedBytes = i + 2;
+	tc_ini_utf8_detect_file(g_inifile, &isUtf8, NULL);
+	codePage = isUtf8 ? CP_UTF8 : tc_current_ansi_codepage();
+	flags = isUtf8 ? MB_ERR_INVALID_CHARS : 0;
+	// Compatibility boundary: decode INI contents from UTF-8 or the configured legacy code page; paths and commands stay UTF-16.
+	wideCount = MultiByteToWideChar(codePage, flags, section, usedBytes, NULL, 0);
+	if (wideCount <= 1) goto fail;
+	sectionW = (WCHAR*)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, (SIZE_T)(wideCount + 1) * sizeof(WCHAR));
+	// Compatibility boundary: convert already-read INI value bytes only; no path or command crosses this legacy-codepage boundary.
+	if (!sectionW || MultiByteToWideChar(codePage, flags, section, usedBytes, sectionW, wideCount) != wideCount) goto fail;
+	sectionW[wideCount] = L'\0';
+	if (!TcFormatStyleLoadMulti(sectionW, wideCount + 1, &loaded, &report)) goto fail;
+	if (loaded.ruleCount == 0) loaded.enabled = FALSE;
+
+done:
+	g_formatStyleRules = loaded;
+	g_formatStyleReport = report;
+	if (b_DebugLog && loaded.enabled) {
+		writeDebugLog_Win10("[tclock.c][FormatStyle] active rules =", loaded.ruleCount);
+		writeDebugLog_Win10("[tclock.c][FormatStyle] invalid rules =", loaded.invalidCount);
+	}
+	if (sectionW) HeapFree(GetProcessHeap(), 0, sectionW);
+	if (section) HeapFree(GetProcessHeap(), 0, section);
+	return;
+
+fail:
+	TcFormatStyleInit(&loaded);
+	g_formatStyleRules = loaded;
+	g_formatStyleReport = report;
+	if (b_DebugLog) writeDebugLog_Win10("[tclock.c][FormatStyle] section disabled", 999);
+	if (sectionW) HeapFree(GetProcessHeap(), 0, sectionW);
+	if (section) HeapFree(GetProcessHeap(), 0, section);
+}
+
 void ReadData()
 {
 	int i;
@@ -3420,20 +3678,20 @@ void ReadData()
 	//設定番号取得
 
 
-	colfore = (COLORREF)GetMyRegLong("Color_Font", "ForeColor", GetSysColor(COLOR_BTNTEXT));
+	colfore = (COLORREF)GetMyRegColor("Color_Font", "ForeColor", GetSysColor(COLOR_BTNTEXT));
 //	if (colfore & 0x80000000) colfore = GetSysColor(colfore & 0x00ffffff);
-	SetMyRegLong("Color_Font", "ForeColor", colfore);
+	SetMyRegColor("Color_Font", "ForeColor", colfore);
 
 	ColorWeekdayText = colfore;
 	colWin11Notify = colfore;		//通知アイコンはメインテキストと同色
 
-	colback = (COLORREF)GetMyRegLong("Color_Font", "BackColor", GetSysColor(COLOR_3DFACE));
+	colback = (COLORREF)GetMyRegColor("Color_Font", "BackColor", GetSysColor(COLOR_3DFACE));
 //	if (colback & 0x80000000) colback = GetSysColor(colback & 0x00ffffff);
-	SetMyRegLong("Color_Font", "BackColor", colback);
+	SetMyRegColor("Color_Font", "BackColor", colback);
 
-	colback2 = (COLORREF)GetMyRegLong("Color_Font", "BackColor2", colback);
+	colback2 = (COLORREF)GetMyRegColor("Color_Font", "BackColor2", colback);
 //	if (colback2 & 0x80000000) colback2 = GetSysColor(colback2 & 0x00ffffff);
-	SetMyRegLong("Color_Font", "BackColor2", colback2);
+	SetMyRegColor("Color_Font", "BackColor2", colback2);
 
 	if (!GetMyRegLong("Color_Font", "UseBackColor2", FALSE))
 	{
@@ -3489,9 +3747,9 @@ void ReadData()
 	bClockShadow = GetMyRegLong("Color_Font", "ForeColorShadow", FALSE);
 	bClockBorder = GetMyRegLong("Color_Font", "ForeColorBorder", FALSE);
 
-	colShadow = (COLORREF)GetMyRegLong("Color_Font", "ShadowColor", RGB(0, 0, 0));
+	colShadow = (COLORREF)GetMyRegColor("Color_Font", "ShadowColor", RGB(0, 0, 0));
 	//if (colShadow & 0x80000000) colShadow = GetSysColor(colShadow & 0x00ffffff);
-	SetMyRegLong("Color_Font", "ShadowColor", colShadow);
+	SetMyRegColor("Color_Font", "ShadowColor", colShadow);
 
 	nShadowRange = (int)(short)GetMyRegLong("Color_Font", "ClockShadowRange", 1);
 
@@ -3524,16 +3782,16 @@ void ReadData()
 	dvpos = (int)(short)GetMyRegLong("Color_Font", "VertPos", 0);
 	dlineheight = (int)(short)GetMyRegLong("Color_Font", "LineHeight", 0);
 
-	ColorSaturdayText = (COLORREF)GetMyRegLong("Color_Font", "Saturday_TextColor", 0x00C8FFC8);
+	ColorSaturdayText = (COLORREF)GetMyRegColor("Color_Font", "Saturday_TextColor", 0x00C8FFC8);
 	//if (ColorSaturdayText & 0x80000000) ColorSaturdayText = GetSysColor(ColorSaturdayText & 0x00ffffff);
 
-	ColorSundayText = (COLORREF)GetMyRegLong("Color_Font", "Sunday_TextColor", 0x00C8C8FF);
+	ColorSundayText = (COLORREF)GetMyRegColor("Color_Font", "Sunday_TextColor", 0x00C8C8FF);
 	//if (ColorSundayText & 0x80000000) ColorSundayText = GetSysColor(ColorSundayText & 0x00ffffff);
 
-	ColorHolidayText = (COLORREF)GetMyRegLong("Color_Font", "Holiday_TextColor", 0x00C8C8FF);
+	ColorHolidayText = (COLORREF)GetMyRegColor("Color_Font", "Holiday_TextColor", 0x00C8C8FF);
 	//if (ColorHolidayText & 0x80000000) ColorHolidayText = GetSysColor(ColorHolidayText & 0x00ffffff);
 
-	ColorVPNText = (COLORREF)GetMyRegLong("Color_Font", "VPN_TextColor", 0x00FFFF00);
+	ColorVPNText = (COLORREF)GetMyRegColor("Color_Font", "VPN_TextColor", 0x00FFFF00);
 	//if (ColorVPNText & 0x80000000) ColorVPNText = GetSysColor(ColorVPNText & 0x00ffffff);
 
 	bUseAllColor = GetMyRegLong("Color_Font", "UseAllColor", FALSE);
@@ -3562,13 +3820,13 @@ void ReadData()
 	bGraphTate = GetMyRegLong("Graph", "GraphTate", FALSE);
 	NetGraphScaleRecv = GetMyRegLong("Graph", "NetGraphScaleRecv", 100);
 	NetGraphScaleSend = GetMyRegLong("Graph", "NetGraphScaleSend", 100);
-	ColSend = GetMyRegLong("Graph", "BackNetColSend", RGB(255, 0, 0));
-	ColRecv = GetMyRegLong("Graph", "BackNetColRecv", RGB(0, 255, 0));
-	ColSR = GetMyRegLong("Graph", "BackNetColSR", 0x00800080);
+	ColSend = GetMyRegColor("Graph", "BackNetColSend", RGB(255, 0, 0));
+	ColRecv = GetMyRegColor("Graph", "BackNetColRecv", RGB(0, 255, 0));
+	ColSR = GetMyRegColor("Graph", "BackNetColSR", 0x00800080);
 
-	ColorCPUGraph = GetMyRegLong("Graph", "ColorCPUGraph", RGB(0, 255, 0));
-	ColorCPUGraph2 = GetMyRegLong("Graph", "ColorCPUGraph2", RGB(255, 0, 0));
-	ColorGPUGraph = GetMyRegLong("Graph", "ColorGPUGraph", RGB(255, 0, 255));
+	ColorCPUGraph = GetMyRegColor("Graph", "ColorCPUGraph", RGB(0, 255, 0));
+	ColorCPUGraph2 = GetMyRegColor("Graph", "ColorCPUGraph2", RGB(255, 0, 0));
+	ColorGPUGraph = GetMyRegColor("Graph", "ColorGPUGraph", RGB(255, 0, 255));
 
 
 	graphInterval = 1;
@@ -3674,9 +3932,9 @@ void ReadData()
 	b_UseBarMeterVL = GetMyRegLong("BarMeter", "UseBarMeterVL", 0);
 
 
-	ColorBarMeterVL = (COLORREF)GetMyRegLong("BarMeter", "ColorBarMeterVL", RGB(0, 255, 0));
+	ColorBarMeterVL = (COLORREF)GetMyRegColor("BarMeter", "ColorBarMeterVL", RGB(0, 255, 0));
 
-	ColorBarMeterVL_Mute = (COLORREF)GetMyRegLong("BarMeter", "ColorBarMeterVL_Mute", RGB(255, 0, 0));
+	ColorBarMeterVL_Mute = (COLORREF)GetMyRegColor("BarMeter", "ColorBarMeterVL_Mute", RGB(255, 0, 0));
 
 	BarMeterVL_Right = (int)(short)GetMyRegLong("BarMeter", "BarMeterVL_Right", 290);
 
@@ -3695,13 +3953,13 @@ void ReadData()
 	b_UseBarMeterBL = GetMyRegLong("BarMeter", "UseBarMeterBL", 0);
 
 
-	ColorBarMeterBL_Charge = (COLORREF)GetMyRegLong("BarMeter", "ColorBarMeterBL_Charge", RGB(255, 165, 0));
+	ColorBarMeterBL_Charge = (COLORREF)GetMyRegColor("BarMeter", "ColorBarMeterBL_Charge", RGB(255, 165, 0));
 
-	ColorBarMeterBL_High = (COLORREF)GetMyRegLong("BarMeter", "ColorBarMeterBL_High", RGB(0, 255, 0));
+	ColorBarMeterBL_High = (COLORREF)GetMyRegColor("BarMeter", "ColorBarMeterBL_High", RGB(0, 255, 0));
 
-	ColorBarMeterBL_Mid = (COLORREF)GetMyRegLong("BarMeter", "ColorBarMeterBL_Mid", RGB(255, 255, 0));
+	ColorBarMeterBL_Mid = (COLORREF)GetMyRegColor("BarMeter", "ColorBarMeterBL_Mid", RGB(255, 255, 0));
 
-	ColorBarMeterBL_Low = (COLORREF)GetMyRegLong("BarMeter", "ColorBarMeterBL_Low", RGB(255, 0, 0));
+	ColorBarMeterBL_Low = (COLORREF)GetMyRegColor("BarMeter", "ColorBarMeterBL_Low", RGB(255, 0, 0));
 
 	BarMeterBL_Right = (int)(short)GetMyRegLong("BarMeter", "BarMeterBL_Right", 210);
 	
@@ -3729,11 +3987,11 @@ void ReadData()
 
 	b_UseBarMeterCU = GetMyRegLong("BarMeter", "UseBarMeterCU", 0);
 
-	ColorBarMeterCU_High = (COLORREF)GetMyRegLong("BarMeter", "ColorBarMeterCU_High", RGB(255, 0, 0));
+	ColorBarMeterCU_High = (COLORREF)GetMyRegColor("BarMeter", "ColorBarMeterCU_High", RGB(255, 0, 0));
 
-	ColorBarMeterCU_Mid = (COLORREF)GetMyRegLong("BarMeter", "ColorBarMeterCU_Mid", RGB(255, 255, 0));
+	ColorBarMeterCU_Mid = (COLORREF)GetMyRegColor("BarMeter", "ColorBarMeterCU_Mid", RGB(255, 255, 0));
 
-	ColorBarMeterCU_Low = (COLORREF)GetMyRegLong("BarMeter", "ColorBarMeterCU_Low", RGB(0, 255, 0));
+	ColorBarMeterCU_Low = (COLORREF)GetMyRegColor("BarMeter", "ColorBarMeterCU_Low", RGB(0, 255, 0));
 
 
 	BarMeterCU_Right = (int)(short)GetMyRegLong("BarMeter", "BarMeterCU_Right", 170);
@@ -3774,7 +4032,7 @@ void ReadData()
 	if (BarMeterGU_Top < 0) BarMeterGU_Top = 0;
 
 
-	ColorBarMeterGPU = (COLORREF)GetMyRegLong("BarMeter", "ColorBarMeterGPU", ColorGPUGraph);
+	ColorBarMeterGPU = (COLORREF)GetMyRegColor("BarMeter", "ColorBarMeterGPU", ColorGPUGraph);
 
 
 
@@ -3793,11 +4051,11 @@ void ReadData()
 	}
 
 
-	ColorBarMeterCore_High = (COLORREF)GetMyRegLong("BarMeter", "ColorBarMeterCore_High", RGB(255, 0, 0));
+	ColorBarMeterCore_High = (COLORREF)GetMyRegColor("BarMeter", "ColorBarMeterCore_High", RGB(255, 0, 0));
 
-	ColorBarMeterCore_Mid = (COLORREF)GetMyRegLong("BarMeter", "ColorBarMeterCore_Mid", RGB(255, 255, 0));
+	ColorBarMeterCore_Mid = (COLORREF)GetMyRegColor("BarMeter", "ColorBarMeterCore_Mid", RGB(255, 255, 0));
 
-	ColorBarMeterCore_Low = (COLORREF)GetMyRegLong("BarMeter", "ColorBarMeterCore_Low", RGB(0, 255, 0));
+	ColorBarMeterCore_Low = (COLORREF)GetMyRegColor("BarMeter", "ColorBarMeterCore_Low", RGB(0, 255, 0));
 
 
 
@@ -3828,10 +4086,10 @@ void ReadData()
 
 	b_BarMeterNet_LogGraph = GetMyRegLong("BarMeter", "BarMeterNet_LogGraph", 0);
 
-	ColorBarMeterNet_Send = (COLORREF)GetMyRegLong("BarMeter", "ColorBarMeterNet_Send", ColSend);
+	ColorBarMeterNet_Send = (COLORREF)GetMyRegColor("BarMeter", "ColorBarMeterNet_Send", ColSend);
 
 
-	ColorBarMeterNet_Recv = (COLORREF)GetMyRegLong("BarMeter", "ColorBarMeterNet_Recv", ColRecv);
+	ColorBarMeterNet_Recv = (COLORREF)GetMyRegColor("BarMeter", "ColorBarMeterNet_Recv", ColRecv);
 
 	BarMeterNetRecv_Right = (int)(short)GetMyRegLong("BarMeter", "BarMeterNetRecv_Right", 300);
 
@@ -4016,6 +4274,7 @@ void ReadData()
 		}
 	}
 
+	FormatStyleLoadSettings();
 
 	dwInfoFormat = g_formatW ? FindFormatW(g_formatW) : FindFormat(format);
 	bDispSecond = (dwInfoFormat&FORMAT_SECOND)? TRUE:FALSE;
@@ -5249,13 +5508,13 @@ static BOOL InitAnalogClockData(HWND hWnd)
 	nAnalogClockVPos = (int)(short)GetMyRegLong("AnalogClock", "AnalogClockVPos", 0);
 	nAnalogClockPos = (int)(short)GetMyRegLong("AnalogClock", "AnalogClockPos", 0);
 
-	colAClockHourHandColor = (COLORREF)GetMyRegLong("AnalogClock", "AClockHourHandColor", RGB(255, 0, 0));
+	colAClockHourHandColor = (COLORREF)GetMyRegColor("AnalogClock", "AClockHourHandColor", RGB(255, 0, 0));
 	//if (colAClockHourHandColor & 0x80000000) colAClockHourHandColor = GetSysColor(colAClockHourHandColor & 0x00ffffff);
-	SetMyRegLong("AnalogClock", "AClockHourHandColor", colAClockHourHandColor);
+	SetMyRegColor("AnalogClock", "AClockHourHandColor", colAClockHourHandColor);
 
-	colAClockMinHandColor = (COLORREF)GetMyRegLong("AnalogClock", "AClockMinHandColor", RGB(0, 0, 255));
+	colAClockMinHandColor = (COLORREF)GetMyRegColor("AnalogClock", "AClockMinHandColor", RGB(0, 0, 255));
 	//if (colAClockMinHandColor & 0x80000000) colAClockMinHandColor = GetSysColor(colAClockMinHandColor & 0x00ffffff);
-	SetMyRegLong("AnalogClock", "AClockMinHandColor", colAClockMinHandColor);
+	SetMyRegColor("AnalogClock", "AClockMinHandColor", colAClockMinHandColor);
 
 
 	if (hpenHour) {
@@ -5556,6 +5815,343 @@ void Textout_Tclock_Win10_3(int x, int y, const char* sp, int len, int infoval)
 	}
 }
 
+static BOOL FormatStyleFontMatchesBase(const TC_FS_STYLE* style)
+{
+	return style && style->fontSize == g_formatStyleBase.fontSize &&
+		style->bold == g_formatStyleBase.bold && style->italic == g_formatStyleBase.italic &&
+		wcscmp(style->fontFace, g_formatStyleBase.fontFace) == 0;
+}
+
+static HFONT FormatStyleGetFont(const TC_FS_STYLE* style)
+{
+	int i;
+	TC_FS_FONT_ENTRY* entry;
+	if (!style) return NULL;
+	if (FormatStyleFontMatchesBase(style)) return hFon;
+	for (i = 0; i < g_formatStyleFontCount; i++) {
+		entry = &g_formatStyleFonts[i];
+		if (entry->size == style->fontSize && entry->bold == style->bold &&
+			entry->italic == style->italic && wcscmp(entry->face, style->fontFace) == 0) return entry->font;
+	}
+	if (g_formatStyleFontCount >= TC_FS_FONT_CACHE_MAX) return NULL;
+	entry = &g_formatStyleFonts[g_formatStyleFontCount];
+	ZeroMemory(entry, sizeof(*entry));
+	lstrcpynW(entry->face, style->fontFace, LF_FACESIZE);
+	entry->size = style->fontSize;
+	entry->bold = style->bold;
+	entry->italic = style->italic;
+	entry->font = CreateMyFontW(entry->face, entry->size,
+		entry->bold ? FW_BOLD : FW_NORMAL, entry->italic ? TRUE : FALSE);
+	if (!entry->font) return NULL;
+	g_formatStyleFontCount++;
+	return entry->font;
+}
+
+static BOOL FormatStyleEqual(const TC_FS_STYLE* left, const TC_FS_STYLE* right)
+{
+	return left && right && left->foreColor == right->foreColor &&
+		left->shadowColor == right->shadowColor && left->fontSize == right->fontSize &&
+		left->shadowRange == right->shadowRange && left->bold == right->bold &&
+		left->italic == right->italic && left->shadow == right->shadow &&
+		left->border == right->border && wcscmp(left->fontFace, right->fontFace) == 0;
+}
+
+static BOOL FormatStyleBuildRuns(HDC hdc, const WCHAR* text, const char* info,
+	const TC_FORMAT_SPANS* spans, BOOL* matchedAny)
+{
+	int textLength;
+	int position = 0;
+	int spanIndex = 0;
+	int line = 0;
+	HFONT oldFont;
+	if (matchedAny) *matchedAny = FALSE;
+	g_formatStyleRunCount = 0;
+	if (!hdc || !text || !info || !spans || spans->overflow) return FALSE;
+	textLength = lstrlenW(text);
+	for (spanIndex = 0; spanIndex < spans->count; spanIndex++) {
+		const TC_FORMAT_SPAN* span = &spans->items[spanIndex];
+		if (span->start < 0 || span->length <= 0 || span->start + span->length > textLength ||
+			(spanIndex > 0 && span->start < spans->items[spanIndex - 1].start + spans->items[spanIndex - 1].length)) return FALSE;
+	}
+	spanIndex = 0;
+	while (position < textLength) {
+		const TC_FORMAT_SPAN* span = NULL;
+		TC_FS_STYLE style;
+		TC_FS_VALUE_CACHE cache;
+		BYTE zone;
+		int end;
+		int matches = 0;
+		TC_FS_DRAW_RUN* run;
+		int newlineLength = TcFormatStyleGetNewlineLength(text, textLength, position);
+		if (newlineLength > 0) {
+			position += newlineLength;
+			line++;
+			continue;
+		}
+		while (spanIndex < spans->count && position >= spans->items[spanIndex].start + spans->items[spanIndex].length) spanIndex++;
+		if (spanIndex < spans->count && position >= spans->items[spanIndex].start &&
+			position < spans->items[spanIndex].start + spans->items[spanIndex].length) span = &spans->items[spanIndex];
+		zone = (BYTE)info[position];
+		style = g_formatStyleBase;
+		style.foreColor = tc_clr(TextColorFromInfoVal((int)zone));
+		style.shadowColor = tc_clr(TextColorFromInfoVal(99));
+		end = textLength;
+		if (span) {
+			end = span->start + span->length;
+			ZeroMemory(&cache, sizeof(cache));
+			matches = TcFormatStyleApply(&g_formatStyleRules, span->selector,
+				text + span->start, span->length, &style, &style, &cache);
+			if (matches > 0 && matchedAny) *matchedAny = TRUE;
+		}
+		else if (spanIndex < spans->count && spans->items[spanIndex].start > position) {
+			end = spans->items[spanIndex].start;
+		}
+		while (end > position && position < textLength) {
+			int next = position;
+			while (next < end && text[next] != L'\r' && text[next] != L'\n' && (BYTE)info[next] == zone) next++;
+			if (next == position) break;
+			if (g_formatStyleRunCount > 0) {
+				run = &g_formatStyleRuns[g_formatStyleRunCount - 1];
+				if (run->line == line && run->start + run->length == position && FormatStyleEqual(&run->style, &style)) {
+					run->length += next - position;
+					position = next;
+					continue;
+				}
+			}
+			if (g_formatStyleRunCount >= TC_FS_DRAW_MAX_RUNS) return FALSE;
+			run = &g_formatStyleRuns[g_formatStyleRunCount++];
+			ZeroMemory(run, sizeof(*run));
+			run->start = position;
+			run->length = next - position;
+			run->line = line;
+			run->style = style;
+			position = next;
+		}
+		if (TcFormatStyleGetNewlineLength(text, textLength, position) > 0) continue;
+		if (position < end) position++;
+	}
+	if (!matchedAny || !*matchedAny) {
+		g_formatStyleRunCount = 0;
+		return TRUE;
+	}
+	oldFont = (HFONT)GetCurrentObject(hdc, OBJ_FONT);
+	for (position = 0; position < g_formatStyleRunCount; position++) {
+		SIZE size;
+		TC_FS_DRAW_RUN* run = &g_formatStyleRuns[position];
+		run->font = FormatStyleGetFont(&run->style);
+		if (!run->font) {
+			g_formatStyleRunCount = 0;
+			if (oldFont) SelectObject(hdc, oldFont);
+			return FALSE;
+		}
+		SelectObject(hdc, run->font);
+		ZeroMemory(&run->metrics, sizeof(run->metrics));
+		GetTextMetricsW(hdc, &run->metrics);
+		if (!ClockGetTextExtentCompatW(hdc, text + run->start, run->length, &size)) {
+			size.cx = run->length * run->metrics.tmAveCharWidth;
+		}
+		run->width = size.cx;
+	}
+	if (oldFont) SelectObject(hdc, oldFont);
+	return TRUE;
+}
+
+static BOOL FormatStyleLayoutRuns(HDC hdc, const WCHAR* text, int xcenter, int yclock,
+	int wclock, int hclock, LONG* measuredWidth, LONG* measuredHeight)
+{
+	enum { MAX_LINES = 256 };
+	int lineWidth[MAX_LINES];
+	int lineAscent[MAX_LINES];
+	int lineDescent[MAX_LINES];
+	int lineCount = 1;
+	int line;
+	int i;
+	int textLength;
+	int top;
+	int totalHeight = 0;
+	int maxWidth = 0;
+	TEXTMETRICW baseMetrics;
+	HFONT oldFont;
+	UNREFERENCED_PARAMETER(wclock);
+	if (!hdc || !text || g_formatStyleRunCount <= 0) return FALSE;
+	textLength = lstrlenW(text);
+	for (i = 0; i < textLength; i++) {
+		int newlineLength = TcFormatStyleGetNewlineLength(text, textLength, i);
+		if (newlineLength > 0) {
+			lineCount++;
+			i += newlineLength - 1;
+		}
+	}
+	if (lineCount > MAX_LINES) return FALSE;
+	ZeroMemory(lineWidth, sizeof(lineWidth));
+	ZeroMemory(lineAscent, sizeof(lineAscent));
+	ZeroMemory(lineDescent, sizeof(lineDescent));
+	oldFont = (HFONT)GetCurrentObject(hdc, OBJ_FONT);
+	if (hFon) SelectObject(hdc, hFon);
+	ZeroMemory(&baseMetrics, sizeof(baseMetrics));
+	GetTextMetricsW(hdc, &baseMetrics);
+	for (line = 0; line < lineCount; line++) {
+		lineAscent[line] = baseMetrics.tmAscent;
+		lineDescent[line] = baseMetrics.tmDescent;
+	}
+	for (i = 0; i < g_formatStyleRunCount; i++) {
+		TC_FS_DRAW_RUN* run = &g_formatStyleRuns[i];
+		if (run->line < 0 || run->line >= lineCount) return FALSE;
+		lineWidth[run->line] += run->width;
+		if (lineAscent[run->line] < run->metrics.tmAscent) lineAscent[run->line] = run->metrics.tmAscent;
+		if (lineDescent[run->line] < run->metrics.tmDescent) lineDescent[run->line] = run->metrics.tmDescent;
+	}
+	for (line = 0; line < lineCount; line++) {
+		if (maxWidth < lineWidth[line]) maxWidth = lineWidth[line];
+		totalHeight += lineAscent[line] + lineDescent[line];
+		if (line + 1 < lineCount) totalHeight += 2 + dlineheight;
+	}
+	if (lineCount == 1) top = (hclock - totalHeight) / 2 + yclock;
+	else top = (baseMetrics.tmHeight - baseMetrics.tmInternalLeading) / 4 - baseMetrics.tmInternalLeading / 2 + yclock;
+	for (line = 0; line < lineCount; line++) {
+		int x;
+		int baseline = top + lineAscent[line];
+		if (nTextPos == 1) x = xcenter;
+		else if (nTextPos == 2) x = xcenter - lineWidth[line];
+		else x = xcenter - lineWidth[line] / 2;
+		for (i = 0; i < g_formatStyleRunCount; i++) {
+			TC_FS_DRAW_RUN* run = &g_formatStyleRuns[i];
+			if (run->line != line) continue;
+			run->x = x;
+			run->y = baseline - run->metrics.tmAscent + dvpos;
+			x += run->width;
+		}
+		top += lineAscent[line] + lineDescent[line] + 2 + dlineheight;
+	}
+	if (oldFont) SelectObject(hdc, oldFont);
+	if (measuredWidth) *measuredWidth = maxWidth;
+	if (measuredHeight) *measuredHeight = totalHeight;
+	return TRUE;
+}
+
+static void FormatStyleUpdateWatermark(LONG textWidth, LONG textHeight)
+{
+	int i;
+	int padding = 0;
+	int extent = 0;
+	LONG requiredWidth;
+	LONG requiredHeight;
+	for (i = 0; i < g_formatStyleRunCount; i++) {
+		const TC_FS_DRAW_RUN* run = &g_formatStyleRuns[i];
+		int runExtent = run->style.border ? 1 : 0;
+		if (run->style.shadow && runExtent < run->style.shadowRange) runExtent = run->style.shadowRange;
+		if (padding < run->metrics.tmAveCharWidth) padding = run->metrics.tmAveCharWidth;
+		if (extent < runExtent) extent = runExtent;
+	}
+	if (padding <= 0) padding = 1;
+	requiredWidth = textWidth + padding * 2 + dwidth + extent;
+	requiredHeight = textHeight + padding / 2 + dheight + extent;
+	if (nAnalogClockUseFlag == ANALOG_CLOCK_USE && nAnalogClockPos != ANALOG_CLOCK_POS_MIDDLE) {
+		requiredWidth += sizeAClock.cx;
+	}
+	if (requiredWidth > g_formatStyleWidthWatermark) g_formatStyleWidthWatermark = requiredWidth;
+	if (requiredHeight > g_formatStyleHeightWatermark) g_formatStyleHeightWatermark = requiredHeight;
+	if (!g_formatStyleResizePending && IsWindow(hwndClockMain) &&
+		(requiredWidth > widthMainClockContent || requiredHeight > heightMainClockContent)) {
+		g_formatStyleResizePending = TRUE;
+		PostMessage(hwndClockMain, CLOCKM_UPDATE_EXTTEXT, 0, 0);
+	}
+}
+
+static void FormatStyleDrawOpaque(const WCHAR* text)
+{
+	int i;
+	HFONT oldFont;
+	int oldBkMode;
+	if (!text || g_wuiBgOnly) return;
+	oldFont = (HFONT)GetCurrentObject(hdcClock, OBJ_FONT);
+	oldBkMode = SetBkMode(hdcClock, TRANSPARENT);
+	for (i = 0; i < g_formatStyleRunCount; i++) {
+		const TC_FS_DRAW_RUN* run = &g_formatStyleRuns[i];
+		SelectObject(hdcClock, run->font);
+		if (run->style.shadow) {
+			SetTextColor(hdcClock, run->style.shadowColor);
+			ClockTextOutCompatW(hdcClock, run->x + run->style.shadowRange,
+				run->y + run->style.shadowRange, text + run->start, run->length);
+		}
+		if (run->style.border) {
+			SetTextColor(hdcClock, run->style.shadowColor);
+			ClockTextOutCompatW(hdcClock, run->x - 1, run->y + 1, text + run->start, run->length);
+			ClockTextOutCompatW(hdcClock, run->x + 1, run->y - 1, text + run->start, run->length);
+			ClockTextOutCompatW(hdcClock, run->x + 1, run->y + 1, text + run->start, run->length);
+			ClockTextOutCompatW(hdcClock, run->x, run->y - 1, text + run->start, run->length);
+			ClockTextOutCompatW(hdcClock, run->x + 1, run->y, text + run->start, run->length);
+			ClockTextOutCompatW(hdcClock, run->x - 1, run->y - 1, text + run->start, run->length);
+		}
+		SetTextColor(hdcClock, run->style.foreColor);
+		ClockTextOutCompatW(hdcClock, run->x, run->y, text + run->start, run->length);
+	}
+	SetBkMode(hdcClock, oldBkMode);
+	if (oldFont) SelectObject(hdcClock, oldFont);
+}
+
+static void FormatStyleClearMask(void)
+{
+	RGBQUAD* pixel;
+	for (pixel = m_color_work_start; pixel < m_color_work_end; pixel++) *(unsigned*)pixel = 0xFF000000;
+}
+
+static void FormatStyleCompositeMask(COLORREF colorValue)
+{
+	RGBQUAD* dst;
+	RGBQUAD* mask;
+	BYTE red = GetRValue(colorValue);
+	BYTE green = GetGValue(colorValue);
+	BYTE blue = GetBValue(colorValue);
+	for (dst = m_color_start, mask = m_color_work_start; dst < m_color_end; dst++, mask++) {
+		unsigned alpha = mask->rgbRed;
+		unsigned inverse;
+		if (mask->rgbGreen > alpha) alpha = mask->rgbGreen;
+		if (mask->rgbBlue > alpha) alpha = mask->rgbBlue;
+		if (!alpha) continue;
+		inverse = 255 - alpha;
+		dst->rgbRed = (BYTE)((red * alpha + dst->rgbRed * inverse) / 255);
+		dst->rgbGreen = (BYTE)((green * alpha + dst->rgbGreen * inverse) / 255);
+		dst->rgbBlue = (BYTE)((blue * alpha + dst->rgbBlue * inverse) / 255);
+		dst->rgbReserved = (BYTE)(alpha + dst->rgbReserved * inverse / 255);
+	}
+}
+
+static void FormatStyleDrawTransparent(const WCHAR* text)
+{
+	int i;
+	HFONT oldFont;
+	int oldBkMode;
+	if (!text || g_wuiBgOnly) return;
+	oldFont = (HFONT)GetCurrentObject(hdcClock_work, OBJ_FONT);
+	oldBkMode = SetBkMode(hdcClock_work, TRANSPARENT);
+	SetTextColor(hdcClock_work, RGB(255, 255, 255));
+	for (i = 0; i < g_formatStyleRunCount; i++) {
+		const TC_FS_DRAW_RUN* run = &g_formatStyleRuns[i];
+		SelectObject(hdcClock_work, run->font);
+		if (run->style.shadow || run->style.border) {
+			FormatStyleClearMask();
+			if (run->style.shadow) ClockTextOutCompatW(hdcClock_work,
+				run->x + run->style.shadowRange, run->y + run->style.shadowRange,
+				text + run->start, run->length);
+			if (run->style.border) {
+				ClockTextOutCompatW(hdcClock_work, run->x - 1, run->y + 1, text + run->start, run->length);
+				ClockTextOutCompatW(hdcClock_work, run->x + 1, run->y - 1, text + run->start, run->length);
+				ClockTextOutCompatW(hdcClock_work, run->x + 1, run->y + 1, text + run->start, run->length);
+				ClockTextOutCompatW(hdcClock_work, run->x, run->y - 1, text + run->start, run->length);
+				ClockTextOutCompatW(hdcClock_work, run->x + 1, run->y, text + run->start, run->length);
+				ClockTextOutCompatW(hdcClock_work, run->x - 1, run->y - 1, text + run->start, run->length);
+			}
+			FormatStyleCompositeMask(run->style.shadowColor);
+		}
+		FormatStyleClearMask();
+		ClockTextOutCompatW(hdcClock_work, run->x, run->y, text + run->start, run->length);
+		FormatStyleCompositeMask(run->style.foreColor);
+	}
+	SetBkMode(hdcClock_work, oldBkMode);
+	if (oldFont) SelectObject(hdcClock_work, oldFont);
+}
+
 void Textout_Tclock_Win10_3W(int x, int y, const WCHAR* spW, int wlen, int infoval)
 {
 	COLORREF textshadow, textcol_dow, textcol_temp;
@@ -5701,6 +6297,11 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
 	TEXTMETRIC tm;
 	int hf, y;
 	WCHAR sW[4096]; char s_info[4096]; WCHAR *pw, *spW; char *p_info, *sp_info;
+	TC_FORMAT_SPANS formatSpans;
+	BOOL useStyledText = FALSE;
+	BOOL styleMatched = FALSE;
+	LONG styledTextWidth = 0;
+	LONG styledTextHeight = 0;
 	//COLORREF s_col[1024];
 	SIZE sz;
 	int xclock, yclock, wclock, hclock;
@@ -5769,13 +6370,24 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
 	//}
 	
 
-	for (int i = 0; i < 1024; i++)
+	for (int i = 0; i < (int)_countof(s_info); i++)
 	{
 		*(s_info + i) = 0x00;
 	}
 
 	if (!g_formatW) return;
-	MakeFormatW(sW, _countof(sW), s_info, pt, beat100, g_formatW);
+	if (g_wuiFrameActive && g_wuiFrameValid) {
+		lstrcpynW(sW, g_wuiFrameText, _countof(sW));
+		CopyMemory(s_info, g_wuiFrameInfo, sizeof(s_info));
+		formatSpans = g_wuiFrameSpans;
+	}
+	else if (g_formatStyleRules.enabled) {
+		MakeFormatExW(sW, _countof(sW), s_info, pt, beat100, g_formatW, &formatSpans);
+	}
+	else {
+		MakeFormatW(sW, _countof(sW), s_info, pt, beat100, g_formatW);
+		ZeroMemory(&formatSpans, sizeof(formatSpans));
+	}
 
 	xclock = 0;
 	yclock = 0;
@@ -5820,6 +6432,17 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
 		}
 	}
 
+
+	if (g_wuiFrameActive && g_wuiFrameRunsReady) {
+		useStyledText = TRUE;
+		styleMatched = TRUE;
+	}
+	else if (g_formatStyleRules.enabled && !formatSpans.overflow &&
+		FormatStyleBuildRuns(hdcClock, sW, s_info, &formatSpans, &styleMatched) && styleMatched &&
+		FormatStyleLayoutRuns(hdcClock, sW, xcenter, yclock, wclock, hclock, &styledTextWidth, &styledTextHeight)) {
+		useStyledText = TRUE;
+		FormatStyleUpdateWatermark(styledTextWidth, styledTextHeight);
+	}
 
 	LocalDrawAnalogClock(hdcClock, pt, xclock, yclock, wclock, hclock);
 
@@ -5932,6 +6555,10 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
 
 
 	//w = 0;
+	if (useStyledText) {
+		if (fillbackcolor) FormatStyleDrawOpaque(sW);
+	}
+	else {
 	GetTextMetrics(hdcClock, &tm);
 	hf = tm.tmHeight - tm.tmInternalLeading;
 	pw = sW;
@@ -6035,6 +6662,7 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
 
 		y += hf; if (*pw) y += 2 + dlineheight;
 	}
+	}
 
 //	if (b_DebugLog)writeDebugLog_Win10("[tclock.c][drawclocksub] Text out,zonecount =", zonecount);
 
@@ -6094,7 +6722,26 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
 		textshadow_g = GetGValue(textshadow);
 		textshadow_b = GetBValue(textshadow);
 
-		for (color = m_color_start, color_work = m_color_work_start; color<m_color_end; ++color, ++color_work) {
+		if (useStyledText) {
+			for (color = m_color_start; color < m_color_end; ++color) {
+				if (color->rgbReserved == 0) {
+					color->rgbReserved = 255;
+				}
+				else if (apply_auto_back_alpha && back_alpha > 0) {
+					if (back_alpha < 255) {
+						color->rgbRed = (BYTE)((unsigned)color->rgbRed * back_alpha / 255);
+						color->rgbGreen = (BYTE)((unsigned)color->rgbGreen * back_alpha / 255);
+						color->rgbBlue = (BYTE)((unsigned)color->rgbBlue * back_alpha / 255);
+					}
+					color->rgbReserved = back_alpha;
+				}
+				else {
+					color->rgbReserved = 255;
+				}
+			}
+			FormatStyleDrawTransparent(sW);
+		}
+		else for (color = m_color_start, color_work = m_color_work_start; color<m_color_end; ++color, ++color_work) {
 			//BYTE temp_rgbReserved = color->rgbReserved;
 //			if (color->rgbReserved == 255) {								//グラフドットがないところ
 			if (color_work->rgbReserved == 0) {								//文字があるところ(周辺の低輝度輪郭まで含む)
@@ -7090,8 +7737,14 @@ void CalcMainClockContentSize(void)
 	HGDIOBJ hOldFont = NULL;
 	TEXTMETRIC tm;
 	WCHAR sW[4096]; WCHAR *pw, *spW;
+	char s_info[4096];
+	TC_FORMAT_SPANS formatSpans;
+	BOOL styleMatched = FALSE;
+	BOOL useStyledSize = FALSE;
 	SIZE sz;
 	int hf;
+	int styleExtent = 0;
+	int stylePadding = 0;
 
 
 	hdc = GetDC(hwndClockMain);
@@ -7100,15 +7753,31 @@ void CalcMainClockContentSize(void)
 	GetTextMetrics(hdc, &tm);
 
 	GetDisplayTime(&t, nDispBeat ? (&beat100) : NULL);
+	ZeroMemory(s_info, sizeof(s_info));
+	ZeroMemory(&formatSpans, sizeof(formatSpans));
 	if (g_formatW) {
-		MakeFormatW(sW, _countof(sW), NULL, &t, beat100, g_formatW);
+		if (g_formatStyleRules.enabled) MakeFormatExW(sW, _countof(sW), s_info, &t, beat100, g_formatW, &formatSpans);
+		else MakeFormatW(sW, _countof(sW), NULL, &t, beat100, g_formatW);
 	} else {
 		sW[0] = L'\0';
 	}
 
 	pw = sW; w = 0; h = 0;
 	hf = tm.tmHeight - tm.tmInternalLeading;
-	while (*pw)
+	if (g_formatStyleRules.enabled && !formatSpans.overflow &&
+		FormatStyleBuildRuns(hdc, sW, s_info, &formatSpans, &styleMatched) && styleMatched &&
+		FormatStyleLayoutRuns(hdc, sW, 0, 0, 0, 0, &w, &h)) {
+		int runIndex;
+		useStyledSize = TRUE;
+		for (runIndex = 0; runIndex < g_formatStyleRunCount; runIndex++) {
+			const TC_FS_DRAW_RUN* run = &g_formatStyleRuns[runIndex];
+			int extent = run->style.border ? 1 : 0;
+			if (run->style.shadow && extent < run->style.shadowRange) extent = run->style.shadowRange;
+			if (styleExtent < extent) styleExtent = extent;
+			if (stylePadding < run->metrics.tmAveCharWidth) stylePadding = run->metrics.tmAveCharWidth;
+		}
+	}
+	while (!useStyledSize && *pw)
 	{
 		spW = pw;
 		while (*pw && *pw != L'\r') pw++;
@@ -7126,12 +7795,20 @@ void CalcMainClockContentSize(void)
 		}
 	}
 
-	w += tm.tmAveCharWidth * 2;
+	w += (useStyledSize && stylePadding > 0 ? stylePadding : tm.tmAveCharWidth) * 2;
 	w += dwidth;
 	h += hf / 2 + dheight;
-	if (bClockShadow)
+	if (useStyledSize && styleExtent > 0)
+	{
+		h += styleExtent; w += styleExtent;
+	}
+	else if (bClockShadow)
 	{
 		h += nShadowRange; w += nShadowRange;
+	}
+	if (g_formatStyleRules.enabled) {
+		if (w < g_formatStyleWidthWatermark) w = g_formatStyleWidthWatermark;
+		if (h < g_formatStyleHeightWatermark) h = g_formatStyleHeightWatermark;
 	}
 	if (h < 4) h = 4;
 

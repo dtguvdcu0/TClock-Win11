@@ -30,6 +30,8 @@
 # include <shlobj.h>
 #pragma warning(pop)
 
+#include "format_style.h"
+
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "gdi32.lib")
 #pragma comment(lib, "shlwapi.lib")
@@ -132,6 +134,8 @@ int _strncmp(const char* d, const char* s, size_t n);
 
 HFONT CreateMyFont(const char* fontname, int fontsize,
 	LONG weight, LONG italic);
+HFONT CreateMyFontW(const WCHAR* fontname, int fontsize,
+	LONG weight, LONG italic);
 
 int ext_cmp(const char *fname, const char *ext);
 //void add_title(char *path, const char *title);
@@ -158,6 +162,8 @@ void CleanSettingFile(void);
 // FORMAT.C
 void InitFormat(SYSTEMTIME* lt);
 void MakeFormatW(WCHAR* s, int sCch, char* s_info, SYSTEMTIME* pt, int beat100, const WCHAR* fmt);
+void MakeFormatExW(WCHAR* s, int sCch, char* s_info, SYSTEMTIME* pt, int beat100,
+	const WCHAR* fmt, TC_FORMAT_SPANS* spans);
 void CustomFormatVarsReadSettings(void);
 void GipRead(void);
 void CustomFormatVarsPreloadIfEnabled(void);
@@ -406,6 +412,8 @@ extern "C" {
 	//Following lines have been moved from above lines for call from cpp codes.
 	void add_title(char *path, const char *title);
 	LONG GetMyRegLong(const char* section, const char* entry, LONG defval);
+	LONG GetMyRegColor(const char* section, const char* entry, LONG defval);
+	BOOL SetMyRegColor(const char* section, const char* entry, DWORD value);
 	BOOL SetMyRegLong(const char* subkey, const char* entry, DWORD val);
 	//void WriteDebug(LPSTR s); // WriteDebugDLL_New()に移行 by TTTT
 	void get_title(char* dst, const char *path);	//	copied from utl.c in tclock by TTTT

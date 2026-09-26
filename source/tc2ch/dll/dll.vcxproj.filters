@@ -27,6 +27,9 @@
     <ClCompile Include="format.c">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
+    <ClCompile Include="format_style.c">
+      <Filter>ソース ファイル</Filter>
+    </ClCompile>
     <ClCompile Include="minmode.c">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
@@ -75,6 +78,9 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="resource.h">
+      <Filter>ヘッダー ファイル</Filter>
+    </ClInclude>
+    <ClInclude Include="format_style.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
     <ClInclude Include="tcdll.h">

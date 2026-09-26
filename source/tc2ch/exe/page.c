@@ -81,16 +81,16 @@ void InitComboColor(HWND hDlg, int numcol, COMBOCOLOR *pCombocolor, int maxcol, 
 		if (ex_flg)
 		{
 			if (pCombocolor[i].defcol == 0xFFFFFFFF)
-				col = (COLORREF)GetMyRegLong(section, pCombocolor[i].colname, col);
+				col = (COLORREF)GetMyRegColor(section, pCombocolor[i].colname, col);
 			else
-				col = (COLORREF)GetMyRegLong(section, pCombocolor[i].colname, pCombocolor[i].defcol);
+				col = (COLORREF)GetMyRegColor(section, pCombocolor[i].colname, pCombocolor[i].defcol);
 		}
 		else
 		{
 			if (pCombocolor[i].defcol == 0xFFFFFFFF)
-				col = (COLORREF)GetMyRegLong(section, pCombocolor[i].colname, col);
+				col = (COLORREF)GetMyRegColor(section, pCombocolor[i].colname, col);
 			else
-				col = (COLORREF)GetMyRegLong(section, pCombocolor[i].colname, pCombocolor[i].defcol);
+				col = (COLORREF)GetMyRegColor(section, pCombocolor[i].colname, pCombocolor[i].defcol);
 		}
 
 		for(j = 0; j < maxcol; j++)

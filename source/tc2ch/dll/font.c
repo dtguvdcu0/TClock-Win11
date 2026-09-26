@@ -62,6 +62,17 @@ static void RecreateAsMsUiGothic(LOGFONT* lf, HFONT* phFont)
 	*phFont = CreateFontIndirect(lf);
 }
 
+static void RecreateAsMsUiGothicW(LOGFONTW* lf, HFONT* phFont)
+{
+	if (!lf || !phFont) return;
+	if (*phFont) {
+		DeleteObject(*phFont);
+		*phFont = NULL;
+	}
+	lstrcpynW(lf->lfFaceName, L"MS UI Gothic", LF_FACESIZE);
+	*phFont = CreateFontIndirectW(lf);
+}
+
 /*------------------------------------------------
    callback function for EnumFontFamiliesEx,
    to find a designated font
@@ -180,6 +191,80 @@ HFONT CreateMyFont(const char* fontname, int fontsize,
 	}
 	if (!hOut) hOut = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
 
+	InterlockedDecrement(&g_depth_CreateMyFont);
+	return hOut;
+}
+
+HFONT CreateMyFontW(const WCHAR* fontname, int fontsize, LONG weight, LONG italic)
+{
+	LOGFONTW lf;
+	HDC hdc;
+	HFONT hOut = NULL;
+	HFONT hOldFace;
+	WORD langid;
+	WCHAR wcp[11];
+	WCHAR fontnameLocal[LF_FACESIZE];
+	WCHAR actualFace[LF_FACESIZE];
+	int cp;
+	int i;
+	int fnlen;
+	BYTE charset = DEFAULT_CHARSET;
+	LONG depth;
+	BOOL requestMsGothic;
+
+	depth = InterlockedIncrement(&g_depth_CreateMyFont);
+	if (depth > 32) {
+		InterlockedDecrement(&g_depth_CreateMyFont);
+		return (HFONT)GetStockObject(DEFAULT_GUI_FONT);
+	}
+	lstrcpynW(fontnameLocal, fontname ? fontname : L"", LF_FACESIZE);
+	fnlen = lstrlenW(fontnameLocal);
+	if (fnlen >= 2 && fontnameLocal[0] == L'"' && fontnameLocal[fnlen - 1] == L'"') {
+		MoveMemory(fontnameLocal, fontnameLocal + 1, (SIZE_T)(fnlen - 2) * sizeof(WCHAR));
+		fontnameLocal[fnlen - 2] = L'\0';
+	}
+	requestMsGothic = EqualsWideNoCase(fontnameLocal, kFontMsGothicW) ||
+		EqualsWideNoCase(fontnameLocal, kFontMsGothicAsciiW);
+	ZeroMemory(&lf, sizeof(lf));
+	langid = (WORD)GetMyRegLong("Format", "Locale", (int)GetUserDefaultLangID());
+	cp = tc_current_ansi_codepage();
+	if (GetLocaleInfoW(MAKELCID(langid, SORT_DEFAULT), LOCALE_IDEFAULTANSICODEPAGE,
+		wcp, (int)ARRAYSIZE(wcp)) > 0) {
+		const WCHAR* pcp = wcp;
+		cp = 0;
+		while (*pcp >= L'0' && *pcp <= L'9') cp = cp * 10 + (int)(*pcp++ - L'0');
+		if (!IsValidCodePage(cp)) cp = tc_current_ansi_codepage();
+	}
+	for (i = 0; codepage_charset[i].cp; i++) {
+		if (cp == codepage_charset[i].cp) {
+			charset = codepage_charset[i].charset;
+			break;
+		}
+	}
+	hdc = GetDC(NULL);
+	lf.lfHeight = hdc ? -MulDiv(fontsize, GetDeviceCaps(hdc, LOGPIXELSY), 72) : -fontsize;
+	if (hdc) ReleaseDC(NULL, hdc);
+	lf.lfWeight = weight;
+	lf.lfItalic = (BYTE)italic;
+	lf.lfCharSet = charset;
+	lf.lfOutPrecision = OUT_DEFAULT_PRECIS;
+	lf.lfClipPrecision = CLIP_DEFAULT_PRECIS;
+	lf.lfQuality = DEFAULT_QUALITY;
+	lf.lfPitchAndFamily = DEFAULT_PITCH | FF_DONTCARE;
+	lstrcpynW(lf.lfFaceName, fontnameLocal, LF_FACESIZE);
+	hOut = CreateFontIndirectW(&lf);
+	if (hOut && requestMsGothic) {
+		actualFace[0] = L'\0';
+		hdc = GetDC(NULL);
+		if (hdc) {
+			hOldFace = (HFONT)SelectObject(hdc, hOut);
+			GetTextFaceW(hdc, LF_FACESIZE, actualFace);
+			if (hOldFace) SelectObject(hdc, hOldFace);
+			ReleaseDC(NULL, hdc);
+		}
+		if (!IsMsGothicActualFaceW(actualFace)) RecreateAsMsUiGothicW(&lf, &hOut);
+	}
+	if (!hOut) hOut = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
 	InterlockedDecrement(&g_depth_CreateMyFont);
 	return hOut;
 }

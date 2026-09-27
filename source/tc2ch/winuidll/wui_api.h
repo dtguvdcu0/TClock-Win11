@@ -59,6 +59,10 @@ typedef struct TC_DISPLAY_BACKEND_RENDER_STATE {
 	DWORD textRenderer; // Selectable WinUI rendering: 0 = GDI+, 1 = natural, 2 = GDI-compatible.
 	DWORD baselineVersion;
 	LONG runBaselines[TC_WUI_MAX_RUNS]; // Physical-pixel baseline shared by each line.
+	// Borrowed premultiplied BGRA; copied during WuiUpdateState. Positive height is bottom-up.
+	const BYTE* layerPixels;
+	LONG layerWidth;
+	LONG layerHeight;
 } TC_DISPLAY_BACKEND_RENDER_STATE;
 
 typedef struct WUI_TOOLTIP_STATE {

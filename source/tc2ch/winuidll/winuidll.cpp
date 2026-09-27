@@ -1,4 +1,6 @@
 #include <windows.h>
+#include <stdint.h>
+#include <limits.h>
 #include <commctrl.h>
 #include <gdiplus.h>
 #include "wui_api.h"
@@ -19,6 +21,10 @@ static HWND g_wuiHost = NULL;
 static HWND g_wuiTooltip = NULL;
 static WCHAR g_wuiTooltipText[4096];
 static TC_DISPLAY_BACKEND_RENDER_STATE g_wuiState;
+static BYTE* g_wuiLayerPixels = NULL;
+static SIZE_T g_wuiLayerCapacity = 0;
+static LONG g_wuiLayerWidth = 0;
+static LONG g_wuiLayerHeight = 0;
 static ULONG_PTR g_wuiGdip = 0;
 static RECT g_wuiLastTarget = { 0, 0, 0, 0 };
 static RECT g_wuiLastPlace = { 0, 0, 0, 0 };
@@ -321,6 +327,69 @@ static void wui_draw_text(Gdiplus::Graphics& graphics, const RECT& rcClient)
 	delete pFontFamilyCustom;
 }
 
+static void wui_clear_layer(void)
+{
+	if (g_wuiLayerPixels) HeapFree(GetProcessHeap(), 0, g_wuiLayerPixels);
+	g_wuiLayerPixels = NULL;
+	g_wuiLayerCapacity = 0;
+	g_wuiLayerWidth = g_wuiLayerHeight = 0;
+}
+
+static void wui_copy_layer(const TC_DISPLAY_BACKEND_RENDER_STATE& state)
+{
+	LONG height;
+	SIZE_T stride, bytes;
+	if (!state.layerPixels || state.layerWidth <= 0 || !state.layerHeight ||
+		state.layerHeight == LONG_MIN) {
+		wui_clear_layer();
+		return;
+	}
+	height = state.layerHeight < 0 ? -state.layerHeight : state.layerHeight;
+	stride = (SIZE_T)state.layerWidth * 4u;
+	if (stride / 4u != (SIZE_T)state.layerWidth || (SIZE_T)height > SIZE_MAX / stride) {
+		wui_clear_layer();
+		return;
+	}
+	bytes = stride * (SIZE_T)height;
+	if (bytes > g_wuiLayerCapacity) {
+		BYTE* pixels = (BYTE*)HeapAlloc(GetProcessHeap(), 0, bytes);
+		if (!pixels) {
+			wui_clear_layer();
+			return;
+		}
+		wui_clear_layer();
+		g_wuiLayerPixels = pixels;
+		g_wuiLayerCapacity = bytes;
+	}
+	for (LONG y = 0; y < height; ++y) {
+		LONG sourceY = state.layerHeight > 0 ? height - 1 - y : y;
+		CopyMemory(g_wuiLayerPixels + (SIZE_T)y * stride,
+			state.layerPixels + (SIZE_T)sourceY * stride, stride);
+	}
+	g_wuiLayerWidth = state.layerWidth;
+	g_wuiLayerHeight = height;
+}
+
+static void wui_blend_layer(BYTE* pixels, LONG width, LONG height, LONG left)
+{
+	if (!g_wuiLayerPixels) return;
+	for (LONG y = 0; y < height && y < g_wuiLayerHeight; ++y) {
+		for (LONG x = 0; x < g_wuiLayerWidth; ++x) {
+			LONG targetX = x + left;
+			if (targetX < 0 || targetX >= width) continue;
+			BYTE* foreground = pixels + ((SIZE_T)y * width + targetX) * 4u;
+			const BYTE* background = g_wuiLayerPixels + ((SIZE_T)y * g_wuiLayerWidth + x) * 4u;
+			// GDI+ on an HDC may leave RGB coverage without matching alpha.
+			UINT alpha = max(max(foreground[3], foreground[0]), max(foreground[1], foreground[2]));
+			UINT inverse = 255u - alpha;
+			for (int channel = 0; channel < 3; ++channel) {
+				foreground[channel] = (BYTE)(foreground[channel] + (background[channel] * inverse + 127u) / 255u);
+			}
+			foreground[3] = (BYTE)(alpha + (background[3] * inverse + 127u) / 255u);
+		}
+	}
+}
+
 static void wui_present(HWND hwnd)
 {
 	RECT rcWindow;
@@ -376,6 +445,14 @@ static void wui_present(HWND hwnd)
 		pGraphics = new Gdiplus::Graphics(hdcMem);
 		wui_draw_text(*pGraphics, RECT{ g_wuiContentLeft, 0, g_wuiContentLeft + g_wuiContentWidth, sizeWindow.cy });
 	}
+
+	if (pGraphics) {
+		pGraphics->Flush(Gdiplus::FlushIntentionSync);
+		delete pGraphics;
+		pGraphics = NULL;
+	}
+	GdiFlush();
+	wui_blend_layer(pixels, sizeWindow.cx, sizeWindow.cy, g_wuiContentLeft);
 
 	blend.BlendOp = AC_SRC_OVER;
 	blend.BlendFlags = 0;
@@ -476,7 +553,7 @@ static void wui_place(HWND hwnd)
 	int height;
 
 	if (!hwnd || !IsWindow(hwnd)) return;
-	if (!g_wuiState.text[0]) return;
+	if (!g_wuiState.text[0] && !g_wuiLayerPixels) return;
 	if (!g_wuiTarget || !IsWindow(g_wuiTarget)) return;
 	if (!IsWindowVisible(g_wuiTarget)) {
 		if (!g_wuiHasTarget) return;
@@ -855,6 +932,7 @@ extern "C" BOOL WINAPI WuiCreateHost(HWND hwndTargetClock)
 
 extern "C" void WINAPI WuiDestroyHost(void)
 {
+	wui_clear_layer();
 	wui_reset_text();
 	wui_hide_tip();
 	if (g_wuiTooltip && IsWindow(g_wuiTooltip)) {
@@ -894,6 +972,12 @@ extern "C" BOOL WINAPI WuiUpdateState(const TC_DISPLAY_BACKEND_RENDER_STATE* sta
 	ZeroMemory(&g_wuiState, sizeof(g_wuiState));
 	CopyMemory(&g_wuiState, state, cb);
 	g_wuiState.cb = sizeof(g_wuiState);
+	if (cb < sizeof(g_wuiState)) {
+		g_wuiState.layerPixels = NULL;
+		g_wuiState.layerWidth = g_wuiState.layerHeight = 0;
+	}
+	wui_copy_layer(g_wuiState);
+	g_wuiState.layerPixels = NULL;
 	if (g_wuiHost && IsWindow(g_wuiHost)) {
 		wui_present(g_wuiHost);
 	}

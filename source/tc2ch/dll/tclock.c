@@ -174,7 +174,7 @@ static void wui_repaint(void);
 static COLORREF tc_clr(COLORREF col);
 static COLORREF tc_txtclr(int infoval);
 static BOOL wui_fill_state(TC_DISPLAY_BACKEND_RENDER_STATE* state, SYSTEMTIME* pt, int beat100);
-static void wui_push_text(SYSTEMTIME* pt, int beat100);
+static void wui_push_frame(TC_DISPLAY_BACKEND_RENDER_STATE* state);
 static BOOL wui_sync_localview(void);
 static void wui_drop_localres(void);
 static BOOL wui_make_localres(void);
@@ -1879,19 +1879,16 @@ static COLORREF tc_txtclr(int infoval)
 	return tc_clr(TextColorFromInfoVal(infoval));
 }
 
-static void wui_push_text(SYSTEMTIME* pt, int beat100)
+static void wui_push_frame(TC_DISPLAY_BACKEND_RENDER_STATE* state)
 {
-	TC_DISPLAY_BACKEND_RENDER_STATE state;
-	BOOL filled;
-
-	filled = wui_fill_state(&state, (g_wuiCfg == TC_DISPLAY_BACKEND_WINUI) ? pt : NULL, beat100);
-	g_wuiStyleFallback = g_formatStyleRules.enabled && !filled;
-	if (g_wuiStyleFallback) {
-		ZeroMemory(&state, sizeof(state));
-		state.cb = sizeof(state);
+	if (g_wuiDllLive && !g_wuiStyleFallback && IsVertTaskbar(hwndTaskBarMain) && m_color_start) {
+		GdiFlush();
+		state->layerPixels = (const BYTE*)m_color_start;
+		state->layerWidth = bmi_MainClock.bmiHeader.biWidth;
+		state->layerHeight = bmi_MainClock.bmiHeader.biHeight;
 	}
 	if (g_wuiUpdateState && g_wuiDll) {
-		g_wuiUpdateState(&state);
+		g_wuiUpdateState(state);
 		if (g_wuiDllLive && g_wuiRefreshHost) g_wuiRefreshHost();
 	}
 }
@@ -2190,14 +2187,23 @@ static void wui_draw_gdi(HDC hdc, SYSTEMTIME* pt, int beat100)
 
 static void wui_draw_body(HDC hdc, SYSTEMTIME* pt, int beat100)
 {
+	TC_DISPLAY_BACKEND_RENDER_STATE state;
+	BOOL filled;
+
 	if (g_wuiLocalViewOn && g_wuiLocalResOn &&
 		wui_run_pass()) {
 		++g_wuiProbeTick;
 	}
-	wui_push_text(pt, beat100);
+	filled = wui_fill_state(&state, (g_wuiCfg == TC_DISPLAY_BACKEND_WINUI) ? pt : NULL, beat100);
+	g_wuiStyleFallback = g_formatStyleRules.enabled && !filled;
+	if (g_wuiStyleFallback) {
+		ZeroMemory(&state, sizeof(state));
+		state.cb = sizeof(state);
+	}
 	g_wuiFrameActive = TRUE;
 	if (g_wuiStyleFallback) {
 		DrawClockSub(hdc, pt, beat100);
+		wui_push_frame(&state);
 		g_wuiFrameActive = FALSE;
 		g_wuiFrameRunsReady = FALSE;
 		return;
@@ -2205,6 +2211,7 @@ static void wui_draw_body(HDC hdc, SYSTEMTIME* pt, int beat100)
 	g_wuiBgOnly = TRUE;
 	g_wuiSubOnly = FALSE;
 	DrawClockSub(hdc, pt, beat100);
+	wui_push_frame(&state);
 	g_wuiBgOnly = FALSE;
 	g_wuiSubOnly = TRUE;
 	DrawClockSub(hdc, pt, beat100);

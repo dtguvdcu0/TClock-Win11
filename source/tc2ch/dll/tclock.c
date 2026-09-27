@@ -10,6 +10,7 @@
 #include "../common/text_codec.h"
 #include "../common/ini_io_utf8.h"
 #include "../winuidll/wui_api.h"
+#include "../autoback_points.h"
 #include <math.h>
 //#include <physicalmonitorenumerationapi.h>
 
@@ -368,6 +369,10 @@ static void fs_format_frame(WCHAR* text, int capacity, char* info, SYSTEMTIME* t
 }
 BOOL fillbackcolor = FALSE;
 DWORD grad;
+static AB_POINTS g_abPoints[AB_PROFILE_COUNT];
+static int g_abModes[AB_PROFILE_COUNT];
+static int g_abColorProfile = -1;
+
 BOOL bAutoBackMatchTaskbar = TRUE;
 int autoBackAlpha = 96;
 int autoBackBlendRatio = 65;
@@ -1161,6 +1166,61 @@ static LRESULT clk_request_relayout(void)
 	PostMessage(hwndClockMain, CLOCKM_MOVEWIN11CONTENTBRIDGE, 1, 0);
 	return 1;
 }
+static BOOL ab_uses_points(int profile)
+{
+ return profile == AB_SIDE || g_abModes[profile] == AB_POINTS_SAVED || g_abModes[profile] == AB_DEFAULTS;
+}
+
+static void ab_load_runtime(void)
+{
+ int profile;
+ for (profile = 0; profile < AB_PROFILE_COUNT; ++profile) g_abModes[profile] = ab_load(profile, &g_abPoints[profile]);
+ if (g_abModes[AB_HORIZONTAL] < 0 && b_DebugLog)
+  writeDebugLog_Win10("[AutoBack] Invalid or unsupported horizontal point profile; retained legacy/snapshot path", g_abModes[AB_HORIZONTAL]);
+}
+
+static BOOL ab_read_colors(void)
+{
+ DWORD autoBackSnapshotMain, autoBackSnapshotEdge;
+ BOOL bAutoBackSnapshotExists;
+ int profile = IsVertTaskbar(hwndTaskBarMain) ? AB_SIDE : AB_HORIZONTAL;
+ BOOL points = ab_uses_points(profile);
+ const char* mainKey = points ? ab_profiles[profile].snapshots[0] : "AutoBackSnapshotColor";
+ const char* edgeKey = points ? ab_profiles[profile].snapshots[1] : "AutoBackSnapshotColor2";
+ autoBackSnapshotMain = GetMyRegLong("Color_Font", mainKey, 0xFFFFFFFF);
+ autoBackSnapshotEdge = GetMyRegLong("Color_Font", edgeKey, 0xFFFFFFFF);
+ if (profile == AB_HORIZONTAL && points && (autoBackSnapshotMain == 0xFFFFFFFF || autoBackSnapshotEdge == 0xFFFFFFFF)) {
+  autoBackSnapshotMain = GetMyRegLong("Color_Font", "AutoBackSnapshotColor", 0xFFFFFFFF);
+  autoBackSnapshotEdge = GetMyRegLong("Color_Font", "AutoBackSnapshotColor2", 0xFFFFFFFF);
+ }
+ bAutoBackSnapshotExists = autoBackSnapshotMain != 0xFFFFFFFF && autoBackSnapshotEdge != 0xFFFFFFFF;
+ autoBackColorMain = bAutoBackSnapshotExists ? (COLORREF)autoBackSnapshotMain : (points ? GetSysColor(COLOR_3DFACE) : colback);
+ autoBackColorEdge = bAutoBackSnapshotExists ? (COLORREF)autoBackSnapshotEdge : (points ? GetSysColor(COLOR_3DFACE) : colback2);
+ g_abColorProfile = profile;
+ bAutoBackInitialized = FALSE;
+ return bAutoBackSnapshotExists;
+}
+
+static LRESULT ab_query_legacy(int component)
+{
+ RECT task, clock;
+ POINT point;
+ int x[2], y, width;
+ if (component < 0 || component >= 4 || !bWin11Main || IsVertTaskbar(hwndTaskBarMain)) return 0;
+ GetTaskbarSize();
+ if (posXMainClock <= 0 || !GetWindowRect(hwndTaskBarMain, &task) || !GetWindowRect(hwndClockMain, &clock)) return 0;
+ width = task.right - task.left;
+ if (width <= 1 || task.bottom - task.top <= 1) return 0;
+ if (widthWin11Notify > 0 && posXShowDesktopArea > 0)
+  x[0] = posXMainClock + widthMainClockFrame + ClampInt(posXShowDesktopArea + autoBackSampleShowDesktopOffset, 0, widthWin11Notify - 1);
+ else x[0] = posXMainClock - (widthWin11Notify > 0 ? widthWin11Notify / 2 : 10);
+ x[1] = posXMainClock + autoBackSampleClockOffset - (g_wuiCfg == TC_DISPLAY_BACKEND_WINUI ? 10 : 0);
+ y = ReadTaskbarEdgeFromRegistry() == TC_TASKBAR_EDGE_TOP ? (task.bottom-task.top)/2 : task.bottom-task.top-1;
+ point.x = task.left + x[component / 2]; point.y = task.top + y;
+ if (!PtInRect(&task, point) || PtInRect(&clock, point) || ab_contains(FindWindowW(L"TClockWinUIDllWindow", NULL), point)) return 0;
+ return 1 + (component % 2 ? MulDiv(y, 10000, task.bottom-task.top-1) : MulDiv(x[component / 2], 10000, width-1));
+}
+
 static void RefreshAutoBackColors(BOOL force, const char* reason)
 {
 	DWORD nowTick;
@@ -1179,7 +1239,7 @@ static void RefreshAutoBackColors(BOOL force, const char* reason)
 		if (b_DebugLog) writeDebugLog_Win10("[tclock.c][AutoBack] skip: taskbar handle not ready", 999);
 		return;
 	}
-	if (bWin11Main && posXMainClock <= 0) {
+	if (bWin11Main && !ab_uses_points(IsVertTaskbar(hwndTaskBarMain) ? AB_SIDE : AB_HORIZONTAL) && posXMainClock <= 0) {
 		bAutoBackInitialized = FALSE;
 		if (b_DebugLog) writeDebugLog_Win10("[tclock.c][AutoBack] skip: posXMainClock not ready", posXMainClock);
 		return;
@@ -1201,7 +1261,14 @@ static void RefreshAutoBackColors(BOOL force, const char* reason)
 	sampleMain = CLR_INVALID;
 	sampleEdge = CLR_INVALID;
 
-	if (bWin11Main) {
+	if (!IsVertTaskbar(hwndTaskBarMain) && g_abModes[AB_HORIZONTAL] < 0 && !ab_has_legacy()) return;
+	if (ab_uses_points(IsVertTaskbar(hwndTaskBarMain) ? AB_SIDE : AB_HORIZONTAL)) {
+		int profile = IsVertTaskbar(hwndTaskBarMain) ? AB_SIDE : AB_HORIZONTAL;
+		COLORREF colors[2];
+		if (ab_sample(hwndTaskBarMain, hwndClockMain, &g_abPoints[profile], colors)) {
+			sampleMain = sampleEdge = BlendColor(colors[0], colors[1], g_abPoints[profile].balance);
+		}
+	} else if (bWin11Main) {
 		COLORREF leftMain, leftEdge;
 		COLORREF rightMain, rightEdge;
 		BOOL leftOk, rightOk;
@@ -1309,6 +1376,12 @@ static BOOL SaveCurrentAutoBackSnapshotToIni(void)
 	RefreshAutoBackColors(TRUE, "ManualSnapshotSave");
 	if (!bAutoBackInitialized) return FALSE;
 
+	if (ab_uses_points(IsVertTaskbar(hwndTaskBarMain) ? AB_SIDE : AB_HORIZONTAL)) {
+		int profile = IsVertTaskbar(hwndTaskBarMain) ? AB_SIDE : AB_HORIZONTAL;
+		SetMyRegLong("Color_Font", ab_profiles[profile].snapshots[0], (DWORD)autoBackColorMain);
+		SetMyRegLong("Color_Font", ab_profiles[profile].snapshots[1], (DWORD)autoBackColorEdge);
+		return TRUE;
+	}
 	SetMyRegLong("Color_Font", "BackColor", (DWORD)autoBackColorMain);
 	SetMyRegLong("Color_Font", "BackColor2", (DWORD)autoBackColorEdge);
 	SetMyRegLong("Color_Font", "AutoBackSnapshotColor", (DWORD)autoBackColorMain);
@@ -2477,6 +2550,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 //	if (b_DebugLog) writeDebugLog_Win10("[tclock.c][WndProc] Window Message was recevied, message = ", message);
 
 
+	if (message >= 0xC000 && message == RegisterWindowMessageW(AB_QUERY_MESSAGE))
+		return ab_query_legacy((int)wParam);
+
 	switch(message) // ツールチップ対応
 	{
 		case WM_MOUSEMOVE:
@@ -3114,11 +3190,8 @@ static void ReadDataMinimal(void)
 	LONG weight, italic;
 	SYSTEMTIME lt;
 	DWORD dwInfoFormat;
-	DWORD autoBackSnapshotMain;
-	DWORD autoBackSnapshotEdge;
 	DWORD sysMask;
 	DWORD backendMask;
-	BOOL bAutoBackSnapshotExists;
 	LONG readDepth;
 
 	readDepth = InterlockedIncrement(&g_depth_ReadData);
@@ -3158,6 +3231,7 @@ static void ReadDataMinimal(void)
 	}
 
 	fillbackcolor = GetMyRegLong("Color_Font", "UseBackColor", TRUE);
+	ab_load_runtime();
 	bAutoBackMatchTaskbar = GetMyRegLong("Color_Font", "AutoBackMatchTaskbar", TRUE);
 	SetMyRegLong("Color_Font", "AutoBackMatchTaskbar", bAutoBackMatchTaskbar);
 	autoBackAlpha = (int)GetMyRegLong("Color_Font", "AutoBackAlpha", 255);
@@ -3165,25 +3239,16 @@ static void ReadDataMinimal(void)
 	SetMyRegLong("Color_Font", "AutoBackAlpha", autoBackAlpha);
 	autoBackBlendRatio = (int)GetMyRegLong("Color_Font", "AutoBackBlendRatio", 50);
 	autoBackBlendRatio = ClampInt(autoBackBlendRatio, 0, 100);
-	SetMyRegLong("Color_Font", "AutoBackBlendRatio", autoBackBlendRatio);
 	autoBackRefreshSec = (int)GetMyRegLong("Color_Font", "AutoBackRefreshSec", 1);
 	autoBackRefreshSec = ClampInt(autoBackRefreshSec, 1, 120);
 	SetMyRegLong("Color_Font", "AutoBackRefreshSec", autoBackRefreshSec);
 	autoBackSampleClockOffset = (int)GetMyRegLong("Color_Font", "AutoBackSampleClockOffset", 0);
 	autoBackSampleClockOffset = ClampInt(autoBackSampleClockOffset, -200, 200);
-	SetMyRegLong("Color_Font", "AutoBackSampleClockOffset", autoBackSampleClockOffset);
 	autoBackSampleShowDesktopOffset = (int)GetMyRegLong("Color_Font", "AutoBackSampleShowDesktopOffset", 0);
 	autoBackSampleShowDesktopOffset = ClampInt(autoBackSampleShowDesktopOffset, -200, 200);
-	SetMyRegLong("Color_Font", "AutoBackSampleShowDesktopOffset", autoBackSampleShowDesktopOffset);
 	bAutoBackInitialized = FALSE;
 	if (!fillbackcolor) {
-		autoBackSnapshotMain = GetMyRegLong("Color_Font", "AutoBackSnapshotColor", 0xFFFFFFFF);
-		autoBackSnapshotEdge = GetMyRegLong("Color_Font", "AutoBackSnapshotColor2", 0xFFFFFFFF);
-		bAutoBackSnapshotExists = (autoBackSnapshotMain != 0xFFFFFFFF) && (autoBackSnapshotEdge != 0xFFFFFFFF);
-		autoBackColorMain = (COLORREF)(bAutoBackSnapshotExists ? autoBackSnapshotMain : (DWORD)colback);
-		autoBackColorEdge = (COLORREF)(bAutoBackSnapshotExists ? autoBackSnapshotEdge : (DWORD)colback2);
-		SetMyRegLong("Color_Font", "AutoBackSnapshotColor", autoBackColorMain);
-		SetMyRegLong("Color_Font", "AutoBackSnapshotColor2", autoBackColorEdge);
+		ab_read_colors();
 		bAutoBackInitialized = TRUE;
 		tickAutoBackLastRefresh = GetTickCount();
 	}
@@ -3628,8 +3693,6 @@ void ReadData()
 	DWORD dwInfoFormat;
 	TCHAR fname[MAX_PATH];
 	LONG readDepth;
-	DWORD autoBackSnapshotMain;
-	DWORD autoBackSnapshotEdge;
 	BOOL bAutoBackSnapshotExists;
 
 	extern BOOL b_exist_DOWzone;
@@ -3728,6 +3791,7 @@ void ReadData()
 
 
 	fillbackcolor = GetMyRegLong("Color_Font", "UseBackColor", TRUE);
+	ab_load_runtime();
 	bAutoBackMatchTaskbar = GetMyRegLong("Color_Font", "AutoBackMatchTaskbar", TRUE);
 	SetMyRegLong("Color_Font", "AutoBackMatchTaskbar", bAutoBackMatchTaskbar);
 	autoBackAlpha = (int)GetMyRegLong("Color_Font", "AutoBackAlpha", 255);
@@ -3735,26 +3799,16 @@ void ReadData()
 	SetMyRegLong("Color_Font", "AutoBackAlpha", autoBackAlpha);
 	autoBackBlendRatio = (int)GetMyRegLong("Color_Font", "AutoBackBlendRatio", 50);
 	autoBackBlendRatio = ClampInt(autoBackBlendRatio, 0, 100);
-	SetMyRegLong("Color_Font", "AutoBackBlendRatio", autoBackBlendRatio);
 	autoBackRefreshSec = (int)GetMyRegLong("Color_Font", "AutoBackRefreshSec", 1);
 	autoBackRefreshSec = ClampInt(autoBackRefreshSec, 1, 120);
 	SetMyRegLong("Color_Font", "AutoBackRefreshSec", autoBackRefreshSec);
 	autoBackSampleClockOffset = (int)GetMyRegLong("Color_Font", "AutoBackSampleClockOffset", 0);
 	autoBackSampleClockOffset = ClampInt(autoBackSampleClockOffset, -200, 200);
-	SetMyRegLong("Color_Font", "AutoBackSampleClockOffset", autoBackSampleClockOffset);
 	autoBackSampleShowDesktopOffset = (int)GetMyRegLong("Color_Font", "AutoBackSampleShowDesktopOffset", 0);
 	autoBackSampleShowDesktopOffset = ClampInt(autoBackSampleShowDesktopOffset, -200, 200);
-	SetMyRegLong("Color_Font", "AutoBackSampleShowDesktopOffset", autoBackSampleShowDesktopOffset);
 	bAutoBackInitialized = FALSE;
 	if (!fillbackcolor) {
-		autoBackSnapshotMain = GetMyRegLong("Color_Font", "AutoBackSnapshotColor", 0xFFFFFFFF);
-		autoBackSnapshotEdge = GetMyRegLong("Color_Font", "AutoBackSnapshotColor2", 0xFFFFFFFF);
-		bAutoBackSnapshotExists = (autoBackSnapshotMain != 0xFFFFFFFF) && (autoBackSnapshotEdge != 0xFFFFFFFF);
-		// Startup should honor saved snapshot first; avoid immediate drift from early resampling.
-		autoBackColorMain = (COLORREF)(bAutoBackSnapshotExists ? autoBackSnapshotMain : (DWORD)colback);
-		autoBackColorEdge = (COLORREF)(bAutoBackSnapshotExists ? autoBackSnapshotEdge : (DWORD)colback2);
-		SetMyRegLong("Color_Font", "AutoBackSnapshotColor", autoBackColorMain);
-		SetMyRegLong("Color_Font", "AutoBackSnapshotColor2", autoBackColorEdge);
+		bAutoBackSnapshotExists = ab_read_colors();
 		if (bAutoBackMatchTaskbar) {
 			if (bAutoBackSnapshotExists) {
 				bAutoBackInitialized = TRUE;
@@ -7664,6 +7718,7 @@ void FillBack(HDC hdcTarget, int width, int height)
 
 	if (!fillbackcolor)
 	{
+		if (g_abColorProfile != (IsVertTaskbar(hwndTaskBarMain) ? AB_SIDE : AB_HORIZONTAL)) ab_read_colors();
 		if (bAutoBackMatchTaskbar) {
 			RefreshAutoBackColors(FALSE, "FillBack");
 			GradientFillBack(hdcTarget, width, height, autoBackColorMain, autoBackColorEdge, 0);

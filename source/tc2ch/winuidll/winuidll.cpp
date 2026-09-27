@@ -2,6 +2,7 @@
 #include <commctrl.h>
 #include <gdiplus.h>
 #include "wui_api.h"
+#include "wui_text.h"
 
 #pragma comment(lib, "gdiplus.lib")
 #pragma comment(lib, "comctl32.lib")
@@ -369,8 +370,12 @@ static void wui_present(HWND hwnd)
 		pixels[(pixelIndex * 4u) + 3u] = 1;
 	}
 
-	pGraphics = new Gdiplus::Graphics(hdcMem);
-	wui_draw_text(*pGraphics, RECT{ g_wuiContentLeft, 0, g_wuiContentLeft + g_wuiContentWidth, sizeWindow.cy });
+	if (!g_wuiState.textRenderer || !wui_render_text(g_wuiState,
+		RECT{ g_wuiContentLeft, 0, g_wuiContentLeft + g_wuiContentWidth, sizeWindow.cy },
+		sizeWindow.cx, sizeWindow.cy, pixels)) {
+		pGraphics = new Gdiplus::Graphics(hdcMem);
+		wui_draw_text(*pGraphics, RECT{ g_wuiContentLeft, 0, g_wuiContentLeft + g_wuiContentWidth, sizeWindow.cy });
+	}
 
 	blend.BlendOp = AC_SRC_OVER;
 	blend.BlendFlags = 0;
@@ -850,6 +855,7 @@ extern "C" BOOL WINAPI WuiCreateHost(HWND hwndTargetClock)
 
 extern "C" void WINAPI WuiDestroyHost(void)
 {
+	wui_reset_text();
 	wui_hide_tip();
 	if (g_wuiTooltip && IsWindow(g_wuiTooltip)) {
 		DestroyWindow(g_wuiTooltip);

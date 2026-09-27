@@ -57,9 +57,11 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="winuidll.cpp" />
+    <ClCompile Include="wui_text.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="wui_api.h" />
+    <ClInclude Include="wui_text.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets" />

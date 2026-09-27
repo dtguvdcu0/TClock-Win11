@@ -51,6 +51,16 @@ static BOOL fs_is_ident_char(WCHAR ch)
 	return fs_is_ident_start(ch) || (ch >= L'0' && ch <= L'9');
 }
 
+BOOL TcFormatStyleIdentifier(const WCHAR* name)
+{
+	int i;
+	if (!name || !fs_is_ident_start(name[0])) return FALSE;
+	for (i = 1; name[i]; i++) {
+		if (i >= TC_FS_SELECTOR_CCH - 1 || !fs_is_ident_char(name[i])) return FALSE;
+	}
+	return TRUE;
+}
+
 static BOOL fs_match_char(TC_FS_PARSER* parser, WCHAR ch)
 {
 	fs_skip_space(parser);
@@ -235,9 +245,9 @@ static int fs_parse_primary(TC_FS_PARSER* parser)
 {
 	TC_FS_COMPARE compare;
 	int nodeIndex;
+	WORD selectorRef = 0;
+	WCHAR operand[TC_FS_SELECTOR_CCH];
 	fs_skip_space(parser);
-	if (fs_match_word(parser, L"true")) return fs_add_node(parser, TC_FS_NODE_TRUE, -1, -1);
-	if (fs_match_word(parser, L"false")) return fs_add_node(parser, TC_FS_NODE_FALSE, -1, -1);
 	if (fs_match_char(parser, L'(')) {
 		int inner;
 		if (++parser->depth > 16) return -1;
@@ -246,7 +256,24 @@ static int fs_parse_primary(TC_FS_PARSER* parser)
 		if (inner < 0 || !fs_match_char(parser, L')')) return -1;
 		return inner;
 	}
-	if (!fs_match_word(parser, L"value") || !fs_parse_compare(parser, &compare)) return -1;
+	if (!fs_read_ident(parser, operand, TC_FS_SELECTOR_CCH)) return -1;
+	if (fs_match_char(parser, L'.')) {
+		int length;
+		if (!TcFormatStyleIdentifier(operand) || !fs_match_word(parser, L"value")) return -1;
+		if (wcscmp(operand, parser->rule->selector) != 0) {
+			length = lstrlenW(operand) + 1;
+			if (parser->rule->stringUsed + length > TC_FS_MAX_STRING_CCH) return -1;
+			selectorRef = (WORD)(parser->rule->stringUsed + 1);
+			CopyMemory(parser->rule->stringPool + parser->rule->stringUsed, operand, (SIZE_T)length * sizeof(WCHAR));
+			parser->rule->stringUsed += length;
+		}
+	}
+	else {
+		if (wcscmp(operand, L"true") == 0) return fs_add_node(parser, TC_FS_NODE_TRUE, -1, -1);
+		if (wcscmp(operand, L"false") == 0) return fs_add_node(parser, TC_FS_NODE_FALSE, -1, -1);
+		if (wcscmp(operand, L"value") != 0) return -1;
+	}
+	if (!fs_parse_compare(parser, &compare)) return -1;
 	fs_skip_space(parser);
 	if (*parser->pos == L'\"') {
 		WCHAR text[TC_FS_MAX_STRING_CCH];
@@ -261,6 +288,7 @@ static int fs_parse_primary(TC_FS_PARSER* parser)
 		nodeIndex = fs_add_node(parser, TC_FS_NODE_TEXT, -1, -1);
 		if (nodeIndex < 0) return -1;
 		parser->rule->nodes[nodeIndex].compare = (BYTE)compare;
+		parser->rule->nodes[nodeIndex].selectorRef = selectorRef;
 		parser->rule->nodes[nodeIndex].textStart = (WORD)start;
 		parser->rule->nodes[nodeIndex].textLength = (WORD)length;
 		return nodeIndex;
@@ -271,6 +299,7 @@ static int fs_parse_primary(TC_FS_PARSER* parser)
 		nodeIndex = fs_add_node(parser, TC_FS_NODE_NUMERIC, -1, -1);
 		if (nodeIndex < 0) return -1;
 		parser->rule->nodes[nodeIndex].compare = (BYTE)compare;
+		parser->rule->nodes[nodeIndex].selectorRef = selectorRef;
 		parser->rule->nodes[nodeIndex].number = number;
 		return nodeIndex;
 	}
@@ -337,7 +366,18 @@ static BOOL fs_parse_color(TC_FS_PARSER* parser, COLORREF* color)
 static BOOL fs_set_property(TC_FS_PARSER* parser, TC_FS_STYLE* style, const WCHAR* property)
 {
 	DWORD bit = 0;
-	if (_wcsicmp(property, L"ForeColor") == 0) {
+	if (_wcsicmp(property, L"value") == 0) {
+		WCHAR value[TC_FS_MAX_STRING_CCH];
+		int length;
+		bit = TC_FS_PROP_VALUE;
+		if (!fs_read_string(parser, value, TC_FS_MAX_STRING_CCH, &length)) return FALSE;
+		if (parser->rule->stringUsed + length + 1 > TC_FS_MAX_STRING_CCH) return FALSE;
+		style->valueStart = (WORD)parser->rule->stringUsed;
+		style->valueLength = (WORD)length;
+		CopyMemory(parser->rule->stringPool + parser->rule->stringUsed, value, (SIZE_T)(length + 1) * sizeof(WCHAR));
+		parser->rule->stringUsed += length + 1;
+	}
+	else if (_wcsicmp(property, L"ForeColor") == 0) {
 		bit = TC_FS_PROP_FORE_COLOR;
 		if (!fs_parse_color(parser, &style->foreColor)) return FALSE;
 	}
@@ -390,18 +430,39 @@ static BOOL fs_set_property(TC_FS_PARSER* parser, TC_FS_STYLE* style, const WCHA
 	return TRUE;
 }
 
-static BOOL fs_parse_declarations(TC_FS_PARSER* parser, TC_FS_STYLE* style)
+static BOOL fs_parse_declarations(TC_FS_PARSER* parser, TC_FS_BRANCH* branch)
 {
 	int count = 0;
+	branch->targetStart = parser->rule->targetCount;
 	if (!fs_match_char(parser, L'{')) return FALSE;
 	for (;;) {
 		WCHAR property[64];
+		TC_FS_STYLE* style = &branch->declaration;
 		fs_skip_space(parser);
 		if (*parser->pos == L'}') {
 			parser->pos++;
 			return count > 0;
 		}
-		if (!fs_read_ident(parser, property, (int)(sizeof(property) / sizeof(property[0])))) return FALSE;
+		if (!fs_read_ident(parser, property, (int)ARRAYSIZE(property))) return FALSE;
+		if (fs_match_char(parser, L'.')) {
+			WCHAR selector[TC_FS_SELECTOR_CCH];
+			int i;
+			if (!TcFormatStyleIdentifier(property)) return FALSE;
+			lstrcpynW(selector, property, TC_FS_SELECTOR_CCH);
+			if (!fs_read_ident(parser, property, (int)ARRAYSIZE(property))) return FALSE;
+			if (wcscmp(selector, parser->rule->selector) != 0) {
+				for (i = branch->targetStart; i < parser->rule->targetCount; i++) {
+					if (wcscmp(selector, parser->rule->targets[i].selector) == 0) break;
+				}
+				if (i == parser->rule->targetCount) {
+					if (i >= TC_FS_MAX_TARGETS) return FALSE;
+					lstrcpynW(parser->rule->targets[i].selector, selector, TC_FS_SELECTOR_CCH);
+					parser->rule->targetCount++;
+					branch->targetCount++;
+				}
+				style = &parser->rule->targets[i].declaration;
+			}
+		}
 		if (!fs_match_char(parser, L'=') || !fs_set_property(parser, style, property) || !fs_match_char(parser, L';')) return FALSE;
 		count++;
 	}
@@ -477,13 +538,14 @@ BOOL TcFormatStyleParseRule(const WCHAR* text, int order, TC_FS_RULE* rule, TC_F
 	parser.rule = rule;
 	parser.report = report;
 	rule->order = order;
-	if (!fs_read_ident(&parser, selector, TC_FS_SELECTOR_CCH) || !TcFormatStyleSelectorSupported(selector) ||
+	if (!fs_read_ident(&parser, selector, TC_FS_SELECTOR_CCH) || !TcFormatStyleIdentifier(selector) ||
 		!fs_match_word(&parser, L"if") || !fs_match_char(&parser, L'(')) goto fail;
+	lstrcpynW(rule->selector, selector, TC_FS_SELECTOR_CCH);
 	root = fs_parse_or(&parser);
 	if (root < 0 || !fs_match_char(&parser, L')')) goto fail;
 	branch = &rule->branches[0];
 	branch->rootNode = root;
-	if (!fs_parse_declarations(&parser, &branch->declaration)) goto fail;
+	if (!fs_parse_declarations(&parser, branch)) goto fail;
 	rule->branchCount = 1;
 	for (;;) {
 		BOOL hasCondition;
@@ -500,7 +562,7 @@ BOOL TcFormatStyleParseRule(const WCHAR* text, int order, TC_FS_RULE* rule, TC_F
 		else {
 			branch->rootNode = -1;
 		}
-		if (!fs_parse_declarations(&parser, &branch->declaration)) goto fail;
+		if (!fs_parse_declarations(&parser, branch)) goto fail;
 		rule->branchCount++;
 		if (!hasCondition) break;
 	}
@@ -656,30 +718,70 @@ static TC_FS_TRUTH fs_compare_number(double value, BYTE compare, double literal)
 	}
 }
 
+typedef struct TC_FS_ITEM {
+	const WCHAR* selector;
+	const WCHAR* value;
+	int length;
+	BOOL changed;
+	TC_FS_VALUE_CACHE cache;
+	TC_FS_STYLE style;
+} TC_FS_ITEM;
+
+typedef struct TC_FS_FRAME {
+	int count;
+	TC_FS_ITEM items[TC_FS_MAX_ITEMS];
+	WCHAR text[TC_FS_TEXT_CCH];
+	char info[TC_FS_TEXT_CCH];
+	TC_FORMAT_SPANS spans;
+} TC_FS_FRAME;
+
+static int fs_find_reference(const TC_FS_FRAME* frame, const WCHAR* selector)
+{
+	int found = -1;
+	int i;
+	for (i = 0; i < frame->count; i++) {
+		if (wcscmp(frame->items[i].selector, selector) != 0) continue;
+		if (found >= 0) return -1;
+		found = i;
+	}
+	return found;
+}
+
 static TC_FS_TRUTH fs_eval_node(const TC_FS_RULE* rule, int nodeIndex,
-	const WCHAR* value, int valueLength, TC_FS_VALUE_CACHE* cache)
+	const WCHAR* value, int valueLength, TC_FS_VALUE_CACHE* cache, TC_FS_FRAME* frame)
 {
 	const TC_FS_NODE* node;
 	TC_FS_TRUTH left;
 	TC_FS_TRUTH right;
 	if (!rule || nodeIndex < 0 || nodeIndex >= rule->nodeCount) return TC_FS_ERROR;
 	node = &rule->nodes[nodeIndex];
+	if (node->selectorRef) {
+		int index;
+		TC_FS_ITEM* item;
+		if (!frame) return TC_FS_ERROR;
+		index = fs_find_reference(frame, rule->stringPool + node->selectorRef - 1);
+		if (index < 0) return TC_FS_ERROR;
+		item = &frame->items[index];
+		value = item->value;
+		valueLength = item->length;
+		cache = &item->cache;
+	}
 	switch ((TC_FS_NODE_TYPE)node->type) {
 	case TC_FS_NODE_FALSE: return TC_FS_FALSE;
 	case TC_FS_NODE_TRUE: return TC_FS_TRUE;
 	case TC_FS_NODE_NOT:
-		left = fs_eval_node(rule, node->left, value, valueLength, cache);
+		left = fs_eval_node(rule, node->left, value, valueLength, cache, frame);
 		if (left == TC_FS_ERROR) return TC_FS_ERROR;
 		return left == TC_FS_TRUE ? TC_FS_FALSE : TC_FS_TRUE;
 	case TC_FS_NODE_AND:
-		left = fs_eval_node(rule, node->left, value, valueLength, cache);
+		left = fs_eval_node(rule, node->left, value, valueLength, cache, frame);
 		if (left != TC_FS_TRUE) return left;
-		return fs_eval_node(rule, node->right, value, valueLength, cache);
+		return fs_eval_node(rule, node->right, value, valueLength, cache, frame);
 	case TC_FS_NODE_OR:
-		left = fs_eval_node(rule, node->left, value, valueLength, cache);
+		left = fs_eval_node(rule, node->left, value, valueLength, cache, frame);
 		if (left == TC_FS_TRUE) return TC_FS_TRUE;
 		if (left == TC_FS_ERROR) return TC_FS_ERROR;
-		return fs_eval_node(rule, node->right, value, valueLength, cache);
+		return fs_eval_node(rule, node->right, value, valueLength, cache, frame);
 	case TC_FS_NODE_NUMERIC:
 		if (cache->numericState == 0) {
 			cache->numericState = fs_parse_decimal(value, valueLength, &cache->numericValue, NULL, TRUE) ? 1 : -1;
@@ -696,9 +798,9 @@ static TC_FS_TRUTH fs_eval_node(const TC_FS_RULE* rule, int nodeIndex,
 	}
 }
 
-static void fs_apply_style(TC_FS_STYLE* target, const TC_FS_STYLE* declaration)
+void TcFormatStyleMerge(TC_FS_STYLE* target, const TC_FS_STYLE* declaration)
 {
-	DWORD mask = declaration->setMask;
+	DWORD mask = declaration->setMask & ~TC_FS_PROP_VALUE;
 	if (mask & TC_FS_PROP_FORE_COLOR) target->foreColor = declaration->foreColor;
 	if (mask & TC_FS_PROP_FONT) lstrcpynW(target->fontFace, declaration->fontFace, LF_FACESIZE);
 	if (mask & TC_FS_PROP_FONT_SIZE) target->fontSize = declaration->fontSize;
@@ -735,14 +837,156 @@ int TcFormatStyleApply(const TC_FS_RULESET* ruleset, const WCHAR* selector,
 		for (branchIndex = 0; branchIndex < rule->branchCount; branchIndex++) {
 			const TC_FS_BRANCH* branch = &rule->branches[branchIndex];
 			TC_FS_TRUTH condition = branch->rootNode < 0 ? TC_FS_TRUE :
-				fs_eval_node(rule, branch->rootNode, value, valueLength, cache);
+				fs_eval_node(rule, branch->rootNode, value, valueLength, cache, NULL);
 			if (condition == TC_FS_ERROR) break;
 			if (condition == TC_FS_TRUE) {
-				fs_apply_style(resolvedStyle, &branch->declaration);
+				if (branch->targetCount != 0 || (branch->declaration.setMask & TC_FS_PROP_VALUE)) break;
+				TcFormatStyleMerge(resolvedStyle, &branch->declaration);
 				matched++;
 				break;
 			}
 		}
 	}
 	return matched;
+}
+
+static void fs_assign_item(TC_FS_ITEM* item, const TC_FS_RULE* rule, const TC_FS_STYLE* declaration)
+{
+	if (declaration->setMask & TC_FS_PROP_VALUE) {
+		item->value = rule->stringPool + declaration->valueStart;
+		item->length = declaration->valueLength;
+		item->changed = TRUE;
+		ZeroMemory(&item->cache, sizeof(item->cache));
+	}
+	TcFormatStyleMerge(&item->style, declaration);
+}
+
+static BOOL fs_resolve_items(const TC_FS_RULESET* ruleset, const WCHAR* text,
+	int textLength, const TC_FORMAT_SPANS* spans, TC_FS_FRAME* frame)
+{
+	int r, a, b, t, i;
+	if (!text || textLength < 0 || !spans || spans->overflow || spans->count < 0 || spans->count > TC_FORMAT_MAX_SPANS) return FALSE;
+	for (i = 0; i < spans->count; i++) {
+		const TC_FORMAT_SPAN* span = &spans->items[i];
+		TC_FS_ITEM* item = &frame->items[i];
+		if (span->start < 0 || span->length < 0 || span->start > textLength || span->length > textLength - span->start ||
+			(i > 0 && span->start < spans->items[i - 1].start + spans->items[i - 1].length)) return FALSE;
+		item->selector = span->selector;
+		item->value = text + span->start;
+		item->length = span->length;
+	}
+	frame->count = spans->count;
+	if (!ruleset || !ruleset->enabled) return TRUE;
+	for (r = 0; r < ruleset->ruleCount; r++) {
+		const TC_FS_RULE* rule = &ruleset->rules[r];
+		/* New virtual items can trigger later rules, never restart this rule. */
+		int anchorCount = frame->count;
+		for (a = 0; a < anchorCount; a++) {
+			TC_FS_ITEM* anchor = &frame->items[a];
+			if (wcscmp(anchor->selector, rule->selector) != 0) continue;
+			for (b = 0; b < rule->branchCount; b++) {
+				const TC_FS_BRANCH* branch = &rule->branches[b];
+				BOOL valid = TRUE;
+				int missing = 0;
+				TC_FS_TRUTH condition = branch->rootNode < 0 ? TC_FS_TRUE :
+					fs_eval_node(rule, branch->rootNode, anchor->value, anchor->length, &anchor->cache, frame);
+				if (condition == TC_FS_ERROR) break;
+				if (condition != TC_FS_TRUE) continue;
+				for (t = 0; t < branch->targetCount; t++) {
+					const TC_FS_TARGET* target = &rule->targets[branch->targetStart + t];
+					for (i = 0; i < frame->count; i++) {
+						if (wcscmp(frame->items[i].selector, target->selector) == 0) break;
+					}
+					if (i == frame->count) {
+						if (!(target->declaration.setMask & TC_FS_PROP_VALUE)) { valid = FALSE; break; }
+						missing++;
+					}
+				}
+				if (!valid) break;
+				if (missing > TC_FS_MAX_ITEMS - frame->count) return FALSE;
+				fs_assign_item(anchor, rule, &branch->declaration);
+				for (t = 0; t < branch->targetCount; t++) {
+					const TC_FS_TARGET* target = &rule->targets[branch->targetStart + t];
+					BOOL found = FALSE;
+					for (i = 0; i < frame->count; i++) {
+						if (wcscmp(frame->items[i].selector, target->selector) != 0) continue;
+						fs_assign_item(&frame->items[i], rule, &target->declaration);
+						found = TRUE;
+					}
+					if (!found) {
+						TC_FS_ITEM* item = &frame->items[frame->count++];
+						item->selector = target->selector;
+						fs_assign_item(item, rule, &target->declaration);
+					}
+				}
+				break;
+			}
+		}
+	}
+	return TRUE;
+}
+
+BOOL TcFormatStyleResolveFrame(const TC_FS_RULESET* ruleset, const WCHAR* text,
+	int textLength, const TC_FORMAT_SPANS* spans, TC_FS_STYLE* overlays, int capacity)
+{
+	TC_FS_FRAME* frame;
+	BOOL ok;
+	int i;
+	if (!overlays || capacity < 0 || capacity > TC_FORMAT_MAX_SPANS) return FALSE;
+	ZeroMemory(overlays, (SIZE_T)capacity * sizeof(*overlays));
+	if (!spans || spans->count < 0 || spans->count > capacity) return FALSE;
+	frame = (TC_FS_FRAME*)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*frame));
+	if (!frame) return FALSE;
+	ok = fs_resolve_items(ruleset, text, textLength, spans, frame);
+	if (ok) for (i = 0; i < spans->count; i++) overlays[i] = frame->items[i].style;
+	HeapFree(GetProcessHeap(), 0, frame);
+	return ok;
+}
+
+BOOL TcFormatStyleTransform(const TC_FS_RULESET* ruleset, WCHAR* text, int capacity,
+	char* info, TC_FORMAT_SPANS* spans)
+{
+	TC_FS_FRAME* frame;
+	BOOL ok = FALSE;
+	int length, i, used = 0, source = 0;
+	if (!text || !info || !spans || capacity <= 0 || capacity > TC_FS_TEXT_CCH) return FALSE;
+	/* A cached frame is final: never evaluate its assignments twice. */
+	if (spans->resolved) return TRUE;
+	for (length = 0; length < capacity && text[length]; length++) {}
+	if (length == capacity) return FALSE;
+	frame = (TC_FS_FRAME*)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*frame));
+	if (!frame) return FALSE;
+	if (!fs_resolve_items(ruleset, text, length, spans, frame)) goto done;
+	frame->spans = *spans;
+	for (i = 0; i <= spans->count; i++) {
+		const TC_FORMAT_SPAN* original = i < spans->count ? &spans->items[i] : NULL;
+		int gap = (original ? original->start : length) - source;
+		if (gap >= capacity - used) goto done;
+		CopyMemory(frame->text + used, text + source, (SIZE_T)gap * sizeof(WCHAR));
+		CopyMemory(frame->info + used, info + source, (SIZE_T)gap);
+		used += gap;
+		if (original) {
+			TC_FS_ITEM* item = &frame->items[i];
+			TC_FORMAT_SPAN* output = &frame->spans.items[i];
+			if (item->length >= capacity - used) goto done;
+			output->start = used;
+			output->length = item->length;
+			output->style = item->style;
+			CopyMemory(frame->text + used, item->value, (SIZE_T)item->length * sizeof(WCHAR));
+			if (item->changed) FillMemory(frame->info + used, (SIZE_T)item->length, original->zone);
+			else CopyMemory(frame->info + used, info + original->start, (SIZE_T)item->length);
+			used += item->length;
+			source = original->start + original->length;
+		}
+	}
+	frame->text[used] = L'\0';
+	frame->info[used] = '\0';
+	frame->spans.resolved = TRUE;
+	CopyMemory(text, frame->text, (SIZE_T)(used + 1) * sizeof(WCHAR));
+	CopyMemory(info, frame->info, (SIZE_T)(used + 1));
+	*spans = frame->spans;
+	ok = TRUE;
+done:
+	HeapFree(GetProcessHeap(), 0, frame);
+	return ok;
 }

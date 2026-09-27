@@ -324,6 +324,7 @@ HFONT hFontNotify = NULL;
 
 COLORREF colback, colback2, colfore;
 static TC_FS_RULESET g_formatStyleRules;
+static TC_FS_STYLE g_formatStyleOverlays[TC_FORMAT_MAX_SPANS];
 static TC_FS_REPORT g_formatStyleReport;
 static TC_FS_STYLE g_formatStyleBase;
 typedef struct TC_FS_FONT_ENTRY {
@@ -356,6 +357,15 @@ static BOOL FormatStyleBuildRuns(HDC hdc, const WCHAR* text, const char* info,
 static BOOL FormatStyleLayoutRuns(HDC hdc, const WCHAR* text, int xcenter, int yclock,
 	int wclock, int hclock, LONG* measuredWidth, LONG* measuredHeight);
 static void FormatStyleUpdateWatermark(LONG textWidth, LONG textHeight);
+static void fs_format_frame(WCHAR* text, int capacity, char* info, SYSTEMTIME* time,
+	int beat100, const WCHAR* formatText, TC_FORMAT_SPANS* spans)
+{
+	MakeFormatExW(text, capacity, info, time, beat100, formatText, spans);
+	if (!TcFormatStyleTransform(&g_formatStyleRules, text, capacity, info, spans)) {
+		spans->overflow = TRUE;
+		if (b_DebugLog) writeDebugLog_Win10("[tclock.c][FormatStyle] frame transformation failed", 999);
+	}
+}
 BOOL fillbackcolor = FALSE;
 DWORD grad;
 BOOL bAutoBackMatchTaskbar = TRUE;
@@ -396,6 +406,7 @@ enum {
 };
 
 static int g_wuiCfg = TC_DISPLAY_BACKEND_GDI;
+static DWORD g_wuiTextRenderer = 0;
 static int g_wuiMode = TC_DISPLAY_BACKEND_GDI;
 static int g_wuiViewMode = TC_DISPLAY_BACKEND_GDI;
 static BOOL g_wuiDrawOn = FALSE;
@@ -1678,6 +1689,7 @@ static BOOL wui_fill_state(TC_DISPLAY_BACKEND_RENDER_STATE* state, SYSTEMTIME* p
 	ZeroMemory(state, sizeof(*state));
 	ZeroMemory(&lf, sizeof(lf));
 	state->cb = sizeof(*state);
+	state->textRenderer = g_wuiTextRenderer;
 	state->textPos = nTextPos;
 	state->vertPos = dvpos;
 	state->lineHeight = dlineheight;
@@ -1707,7 +1719,7 @@ static BOOL wui_fill_state(TC_DISPLAY_BACKEND_RENDER_STATE* state, SYSTEMTIME* p
 	ZeroMemory(&formatSpans, sizeof(formatSpans));
 	g_wuiFrameValid = FALSE;
 	g_wuiFrameRunsReady = FALSE;
-	if (g_formatStyleRules.enabled) MakeFormatExW(sW, _countof(sW), s_info, pt, beat100, g_formatW, &formatSpans);
+	if (g_formatStyleRules.enabled) fs_format_frame(sW, _countof(sW), s_info, pt, beat100, g_formatW, &formatSpans);
 	else MakeFormatW(sW, _countof(sW), s_info, pt, beat100, g_formatW);
 	lstrcpynW(state->text, sW, _countof(state->text));
 	lstrcpynW(g_wuiFrameText, sW, _countof(g_wuiFrameText));
@@ -1738,6 +1750,7 @@ static BOOL wui_fill_state(TC_DISPLAY_BACKEND_RENDER_STATE* state, SYSTEMTIME* p
 	if (releaseMeasureDC) ReleaseDC(hwndClockMain, hdcFace);
 	if (!styleMatched) return TRUE;
 	state->styleVersion = TC_WUI_STYLE_VERSION;
+	state->baselineVersion = TC_WUI_BASELINE_VERSION;
 	for (runIndex = 0; runIndex < g_formatStyleRunCount; runIndex++) {
 		TC_DISPLAY_BACKEND_STYLE apiStyle;
 		TC_DISPLAY_BACKEND_RUN* apiRun;
@@ -1765,6 +1778,7 @@ static BOOL wui_fill_state(TC_DISPLAY_BACKEND_RENDER_STATE* state, SYSTEMTIME* p
 			if (state->styleCount >= TC_WUI_MAX_STYLES) return FALSE;
 			state->styles[state->styleCount++] = apiStyle;
 		}
+		state->runBaselines[state->runCount] = run->y + run->metrics.tmAscent;
 		apiRun = &state->runs[state->runCount++];
 		apiRun->textStart = run->start;
 		apiRun->textLength = run->length;
@@ -2020,6 +2034,8 @@ static void wui_refresh(void)
 	backend = wui_sanitize((int)GetMyRegLong("Win11", "ExperimentalDisplayBackend", TC_DISPLAY_BACKEND_GDI));
 	if (IsVertTaskbar(hwndTaskBarMain)) backend = TC_DISPLAY_BACKEND_WINUI;
 	g_wuiCfg = backend;
+	g_wuiTextRenderer = (DWORD)GetMyRegLong("Win11", "ExperimentalTextRenderer", 0);
+	if (g_wuiTextRenderer > 2) g_wuiTextRenderer = 0;
 	if (!IsVertTaskbar(hwndTaskBarMain)) SetMyRegLong("Win11", "ExperimentalDisplayBackend", backend);
 
 	if (g_wuiCfg == TC_DISPLAY_BACKEND_GDI) {
@@ -3356,6 +3372,9 @@ static int NormalizeMainFormatTagMarkers(const char* raw, char* out, int outLen)
 		}
 		if (!inTag) {
 			if (raw[i] == '<' && raw[i + 1] == '%') {
+				/* Preserve explicit block boundaries for named placeholders. */
+				if (j + 4 >= outLen) return FORMAT_TAG_NORMALIZE_MALFORMED;
+				CopyMemory(out + j, "%><%", 4); j += 4;
 				inTag = TRUE;
 				sawTag = TRUE;
 				i += 2;
@@ -3368,6 +3387,8 @@ static int NormalizeMainFormatTagMarkers(const char* raw, char* out, int outLen)
 		}
 		else {
 			if (raw[i] == '%' && raw[i + 1] == '>') {
+				if (j + 6 >= outLen) return FORMAT_TAG_NORMALIZE_MALFORMED;
+				CopyMemory(out + j, "%><%\"\"", 6); j += 6;
 				inTag = FALSE;
 				i += 2;
 				continue;
@@ -3405,7 +3426,7 @@ void BuildMainFormatWrapped(const char* raw, char* out, int outLen, BOOL logMalf
 		content = (normalize_result == FORMAT_TAG_NORMALIZE_HAS_TAG) ? normalized : raw;
 	}
 
-	_snprintf(out, outLen, "<%%%s%%>", content);
+	_snprintf(out, outLen, "<%%\"\"%s%%>", content);
 	out[outLen - 1] = '\0';
 
 	if (normalize_result == FORMAT_TAG_NORMALIZE_MALFORMED && logMalformed && b_DebugLog) {
@@ -5868,19 +5889,18 @@ static BOOL FormatStyleBuildRuns(HDC hdc, const WCHAR* text, const char* info,
 	g_formatStyleRunCount = 0;
 	if (!hdc || !text || !info || !spans || spans->overflow) return FALSE;
 	textLength = lstrlenW(text);
-	for (spanIndex = 0; spanIndex < spans->count; spanIndex++) {
-		const TC_FORMAT_SPAN* span = &spans->items[spanIndex];
-		if (span->start < 0 || span->length <= 0 || span->start + span->length > textLength ||
-			(spanIndex > 0 && span->start < spans->items[spanIndex - 1].start + spans->items[spanIndex - 1].length)) return FALSE;
+	if (spans->resolved) {
+		int i;
+		for (i = 0; i < spans->count; i++) g_formatStyleOverlays[i] = spans->items[i].style;
 	}
+	else if (!TcFormatStyleResolveFrame(&g_formatStyleRules, text, textLength, spans,
+		g_formatStyleOverlays, TC_FORMAT_MAX_SPANS)) return FALSE;
 	spanIndex = 0;
 	while (position < textLength) {
 		const TC_FORMAT_SPAN* span = NULL;
 		TC_FS_STYLE style;
-		TC_FS_VALUE_CACHE cache;
 		BYTE zone;
 		int end;
-		int matches = 0;
 		TC_FS_DRAW_RUN* run;
 		int newlineLength = TcFormatStyleGetNewlineLength(text, textLength, position);
 		if (newlineLength > 0) {
@@ -5891,23 +5911,23 @@ static BOOL FormatStyleBuildRuns(HDC hdc, const WCHAR* text, const char* info,
 		while (spanIndex < spans->count && position >= spans->items[spanIndex].start + spans->items[spanIndex].length) spanIndex++;
 		if (spanIndex < spans->count && position >= spans->items[spanIndex].start &&
 			position < spans->items[spanIndex].start + spans->items[spanIndex].length) span = &spans->items[spanIndex];
-		zone = (BYTE)info[position];
-		style = g_formatStyleBase;
-		style.foreColor = tc_clr(TextColorFromInfoVal((int)zone));
-		style.shadowColor = tc_clr(TextColorFromInfoVal(99));
 		end = textLength;
 		if (span) {
 			end = span->start + span->length;
-			ZeroMemory(&cache, sizeof(cache));
-			matches = TcFormatStyleApply(&g_formatStyleRules, span->selector,
-				text + span->start, span->length, &style, &style, &cache);
-			if (matches > 0 && matchedAny) *matchedAny = TRUE;
 		}
 		else if (spanIndex < spans->count && spans->items[spanIndex].start > position) {
 			end = spans->items[spanIndex].start;
 		}
 		while (end > position && position < textLength) {
 			int next = position;
+			zone = (BYTE)info[position];
+			style = g_formatStyleBase;
+			style.foreColor = tc_clr(TextColorFromInfoVal((int)zone));
+			style.shadowColor = tc_clr(TextColorFromInfoVal(99));
+			if (span) {
+				TcFormatStyleMerge(&style, &g_formatStyleOverlays[spanIndex]);
+				if (g_formatStyleOverlays[spanIndex].setMask && matchedAny) *matchedAny = TRUE;
+			}
 			while (next < end && text[next] != L'\r' && text[next] != L'\n' && (BYTE)info[next] == zone) next++;
 			if (next == position) break;
 			if (g_formatStyleRunCount > 0) {
@@ -6382,7 +6402,7 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
 		formatSpans = g_wuiFrameSpans;
 	}
 	else if (g_formatStyleRules.enabled) {
-		MakeFormatExW(sW, _countof(sW), s_info, pt, beat100, g_formatW, &formatSpans);
+		fs_format_frame(sW, _countof(sW), s_info, pt, beat100, g_formatW, &formatSpans);
 	}
 	else {
 		MakeFormatW(sW, _countof(sW), s_info, pt, beat100, g_formatW);
@@ -7756,7 +7776,7 @@ void CalcMainClockContentSize(void)
 	ZeroMemory(s_info, sizeof(s_info));
 	ZeroMemory(&formatSpans, sizeof(formatSpans));
 	if (g_formatW) {
-		if (g_formatStyleRules.enabled) MakeFormatExW(sW, _countof(sW), s_info, &t, beat100, g_formatW, &formatSpans);
+		if (g_formatStyleRules.enabled) fs_format_frame(sW, _countof(sW), s_info, &t, beat100, g_formatW, &formatSpans);
 		else MakeFormatW(sW, _countof(sW), NULL, &t, beat100, g_formatW);
 	} else {
 		sW[0] = L'\0';

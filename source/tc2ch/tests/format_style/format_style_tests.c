@@ -282,7 +282,7 @@ static void test_selector_and_precedence(void)
 	test_check(TcFormatStyleSelectorSupported(L"CUSTOM32"), "custom selector upper bound");
 	test_check(!TcFormatStyleSelectorSupported(L"CUSTOM33"), "custom selector overflow rejected");
 	test_check(!TcFormatStyleSelectorSupported(L"UNKNOWN"), "unknown selector rejected");
-	test_check(!TcFormatStyleParseRule(L"UNKNOWN if (true) { Bold=1; }", 1, &rule, &report), "unknown rule rejected");
+	test_check(TcFormatStyleParseRule(L"UNKNOWN if (true) { Bold=1; }", 1, &rule, &report), "named rule accepted");
 
 	TcFormatStyleInit(&ruleset);
 	ruleset.enabled = TRUE;
@@ -294,8 +294,211 @@ static void test_selector_and_precedence(void)
 	test_check(resolved.bold == 1, "precedence style");
 }
 
+static void test_cross_items(void)
+{
+	static TC_FS_RULESET ruleset;
+	TC_FS_REPORT report;
+	TC_FORMAT_SPANS spans;
+	TC_FS_STYLE styles[4];
+	TC_FS_STYLE base = test_base();
+	TC_FS_STYLE merged;
+	int i;
+	const WCHAR* selectors[] = { L"CUSTOM3", L"CUSTOM1", L"CUSTOM2", L"CUSTOM3" };
+	const WCHAR* text = L"10 80 90 20";
+	ZeroMemory(&spans, sizeof(spans));
+	spans.count = 4;
+	for (i = 0; i < 4; i++) {
+		spans.items[i].start = i * 3;
+		spans.items[i].length = 2;
+		lstrcpynW(spans.items[i].selector, selectors[i], TC_FS_SELECTOR_CCH);
+	}
+	TcFormatStyleInit(&ruleset);
+	ruleset.enabled = TRUE;
+	ruleset.ruleCount = 1;
+	test_check(TcFormatStyleParseRule(L"CUSTOM1 if (value >= 80 && CUSTOM2.value >= 90) { ForeColor=red; CUSTOM2.ForeColor=red; CUSTOM3.Bold=1; }", 1, &ruleset.rules[0], &report), "cross-item parse");
+	test_check(TcFormatStyleResolveFrame(&ruleset, text, 11, &spans, styles, 4), "cross-item frame");
+	test_check(styles[1].foreColor == RGB(255,0,0) && styles[2].foreColor == RGB(255,0,0), "compound condition colors both items");
+	test_check(styles[0].bold && styles[3].bold, "cross-target before and after anchor and all duplicates");
+	merged = base;
+	TcFormatStyleMerge(&merged, &styles[0]);
+	test_check(merged.bold && merged.foreColor == base.foreColor && merged.fontSize == base.fontSize, "partial overlay preserves base");
+	test_check(TcFormatStyleResolveFrame(&ruleset, L"10 79 90 20", 11, &spans, styles, 4), "next frame");
+	test_check(!styles[0].setMask && !styles[1].setMask && !styles[2].setMask && !styles[3].setMask, "false condition clears previous frame");
+
+	test_check(TcFormatStyleParseRule(L"CUSTOM1 if (CUSTOM1.value == 80 && CUSTOM2.value == \"90\") { CUSTOM1.Bold=1; }", 1, &ruleset.rules[0], &report), "explicit anchor and cross text parse");
+	TcFormatStyleResolveFrame(&ruleset, text, 11, &spans, styles, 4);
+	test_check(styles[1].bold, "qualified anchor equals local value");
+	test_check(!TcFormatStyleParseRule(L"CUSTOM1 if (true) { Bold=1; CUSTOM1.Bold=0; }", 1, &ruleset.rules[0], &report), "anchor alias duplicate rejected");
+	test_check(!TcFormatStyleParseRule(L"CUSTOM1 if (true) { CUSTOM2.Bold=1; CUSTOM2.bold=0; }", 1, &ruleset.rules[0], &report), "qualified duplicate rejected");
+	test_check(TcFormatStyleParseRule(L"CUSTOM1 if (UNKNOWN.value == 1) { Bold=1; }", 1, &ruleset.rules[0], &report), "named reference accepted");
+	test_check(!TcFormatStyleParseRule(L"CUSTOM1 if (true) { CUSTOM2.value=1; }", 1, &ruleset.rules[0], &report), "value assignment requires a string literal");
+
+	TcFormatStyleParseRule(L"CUSTOM1 if (CUSTOM3.value >= 0) { Bold=1; } else { Italic=1; }", 1, &ruleset.rules[0], &report);
+	TcFormatStyleResolveFrame(&ruleset, text, 11, &spans, styles, 4);
+	test_check(!styles[1].setMask, "ambiguous reference aborts without else");
+	TcFormatStyleParseRule(L"CUSTOM1 if (CUSTOM4.value >= 0) { Bold=1; } else { Italic=1; }", 1, &ruleset.rules[0], &report);
+	TcFormatStyleResolveFrame(&ruleset, text, 11, &spans, styles, 4);
+	test_check(!styles[1].setMask, "missing reference aborts without else");
+	TcFormatStyleParseRule(L"CUSTOM1 if (true || CUSTOM4.value >= 0) { Bold=1; }", 1, &ruleset.rules[0], &report);
+	TcFormatStyleResolveFrame(&ruleset, text, 11, &spans, styles, 4);
+	test_check(styles[1].bold, "short circuit skips missing reference");
+	TcFormatStyleParseRule(L"CUSTOM1 if (true) { Bold=1; CUSTOM2.Bold=1; CUSTOM4.Bold=1; } else { Italic=1; }", 1, &ruleset.rules[0], &report);
+	TcFormatStyleResolveFrame(&ruleset, text, 11, &spans, styles, 4);
+	test_check(!styles[1].setMask && !styles[2].setMask, "missing destination prevents partial application");
+
+	TcFormatStyleParseRule(L"CUSTOM1 if (CUSTOM2.value >= 90) { Bold=1; } else { Italic=1; }", 1, &ruleset.rules[0], &report);
+	TcFormatStyleResolveFrame(&ruleset, L"10 80 XX 20", 11, &spans, styles, 4);
+	test_check(!styles[1].setMask, "cross numeric error aborts chain");
+	TcFormatStyleParseRule(L"CUSTOM3 if (CUSTOM3.value == 10) { Bold=1; CUSTOM2.ForeColor=red; } else { CUSTOM2.ForeColor=blue; }", 1, &ruleset.rules[0], &report);
+	TcFormatStyleResolveFrame(&ruleset, text, 11, &spans, styles, 4);
+	test_check(styles[0].bold && !styles[3].bold && styles[2].foreColor == RGB(0,0,255), "duplicate anchors local and later occurrence wins");
+	ruleset.ruleCount = 2;
+	TcFormatStyleParseRule(L"CUSTOM1 if (true) { CUSTOM2.ForeColor=green; CUSTOM2.Italic=1; }", 2, &ruleset.rules[1], &report);
+	TcFormatStyleResolveFrame(&ruleset, text, 11, &spans, styles, 4);
+	test_check(styles[2].foreColor == RGB(0,128,0) && styles[2].italic, "later rule overlays target");
+	ruleset.ruleCount = 1;
+	TcFormatStyleParseRule(L"CUSTOM1 if (true) { CUSTOM2.Font=\"Arial\"; CUSTOM2.FontSize=24; CUSTOM2.Bold=1; CUSTOM2.Italic=1; CUSTOM2.ForeColorShadow=1; CUSTOM2.ForeColorBorder=1; CUSTOM2.ShadowColor=blue; CUSTOM2.ClockShadowRange=3; }", 1, &ruleset.rules[0], &report);
+	TcFormatStyleResolveFrame(&ruleset, text, 11, &spans, styles, 4);
+	test_check(styles[2].fontSize == 24 && wcscmp(styles[2].fontFace,L"Arial") == 0 && styles[2].shadow && styles[2].border && styles[2].shadowRange == 3 && styles[2].shadowColor == RGB(0,0,255), "all qualified style properties");
+	spans.overflow = TRUE;
+	test_check(!TcFormatStyleResolveFrame(&ruleset, text, 11, &spans, styles, 4) && !styles[2].setMask, "overflow clears and falls back");
+	spans.overflow = FALSE;
+	spans.items[0].length = 0;
+	test_check(TcFormatStyleResolveFrame(&ruleset, text, 11, &spans, styles, 4), "empty span retained");
+	spans.items[0].length = 2;
+	test_check(!TcFormatStyleResolveFrame(&ruleset, text, 11, &spans, styles, 3), "insufficient output capacity rejected");
+}
+
+static void test_frame_compatibility(void)
+{
+	static TC_FS_RULESET ruleset;
+	TC_FS_REPORT report;
+	TC_FORMAT_SPANS spans;
+	TC_FS_STYLE overlays[1], expected, actual, base = test_base();
+	WCHAR ruleText[TC_FS_RULE_CCH];
+	WCHAR property[64];
+	const WCHAR* values[] = { L"95", L"80", L"69", L"N/A" };
+	WCHAR section[] = L"Enabled=1\0Rule10=CU if (value >= 90) { ForeColor=red; } else if (value >= 70) { ForeColor=orange; } else { ForeColor=blue; }\0Rule2=CU if (true) { Bold=1; }\0\0";
+	int i;
+	ZeroMemory(&spans, sizeof(spans));
+	spans.count = 1;
+	lstrcpyW(spans.items[0].selector, L"CU");
+	test_check(TcFormatStyleLoadMulti(section, (int)ARRAYSIZE(section), &ruleset, &report), "legacy frame section");
+	for (i = 0; i < (int)ARRAYSIZE(values); i++) {
+		int length = lstrlenW(values[i]);
+		spans.items[0].length = length;
+		TcFormatStyleApply(&ruleset, L"CU", values[i], length, &base, &expected, NULL);
+		test_check(TcFormatStyleResolveFrame(&ruleset, values[i], length, &spans, overlays, 1), "legacy frame resolution");
+		actual = base;
+		TcFormatStyleMerge(&actual, &overlays[0]);
+		test_check(memcmp(&actual, &expected, sizeof(actual)) == 0, "legacy frame equals single-item evaluation");
+	}
+	lstrcpyW(ruleText, L"CUSTOM1 if (true) { ");
+	for (i = 2; i <= TC_FS_MAX_TARGETS + 1; i++) {
+		swprintf_s(property, ARRAYSIZE(property), L"CUSTOM%d.Bold=1; ", i);
+		wcscat_s(ruleText, ARRAYSIZE(ruleText), property);
+	}
+	wcscat_s(ruleText, ARRAYSIZE(ruleText), L"}");
+	test_check(TcFormatStyleParseRule(ruleText, 1, &ruleset.rules[0], &report), "maximum destination groups accepted");
+	ruleText[lstrlenW(ruleText)-1] = 0;
+	wcscat_s(ruleText, ARRAYSIZE(ruleText), L"CUSTOM18.Bold=1; }");
+	test_check(!TcFormatStyleParseRule(ruleText, 1, &ruleset.rules[0], &report), "destination overflow rejected");
+}
+
+static void test_value_input(WCHAR* text, char* info, TC_FORMAT_SPANS* spans)
+{
+	lstrcpyW(text, L"100|");
+	memset(info, 1, 4);
+	info[4] = 0;
+	ZeroMemory(spans, sizeof(*spans));
+	spans->count = 2;
+	spans->items[0].length = 3;
+	spans->items[0].zone = 1;
+	lstrcpyW(spans->items[0].selector, L"CU");
+	spans->items[1].start = 4;
+	spans->items[1].zone = 8;
+	lstrcpyW(spans->items[1].selector, L"STATUS");
+}
+
+static void test_value_assignments(void)
+{
+	static TC_FS_RULESET ruleset;
+	TC_FS_REPORT report;
+	TC_FORMAT_SPANS spans, savedSpans;
+	WCHAR text[128], savedText[128];
+	char info[128], savedInfo[128];
+	WCHAR section[] =
+		L"Enabled=1\0"
+		L"Rule1=CU if (value == 100) { value=\"MAX\"; ForeColor=red; }\0"
+		L"Rule2=CU if (value == \"MAX\") { STATUS.value=\"High\"; STATUS.ForeColor=red; }\0"
+		L"Rule3=STATUS if (value == \"High\") { value=\"Busy\"; } else { value=\"Repeated\"; }\0\0";
+	test_check(TcFormatStyleLoadMulti(section, (int)ARRAYSIZE(section), &ruleset, &report), "value rules load");
+	test_value_input(text, info, &spans);
+	test_check(TcFormatStyleTransform(&ruleset, text, 128, info, &spans), "value transform");
+	test_check(wcscmp(text, L"MAX|Busy") == 0 && spans.items[1].length == 4, "self write, later read and empty placement");
+	test_check(spans.items[0].style.foreColor == RGB(255,0,0) && spans.items[1].style.foreColor == RGB(255,0,0), "styles retained through replacement");
+	test_check(info[3] == 1 && info[4] == 8 && info[7] == 8 && info[8] == 0, "replacement zones and literal separator");
+	test_check(TcFormatStyleTransform(&ruleset, text, 128, info, &spans) && wcscmp(text, L"MAX|Busy") == 0, "cached frame never reruns assignments");
+	test_value_input(text, info, &spans);
+	text[0] = L'0';
+	TcFormatStyleTransform(&ruleset, text, 128, info, &spans);
+	test_check(wcscmp(text, L"000|Repeated") == 0, "next frame starts with ordinary values");
+
+	TcFormatStyleInit(&ruleset); ruleset.enabled = TRUE; ruleset.ruleCount = 3;
+	TcFormatStyleParseRule(L"CU if (value == 100) { MID.ForeColor=blue; MID.value=\"1\"; value=\"50\"; }", 1, &ruleset.rules[0], &report);
+	TcFormatStyleParseRule(L"MID if (value == 1 && CU.value == 50) { value=\"2\"; STATUS.value=\"virtual\"; }", 2, &ruleset.rules[1], &report);
+	TcFormatStyleParseRule(L"CU if (value == 50 && MID.value == 2) { value=\"100\"; }", 3, &ruleset.rules[2], &report);
+	test_value_input(text, info, &spans);
+	test_check(TcFormatStyleTransform(&ruleset, text, 128, info, &spans) && wcscmp(text, L"100|virtual") == 0, "virtual anchor, cache invalidation and mutual writes execute once");
+	test_check(spans.count == 2, "unplaced virtual item creates no screen location");
+
+	ruleset.ruleCount = 1;
+	TcFormatStyleParseRule(L"CU if (true) { value=\"\"; STATUS.value=\"<%CU%>\"; }", 1, &ruleset.rules[0], &report);
+	test_value_input(text, info, &spans);
+	TcFormatStyleTransform(&ruleset, text, 128, info, &spans);
+	test_check(wcscmp(text, L"|<%CU%>") == 0 && spans.items[0].length == 0 && spans.items[1].start == 1, "clear and literal nonrecursive replacement");
+
+	TcFormatStyleParseRule(L"CU if (true) { value=\"\"; STATUS.value=\"\"; }", 1, &ruleset.rules[0], &report);
+	test_value_input(text, info, &spans);
+	text[3] = 0; spans.items[1].start = 3;
+	TcFormatStyleTransform(&ruleset, text, 128, info, &spans);
+	test_check(!text[0] && !info[0] && spans.items[0].length == 0 && spans.items[1].length == 0, "all-empty frame");
+
+	TcFormatStyleParseRule(L"CU if (true) { STATUS.value=\"A\\n\xD83D\xDE00\"; }", 1, &ruleset.rules[0], &report);
+	test_value_input(text, info, &spans);
+	TcFormatStyleTransform(&ruleset, text, 128, info, &spans);
+	test_check(wcscmp(text, L"100|A\n\xD83D\xDE00") == 0 && spans.items[1].length == 4, "newline and surrogate pair preserved");
+
+	TcFormatStyleParseRule(L"CU if (true) { value=\"expanded\"; STATUS.value=\"overflow\"; }", 1, &ruleset.rules[0], &report);
+	test_value_input(text, info, &spans);
+	CopyMemory(savedText, text, sizeof(text)); CopyMemory(savedInfo, info, sizeof(info)); savedSpans = spans;
+	test_check(!TcFormatStyleTransform(&ruleset, text, 8, info, &spans), "output overflow rejected");
+	test_check(memcmp(text, savedText, sizeof(text)) == 0 && memcmp(info, savedInfo, sizeof(info)) == 0 && memcmp(&spans, &savedSpans, sizeof(spans)) == 0, "output overflow leaves entire original frame intact");
+
+	TcFormatStyleParseRule(L"CU if (true) { CUSTOM1.value=\"override\"; }", 1, &ruleset.rules[0], &report);
+	test_value_input(text, info, &spans); lstrcpyW(spans.items[1].selector, L"CUSTOM1");
+	lstrcpyW(text, L"100|configured"); spans.items[1].length = 10;
+	TcFormatStyleTransform(&ruleset, text, 128, info, &spans);
+	test_check(wcscmp(text, L"100|override") == 0, "configured CUSTOM is overridden");
+	test_value_input(text, info, &spans); lstrcpyW(spans.items[1].selector, L"CUSTOM1");
+	TcFormatStyleTransform(&ruleset, text, 128, info, &spans);
+	test_check(wcscmp(text, L"100|override") == 0, "unconfigured CUSTOM is populated");
+
+	test_check(!TcFormatStyleParseRule(L"CU if (true) { value=\"a\"; CU.value=\"b\"; }", 1, &ruleset.rules[0], &report), "duplicate self value rejected");
+	ruleset.ruleCount = 2;
+	TcFormatStyleParseRule(L"CU if (true) { true.value=\"ok\"; }", 1, &ruleset.rules[0], &report);
+	test_check(TcFormatStyleParseRule(L"CU if (true.value == \"ok\") { STATUS.value=\"named\"; }", 2, &ruleset.rules[1], &report), "qualified boolean-word name accepted");
+	test_value_input(text, info, &spans);
+	TcFormatStyleTransform(&ruleset, text, 128, info, &spans);
+	test_check(wcscmp(text, L"100|named") == 0, "boolean literal and qualified name are distinct");
+	test_check(TcFormatStyleIdentifier(L"STATUS_1") && !TcFormatStyleIdentifier(L"1STATUS") && !TcFormatStyleIdentifier(L"Bad-Name"), "named identifier grammar");
+}
+
 int main(void)
 {
+	test_value_assignments();
+	test_frame_compatibility();
+	test_cross_items();
 	test_newline_lengths();
 	test_color_values();
 	test_format_style_named_color();

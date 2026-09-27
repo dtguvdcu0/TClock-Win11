@@ -2142,7 +2142,7 @@ static void tc_span_add(TC_FORMAT_SPANS* spans, const WCHAR* outputBase,
 {
 	TC_FORMAT_SPAN* span;
 	int i;
-	if (!spans || !outputBase || !outputStart || !outputEnd || outputEnd <= outputStart || !selector || !selector[0]) return;
+	if (!spans || !outputBase || !outputStart || !outputEnd || outputEnd < outputStart || !selector || !selector[0]) return;
 	if (spans->count >= TC_FORMAT_MAX_SPANS) {
 		spans->overflow = TRUE;
 		return;
@@ -3563,9 +3563,34 @@ static BOOL tc_wfmt_core(WCHAR* s, int sCch, char* s_info, SYSTEMTIME* pt, int b
 
 	while (*sp) {
 		if (*sp == L'<' && *(sp + 1) == L'%') {
+			WCHAR name[TC_FS_SELECTOR_CCH];
+			const WCHAR* nameEnd = sp + 2;
+			WCHAR* blockStart = dp;
+			char* blockInfo = ip;
+			int blockRemain = remain, blockInfoRemain = infoRemain;
+			int blockCount = spans ? spans->count : 0;
+			BOOL blockOverflow = spans ? spans->overflow : FALSE;
+			BOOL named = FALSE, literal = FALSE;
+			int nameLength = 0;
+			while (nameEnd[nameLength] && nameEnd[nameLength] != L'%' && nameLength < TC_FS_SELECTOR_CCH - 1) nameLength++;
+			if (nameEnd[nameLength] == L'%' && nameEnd[nameLength + 1] == L'>') {
+				CopyMemory(name, nameEnd, (SIZE_T)nameLength * sizeof(WCHAR));
+				name[nameLength] = L'\0';
+				named = TcFormatStyleIdentifier(name);
+			}
 			sp += 2;
 			while (*sp) {
-				if (*sp == L'%' && *(sp + 1) == L'>') { sp += 2; break; }
+				if (*sp == L'%' && *(sp + 1) == L'>') {
+					/* Preserve recognized legacy compounds; unknown whole identifiers are slots. */
+					if (named && literal) {
+						dp = blockStart; remain = blockRemain; *dp = L'\0';
+						ip = blockInfo; infoRemain = blockInfoRemain;
+						if (ip) *ip = '\0';
+						if (spans) { spans->count = blockCount; spans->overflow = blockOverflow; }
+						tc_span_add(spans, s, dp, dp, name, 0x01);
+					}
+					sp += 2; break;
+				}
 				if (*sp == L'\"') {
 					sp++;
 					while (*sp && *sp != L'\"') TC_MARK(0x01, tc_wappend_char(&dp, &remain, *sp++));
@@ -4069,10 +4094,12 @@ static BOOL tc_wfmt_core(WCHAR* s, int sCch, char* s_info, SYSTEMTIME* pt, int b
 				}
 
 				if (tc_is_alpha_ascii_w(*sp)) {
-					/* Keep unknown ASCII token chars as literals to avoid unnecessary ANSI fallback. */
+					literal = TRUE;
+					/* Keep unknown chars in mixed legacy formats; complete names become slots. */
 					TC_MARK(0x01, tc_wappend_char(&dp, &remain, *sp++));
 					continue;
 				}
+				literal = TRUE;
 				TC_MARK(0x01, tc_wappend_char(&dp, &remain, *sp++));
 			}
 		}

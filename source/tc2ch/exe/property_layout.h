@@ -11,7 +11,9 @@ typedef struct PL_ITEM {
 typedef struct PL_WINDOW {
  HWND hwnd;
  int x, y, width, height;
- int layoutY;
+ int layoutX, layoutY, layoutWidth;
+ BOOL label, edit, spin;
+ HWND buddy, target;
  BOOL heading;
  BOOL combo;
 } PL_WINDOW;
@@ -58,6 +60,10 @@ static void pl_add(PL_STATE* state, HWND hwnd, int x, int y, int width, int heig
  entry->width = width; entry->height = height == 30 ? 28 : height;
  GetClassNameW(hwnd, name, _countof(name));
  entry->combo = !lstrcmpW(name, L"ComboBox");
+ entry->label = !lstrcmpW(name, L"Static");
+ entry->edit = !lstrcmpW(name, L"Edit");
+ entry->spin = !lstrcmpW(name, L"msctls_updown32");
+ if (entry->spin) entry->buddy = (HWND)SendMessageW(hwnd, UDM_GETBUDDY, 0, 0);
  if (GetDlgCtrlID(hwnd) != IDC_FONTSAMPLE && GetDlgCtrlID(hwnd) != IDC_FONTSAMPLE_TOOLTIP)
   SendMessageW(hwnd, WM_SETFONT, (WPARAM)pl_font, FALSE);
  if (entry->combo) SendMessageW(hwnd, CB_SETITEMHEIGHT, (WPARAM)-1, pl_scale(max(14, height - 6), state->dpi));
@@ -112,6 +118,133 @@ static void pl_compact(PL_STATE* state)
  }
 }
 
+static BOOL pl_visible(PL_WINDOW* entry)
+{
+ return (GetWindowLongPtrW(entry->hwnd, GWL_STYLE) & WS_VISIBLE) != 0;
+}
+
+static int pl_measure(PL_STATE* state, PL_WINDOW* entry)
+{
+ WCHAR text[512]; SIZE size = { 0 }; HDC dc = GetDC(entry->hwnd);
+ HGDIOBJ oldFont;
+ if (!dc) return entry->width;
+ GetWindowTextW(entry->hwnd, text, _countof(text));
+ oldFont = SelectObject(dc, pl_font);
+ GetTextExtentPoint32W(dc, text, lstrlenW(text), &size);
+ SelectObject(dc, oldFont); ReleaseDC(entry->hwnd, dc);
+ return MulDiv(size.cx, 96, state->dpi);
+}
+
+static BOOL pl_same_row(PL_WINDOW* label, PL_WINDOW* field)
+{
+ return abs(label->layoutY + label->height / 2 - field->layoutY - field->height / 2) <= 12 ||
+  (field->height > 40 && label->layoutY >= field->layoutY && label->layoutY < field->layoutY + field->height);
+}
+
+static int pl_field_width(PL_STATE* state, PL_WINDOW* field)
+{
+ int i, width = field->width;
+ for (i = 0; i < state->count; ++i)
+  if (state->windows[i].buddy == field->hwnd) width += state->windows[i].width;
+ return width;
+}
+
+static void pl_pack(PL_STATE* state, const int* ids, int count, int cursor)
+{
+ int i, j;
+ for (i = 0; i < count; ++i) {
+  PL_WINDOW *field = pl_find(state, GetDlgItem(GetParent(state->windows[0].hwnd), ids[i])), *label = NULL;
+  int width;
+  if (!field) continue;
+  for (j = 0; j < state->count; ++j) {
+   PL_WINDOW* candidate = &state->windows[j];
+   if (candidate->label && !candidate->heading && candidate->height > 2 && pl_visible(candidate) &&
+       candidate->x < field->x && pl_same_row(candidate, field) && (!label || candidate->x > label->x)) label = candidate;
+  }
+  if (!label) continue;
+  width = pl_measure(state, label);
+  label->layoutX = cursor; label->layoutWidth = width; label->target = field->hwnd;
+  SetWindowLongPtrW(label->hwnd, GWL_STYLE, GetWindowLongPtrW(label->hwnd, GWL_STYLE) | SS_NOTIFY);
+  field->layoutX = cursor + width + 8;
+  for (j = 0; j < state->count; ++j)
+   if (state->windows[j].buddy == field->hwnd) state->windows[j].layoutX = field->layoutX + field->width;
+  cursor = field->layoutX + pl_field_width(state, field) + 24;
+ }
+}
+
+static void pl_balance(PL_STATE* state)
+{
+ static const int positionIds[] = { 1123, 1125, 1127 };
+ static const int analogIds[] = { 1139, 1141 };
+ static const WCHAR* units[] = { L"\u79d2", L"\u6642\u9593", L"\u6587\u5b57", L"\u5206\u5272", L"\u9805\u76ee", L"\u56de", L"\u30df\u30ea\u79d2" };
+ int heads[32], count = 0, i, j, k, h, cursor = 0;
+ for (i = 0; i < state->count; ++i) {
+  PL_WINDOW* entry = &state->windows[i];
+  entry->layoutX = entry->x; entry->layoutWidth = entry->width;
+  if (entry->heading && count < _countof(heads)) heads[count++] = i;
+ }
+ for (h = 0; h < count; ++h) {
+  PL_WINDOW* heading = &state->windows[heads[h]];
+  int start = heading->y, end = h + 1 < count ? state->windows[heads[h + 1]].y : INT_MAX;
+  int first = INT_MAX, last = 0, delta, labelWidth = 48;
+  for (i = 0; i < state->count; ++i) {
+   PL_WINDOW* entry = &state->windows[i];
+   if (entry->y <= start || entry->y >= end || entry->height <= 2 || !pl_visible(entry)) continue;
+   first = min(first, entry->layoutY); last = max(last, entry->layoutY + entry->height);
+   if (entry->label && entry->width == 108 && entry->x <= 23) labelWidth = max(labelWidth, pl_measure(state, entry));
+  }
+  if (first == INT_MAX) continue;
+  delta = cursor + 26 - first;
+  for (i = 0; i < state->count; ++i) {
+   PL_WINDOW* entry = &state->windows[i];
+   if (entry->y <= start || entry->y >= end) continue;
+   entry->layoutY = entry->height <= 2 ? cursor + 9 : entry->layoutY + delta;
+  }
+  heading->layoutY = cursor; cursor = last + delta + 14;
+  if (state->page == 5 || state->page == 14) continue;
+  delta = max(0, 118 - labelWidth - 12);
+  for (i = 0; i < state->count; ++i) {
+   PL_WINDOW* label = &state->windows[i];
+   if (!label->label || label->heading || label->width != 108 || label->x > 23 ||
+       label->y <= start || label->y >= end || !pl_visible(label)) continue;
+   label->layoutWidth = labelWidth;
+   for (j = 0; j < state->count; ++j) {
+    PL_WINDOW* entry = &state->windows[j];
+    if (entry->y > start && entry->y < end && entry->x >= label->x + 118 && pl_same_row(label, entry))
+     entry->layoutX = entry->x - delta;
+   }
+  }
+  for (i = 0; i < state->count; ++i) {
+   PL_WINDOW* anchor = &state->windows[i];
+   if (anchor->y <= start || anchor->y >= end || anchor->x != 118 || anchor->layoutX != 118) continue;
+   for (j = 0; j < state->count; ++j) {
+    PL_WINDOW* entry = &state->windows[j];
+    if (entry->y > start && entry->y < end && entry->x >= 118 &&
+        abs(anchor->layoutY + anchor->height / 2 - entry->layoutY - entry->height / 2) <= 12)
+     entry->layoutX = entry->x - delta;
+   }
+  }
+ }
+ if (state->page == 0) pl_pack(state, positionIds, _countof(positionIds), 0);
+ if (state->page == 4) {
+  PL_WINDOW* first = pl_find(state, GetDlgItem(GetParent(state->windows[0].hwnd), analogIds[0]));
+  if (first) pl_pack(state, analogIds, _countof(analogIds), first->layoutX - 30);
+ }
+ for (i = 0; i < state->count; ++i) {
+  PL_WINDOW *unit = &state->windows[i], *field = NULL; WCHAR text[32];
+  if (!unit->label || unit->heading || !pl_visible(unit)) continue;
+  GetWindowTextW(unit->hwnd, text, _countof(text));
+  for (k = 0; k < _countof(units); ++k) if (!lstrcmpW(text, units[k])) break;
+  if (k == _countof(units)) continue;
+  for (j = 0; j < state->count; ++j) {
+   PL_WINDOW* candidate = &state->windows[j];
+   if (candidate->edit && candidate->layoutX < unit->layoutX && pl_visible(candidate) && pl_same_row(unit, candidate) &&
+       (!field || candidate->layoutX > field->layoutX)) field = candidate;
+  }
+  if (field) unit->layoutX = field->layoutX + pl_field_width(state, field) + 6;
+ }
+}
+
 static void pl_arrange(HWND page, PL_STATE* state)
 {
  RECT client;
@@ -123,7 +256,19 @@ static void pl_arrange(HWND page, PL_STATE* state)
  state->positioning = TRUE;
  if (relayout) {
   for (i = 0; i < state->suppressedCount; ++i) ShowWindow(state->suppressed[i], SW_HIDE);
-  pl_compact(state); state->dirty = FALSE;
+  if (state->page == 3) {
+   BOOL network = SendDlgItemMessageW(page, 1551, CB_GETCURSEL, 0, 0) == 0;
+   for (i = 0; i < state->count; ++i) {
+    PL_WINDOW* entry = &state->windows[i];
+    int id = entry->label && entry->x == 0 ? (entry->y == 219 ? 1553 : entry->y == 291 ? 1557 : 0) : 0;
+    if (id) {
+     ShowWindow(entry->hwnd, (GetWindowLongPtrW(GetDlgItem(page, id), GWL_STYLE) & WS_VISIBLE) ? SW_SHOWNA : SW_HIDE);
+     SetWindowTextW(entry->hwnd, network ? (id == 1553 ? (b_EnglishMenu ? L"Receive" : L"\u53d7\u4fe1") :
+      (b_EnglishMenu ? L"Send" : L"\u9001\u4fe1")) : (id == 1553 ? L"CPU" : L"GPU"));
+    }
+   }
+  }
+  pl_compact(state); pl_balance(state); state->dirty = FALSE;
  }
  GetClientRect(page, &client);
  height = MulDiv(client.bottom, 96, state->dpi);
@@ -142,15 +287,15 @@ static void pl_arrange(HWND page, PL_STATE* state)
  for (i = 0; i < state->count && batch; ++i) {
   PL_WINDOW* entry = &state->windows[i];
   batch = DeferWindowPos(batch, entry->hwnd, NULL,
-   pl_scale(entry->x, state->dpi), pl_scale(entry->layoutY - state->offset, state->dpi),
-   pl_scale(entry->width, state->dpi), pl_scale(entry->height + (entry->combo ? 180 : 0), state->dpi),
+   pl_scale(entry->layoutX, state->dpi), pl_scale(entry->layoutY - state->offset, state->dpi),
+   pl_scale(entry->layoutWidth, state->dpi), pl_scale(entry->height + (entry->combo ? 180 : 0), state->dpi),
    SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOREDRAW | SWP_NOCOPYBITS);
  }
  if (batch) EndDeferWindowPos(batch);
  else {
   for (i = 0; i < state->count; ++i) {
    PL_WINDOW* entry = &state->windows[i];
-   pl_place(entry->hwnd, entry->x, entry->layoutY - state->offset, entry->width,
+   pl_place(entry->hwnd, entry->layoutX, entry->layoutY - state->offset, entry->layoutWidth,
     entry->height + (entry->combo ? 180 : 0), state->dpi);
   }
  }
@@ -178,6 +323,10 @@ static LRESULT CALLBACK pl_handle_field(HWND hwnd, UINT message, WPARAM wp, LPAR
  UINT_PTR id, DWORD_PTR reference)
 {
  PL_STATE* state = (PL_STATE*)reference;
+ if (message == WM_LBUTTONUP) {
+  PL_WINDOW* entry = pl_find(state, hwnd);
+  if (entry && entry->target && IsWindowEnabled(entry->target)) SetFocus(entry->target);
+ }
  if (message == WM_SETFOCUS) pl_reveal(GetParent(hwnd), state, hwnd);
  if (message == WM_NCDESTROY) RemoveWindowSubclass(hwnd, pl_handle_field, id);
  return DefSubclassProc(hwnd, message, wp, lp);

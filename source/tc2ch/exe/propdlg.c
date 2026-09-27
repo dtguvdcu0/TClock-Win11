@@ -285,9 +285,7 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 			tv.item.pszText = (LPWSTR)MyStringW(IDS_PROP_COLOR);
 			hChild[0] = (HTREEITEM)SendMessageW(hTree, TVM_INSERTITEMW, 0, (LPARAM)&tv);
 
-			tv.item.lParam = 106;
-			tv.item.pszText = (LPWSTR)MyStringW(IDS_PROP_COLOR_ADDITIONAL);
-			hChild[6] = (HTREEITEM)SendMessageW(hTree, TVM_INSERTITEMW, 0, (LPARAM)&tv);
+			/* Keep the additional color page internal; omit its navigation item. */
 
 			tv.item.lParam = 101;
 			tv.item.pszText = (LPWSTR)MyStringW(IDS_PROP_FORMAT);
@@ -320,6 +318,7 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 
 			CreatePageDialog(hDwnd, hDlg, bDlgFlg, 0, GetSafeLanguageOffset() + IDD_PAGECOLOR, PageColorProc);
 			nowDlg = startpage;
+			if (nowDlg == 6) nowDlg = 0; /* Hidden additional color page. */
 			if (nowDlg == 13) {
 				nowDlg = 14;
 			}

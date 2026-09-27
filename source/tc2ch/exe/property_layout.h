@@ -492,7 +492,7 @@ static void pl_attach(HWND page, int index)
 static void pl_frame(HWND parent)
 {
  int dpi = pl_dpi(parent);
- RECT rect = { 0, 0, pl_scale(744, dpi), pl_scale(644, dpi) };
+ RECT rect = { 0, 0, pl_scale(744, dpi), pl_scale(692, dpi) };
  HWND tree = GetDlgItem(parent, IDC_TREE);
  LOGFONTW font = { 0 };
  font.lfHeight = -pl_scale(12, dpi); font.lfWeight = FW_NORMAL;
@@ -502,15 +502,15 @@ static void pl_frame(HWND parent)
  AdjustWindowRectEx(&rect, (DWORD)GetWindowLongPtrW(parent, GWL_STYLE), FALSE,
   (DWORD)GetWindowLongPtrW(parent, GWL_EXSTYLE));
  SetWindowPos(parent, NULL, 0, 0, rect.right - rect.left, rect.bottom - rect.top, SWP_NOMOVE | SWP_NOZORDER);
- pl_place(tree, 14, 16, 166, 558, dpi);
+ pl_place(tree, 14, 16, 166, 606, dpi);
  SetWindowLongPtrW(tree, GWL_STYLE, (GetWindowLongPtrW(tree, GWL_STYLE) &
   ~(TVS_HASLINES | TVS_LINESATROOT | TVS_HASBUTTONS)) | TVS_FULLROWSELECT);
  SendMessageW(tree, WM_SETFONT, (WPARAM)pl_font, FALSE);
  SendMessageW(tree, TVM_SETITEMHEIGHT, pl_scale(27, dpi), 0);
  SendMessageW(tree, TVM_SETINDENT, pl_scale(8, dpi), 0);
- pl_place(GetDlgItem(parent, IDOK), 444, 599, 88, 30, dpi);
- pl_place(GetDlgItem(parent, IDCANCEL), 542, 599, 88, 30, dpi);
- pl_place(GetDlgItem(parent, ID_APPLY), 640, 599, 88, 30, dpi);
+ pl_place(GetDlgItem(parent, IDOK), 444, 647, 88, 30, dpi);
+ pl_place(GetDlgItem(parent, IDCANCEL), 542, 647, 88, 30, dpi);
+ pl_place(GetDlgItem(parent, ID_APPLY), 640, 647, 88, 30, dpi);
  SendDlgItemMessageW(parent, IDOK, WM_SETFONT, (WPARAM)pl_font, FALSE);
  SendDlgItemMessageW(parent, IDCANCEL, WM_SETFONT, (WPARAM)pl_font, FALSE);
  SendDlgItemMessageW(parent, ID_APPLY, WM_SETFONT, (WPARAM)pl_font, FALSE);

@@ -140,7 +140,7 @@ void MyPropertyDialog(void)
 static VOID SetPageDlgPos(HWND hParent, HWND hDlg)
 {
  int dpi = pl_dpi(hParent);
- pl_place(hDlg, 202, 60, 530, 512, dpi);
+ pl_place(hDlg, 202, 60, 530, 560, dpi);
 }
 
 static VOID CreatePageDialog(HWND hParent, HWND hDlg[], BOOL bDlgFlg[], int index, int wID, DLGPROC dlgprc)

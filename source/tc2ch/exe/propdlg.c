@@ -66,6 +66,8 @@ extern BOOL b_EnglishMenu;
 extern BOOL b_NormalLog;
 extern int Language_Offset;
 
+#include "property_layout.h"
+
 static int GetSafeLanguageOffset(void)
 {
 	if (Language_Offset == LANGUAGE_OFFSET_JAPANESE || Language_Offset == LANGUAGE_OFFSET_ENGLISH) {
@@ -137,24 +139,8 @@ void MyPropertyDialog(void)
 
 static VOID SetPageDlgPos(HWND hParent, HWND hDlg)
 {
-	LONG DlgBase;
-	WORD DlgBaseH;
-	HWND hTree;
-	RECT rect;
-	POINT pos;
-
-	hTree = GetDlgItem(hParent, IDC_TREE);
-	GetWindowRect(hTree, &rect);
-	pos.x = rect.right;
-	pos.y = rect.top;
-	ScreenToClient(hParent, &pos);
-
-	DlgBase = GetDialogBaseUnits();
-	DlgBaseH = LOWORD(DlgBase);
-
-	pos.x = pos.x + (DlgBaseH / 4);
-	pos.y = pos.y;
-	SetWindowPos(hDlg, NULL, pos.x, pos.y, 0, 0, SWP_NOSIZE);
+ int dpi = pl_dpi(hParent);
+ pl_place(hDlg, 202, 60, 530, 512, dpi);
 }
 
 static VOID CreatePageDialog(HWND hParent, HWND hDlg[], BOOL bDlgFlg[], int index, int wID, DLGPROC dlgprc)
@@ -167,6 +153,7 @@ static VOID CreatePageDialog(HWND hParent, HWND hDlg[], BOOL bDlgFlg[], int inde
 	hInst   = GetLangModule();
 	hDlg[index] = CreateDialog(hInst, MAKEINTRESOURCE((WORD)wID), hParent, dlgprc);
 	SetPageDlgPos(hParent, hDlg[index]);
+	pl_attach(hDlg[index], index);
 
 	bDlgFlg[index] = TRUE;
 }
@@ -181,31 +168,9 @@ static VOID CreatePageDialogW(HWND hParent, HWND hDlg[], BOOL bDlgFlg[], int ind
 	hInst = GetLangModule();
 	hDlg[index] = CreateDialogW(hInst, MAKEINTRESOURCEW((WORD)wID), hParent, dlgprc);
 	SetPageDlgPos(hParent, hDlg[index]);
+	pl_attach(hDlg[index], index);
 
 	bDlgFlg[index] = TRUE;
-}
-
-static VOID AdjustPropertyTreeHeight(HWND hTree)
-{
-	LRESULT itemHeight;
-	int targetHeight;
-
-	if (!hTree) {
-		return;
-	}
-
-	itemHeight = SendMessageW(hTree, TVM_GETITEMHEIGHT, 0, 0);
-	if (itemHeight <= 0) {
-		return;
-	}
-
-	targetHeight = (int)itemHeight - 2;
-	if (targetHeight < 16) {
-		targetHeight = 16;
-	}
-	if (targetHeight != (int)itemHeight) {
-		SendMessageW(hTree, TVM_SETITEMHEIGHT, (WPARAM)targetHeight, 0);
-	}
 }
 
 /*-------------------------------------------
@@ -217,7 +182,6 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 	static HWND hDlg[MAX_PAGE];
 	static BOOL bDlgFlg[MAX_PAGE];
 	static HWND *hNowDlg;
-	_TV_INSERTSTRUCT tv;
 	HTREEITEM hParent[MAX_PAGE] = { 0 }, hChild[MAX_PAGE] = { 0 };
 	NM_TREEVIEW *pNMTV;
 //	HINSTANCE hInst;
@@ -229,92 +193,8 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 			InitCommonControls();
 
 			hTree = GetDlgItem(hDwnd, IDC_TREE);
-			AdjustPropertyTreeHeight(hTree);
-			memset(&tv, 0, sizeof(_TV_INSERTSTRUCT));
-
-			//設定ダイアログ左メニューの順序は、数字ではなく、以下の行の順番で決まっている。
-
-			tv.hInsertAfter = TVI_LAST;
-			tv.hParent = TVI_ROOT;
-			tv.item.mask = TVIF_TEXT | TVIF_STATE | TVIF_PARAM;
-			tv.item.state = TVIS_EXPANDED;
-			tv.item.stateMask = TVIS_EXPANDED;
-
-			tv.item.pszText = (LPWSTR)MyStringW(IDS_CLOCK);
-			tv.item.lParam = 0;
-			hParent[0] = (HTREEITEM)SendMessageW(hTree, TVM_INSERTITEMW, 0, (LPARAM)&tv);
-
-			tv.item.lParam = 1;
-			tv.item.pszText = (LPWSTR)MyStringW(IDS_TOOLTIP);
-			hParent[1] = (HTREEITEM)SendMessageW(hTree, TVM_INSERTITEMW, 0, (LPARAM)&tv);
-
-			tv.item.lParam = 6;
-			tv.item.pszText = (LPWSTR)MyStringW(IDS_PROP_MOUSE);
-			hParent[6] = (HTREEITEM)SendMessageW(hTree, TVM_INSERTITEMW, 0, (LPARAM)&tv);
-
-			tv.item.lParam = 9;
-			tv.item.pszText = (LPWSTR)MyStringW(IDS_PROP_RCLICK_MENU);
-			hParent[9] = (HTREEITEM)SendMessageW(hTree, TVM_INSERTITEMW, 0, (LPARAM)&tv);
-
-			tv.item.lParam = 8;
-			tv.item.pszText = (LPWSTR)MyStringW(IDS_PROP_CUSTOMVARS);
-			hParent[8] = (HTREEITEM)SendMessageW(hTree, TVM_INSERTITEMW, 0, (LPARAM)&tv);
-
-			tv.item.lParam = 7;
-			tv.item.pszText = (LPWSTR)MyStringW(IDS_PROP_ETC);
-			hParent[7] = (HTREEITEM)SendMessageW(hTree, TVM_INSERTITEMW, 0, (LPARAM)&tv);
-
-			tv.item.lParam = 2;
-			tv.item.pszText = (LPWSTR)MyStringW(IDS_PROP_KEYWORDS);
-			hParent[2] = (HTREEITEM)SendMessageW(hTree, TVM_INSERTITEMW, 0, (LPARAM)&tv);
-
-			tv.item.lParam = 5;
-			tv.item.pszText = (LPWSTR)MyStringW(IDS_PROP_WIN11);
-			hParent[5] = (HTREEITEM)SendMessageW(hTree, TVM_INSERTITEMW, 0, (LPARAM)&tv);
-
-			tv.item.lParam = 4;
-			tv.item.pszText = (LPWSTR)MyStringW(IDS_MISC);
-			hParent[4] = (HTREEITEM)SendMessageW(hTree, TVM_INSERTITEMW, 0, (LPARAM)&tv);
-
-
-
-			tv.hParent = hParent[0];
-			tv.item.mask = TVIF_TEXT | TVIF_PARAM;
-
-			tv.item.lParam = 100;
-			tv.item.pszText = (LPWSTR)MyStringW(IDS_PROP_COLOR);
-			hChild[0] = (HTREEITEM)SendMessageW(hTree, TVM_INSERTITEMW, 0, (LPARAM)&tv);
-
-			/* Keep the additional color page internal; omit its navigation item. */
-
-			tv.item.lParam = 101;
-			tv.item.pszText = (LPWSTR)MyStringW(IDS_PROP_FORMAT);
-			hChild[1] = (HTREEITEM)SendMessageW(hTree, TVM_INSERTITEMW, 0, (LPARAM)&tv);
-
-			tv.item.lParam = 107;
-			tv.item.pszText = (LPWSTR)MyStringW(IDS_PROP_CHIME);
-			hChild[7] = (HTREEITEM)SendMessageW(hTree, TVM_INSERTITEMW, 0, (LPARAM)&tv);
-
-			tv.item.lParam = 103;
-			tv.item.pszText = (LPWSTR)MyStringW(IDS_PROP_GRAPH);
-			hChild[3] = (HTREEITEM)SendMessageW(hTree, TVM_INSERTITEMW, 0, (LPARAM)&tv);
-
-			//	BarMeter設定	20181103
-			tv.item.lParam = 105;
-			tv.item.pszText = (LPWSTR)MyStringW(IDS_BARMETER);
-			hChild[5] = (HTREEITEM)SendMessageW(hTree, TVM_INSERTITEMW, 0, (LPARAM)&tv);
-
-
-			//tv.item.lParam = 102;
-			//tv.item.pszText = (LPWSTR)MyStringW(IDS_PROP_MOUSE);
-			//hChild[2] = (HTREEITEM)SendMessageW(hTree, TVM_INSERTITEMW, 0, (LPARAM)&tv);
-
-
-			tv.item.lParam = 104;
-			tv.item.pszText = (LPWSTR)MyStringW(IDS_PROP_ANALOG);
-			hChild[4] = (HTREEITEM)SendMessageW(hTree, TVM_INSERTITEMW, 0, (LPARAM)&tv);
-
-
+			pl_frame(hDwnd);
+			pl_tree(hTree, hParent, hChild);
 
 			CreatePageDialog(hDwnd, hDlg, bDlgFlg, 0, GetSafeLanguageOffset() + IDD_PAGECOLOR, PageColorProc);
 			nowDlg = startpage;
@@ -348,6 +228,22 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 			}
 			pNMTV = (NM_TREEVIEW *)lParam;
 			switch (pNMTV->hdr.code){
+                case TVN_SELCHANGINGA:
+                case TVN_SELCHANGINGW:
+                    if (pNMTV->itemNew.lParam < 0) {
+                        SetWindowLongPtrW(hDwnd, DWLP_MSGRESULT, TRUE);
+                        InterlockedDecrement(&g_propdlgNotifyDepth);
+                        return TRUE;
+                    }
+                    break;
+                case TVN_ITEMEXPANDINGA:
+                case TVN_ITEMEXPANDINGW:
+                    if (pNMTV->action == TVE_COLLAPSE) {
+                        SetWindowLongPtrW(hDwnd, DWLP_MSGRESULT, TRUE);
+                        InterlockedDecrement(&g_propdlgNotifyDepth);
+                        return TRUE;
+                    }
+                    break;
 				case TVN_SELCHANGEDA:
 				case TVN_SELCHANGEDW:
 					ShowWindow(*hNowDlg, SW_HIDE);
@@ -448,6 +344,14 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 							nowDlg = 0;
 							break;
 					}
+                    {
+                        WCHAR title[128];
+                        TVITEMW selected = { 0 };
+                        selected.mask = TVIF_TEXT; selected.hItem = pNMTV->itemNew.hItem;
+                        selected.pszText = title; selected.cchTextMax = _countof(title);
+                        if (SendMessageW(hTree, TVM_GETITEMW, 0, (LPARAM)&selected))
+                            SetDlgItemTextW(hDwnd, PL_TITLE, title);
+                    }
 					hNowDlg = &hDlg[nowDlg];
 					ShowWindow(*hNowDlg, SW_SHOW);
 					UpdateWindow(*hNowDlg);
@@ -543,6 +447,12 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 			}
 			InterlockedDecrement(&g_propdlgCommandDepth);
 			}
+			break;
+
+		case WM_NCDESTROY:
+			if (pl_font) DeleteObject(pl_font);
+			if (pl_heading) DeleteObject(pl_heading);
+			pl_font = pl_heading = NULL;
 			break;
 
 		case WM_TCLOCK_APPLY_REFRESH:

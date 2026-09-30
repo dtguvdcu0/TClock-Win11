@@ -54,6 +54,101 @@ __inline void SendPSChanged(HWND hDlg)
 	SendMessage(GetParent(hDlg), PSM_CHANGED, (WPARAM)(hDlg), 0);
 }
 
+static int tip_map_y(HWND hDlg, int dlu)
+{
+    RECT rect = { 0, 0, 0, dlu };
+    MapDialogRect(hDlg, &rect);
+    return rect.bottom;
+}
+
+static void tip_init_scroll(HWND hDlg)
+{
+    HWND sample = GetDlgItem(hDlg, IDC_FONTSAMPLE_TOOLTIP);
+    RECT last, client;
+    SCROLLINFO info;
+
+    if (!sample || !GetWindowRect(sample, &last) || !GetClientRect(hDlg, &client)) return;
+    MapWindowPoints(NULL, hDlg, (LPPOINT)&last, 2);
+    ZeroMemory(&info, sizeof(info));
+    info.cbSize = sizeof(info);
+    info.fMask = SIF_RANGE | SIF_PAGE | SIF_POS;
+    info.nMin = 0;
+    info.nMax = last.bottom + tip_map_y(hDlg, 12) - 1;
+    info.nPage = client.bottom - client.top;
+    info.nPos = 0;
+    SetScrollInfo(hDlg, SB_VERT, &info, TRUE);
+}
+
+static void tip_scroll_to(HWND hDlg, int target)
+{
+    SCROLLINFO info;
+    HWND child, next;
+    RECT rect;
+    int maxPos, delta;
+
+    ZeroMemory(&info, sizeof(info));
+    info.cbSize = sizeof(info);
+    info.fMask = SIF_ALL;
+    if (!GetScrollInfo(hDlg, SB_VERT, &info)) return;
+    maxPos = info.nMax - (int)info.nPage + 1;
+    if (maxPos < 0) maxPos = 0;
+    if (target < 0) target = 0;
+    if (target > maxPos) target = maxPos;
+    delta = target - info.nPos;
+    if (!delta) return;
+
+    for (child = GetWindow(hDlg, GW_CHILD); child; child = next) {
+        next = GetWindow(child, GW_HWNDNEXT);
+        if (!GetWindowRect(child, &rect)) continue;
+        MapWindowPoints(NULL, hDlg, (LPPOINT)&rect, 2);
+        SetWindowPos(child, NULL, rect.left, rect.top - delta, 0, 0,
+            SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+    info.fMask = SIF_POS;
+    info.nPos = target;
+    SetScrollInfo(hDlg, SB_VERT, &info, TRUE);
+    InvalidateRect(hDlg, NULL, TRUE);
+}
+
+static void tip_scroll_focus(HWND hDlg, HWND focused)
+{
+    RECT rect, client;
+    int margin, position;
+
+    if (!focused || !GetWindowRect(focused, &rect) || !GetClientRect(hDlg, &client)) return;
+    MapWindowPoints(NULL, hDlg, (LPPOINT)&rect, 2);
+    margin = tip_map_y(hDlg, 3);
+    position = GetScrollPos(hDlg, SB_VERT);
+    if (rect.top < margin) tip_scroll_to(hDlg, position + rect.top - margin);
+    else if (rect.bottom > client.bottom - margin)
+        tip_scroll_to(hDlg, position + rect.bottom - client.bottom + margin);
+}
+
+static void tip_handle_scroll(HWND hDlg, int action)
+{
+    SCROLLINFO info;
+    int target, line;
+
+    ZeroMemory(&info, sizeof(info));
+    info.cbSize = sizeof(info);
+    info.fMask = SIF_ALL;
+    if (!GetScrollInfo(hDlg, SB_VERT, &info)) return;
+    target = info.nPos;
+    line = tip_map_y(hDlg, 16);
+    switch (action) {
+    case SB_LINEUP: target -= line; break;
+    case SB_LINEDOWN: target += line; break;
+    case SB_PAGEUP: target -= (int)info.nPage; break;
+    case SB_PAGEDOWN: target += (int)info.nPage; break;
+    case SB_THUMBTRACK:
+    case SB_THUMBPOSITION: target = info.nTrackPos; break;
+    case SB_TOP: target = 0; break;
+    case SB_BOTTOM: target = info.nMax; break;
+    default: return;
+    }
+    tip_scroll_to(hDlg, target);
+}
+
 /*------------------------------------------------
 　「ツールチップ」ページ用ダイアログプロシージャ
 --------------------------------------------------*/
@@ -63,6 +158,14 @@ BOOL CALLBACK PageTooltipProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
 	{
 		case WM_INITDIALOG:
 			OnInit(hDlg);
+			tip_init_scroll(hDlg);
+			return TRUE;
+		case WM_VSCROLL:
+			if (!lParam) { tip_handle_scroll(hDlg, LOWORD(wParam)); return TRUE; }
+			break;
+		case WM_MOUSEWHEEL:
+			tip_scroll_to(hDlg, GetScrollPos(hDlg, SB_VERT) -
+				(short)HIWORD(wParam) * tip_map_y(hDlg, 16) * 3 / WHEEL_DELTA);
 			return TRUE;
 		case WM_MEASUREITEM:
 			OnMeasureItemColorCombo(lParam);
@@ -74,6 +177,8 @@ BOOL CALLBACK PageTooltipProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
 		{
 			WORD id, code;
 			id = LOWORD(wParam); code = HIWORD(wParam);
+			if (lParam && (code == EN_SETFOCUS || code == CBN_SETFOCUS || code == BN_SETFOCUS))
+				tip_scroll_focus(hDlg, (HWND)lParam);
 			switch(id)
 			{
 			case IDC_TFONT:

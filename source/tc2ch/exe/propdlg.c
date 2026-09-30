@@ -139,8 +139,24 @@ void MyPropertyDialog(void)
 
 static VOID SetPageDlgPos(HWND hParent, HWND hDlg)
 {
- int dpi = pl_dpi(hParent);
- pl_place(hDlg, 202, 60, 530, 560, dpi);
+	LONG DlgBase;
+	WORD DlgBaseH;
+	HWND hTree;
+	RECT rect;
+	POINT pos;
+
+	hTree = GetDlgItem(hParent, IDC_TREE);
+	GetWindowRect(hTree, &rect);
+	pos.x = rect.right;
+	pos.y = rect.top;
+	ScreenToClient(hParent, &pos);
+
+	DlgBase = GetDialogBaseUnits();
+	DlgBaseH = LOWORD(DlgBase);
+
+	pos.x = pos.x + (DlgBaseH / 4);
+	pos.y = pos.y;
+	SetWindowPos(hDlg, NULL, pos.x, pos.y, 0, 0, SWP_NOSIZE);
 }
 
 static VOID CreatePageDialog(HWND hParent, HWND hDlg[], BOOL bDlgFlg[], int index, int wID, DLGPROC dlgprc)
@@ -153,7 +169,6 @@ static VOID CreatePageDialog(HWND hParent, HWND hDlg[], BOOL bDlgFlg[], int inde
 	hInst   = GetLangModule();
 	hDlg[index] = CreateDialog(hInst, MAKEINTRESOURCE((WORD)wID), hParent, dlgprc);
 	SetPageDlgPos(hParent, hDlg[index]);
-	pl_attach(hDlg[index], index);
 
 	bDlgFlg[index] = TRUE;
 }
@@ -168,9 +183,31 @@ static VOID CreatePageDialogW(HWND hParent, HWND hDlg[], BOOL bDlgFlg[], int ind
 	hInst = GetLangModule();
 	hDlg[index] = CreateDialogW(hInst, MAKEINTRESOURCEW((WORD)wID), hParent, dlgprc);
 	SetPageDlgPos(hParent, hDlg[index]);
-	pl_attach(hDlg[index], index);
 
 	bDlgFlg[index] = TRUE;
+}
+
+static VOID AdjustPropertyTreeHeight(HWND hTree)
+{
+	LRESULT itemHeight;
+	int targetHeight;
+
+	if (!hTree) {
+		return;
+	}
+
+	itemHeight = SendMessageW(hTree, TVM_GETITEMHEIGHT, 0, 0);
+	if (itemHeight <= 0) {
+		return;
+	}
+
+	targetHeight = (int)itemHeight - 2;
+	if (targetHeight < 16) {
+		targetHeight = 16;
+	}
+	if (targetHeight != (int)itemHeight) {
+		SendMessageW(hTree, TVM_SETITEMHEIGHT, (WPARAM)targetHeight, 0);
+	}
 }
 
 /*-------------------------------------------
@@ -193,7 +230,7 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 			InitCommonControls();
 
 			hTree = GetDlgItem(hDwnd, IDC_TREE);
-			pl_frame(hDwnd);
+			AdjustPropertyTreeHeight(hTree);
 			pl_tree(hTree, hParent, hChild);
 
 			CreatePageDialog(hDwnd, hDlg, bDlgFlg, 0, GetSafeLanguageOffset() + IDD_PAGECOLOR, PageColorProc);
@@ -344,14 +381,6 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 							nowDlg = 0;
 							break;
 					}
-                    {
-                        WCHAR title[128];
-                        TVITEMW selected = { 0 };
-                        selected.mask = TVIF_TEXT; selected.hItem = pNMTV->itemNew.hItem;
-                        selected.pszText = title; selected.cchTextMax = _countof(title);
-                        if (SendMessageW(hTree, TVM_GETITEMW, 0, (LPARAM)&selected))
-                            SetDlgItemTextW(hDwnd, PL_TITLE, title);
-                    }
 					hNowDlg = &hDlg[nowDlg];
 					ShowWindow(*hNowDlg, SW_SHOW);
 					UpdateWindow(*hNowDlg);
@@ -447,12 +476,6 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 			}
 			InterlockedDecrement(&g_propdlgCommandDepth);
 			}
-			break;
-
-		case WM_NCDESTROY:
-			if (pl_font) DeleteObject(pl_font);
-			if (pl_heading) DeleteObject(pl_heading);
-			pl_font = pl_heading = NULL;
 			break;
 
 		case WM_TCLOCK_APPLY_REFRESH:

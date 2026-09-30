@@ -83,14 +83,12 @@ static void EnsureHideClockActionButtons(HWND hDlg)
 	HWND hBtnShow;
 	HFONT hFont;
 	int gap;
-	int rowPitch;
 	int btnWidth;
 	int rowLeft;
 	int rowWidth;
 	int btnHeight;
 	int btnTop;
 	int alignHeight;
-	int alignTop;
 	int experimentalTop;
 	const wchar_t* hideLabel;
 	const wchar_t* showLabel;
@@ -109,22 +107,19 @@ static void EnsureHideClockActionButtons(HWND hDlg)
 	MapWindowPoints(NULL, hDlg, (LPPOINT)&rcAlign, 2);
 	MapWindowPoints(NULL, hDlg, (LPPOINT)&rcSave, 2);
 	ShowWindow(hCheck, SW_HIDE);
-	rowLeft = rcSave.left;
-	rowWidth = rcSave.right - rcSave.left;
-	if (rowWidth <= 0) rowWidth = rcAlign.right - rcAlign.left;
+	rowLeft = rcCheck.left;
+	rowWidth = rcCheck.right - rcCheck.left;
 	gap = 6;
-	rowPitch = MapDluY(hDlg, 16);
 	btnWidth = (rowWidth - gap) / 2;
 	if (btnWidth < 80) btnWidth = 80;
 	btnHeight = rcSave.bottom - rcSave.top;
 	if (btnHeight <= 0) btnHeight = 14;
-	btnTop = rcSave.top + rowPitch;
+	btnTop = rcCheck.top;
 	alignHeight = rcAlign.bottom - rcAlign.top;
 	if (alignHeight <= 0) alignHeight = 11;
-	alignTop = btnTop + rowPitch;
-	experimentalTop = alignTop + rowPitch;
-	hideLabel = b_EnglishMenu ? L"Hide native clock" : L"純正時計を非表示にする";
-	showLabel = b_EnglishMenu ? L"Show native clock" : L"純正時計を表示する";
+	experimentalTop = btnTop + MapDluY(hDlg, 42);
+	hideLabel = b_EnglishMenu ? L"Hide" : L"非表示";
+	showLabel = b_EnglishMenu ? L"Show" : L"表示";
 	experimentalLabel = b_EnglishMenu ? L"Display with WinUI (experimental)" : L"WinUIで表示(実験的)";
 
 	hBtnHide = CreateWindowExW(0, L"BUTTON",
@@ -141,12 +136,8 @@ static void EnsureHideClockActionButtons(HWND hDlg)
 		hExperimental = CreateWindowExW(0, L"BUTTON",
 			experimentalLabel,
 			WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX,
-			rowLeft, experimentalTop, rowWidth, alignHeight,
+			rcAlign.left, experimentalTop, rcAlign.right - rcAlign.left, alignHeight,
 			hDlg, (HMENU)(INT_PTR)IDC_WIN11_EXPERIMENTAL_DISPLAY_WINUI, g_hInst, NULL);
-	}
-	SetWindowPos(hAlign, NULL, rowLeft, alignTop, rowWidth, alignHeight, SWP_NOZORDER);
-	if (hExperimental) {
-		SetWindowPos(hExperimental, NULL, rowLeft, experimentalTop, rowWidth, alignHeight, SWP_NOZORDER);
 	}
 
 	hFont = (HFONT)SendMessage(hCheck, WM_GETFONT, 0, 0);
@@ -494,17 +485,19 @@ static void ab_update_buttons(HWND dlg)
 
 static void ab_create_buttons(HWND dlg)
 {
- RECT rect;
+ RECT rect, saveRect;
  int i, width, gap = 6;
  HWND save = GetDlgItem(dlg, IDC_WIN11_SAVE_AUTOBACK_SNAPSHOT);
- GetWindowRect(save, &rect); MapWindowPoints(NULL, dlg, (POINT*)&rect, 2);
+ HWND row = GetDlgItem(dlg, IDC_ETC_ADJUST_WIN11_SMALLTASKBAR);
+ GetWindowRect(row, &rect); MapWindowPoints(NULL, dlg, (POINT*)&rect, 2);
+ GetWindowRect(save, &saveRect); MapWindowPoints(NULL, dlg, (POINT*)&saveRect, 2);
  width = (rect.right - rect.left - gap) / 2;
  for (i = 0; i < AB_PROFILE_COUNT; ++i) {
   const WCHAR* label = i == AB_HORIZONTAL ?
-   (b_EnglishMenu ? L"Top/bottom points..." : L"\u4e0a\u4e0b\u914d\u7f6e\u306e\u30dd\u30a4\u30f3\u30c8...") :
-   (b_EnglishMenu ? L"Left/right points..." : L"\u5de6\u53f3\u914d\u7f6e\u306e\u30dd\u30a4\u30f3\u30c8...");
+   (b_EnglishMenu ? L"Top/bottom..." : L"\u4e0a\u4e0b\u306e\u8a2d\u5b9a...") :
+   (b_EnglishMenu ? L"Left/right..." : L"\u5de6\u53f3\u306e\u8a2d\u5b9a...");
   HWND button = CreateWindowExW(0, L"BUTTON", label, WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
-   rect.left + i * (width + gap), rect.top - MapDluY(dlg, 16), width, rect.bottom - rect.top,
+   rect.left + i * (width + gap), saveRect.top - MapDluY(dlg, 32), width, saveRect.bottom - saveRect.top,
    dlg, (HMENU)(INT_PTR)(i == AB_HORIZONTAL ? IDC_AB_HORIZONTAL : IDC_AB_OPEN), g_hInst, NULL);
   SendMessageW(button, WM_SETFONT, SendMessageW(save, WM_GETFONT, 0, 0), TRUE);
  }

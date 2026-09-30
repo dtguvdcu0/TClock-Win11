@@ -2104,7 +2104,7 @@ static void wui_refresh(void)
 	backend = wui_sanitize((int)GetMyRegLong("Win11", "ExperimentalDisplayBackend", TC_DISPLAY_BACKEND_GDI));
 	if (IsVertTaskbar(hwndTaskBarMain)) backend = TC_DISPLAY_BACKEND_WINUI;
 	g_wuiCfg = backend;
-	g_wuiTextRenderer = (DWORD)GetMyRegLong("Win11", "ExperimentalTextRenderer", 0);
+	g_wuiTextRenderer = (DWORD)GetMyRegLong("Win11", "ExperimentalTextRenderer", backend == TC_DISPLAY_BACKEND_WINUI ? 1 : 0);
 	if (g_wuiTextRenderer > 2) g_wuiTextRenderer = 0;
 	if (!IsVertTaskbar(hwndTaskBarMain)) SetMyRegLong("Win11", "ExperimentalDisplayBackend", backend);
 

@@ -77,7 +77,7 @@ typedef struct TC_FS_NODE {
 	short left;
 	short right;
 	double number;
-	WORD selectorRef; /* String-pool offset plus one; zero means the anchor. */
+	WORD selectorRef; /* String-pool offset plus one for an explicit selector. */
 	WORD textStart;
 	WORD textLength;
 } TC_FS_NODE;
@@ -91,12 +91,10 @@ typedef struct TC_FS_BRANCH {
 	int rootNode;
 	int targetStart;
 	int targetCount;
-	TC_FS_STYLE declaration;
 } TC_FS_BRANCH;
 
 typedef struct TC_FS_RULE {
 	int order;
-	WCHAR selector[TC_FS_SELECTOR_CCH];
 	TC_FS_NODE nodes[TC_FS_MAX_NODES];
 	int nodeCount;
 	TC_FS_BRANCH branches[TC_FS_MAX_BRANCHES];

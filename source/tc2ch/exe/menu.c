@@ -4,6 +4,7 @@
 ---------------------------------------------------------------*/
 
 #include "tclock.h"
+#include <stdio.h>
 #include "..\\dll\\minmode.h"
 #include "..\common\ini_io_utf8.h"
 #include "..\common\text_codec.h"
@@ -1233,6 +1234,7 @@ static const char* tc_menu_default_label_for_action(const char* action)
 	if (_stricmp(action, "settings_home") == 0) return MyStringUTF8(IDS_SETTING);
 	if (_stricmp(action, "settings_network") == 0) return MyStringUTF8(IDS_NETWORKSTG);
 	if (_stricmp(action, "settings_datetime") == 0) return MyStringUTF8(IDS_PROPDATE);
+	if (_stricmp(action, "control_datetime") == 0) return MyStringUTF8(IDS_CONTROLDATE);
 	if (_stricmp(action, "remove_drive_dynamic") == 0) return MyStringUTF8(IDS_ABOUTRMVDRV);
 	return action;
 }
@@ -1250,6 +1252,7 @@ static BOOL tc_menu_action_to_command(const char* action, UINT* outId)
 	if (_stricmp(action, "settings_home") == 0) { *outId = IDC_SETTING; return TRUE; }
 	if (_stricmp(action, "settings_network") == 0) { *outId = IDC_NETWORKSTG; return TRUE; }
 	if (_stricmp(action, "settings_datetime") == 0) { *outId = IDC_DATETIME_Win10; return TRUE; }
+	if (_stricmp(action, "control_datetime") == 0) { *outId = IDC_CONTROLDATE; return TRUE; }
 	if (_stricmp(action, "remove_drive_dynamic") == 0) { *outId = IDC_REMOVE_DRIVE0; return TRUE; }
 	return FALSE;
 }
@@ -1490,6 +1493,8 @@ static BOOL tc_menu_has_section_header(const char* section)
 		return FALSE;
 	}
 	buf[readBytes] = '\0';
+	if (readBytes >= 3 && (unsigned char)buf[0] == 0xEF &&
+		(unsigned char)buf[1] == 0xBB && (unsigned char)buf[2] == 0xBF) i = 3;
 	while (i < readBytes) {
 		DWORD ls = i;
 		DWORD le = i;
@@ -1573,7 +1578,6 @@ static void tc_menu_derive_mode_from_legacy_keys(int index, char* outMode, int o
 void MenuCustomMigrateLegacyModeKeys(void)
 {
 	int i;
-	int count;
 	int migrated = 0;
 	int labelMigrated = 0;
 	int deleted = 0;
@@ -1585,12 +1589,8 @@ void MenuCustomMigrateLegacyModeKeys(void)
 		return;
 	}
 
-	count = (int)GetMyRegLong(TC_MENU_SECTION, "ItemCount", 0);
-	if (count < 0) count = 0;
-	if (count > TC_MENU_CUSTOM_MAX_ITEMS) count = TC_MENU_CUSTOM_MAX_ITEMS;
-	if (count == 0) count = 16;
-
-	for (i = 1; i <= count; ++i) {
+	/* ItemCount is obsolete; inspect every supported legacy row independently. */
+	for (i = 1; i <= TC_MENU_CUSTOM_MAX_ITEMS; ++i) {
 		char key[64];
 		char mode[64];
 		char recovered[64];
@@ -1643,7 +1643,6 @@ static void tc_menu_ensure_ini_defaults(void)
 	if (tc_menu_has_section_header(TC_MENU_SECTION)) {
 		return;
 	}
-	SetMyRegLong(TC_MENU_SECTION, "ItemCount", 17);
 	SetMyRegLong(TC_MENU_SECTION, "MenuCustomEnabled", 1);
 	for (i = 1; i <= 16; ++i) {
 		char key[64];
@@ -1708,10 +1707,15 @@ static void tc_menu_apply_custom_from_ini(HMENU hMenu)
 	int removeDriveEnabledByCustom;
 	tc_menu_section_cache_load(&cache);
 	globalLabelUpdateSec = tc_menu_section_cache_get_long(&cache, "LabelFormatUpdateSec", 1);
-	count = tc_menu_section_cache_get_long(&cache, "ItemCount", 0);
+	count = 0;
+	for (i = 1; i <= TC_MENU_CUSTOM_MAX_ITEMS; ++i) {
+		char modeKey[64];
+		char modeValue[32];
+		wsprintf(modeKey, "Item%dMode", i);
+		tc_menu_section_cache_get_str(&cache, modeKey, modeValue, sizeof(modeValue), "");
+		if (modeValue[0]) count = i;
+	}
 	if (globalLabelUpdateSec < 0) globalLabelUpdateSec = 0;
-	if (count < 0) count = 0;
-	if (count > TC_MENU_CUSTOM_MAX_ITEMS) count = TC_MENU_CUSTOM_MAX_ITEMS;
 	removeDriveEnabledByCustom = 0;
 
 	tc_menu_prune_to_fixed(hMenu);
@@ -1969,6 +1973,48 @@ static void tc_menu_apply_custom_from_ini(HMENU hMenu)
 	}
 
 	tc_menu_normalize_separators(hMenu);
+}
+
+/* Commit row identities only after the INI batch succeeds; Cancel never touches live alarms. */
+void MenuCustomRemapAlarms(const int* sourceRows, int count)
+{
+    TC_MENU_ALARM_RUNTIME previous[TC_MENU_LABEL_CACHE_MAX];
+    TC_MENU_SECTION_CACHE cache;
+    int active[TC_MENU_LABEL_CACHE_MAX] = {0};
+    int durations[TC_MENU_LABEL_CACHE_MAX] = {0};
+    int row, index, kept = 0;
+    if (!sourceRows || count < 1 || count > TC_MENU_CUSTOM_MAX_ITEMS) return;
+    CopyMemory(previous, g_menuAlarmRuntime, sizeof(previous));
+    ZeroMemory(g_menuAlarmRuntime, sizeof(g_menuAlarmRuntime));
+    ZeroMemory(g_menuLabelCache, sizeof(g_menuLabelCache));
+    tc_menu_section_cache_load(&cache);
+    for (row = 1; row <= count && tc_menu_section_cache_get_long(&cache, "MenuCustomEnabled", 1); ++row) {
+        char key[64], mode[32];
+        int source = sourceRows[row - 1];
+        sprintf_s(key, sizeof(key), "Item%dMode", row);
+        tc_menu_section_cache_get_str(&cache, key, mode, sizeof(mode), "");
+        if (_stricmp(mode, "alarm") != 0) continue;
+        sprintf_s(key, sizeof(key), "Item%dEnabled", row);
+        if (!tc_menu_section_cache_get_long(&cache, key, 0)) continue;
+        active[row] = 1;
+        sprintf_s(key, sizeof(key), "Item%dAlarmInitialSec", row);
+        durations[row] = tc_menu_section_cache_get_long(&cache, key, 60);
+        if (durations[row] < 1) durations[row] = 1;
+        if (source > 0 && source < TC_MENU_LABEL_CACHE_MAX && previous[source].initialSec == durations[row])
+            g_menuAlarmRuntime[row] = previous[source];
+    }
+    for (index = 0; index < g_menuAlarmCount; ++index) {
+        TC_MENU_ALARM_ENTRY entry = g_menuAlarmEntries[index];
+        for (row = 1; row <= count; ++row) {
+            if (sourceRows[row - 1] == entry.itemIndex && active[row]) break;
+        }
+        if (row > count) continue; /* Deleted, disabled or changed to another type: stop ticking. */
+        entry.itemIndex = row;
+        entry.initialSec = durations[row];
+        tc_menu_alarm_restore_runtime(&entry);
+        g_menuAlarmEntries[kept++] = entry;
+    }
+    g_menuAlarmCount = kept;
 }
 
 void MenuOnMenuRButtonUp(HWND hwnd, WPARAM wParam, LPARAM lParam)
@@ -2525,6 +2571,17 @@ void OnTClockCommand(HWND hwnd, WORD wID, WORD wCode)
 			if (b_DebugLog) WriteDebug_New2("[menu.c][OnTClockCommand] IDC_DATAUSAGE received");
 			ShellExecuteW(NULL, L"open", L"ms-settings:datausage", NULL, NULL, SW_SHOWNORMAL);
 			return;
+
+		case IDC_CONTROLDATE:
+		{
+			WCHAR path[MAX_PATH];
+			UINT length = GetSystemDirectoryW(path, MAX_PATH);
+			if (length && length < MAX_PATH - 13) {
+				lstrcatW(path, L"\\control.exe");
+				ShellExecuteW(NULL, L"open", path, L"/name Microsoft.DateAndTime", NULL, SW_SHOWNORMAL);
+			}
+			return;
+		}
 
 		case IDC_CONTROLPNL:	//Added by TTTT
 			if (b_DebugLog) WriteDebug_New2("[menu.c][OnTClockCommand] IDC_CONTROLPNL received");

@@ -20,6 +20,8 @@ BOOL tc_ini_utf8_write_string(const char* iniPath, const char* section, const ch
 BOOL tc_ini_utf8_delete_key(const char* iniPath, const char* section, const char* key);
 BOOL tc_ini_utf8_delete_section(const char* iniPath, const char* section);
 BOOL tc_ini_utf8_selfcheck(void);
+/* Atomic UTF-8 batch; each bounded multisz entry sets key=value or deletes key without an equals sign. */
+BOOL tc_write_batchW(const wchar_t* iniPath, const char* section, const char* entries, DWORD entryBytes);
 
 #ifdef __cplusplus
 }

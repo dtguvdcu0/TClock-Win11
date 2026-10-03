@@ -166,6 +166,7 @@ int r_strcmp(const char* d, const char* s);
 #define ID_TRAYICON		100
 
 // for mouse.c and pagemouce.c
+#define MOUSEFUNC_CONTROLDATE 215
 #define MOUSEFUNC_NONE       -1
 #define MOUSEFUNC_DATETIME    0
 #define MOUSEFUNC_TCLOCKMENU    1
@@ -279,6 +280,8 @@ void CreateDefaultIniFile_Win10(const wchar_t* fnameW);
 // menu.c
 void InitializeMenuItems(void);
 void MenuCustomMigrateLegacyModeKeys(void);
+void MenuCustomRemapAlarms(const int* sourceRows, int count);
+#define RM_COMMIT (WM_APP + 0x3B1)
 void OnContextMenu(HWND hwnd, HWND hwndClicked, int xPos, int yPos);
 void OnTClockCommand(HWND hwnd, WORD wID, WORD wCode);
 void MenuOnTimerTick(HWND hwnd);

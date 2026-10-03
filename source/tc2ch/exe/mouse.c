@@ -1097,6 +1097,10 @@ void ExecuteMouseFunction(HWND hwnd, LONG fnc, int btn, int clk)
 			break;
 		}
 
+		case MOUSEFUNC_CONTROLDATE:
+			PostMessageW(hwnd, WM_COMMAND, IDC_CONTROLDATE, 0);
+			break;
+
 		case MOUSEFUNC_NETWORKPNL:
 		{
 			ShellExecuteW(NULL, L"open", L"control", L"ncpa.cpl", NULL, SW_SHOWNORMAL);

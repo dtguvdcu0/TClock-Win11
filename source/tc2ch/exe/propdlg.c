@@ -411,6 +411,13 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 					lp.code = PSN_APPLY;
 					/* INI switch: [ETC] ApplyActivePageOnly=1 keeps active-page-only apply. */
 					applyActiveOnly = GetMyRegLong("ETC", "ApplyActivePageOnly", 0) ? 1 : 0;
+                    /* Commit the menu first so a failed atomic save cannot close OK or write other pages. */
+                    if (hDlg[19] && IsWindow(hDlg[19]) && (!applyActiveOnly || nowDlg == 19) &&
+                        !SendMessageW(hDlg[19], RM_COMMIT, 0, 0)) {
+                        InterlockedExchange(&g_inApplyDispatch, 0);
+                        InterlockedDecrement(&g_propdlgCommandDepth);
+                        break;
+                    }
 					if (applyActiveOnly) {
 						if (hNowDlg && *hNowDlg && IsWindow(*hNowDlg)) {
 							SendMessage(*hNowDlg, WM_NOTIFY, 0, (LPARAM)&lp);

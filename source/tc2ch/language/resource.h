@@ -44,6 +44,7 @@
 #define IDS_SWHEEL1                     41
 #define IDS_SWHEEL2                     42
 #define IDS_PROPDATE                    43
+#define IDS_CONTROLDATE                 800
 #define IDS_EXITWIN                     44
 #define IDS_OPENFILE                    51
 #define IDS_FORMAT                      52
@@ -189,6 +190,7 @@
 #define IDS_TCARD_OPEN                  261
 #define IDC_DATETIME_Win10              406
 #define IDC_DATETIME                    408
+#define IDC_CONTROLDATE                 409
 #define IDC_TASKBARPROP                 413
 #define IDC_TASKMAN                     420
 #define IDC_POWERPNL                    421
@@ -298,6 +300,7 @@
 #define IDS_SWHEEL2_ENG                 1042
 #define IDC_COL_SUN                     1042
 #define IDS_PROPDATE2                   1043
+#define IDS_CONTROLDATE2                1800
 #define IDC_CHOOSECOL_SUN               1043
 #define IDC_COL_VPN                     1044
 #define IDC_CHOOSECOL_VPN               1045
@@ -958,6 +961,10 @@
 #define ID_ALARM_CLOCK                  40010
 #define IDC_REMOVE_DRIVE1               40011
 #define ID_Menu40011                    40011
+#define IDC_RM_ADD                     10392
+#define IDC_RM_DELETE                  10393
+#define IDC_RM_ALARM_SAMPLE            10394
+#define IDC_RM_DESCRIPTION             10395
 #define IDC_REMOVE_DRIVE2               40012
 #define IDC_REMOVE_DRIVE3               40013
 #define IDC_REMOVE_DRIVE4               40014

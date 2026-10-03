@@ -2,6 +2,9 @@
 
 #include "text_file_utf8.h"
 #include "text_codec.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 
 typedef struct tc_dynbuf_s {
@@ -223,16 +226,16 @@ static BOOL tc_is_valid_utf8_bytes(const char* s)
     return MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, s, -1, w, (int)(sizeof(w) / sizeof(w[0]))) > 0;
 }
 
-static DWORD tc_hash_path_ci(const char* s)
+static DWORD tc_hash_wide(const wchar_t* path)
 {
-    DWORD h = 2166136261u;
-    while (s && *s) {
-        unsigned char c = (unsigned char)*s++;
-        if (c >= 'A' && c <= 'Z') c = (unsigned char)(c + ('a' - 'A'));
-        h ^= c;
-        h *= 16777619u;
+    DWORD hash = 2166136261u;
+    while (path && *path) {
+        unsigned int value = (unsigned int)*path++;
+        if (value >= 'A' && value <= 'Z') value += 'a' - 'A';
+        hash ^= value;
+        hash *= 16777619u;
     }
-    return h;
+    return hash;
 }
 
 void tc_ini_utf8_clear_cache(void)
@@ -412,22 +415,29 @@ static BOOL tc_ini_utf8_cache_get_locked(const char* iniPath, char** text, DWORD
     return TRUE;
 }
 
-static HANDLE tc_ini_lock_enter(const char* iniPath)
+static HANDLE tc_lock_wide(const wchar_t* iniPath)
 {
-    char name[96];
-    HANDLE h;
-    DWORD w;
-
-    wsprintf(name, "Local\\TClockIniUtf8Lock_%08X", (unsigned int)tc_hash_path_ci(iniPath));
-    h = CreateMutex(NULL, FALSE, name);
-    if (!h) return NULL;
-
-    w = WaitForSingleObject(h, 5000);
-    if (w != WAIT_OBJECT_0 && w != WAIT_ABANDONED) {
-        CloseHandle(h);
+    wchar_t name[96];
+    HANDLE handle;
+    DWORD wait;
+    swprintf_s(name, _countof(name), L"Local\\TClockIniUtf8Lock_%08X", (unsigned int)tc_hash_wide(iniPath));
+    handle = CreateMutexW(NULL, FALSE, name);
+    if (!handle) return NULL;
+    wait = WaitForSingleObject(handle, 5000);
+    if (wait != WAIT_OBJECT_0 && wait != WAIT_ABANDONED) {
+        CloseHandle(handle);
+        SetLastError(ERROR_TIMEOUT);
         return NULL;
     }
-    return h;
+    return handle;
+}
+
+static HANDLE tc_ini_lock_enter(const char* iniPath)
+{
+    wchar_t path[MAX_PATH];
+    /* Existing serialized path boundary; all lock names and new file operations are wide. */
+    if (!tc_path_utf8_or_ansi_to_utf16(iniPath, path, _countof(path))) return NULL;
+    return tc_lock_wide(path);
 }
 
 static void tc_ini_lock_leave(HANDLE h)
@@ -903,6 +913,196 @@ int tc_ini_utf8_read_section_multisz(const char* iniPath, const char* section,
                                      char* outBuf, int outBytes)
 {
     return tc_ini_utf8_read_section_multisz_ex(iniPath, section, outBuf, outBytes, NULL);
+}
+
+/* Each bounded UTF-8 entry is key=value, or key alone to delete it. Publish only a complete batch. */
+typedef struct tc_ini_entry_t {
+    const char* line;
+    DWORD length;
+    DWORD ordinal;
+    char key[128];
+} tc_ini_entry_t;
+
+static int tc_compare_keys(const char* a, const char* b)
+{
+    while (*a && *b) {
+        unsigned char ca = (unsigned char)*a, cb = (unsigned char)*b;
+        if (ca >= '0' && ca <= '9' && cb >= '0' && cb <= '9') {
+            const char *ea = a, *eb = b, *sa, *sb;
+            while (*ea >= '0' && *ea <= '9') ++ea;
+            while (*eb >= '0' && *eb <= '9') ++eb;
+            sa = a; sb = b;
+            while (sa < ea && *sa == '0') ++sa;
+            while (sb < eb && *sb == '0') ++sb;
+            if (ea - sa != eb - sb) return ea - sa < eb - sb ? -1 : 1;
+            while (sa < ea) {
+                if (*sa != *sb) return *sa < *sb ? -1 : 1;
+                ++sa; ++sb;
+            }
+            if (ea - a != eb - b) return ea - a < eb - b ? -1 : 1;
+            a = ea; b = eb; continue;
+        }
+        if (ca >= 'A' && ca <= 'Z') ca += 'a' - 'A';
+        if (cb >= 'A' && cb <= 'Z') cb += 'a' - 'A';
+        if (ca != cb) return ca < cb ? -1 : 1;
+        ++a; ++b;
+    }
+    return *a ? 1 : (*b ? -1 : 0);
+}
+
+static int __cdecl tc_compare_entries(const void* left, const void* right)
+{
+    const tc_ini_entry_t *a = (const tc_ini_entry_t*)left, *b = (const tc_ini_entry_t*)right;
+    int result = tc_compare_keys(a->key, b->key);
+    if (result) return result;
+    return a->ordinal < b->ordinal ? -1 : (a->ordinal > b->ordinal ? 1 : 0);
+}
+
+/* Canonicalize only the requested section. The first duplicate wins, matching reads. */
+static BOOL tc_sort_section(const char* text, DWORD size, const char* section, char** result, DWORD* resultSize)
+{
+    DWORD offset = 0, start = size, stop = size, count = 0, index;
+    BOOL active = FALSE, seen = FALSE, ok = FALSE;
+    tc_ini_entry_t* entries = NULL;
+    tc_dynbuf_t out;
+    if (!tc_buf_init(&out)) return FALSE;
+    while (offset < size) {
+        DWORD line = offset, end;
+        while (offset < size && text[offset] != '\r' && text[offset] != '\n') ++offset;
+        end = offset;
+        if (offset < size && text[offset] == '\r') ++offset;
+        if (offset < size && text[offset] == '\n') ++offset;
+        if (tc_line_is_section(text + line, (int)(end - line), section)) {
+            /* Ambiguous repeated sections must never silently discard user data. */
+            if (seen) goto cleanup;
+            seen = active = TRUE; start = offset;
+        } else if (active && tc_line_is_any_section(text + line, (int)(end - line))) {
+            stop = line; active = FALSE;
+        }
+    }
+    if (!seen) goto cleanup;
+    entries = (tc_ini_entry_t*)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY,
+        ((SIZE_T)(stop - start) / 2 + 1) * sizeof(*entries));
+    if (!entries || !tc_buf_add(&out, text, start)) goto cleanup;
+    offset = start;
+    while (offset < stop) {
+        DWORD line = offset, end, equals;
+        int left, right, keyLeft, keyRight;
+        while (offset < stop && text[offset] != '\r' && text[offset] != '\n') ++offset;
+        end = offset;
+        if (offset < stop && text[offset] == '\r') ++offset;
+        if (offset < stop && text[offset] == '\n') ++offset;
+        tc_trim_lr(text + line, (int)(end - line), &left, &right);
+        equals = line + (DWORD)left;
+        if (left < right && text[equals] != ';' && text[equals] != '#') {
+            while (equals < line + (DWORD)right && text[equals] != '=') ++equals;
+        } else equals = end;
+        if (equals < line + (DWORD)right) {
+            tc_trim_lr(text + line + left, (int)(equals - line - left), &keyLeft, &keyRight);
+            if (keyRight <= keyLeft || keyRight - keyLeft >= (int)sizeof(entries[count].key)) goto cleanup;
+            memcpy(entries[count].key, text + line + left + keyLeft, (size_t)(keyRight - keyLeft));
+            entries[count].line = text + line; entries[count].length = end - line;
+            entries[count].ordinal = count; ++count;
+        } else if (!tc_buf_add(&out, text + line, offset - line)) goto cleanup;
+    }
+    /* Separate retained comments from keys even when the input has no final newline. */
+    if (out.len && out.p[out.len - 1] != '\n' && !tc_buf_adds(&out, "\r\n")) goto cleanup;
+    qsort(entries, count, sizeof(*entries), tc_compare_entries);
+    for (index = 0; index < count; ++index) {
+        if (index && tc_ieq_ascii_n(entries[index - 1].key, (int)strlen(entries[index - 1].key), entries[index].key)) continue;
+        if (!tc_buf_add(&out, entries[index].line, entries[index].length) || !tc_buf_adds(&out, "\r\n")) goto cleanup;
+    }
+    if (!tc_buf_add(&out, text + stop, size - stop)) goto cleanup;
+    *result = out.p; *resultSize = out.len; ok = TRUE;
+cleanup:
+    if (entries) HeapFree(GetProcessHeap(), 0, entries);
+    if (!ok) tc_buf_free(&out);
+    return ok;
+}
+
+BOOL tc_write_batchW(const wchar_t* iniPath, const char* section, const char* entries, DWORD entryBytes)
+{
+    HANDLE lock = NULL, source = INVALID_HANDLE_VALUE, temporary = INVALID_HANDLE_VALUE;
+    wchar_t tempPath[MAX_PATH + 80] = {0};
+    char* text = NULL;
+    char* replacement = NULL;
+    LARGE_INTEGER length;
+    DWORD size = 0, read = 0, written = 0, offset = 0, error = ERROR_INVALID_DATA;
+    BOOL hadBom = FALSE, ok = FALSE, tempCreated = FALSE;
+    int attempt;
+    if (!iniPath || !iniPath[0] || !section || !section[0] || !entries || entryBytes < 2) return FALSE;
+    lock = tc_lock_wide(iniPath);
+    if (!lock) return FALSE;
+    source = CreateFileW(iniPath, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (source == INVALID_HANDLE_VALUE) { error = GetLastError(); goto cleanup; }
+    if (!GetFileSizeEx(source, &length)) { error = GetLastError(); goto cleanup; }
+    if (length.QuadPart < 0 || length.QuadPart > 16 * 1024 * 1024) { error = ERROR_FILE_TOO_LARGE; goto cleanup; }
+    size = (DWORD)length.QuadPart;
+    text = (char*)HeapAlloc(GetProcessHeap(), 0, (SIZE_T)size + 1);
+    if (!text) { error = ERROR_NOT_ENOUGH_MEMORY; goto cleanup; }
+    if (!ReadFile(source, text, size, &read, NULL) || read != size) { error = ERROR_READ_FAULT; goto cleanup; }
+    text[size] = '\0';
+    if (size >= 3 && (unsigned char)text[0] == 0xEF && (unsigned char)text[1] == 0xBB && (unsigned char)text[2] == 0xBF) {
+        hadBom = TRUE;
+        size -= 3;
+        memmove(text, text + 3, (SIZE_T)size + 1);
+    }
+    /* Reject incompatible encodings rather than partially rewriting or silently transcoding user data. */
+    if (memchr(text, 0, size) || !MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text, -1, NULL, 0)) { error = ERROR_NO_UNICODE_TRANSLATION; goto cleanup; }
+    while (offset < entryBytes && entries[offset]) {
+        const char* entry = entries + offset;
+        const char* end = (const char*)memchr(entry, 0, entryBytes - offset);
+        const char* equals;
+        char key[128];
+        DWORD outSize = 0;
+        size_t keyLength;
+        if (!end) goto cleanup;
+        equals = (const char*)memchr(entry, '=', (size_t)(end - entry));
+        keyLength = (size_t)((equals ? equals : end) - entry);
+        if (!keyLength || keyLength >= sizeof(key) || memchr(entry, '\r', (size_t)(end - entry)) || memchr(entry, '\n', (size_t)(end - entry))) goto cleanup;
+        memcpy(key, entry, keyLength); key[keyLength] = '\0';
+        if (equals) {
+            if (!tc_is_valid_utf8_bytes(equals + 1)) { error = ERROR_NO_UNICODE_TRANSLATION; goto cleanup; }
+            if (!tc_ini_utf8_rewrite_key(NULL, text, size, section, key, equals + 1, &replacement, &outSize)) { error = ERROR_NOT_ENOUGH_MEMORY; goto cleanup; }
+        } else if (!tc_ini_utf8_rewrite_delete(text, size, section, key, FALSE, &replacement, &outSize)) {
+            error = ERROR_NOT_ENOUGH_MEMORY; goto cleanup;
+        }
+        HeapFree(GetProcessHeap(), 0, text);
+        text = replacement; replacement = NULL; size = outSize;
+        offset = (DWORD)(end - entries) + 1;
+    }
+    if (offset >= entryBytes || entries[offset] != '\0') goto cleanup;
+    if (!tc_sort_section(text, size, section, &replacement, &read)) goto cleanup;
+    HeapFree(GetProcessHeap(), 0, text);
+    text = replacement; replacement = NULL; size = read;
+    for (attempt = 0; attempt < 16; ++attempt) {
+        if (swprintf_s(tempPath, _countof(tempPath), L"%s.tclock-%lu-%lu-%d.tmp", iniPath, GetCurrentProcessId(), GetTickCount(), attempt) < 0) {
+            error = ERROR_FILENAME_EXCED_RANGE; goto cleanup;
+        }
+        temporary = CreateFileW(tempPath, GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH, NULL);
+        if (temporary != INVALID_HANDLE_VALUE) { tempCreated = TRUE; break; }
+        error = GetLastError();
+        if (error != ERROR_FILE_EXISTS && error != ERROR_ALREADY_EXISTS) goto cleanup;
+    }
+    if (temporary == INVALID_HANDLE_VALUE) goto cleanup;
+    if (hadBom && (!WriteFile(temporary, "\xEF\xBB\xBF", 3, &written, NULL) || written != 3)) { error = ERROR_WRITE_FAULT; goto cleanup; }
+    if (!WriteFile(temporary, text, size, &written, NULL) || written != size) { error = ERROR_WRITE_FAULT; goto cleanup; }
+    if (!FlushFileBuffers(temporary)) { error = GetLastError(); goto cleanup; }
+    CloseHandle(temporary); temporary = INVALID_HANDLE_VALUE;
+    CloseHandle(source); source = INVALID_HANDLE_VALUE;
+    if (!ReplaceFileW(iniPath, tempPath, NULL, 0, NULL, NULL)) { error = GetLastError(); goto cleanup; }
+    tempCreated = FALSE;
+    tc_ini_utf8_clear_cache();
+    ok = TRUE;
+cleanup:
+    if (source != INVALID_HANDLE_VALUE) CloseHandle(source);
+    if (temporary != INVALID_HANDLE_VALUE) CloseHandle(temporary);
+    if (tempCreated) DeleteFileW(tempPath);
+    if (text) HeapFree(GetProcessHeap(), 0, text);
+    if (replacement) HeapFree(GetProcessHeap(), 0, replacement);
+    tc_ini_lock_leave(lock);
+    if (!ok) SetLastError(error);
+    return ok;
 }
 
 BOOL tc_ini_utf8_write_string(const char* iniPath, const char* section, const char* key,

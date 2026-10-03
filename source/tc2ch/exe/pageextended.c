@@ -30,6 +30,31 @@ static BOOL ext_read_value(HWND dialog, int id, int low, int high, int* value)
 }
 
 
+// Combo ordering is presentation-only; stable mode IDs and persisted names do not change.
+static int ext_read_mode(HWND dialog)
+{
+    LRESULT index = SendDlgItemMessageW(dialog, IDC_EXT_MODE, CB_GETCURSEL, 0, 0);
+    return index == CB_ERR ? -1 : (int)SendDlgItemMessageW(dialog, IDC_EXT_MODE, CB_GETITEMDATA, index, 0);
+}
+
+static void ext_add_mode(HWND dialog, int mode, const WCHAR* label)
+{
+    LRESULT index = SendDlgItemMessageW(dialog, IDC_EXT_MODE, CB_ADDSTRING, 0, (LPARAM)label);
+    if (index != CB_ERR && index != CB_ERRSPACE)
+        SendDlgItemMessageW(dialog, IDC_EXT_MODE, CB_SETITEMDATA, index, mode);
+}
+
+static void ext_select_mode(HWND dialog, int mode)
+{
+    int i, count = (int)SendDlgItemMessageW(dialog, IDC_EXT_MODE, CB_GETCOUNT, 0, 0);
+    for (i = 0; i < count; ++i) {
+        if (SendDlgItemMessageW(dialog, IDC_EXT_MODE, CB_GETITEMDATA, i, 0) == mode) {
+            SendDlgItemMessageW(dialog, IDC_EXT_MODE, CB_SETCURSEL, i, 0);
+            return;
+        }
+    }
+}
+
 static BOOL ext_is_digital(int mode)
 {
     return mode == EXT_MODE_FLIP || mode == EXT_MODE_NIXIE;
@@ -66,7 +91,7 @@ static BOOL ext_read_options(HWND dialog, ACS_OPTIONS* options, BOOL report)
     options->colon = IsDlgButtonChecked(dialog, IDC_EXT_COLON) == BST_CHECKED;
     options->flipStacked = SendDlgItemMessageW(dialog, IDC_EXT_SIDE, CB_GETCURSEL, 0, 0) == 0;
     options->flipDuration = (int)SendDlgItemMessageW(dialog, IDC_EXT_SPEED, TBM_GETPOS, 0, 0)*50;
-    options->mode = (int)SendDlgItemMessageW(dialog, IDC_EXT_MODE, CB_GETCURSEL, 0, 0);
+    options->mode = ext_read_mode(dialog);
     options->face = (int)SendDlgItemMessageW(dialog, IDC_EXT_FACE, CB_GETCURSEL, 0, 0);
     if (options->mode == EXT_MODE_CLASSIC || options->mode == EXT_MODE_LEGACY || options->mode == EXT_MODE_NIXIE) options->face = 0;
     options->trailing = SendDlgItemMessageW(dialog, IDC_EXT_PLACE, CB_GETCURSEL, 0, 0) == 1;
@@ -184,7 +209,7 @@ static BOOL ext_load_preview(EXT_PAGE* page, int mode, int face)
 static void ext_enable_controls(HWND dialog)
 {
     BOOL enabled = IsDlgButtonChecked(dialog, IDC_EXT_ENABLE) == BST_CHECKED;
-    int mode = (int)SendDlgItemMessageW(dialog, IDC_EXT_MODE, CB_GETCURSEL, 0, 0);
+    int mode = ext_read_mode(dialog);
     const int ids[] = {IDC_EXT_MODE, IDC_EXT_SECONDS, IDC_EXT_SIZE, IDC_EXT_PLACE, IDC_EXT_X, IDC_EXT_Y};
     unsigned i;
     for (i = 0; i < _countof(ids); ++i) EnableWindow(GetDlgItem(dialog, ids[i]), enabled);
@@ -310,11 +335,12 @@ INT_PTR CALLBACK PageExtendedProc(HWND dialog, UINT message, WPARAM wParam, LPAR
         page->initializing = TRUE;
         page->loadedFace = page->loadedMode = page->currentMode = -1;
         SetWindowLongPtrW(dialog, DWLP_USER, (LONG_PTR)page);
-        SendDlgItemMessageW(dialog, IDC_EXT_MODE, CB_ADDSTRING, 0, (LPARAM)(b_EnglishMenu ? L"Clock (Normal)" : L"\u6642\u8a08\uff08\u901a\u5e38\uff09"));
-        SendDlgItemMessageW(dialog, IDC_EXT_MODE, CB_ADDSTRING, 0, (LPARAM)(b_EnglishMenu ? L"Clock (Classic)" : L"\u6642\u8a08\uff08\u30af\u30e9\u30b7\u30c3\u30af\uff09"));
-        SendDlgItemMessageW(dialog, IDC_EXT_MODE, CB_ADDSTRING, 0, (LPARAM)(b_EnglishMenu ? L"Flip Clock" : L"パラパラ時計"));
-        SendDlgItemMessageW(dialog, IDC_EXT_MODE, CB_ADDSTRING, 0, (LPARAM)(b_EnglishMenu ? L"Legacy Analog Clock" : L"\u65e7\u30a2\u30ca\u30ed\u30b0\u6642\u8a08"));
-        SendDlgItemMessageW(dialog, IDC_EXT_MODE, CB_ADDSTRING, 0, (LPARAM)(b_EnglishMenu ? L"Nixie Clock" : L"\u30cb\u30ad\u30b7\u30fc\u7ba1\u6642\u8a08"));
+        ext_add_mode(dialog, EXT_MODE_NORMAL, (b_EnglishMenu ? L"Clock (Normal)" : L"\u6642\u8a08\uff08\u901a\u5e38\uff09"));
+        ext_add_mode(dialog, EXT_MODE_CLASSIC, (b_EnglishMenu ? L"Clock (Classic)" : L"\u6642\u8a08\uff08\u30af\u30e9\u30b7\u30c3\u30af\uff09"));
+        ext_add_mode(dialog, EXT_MODE_FLIP, (b_EnglishMenu ? L"Flip Clock" : L"パラパラ時計"));
+        ext_add_mode(dialog, EXT_MODE_NIXIE, (b_EnglishMenu ? L"Nixie Clock" : L"\u30cb\u30ad\u30b7\u30fc\u7ba1\u6642\u8a08"));
+        // Product rule: always append Legacy last; add future modes above this entry.
+        ext_add_mode(dialog, EXT_MODE_LEGACY, (b_EnglishMenu ? L"Legacy Analog Clock" : L"\u65e7\u30a2\u30ca\u30ed\u30b0\u6642\u8a08"));
         GetMyRegStr("ExtendedDisplay", "Mode", skin, sizeof(skin), "Normal");
         if (!strcmp(skin, "Classic")) mode = EXT_MODE_CLASSIC;
         else if (!strcmp(skin, "Flip")) mode = EXT_MODE_FLIP;
@@ -336,7 +362,7 @@ INT_PTR CALLBACK PageExtendedProc(HWND dialog, UINT message, WPARAM wParam, LPAR
             page->digitalDuration[i] = (int)GetMyRegLong("ExtendedDisplay", i ? "NixieDurationMs" : "FlipDurationMs", i ? 150 : 300);
             if (page->digitalDuration[i] < 100 || page->digitalDuration[i] > 900) page->digitalDuration[i] = i ? 150 : 300;
         }
-        SendDlgItemMessageW(dialog, IDC_EXT_MODE, CB_SETCURSEL, mode, 0);
+        ext_select_mode(dialog, mode);
         SendDlgItemMessageW(dialog, IDC_EXT_PLACE, CB_ADDSTRING, 0, (LPARAM)(b_EnglishMenu ? L"Left / above" : L"左 / 上"));
         SendDlgItemMessageW(dialog, IDC_EXT_PLACE, CB_ADDSTRING, 0, (LPARAM)(b_EnglishMenu ? L"Right / below" : L"右 / 下"));
         GetMyRegStr("ExtendedDisplay", "Placement", skin, sizeof(skin), "Left");
@@ -379,7 +405,7 @@ INT_PTR CALLBACK PageExtendedProc(HWND dialog, UINT message, WPARAM wParam, LPAR
         if (page && !page->initializing &&
             (HIWORD(wParam) == BN_CLICKED || HIWORD(wParam) == EN_CHANGE || HIWORD(wParam) == CBN_SELCHANGE)) {
             if (LOWORD(wParam) == IDC_EXT_MODE && HIWORD(wParam) == CBN_SELCHANGE) {
-                int mode = (int)SendDlgItemMessageW(dialog, IDC_EXT_MODE, CB_GETCURSEL, 0, 0);
+                int mode = ext_read_mode(dialog);
                 if (mode != page->currentMode) ext_switch_mode(dialog, page, mode);
             }
             ext_stop_preview(dialog, page);

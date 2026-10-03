@@ -2455,6 +2455,7 @@ void EndClock(void)
 
 	ext_stop_timer();
 	wui_stop_host();
+	w11_close_desktop();
 	acs_destroy(g_extContext);
 	flp_destroy(g_flipContext);
 	g_flipContext = NULL;

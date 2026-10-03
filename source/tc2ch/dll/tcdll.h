@@ -213,6 +213,7 @@ void GetWin11TrayWidth(void);
 LRESULT CALLBACK SubclassTrayProc_Win11(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData);
 LRESULT CALLBACK WndProcWin11Notify(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
 void DrawWin11Notify(BOOL b_forceUpdate);
+void w11_close_desktop(void);
 BOOL SetModifiedWidthWin11Tray(void);
 void SetMainClockOnTasktray_Win11(void);
 void GetWin11TaskbarType(void);

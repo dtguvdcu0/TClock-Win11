@@ -1309,11 +1309,7 @@ static COLORREF w11_read_material(void)
  COLORREF color = CLR_INVALID;
  LONG x, y;
  HDC screen;
- extern BOOL bAutoBackMatchTaskbar;
- extern COLORREF autoBackColorMain;
- // Reuse the selected automatic background, not its separately sampled 1px border.
- if (bAutoBackMatchTaskbar && !fillbackcolor) return autoBackColorMain;
- // Without automatic matching, the button follows the native taskbar material.
+ // The desktop button follows the native taskbar body, including automatic-background mode.
  RegGetValueW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
   L"SystemUsesLightTheme", RRF_RT_REG_DWORD, NULL, &light, &length);
  if (cachedLight != light) { cached = CLR_INVALID; cachedLight = light; }
@@ -1352,7 +1348,7 @@ static void w11_draw_desktop(HDC dc)
  saved = SaveDC(dc);
  if (!saved) return;
  IntersectClipRect(dc, area.left, area.top, area.right, area.bottom);
- // Use the native taskbar material, never the clock background or border snapshot.
+ // Keep the desktop button consistent with the native taskbar material.
  {
   HBRUSH brush = CreateSolidBrush(w11_read_material());
   if (brush) { FillRect(dc, &area, brush); DeleteObject(brush); }
@@ -1376,6 +1372,104 @@ static void w11_draw_desktop(HDC dc)
  tbe_draw_strip(dc, hwndWin11Notify, hwndTaskBarMain);
 }
 
+// The native taskbar composes its child GDI surfaces; keep the desktop material opaque.
+// The layered popup forwards pointer actions to the existing desktop button.
+static HWND g_w11DesktopSurface;
+
+void w11_close_desktop(void)
+{
+ g_w11DesktopHot = FALSE;
+ g_w11DesktopDown = FALSE;
+ if (hwndWin11Notify && GetCapture() == hwndWin11Notify) ReleaseCapture();
+ if (g_w11DesktopSurface) DestroyWindow(g_w11DesktopSurface);
+ g_w11DesktopSurface = NULL;
+}
+
+static LRESULT CALLBACK w11_surface_proc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
+{
+ switch (message) {
+ case WM_MOUSEACTIVATE:
+  return MA_NOACTIVATE;
+ case WM_MOUSEMOVE:
+ case WM_MOUSELEAVE:
+ case WM_LBUTTONDOWN:
+ case WM_LBUTTONUP:
+ case WM_RBUTTONDOWN:
+  if (IsWindow(hwndWin11Notify)) return SendMessageW(hwndWin11Notify, message, wParam, lParam);
+  return 0;
+ case WM_NCDESTROY:
+  if (g_w11DesktopSurface == hwnd) g_w11DesktopSurface = NULL;
+  SetWindowLongPtrW(hwnd, GWLP_WNDPROC, (LONG_PTR)DefWindowProcW);
+  break;
+ }
+ return DefWindowProcW(hwnd, message, wParam, lParam);
+}
+
+static void w11_present_desktop(HDC dc)
+{
+ RECT window, client;
+ HDC screen = NULL, memory = NULL;
+ HBITMAP bitmap = NULL;
+ HGDIOBJ previous = NULL;
+ RGBQUAD* pixels = NULL;
+ BITMAPINFO info = { 0 };
+ POINT destination, source = { 0, 0 };
+ SIZE size;
+ BLENDFUNCTION blend = { AC_SRC_OVER, 0, 255, AC_SRC_ALPHA };
+ if (IsVertTaskbar(hwndTaskBarMain)) {
+  if (g_w11DesktopSurface) ShowWindow(g_w11DesktopSurface, SW_HIDE);
+  return;
+ }
+ if (!GetWindowRect(hwndWin11Notify, &window) || !GetClientRect(hwndWin11Notify, &client) ||
+     client.right <= posXShowDesktopArea || client.bottom <= 0) {
+  if (g_w11DesktopSurface) ShowWindow(g_w11DesktopSurface, SW_HIDE);
+  return;
+ }
+ // Reconcile hover with the actual pointer; child/popup leave notifications can overlap.
+ {
+  POINT pointer;
+  if (GetCursorPos(&pointer))
+   g_w11DesktopHot = PtInRect(&window, pointer) && pointer.x >= window.left + posXShowDesktopArea;
+ }
+ w11_draw_desktop(dc);
+ if (!g_w11DesktopSurface) {
+  g_w11DesktopSurface = CreateWindowExW(WS_EX_LAYERED | WS_EX_NOACTIVATE |
+   WS_EX_TOOLWINDOW | WS_EX_TOPMOST, L"STATIC", L"TClockDesktopSurface", WS_POPUP,
+   window.left, window.top, client.right, client.bottom, hwndWin11Notify, NULL, hmod, NULL);
+  if (!g_w11DesktopSurface) return;
+  SetWindowLongPtrW(g_w11DesktopSurface, GWLP_WNDPROC, (LONG_PTR)w11_surface_proc);
+ }
+ screen = GetDC(NULL);
+ if (!screen) return;
+ memory = CreateCompatibleDC(screen);
+ info.bmiHeader.biSize = sizeof(info.bmiHeader);
+ info.bmiHeader.biWidth = client.right;
+ info.bmiHeader.biHeight = -client.bottom;
+ info.bmiHeader.biPlanes = 1;
+ info.bmiHeader.biBitCount = 32;
+ info.bmiHeader.biCompression = BI_RGB;
+ if (memory) bitmap = CreateDIBSection(screen, &info, DIB_RGB_COLORS, (void**)&pixels, NULL, 0);
+ if (bitmap && pixels) {
+  previous = SelectObject(memory, bitmap);
+  ZeroMemory(pixels, (SIZE_T)client.right * client.bottom * sizeof(*pixels));
+  w11_draw_desktop(memory);
+  GdiFlush();
+  for (LONG y = 0; y < client.bottom; ++y)
+   for (LONG x = max(0, posXShowDesktopArea); x < client.right; ++x)
+    pixels[y * client.right + x].rgbReserved = 255;
+  destination.x = window.left;
+  destination.y = window.top;
+  size.cx = client.right;
+  size.cy = client.bottom;
+  if (UpdateLayeredWindow(g_w11DesktopSurface, screen, &destination, &size, memory, &source,
+      0, &blend, ULW_ALPHA)) ShowWindow(g_w11DesktopSurface, SW_SHOWNOACTIVATE);
+  SelectObject(memory, previous);
+ }
+ if (bitmap) DeleteObject(bitmap);
+ if (memory) DeleteDC(memory);
+ ReleaseDC(NULL, screen);
+}
+
 LRESULT CALLBACK WndProcWin11Notify(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
 	HWND tempHwnd;
@@ -1392,8 +1486,12 @@ LRESULT CALLBACK WndProcWin11Notify(HWND hwnd, UINT message, WPARAM wParam, LPAR
         case WM_PAINT:
         {
             PAINTSTRUCT paint;
-            BeginPaint(hwnd, &paint);
-            DrawWin11Notify(TRUE);
+            HDC dc = BeginPaint(hwnd, &paint);
+            // Paint the horizontal desktop-only surface through the validated paint DC.
+            if (!bEnableWin11NotifyIcon && !IsVertTaskbar(hwndTaskBarMain))
+                w11_present_desktop(dc);
+            else
+                DrawWin11Notify(TRUE);
             EndPaint(hwnd, &paint);
             return 0;
         }
@@ -1402,7 +1500,8 @@ LRESULT CALLBACK WndProcWin11Notify(HWND hwnd, UINT message, WPARAM wParam, LPAR
         case WM_MOUSEMOVE:
         {
             BOOL hot = w11_hit_desktop(hwnd, lParam);
-            TRACKMOUSEEVENT track = { sizeof(track), TME_LEAVE, hwnd, 0 };
+            HWND tracking = g_w11DesktopSurface && IsWindowVisible(g_w11DesktopSurface) ? g_w11DesktopSurface : hwnd;
+            TRACKMOUSEEVENT track = { sizeof(track), TME_LEAVE, tracking, 0 };
             TrackMouseEvent(&track);
             if (hot != g_w11DesktopHot) {
                 g_w11DesktopHot = hot;
@@ -1461,6 +1560,7 @@ LRESULT CALLBACK WndProcWin11Notify(HWND hwnd, UINT message, WPARAM wParam, LPAR
 		}
 		case WM_NCDESTROY:
 		{
+            w11_close_desktop();
             g_w11DesktopHot = FALSE;
             g_w11DesktopDown = FALSE;
 			if ((WNDPROC)GetWindowLongPtr(hwnd, GWLP_WNDPROC) == WndProcWin11Notify) {
@@ -1592,6 +1692,7 @@ void UpdateHdcYesWin11Notify(int num_notify)
 
 void DrawWin11Notify(BOOL b_forceUpdate)
 {
+	if (IsVertTaskbar(hwndTaskBarMain) && g_w11DesktopSurface) ShowWindow(g_w11DesktopSurface, SW_HIDE);
 	if (b_DebugLog)writeDebugLog_Win10("[for_win11.c] DrawWin11Notify called with bExistWin11Notify =", bExistWin11Notify);
 
 	HDC hdc;
@@ -1609,7 +1710,7 @@ void DrawWin11Notify(BOOL b_forceUpdate)
 	else if (!bEnableWin11NotifyIcon && !IsVertTaskbar(hwndTaskBarMain))
 	{
 		// Avoid painting the legacy white separator before the desktop-only button.
-		w11_draw_desktop(hdc);
+		w11_present_desktop(hdc);
 		ReleaseDC(hwndWin11Notify, hdc);
 	}
 	else if (bEnableWin11NotifyIcon)
@@ -1719,7 +1820,7 @@ void DrawWin11Notify(BOOL b_forceUpdate)
 			BitBlt(hdc, 0, 0, widthWin11Notify, heightWin11Notify, hdcWin11Notify, 0, 0, SRCCOPY);
 		}
 
-		w11_draw_desktop(hdc);
+		w11_present_desktop(hdc);
 		ReleaseDC(hwndWin11Notify, hdc);
 	}
 	else 
@@ -1762,7 +1863,7 @@ void DrawWin11Notify(BOOL b_forceUpdate)
 		//	LineTo(hdc, widthWin11Notify, 0);
 		//}
 
-		w11_draw_desktop(hdc);
+		w11_present_desktop(hdc);
 		ReleaseDC(hwndWin11Notify, hdc);
 	}
 }

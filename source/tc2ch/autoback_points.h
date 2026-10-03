@@ -4,6 +4,7 @@
 typedef struct AB_POINTS {
  int position[4];
  int balance;
+ int count;
 } AB_POINTS;
 
 static __inline int ab_clamp(int value, int high)
@@ -18,15 +19,16 @@ enum { AB_INVALID = -2, AB_FUTURE = -1, AB_LEGACY, AB_POINTS_SAVED, AB_DEFAULTS 
 typedef struct AB_PROFILE {
  const char* keys[4];
  const char* balance;
+ const char* count;
  const char* snapshots[2];
  int defaults[4];
 } AB_PROFILE;
 
 static const AB_PROFILE ab_profiles[AB_PROFILE_COUNT] = {
  { { "AutoBackHorizontalPoint1X", "AutoBackHorizontalPoint1Y", "AutoBackHorizontalPoint2X", "AutoBackHorizontalPoint2Y" },
-   "AutoBackHorizontalBalance", { "AutoBackHorizontalSnapshotColor", "AutoBackHorizontalSnapshotColor2" }, { 2000, 5000, 6000, 5000 } },
+   "AutoBackHorizontalBalance", "AutoBackHorizontalPointCount", { "AutoBackHorizontalSnapshotColor", "AutoBackHorizontalSnapshotColor2" }, { 2000, 5000, 6000, 5000 } },
  { { "AutoBackSidePoint1X", "AutoBackSidePoint1Y", "AutoBackSidePoint2X", "AutoBackSidePoint2Y" },
-   "AutoBackSideBalance", { "AutoBackSideSnapshotColor", "AutoBackSideSnapshotColor2" }, { 500, 2000, 500, 6000 } }
+   "AutoBackSideBalance", "AutoBackSidePointCount", { "AutoBackSideSnapshotColor", "AutoBackSideSnapshotColor2" }, { 500, 2000, 500, 6000 } }
 };
 
 static __inline BOOL ab_has_legacy(void)
@@ -50,6 +52,7 @@ static __inline int ab_load(int profile, AB_POINTS* points)
   if (value > 10000) complete = FALSE;
   points->position[i] = value == 0xFFFFFFFF ? description->defaults[i] : ab_clamp((int)value, 10000);
  }
+ points->count = GetMyRegLong("Color_Font", description->count, 2) == 1 ? 1 : 2;
  points->balance = ab_clamp((int)GetMyRegLong("Color_Font", description->balance, 50), 100);
  if (profile == AB_SIDE) return AB_POINTS_SAVED;
  if (version != 0xFFFFFFFF && version > 1) return AB_FUTURE;
@@ -67,12 +70,14 @@ static __inline BOOL ab_save(int profile, const AB_POINTS* points)
  for (i = 0; i < 4; ++i) {
   if (points->position[i] < 0 || points->position[i] > 10000) return FALSE;
  }
- if (points->balance < 0 || points->balance > 100) return FALSE;
+ if (points->balance < 0 || points->balance > 100 || (points->count != 1 && points->count != 2)) return FALSE;
  for (i = 0; i < 4; ++i) SetMyRegLong("Color_Font", description->keys[i], points->position[i]);
  SetMyRegLong("Color_Font", description->balance, points->balance);
+ SetMyRegLong("Color_Font", description->count, points->count);
  for (i = 0; i < 4; ++i)
   if ((DWORD)GetMyRegLong("Color_Font", description->keys[i], 0xFFFFFFFF) != (DWORD)points->position[i]) return FALSE;
  if ((DWORD)GetMyRegLong("Color_Font", description->balance, 0xFFFFFFFF) != (DWORD)points->balance) return FALSE;
+ if ((DWORD)GetMyRegLong("Color_Font", description->count, 0) != (DWORD)points->count) return FALSE;
  if (profile == AB_HORIZONTAL) {
   SetMyRegLong("Color_Font", "AutoBackHorizontalPointsVersion", 1);
   if (GetMyRegLong("Color_Font", "AutoBackHorizontalPointsVersion", 0) != 1) return FALSE;
@@ -120,15 +125,21 @@ static __inline BOOL ab_sample(HWND taskbar, HWND clock, const AB_POINTS* points
  HWND overlay = FindWindowW(L"TClockWinUIDllWindow", NULL);
  POINT positions[2];
  int i;
+ HWND marker = NULL;
  colors[0] = colors[1] = CLR_INVALID;
+ // Keep the last runtime color while a settings marker covers a sampling point.
+ while ((marker = FindWindowExW(NULL, marker, L"TClockSamplePoint", NULL)) != NULL)
+  if (IsWindowVisible(marker)) return FALSE;
+ if (points->count != 1 && points->count != 2) return FALSE;
  if (!GetWindowRect(taskbar, &rect) || rect.right <= rect.left || rect.bottom <= rect.top) return FALSE;
- for (i = 0; i < 2; ++i) {
+ for (i = 0; i < points->count; ++i) {
   positions[i] = ab_get_point(&rect, points->position[i * 2], points->position[i * 2 + 1]);
   if (ab_contains(clock, positions[i]) || ab_contains(overlay, positions[i])) return FALSE;
  }
  dc = GetDC(NULL);
  if (!dc) return FALSE;
- for (i = 0; i < 2; ++i) colors[i] = GetPixel(dc, positions[i].x, positions[i].y);
+ for (i = 0; i < points->count; ++i) colors[i] = GetPixel(dc, positions[i].x, positions[i].y);
  ReleaseDC(NULL, dc);
+ if (points->count == 1) colors[1] = colors[0];
  return colors[0] != CLR_INVALID && colors[1] != CLR_INVALID;
 }

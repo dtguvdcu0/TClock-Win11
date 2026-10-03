@@ -1,5 +1,6 @@
 #include "tcdll.h"
 #include "resource.h"
+#include "../common/taskbar_edge.h"
 
 
 
@@ -1277,6 +1278,104 @@ LRESULT CALLBACK SubclassTrayProc_Win11(HWND hwnd, UINT message, WPARAM wParam, 
 /*------------------------------------------------
 subclass procedure of the Win11 Tclock Notify Window (2021/11)
 --------------------------------------------------*/
+extern BOOL IsVertTaskbar(HWND hwnd);
+
+static BOOL g_w11DesktopHot = FALSE;
+static BOOL g_w11DesktopDown = FALSE;
+
+static BOOL w11_hit_desktop(HWND window, LPARAM point)
+{
+ RECT client;
+ POINT pos = { GET_X_LPARAM(point), GET_Y_LPARAM(point) };
+ return !IsVertTaskbar(hwndTaskBarMain) && GetClientRect(window, &client) &&
+  PtInRect(&client, pos) && pos.x >= posXShowDesktopArea;
+}
+
+static COLORREF w11_tint_desktop(COLORREF base, int amount)
+{
+ int target = GetRValue(base) + GetGValue(base) + GetBValue(base) < 384 ? 255 : 0;
+ return RGB((GetRValue(base) * (100 - amount) + target * amount) / 100,
+  (GetGValue(base) * (100 - amount) + target * amount) / 100,
+  (GetBValue(base) * (100 - amount) + target * amount) / 100);
+}
+
+static COLORREF w11_read_material(void)
+{
+ static COLORREF cached = CLR_INVALID;
+ static DWORD cachedLight = MAXDWORD;
+ RECT task, clock, strip;
+ MONITORINFO monitor = { sizeof(monitor) };
+ DWORD light = 1, length = sizeof(light);
+ COLORREF color = CLR_INVALID;
+ LONG x, y;
+ HDC screen;
+ extern BOOL bAutoBackMatchTaskbar;
+ extern COLORREF autoBackColorMain;
+ // Reuse the selected automatic background, not its separately sampled 1px border.
+ if (bAutoBackMatchTaskbar && !fillbackcolor) return autoBackColorMain;
+ // Without automatic matching, the button follows the native taskbar material.
+ RegGetValueW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+  L"SystemUsesLightTheme", RRF_RT_REG_DWORD, NULL, &light, &length);
+ if (cachedLight != light) { cached = CLR_INVALID; cachedLight = light; }
+ if (GetWindowRect(hwndTaskBarMain, &task) && GetWindowRect(hwndClockMain, &clock) &&
+     GetMonitorInfoW(MonitorFromWindow(hwndTaskBarMain, MONITOR_DEFAULTTONEAREST), &monitor) &&
+     tbe_get_strip(&task, &monitor.rcMonitor, &strip)) {
+  // Stay outside both clock surfaces and away from the 1px border and centered icons.
+  x = clock.left - 4;
+  y = strip.top == task.top ? task.bottom - 2 : task.top + 1;
+  if (x - 2 >= task.left && x < task.right && y >= task.top && y < task.bottom) {
+   screen = GetDC(NULL);
+   if (screen) {
+    COLORREF samples[3];
+    samples[0] = GetPixel(screen, x, y);
+    samples[1] = GetPixel(screen, x - 1, y);
+    samples[2] = GetPixel(screen, x - 2, y);
+    if (samples[0] != CLR_INVALID && samples[1] != CLR_INVALID && samples[2] != CLR_INVALID)
+     color = RGB((GetRValue(samples[0]) + GetRValue(samples[1]) + GetRValue(samples[2])) / 3,
+      (GetGValue(samples[0]) + GetGValue(samples[1]) + GetGValue(samples[2])) / 3,
+      (GetBValue(samples[0]) + GetBValue(samples[1]) + GetBValue(samples[2])) / 3);
+    ReleaseDC(NULL, screen);
+   }
+  }
+ }
+ if (color != CLR_INVALID) cached = color;
+ // A locked input desktop can reject capture. Retain the last native color for this theme.
+ if (cached != CLR_INVALID) return cached;
+ return light ? RGB(243, 243, 243) : RGB(32, 32, 32);
+}
+
+static void w11_draw_desktop(HDC dc)
+{
+ RECT area = { posXShowDesktopArea, 0, widthWin11Notify, heightWin11Notify };
+ int saved;
+ if (IsVertTaskbar(hwndTaskBarMain) || area.right <= area.left || area.bottom <= 0) return;
+ saved = SaveDC(dc);
+ if (!saved) return;
+ IntersectClipRect(dc, area.left, area.top, area.right, area.bottom);
+ // Use the native taskbar material, never the clock background or border snapshot.
+ {
+  HBRUSH brush = CreateSolidBrush(w11_read_material());
+  if (brush) { FillRect(dc, &area, brush); DeleteObject(brush); }
+ }
+ if (g_w11DesktopHot) {
+  for (LONG y = area.top; y < area.bottom; ++y) {
+   for (LONG x = area.left; x < area.right; ++x) {
+    COLORREF color = GetPixel(dc, x, y);
+    if (color != CLR_INVALID) SetPixelV(dc, x, y, w11_tint_desktop(color, g_w11DesktopDown ? 16 : 8));
+   }
+  }
+ }
+ // Keep the idle surface continuous; show a subtle separator only while hovered.
+ if (g_w11DesktopHot) {
+  for (LONG y = area.top; y < area.bottom; ++y) {
+   COLORREF color = GetPixel(dc, area.left, y);
+   if (color != CLR_INVALID) SetPixelV(dc, area.left, y, w11_tint_desktop(color, 8));
+  }
+ }
+ RestoreDC(dc, saved);
+ tbe_draw_strip(dc, hwndWin11Notify, hwndTaskBarMain);
+}
+
 LRESULT CALLBACK WndProcWin11Notify(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
 	HWND tempHwnd;
@@ -1290,7 +1389,57 @@ LRESULT CALLBACK WndProcWin11Notify(HWND hwnd, UINT message, WPARAM wParam, LPAR
 
 	switch (message) //Win11タスクトレイ通知アイコン部に操作を転送
 	{
-		case WM_LBUTTONDOWN:
+        case WM_PAINT:
+        {
+            PAINTSTRUCT paint;
+            BeginPaint(hwnd, &paint);
+            DrawWin11Notify(TRUE);
+            EndPaint(hwnd, &paint);
+            return 0;
+        }
+        case WM_ERASEBKGND:
+            return 1;
+        case WM_MOUSEMOVE:
+        {
+            BOOL hot = w11_hit_desktop(hwnd, lParam);
+            TRACKMOUSEEVENT track = { sizeof(track), TME_LEAVE, hwnd, 0 };
+            TrackMouseEvent(&track);
+            if (hot != g_w11DesktopHot) {
+                g_w11DesktopHot = hot;
+                DrawWin11Notify(TRUE);
+            }
+            return 0;
+        }
+        case WM_MOUSELEAVE:
+            if (g_w11DesktopHot) {
+                g_w11DesktopHot = FALSE;
+                DrawWin11Notify(TRUE);
+            }
+            return 0;
+        case WM_LBUTTONUP:
+            if (g_w11DesktopDown) {
+                BOOL activate = w11_hit_desktop(hwnd, lParam);
+                g_w11DesktopDown = FALSE;
+                if (GetCapture() == hwnd) ReleaseCapture();
+                DrawWin11Notify(TRUE);
+                if (activate) ShellExecuteW(NULL, L"open", L"explorer.exe", L"shell:::{3080F90D-D7AD-11D9-BD98-0000947B0257}", NULL, SW_SHOWNORMAL);
+                return 0;
+            }
+            break;
+        case WM_CAPTURECHANGED:
+            if (g_w11DesktopDown) {
+                g_w11DesktopDown = FALSE;
+                DrawWin11Notify(TRUE);
+            }
+            break;
+        case WM_LBUTTONDOWN:
+            if (w11_hit_desktop(hwnd, lParam)) {
+                g_w11DesktopHot = TRUE;
+                g_w11DesktopDown = TRUE;
+                SetCapture(hwnd);
+                DrawWin11Notify(TRUE);
+                return 0;
+            }
 			//ここに、押された場所がposXShowDesktopAreaより右ならデスクトップを表示する、というのを実装する*****
 			if (GET_X_LPARAM(lParam) > posXShowDesktopArea) {
 				//https://www.ka-net.org/blog/?p=8432
@@ -1312,6 +1461,8 @@ LRESULT CALLBACK WndProcWin11Notify(HWND hwnd, UINT message, WPARAM wParam, LPAR
 		}
 		case WM_NCDESTROY:
 		{
+            g_w11DesktopHot = FALSE;
+            g_w11DesktopDown = FALSE;
 			if ((WNDPROC)GetWindowLongPtr(hwnd, GWLP_WNDPROC) == WndProcWin11Notify) {
 				SubclassWindow(hwnd, DefWindowProc);
 			}
@@ -1455,6 +1606,12 @@ void DrawWin11Notify(BOOL b_forceUpdate)
 	{	//通知ウィンドウが消されていたら作り直す。
 		ReCreateWin11Notify();
 	}
+	else if (!bEnableWin11NotifyIcon && !IsVertTaskbar(hwndTaskBarMain))
+	{
+		// Avoid painting the legacy white separator before the desktop-only button.
+		w11_draw_desktop(hdc);
+		ReleaseDC(hwndWin11Notify, hdc);
+	}
 	else if (bEnableWin11NotifyIcon)
 	{
 		intWin11FocusAssist = GetFocusAssistState();
@@ -1562,6 +1719,7 @@ void DrawWin11Notify(BOOL b_forceUpdate)
 			BitBlt(hdc, 0, 0, widthWin11Notify, heightWin11Notify, hdcWin11Notify, 0, 0, SRCCOPY);
 		}
 
+		w11_draw_desktop(hdc);
 		ReleaseDC(hwndWin11Notify, hdc);
 	}
 	else 
@@ -1604,6 +1762,7 @@ void DrawWin11Notify(BOOL b_forceUpdate)
 		//	LineTo(hdc, widthWin11Notify, 0);
 		//}
 
+		w11_draw_desktop(hdc);
 		ReleaseDC(hwndWin11Notify, hdc);
 	}
 }

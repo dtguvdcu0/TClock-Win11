@@ -454,8 +454,16 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 					g_bApplyTaskbar = FALSE;
 					InterlockedExchange(&g_refreshDispatchQueued, 1);
 				}
-				PostMessage(hDwnd, WM_TCLOCK_APPLY_REFRESH, 0, 0);
 				InterlockedExchange(&g_inApplyDispatch, 0);
+                if (LOWORD(wParam) == IDOK) {
+                    // This dialog is destroyed below: queued messages to it would be lost.
+                    if (InterlockedExchange(&g_refreshDispatchQueued, 0) != 0) {
+                        PostMessageW(g_hwndClock, CLOCKM_REFRESHCLOCK, 0, 0);
+                        PostMessageW(g_hwndClock, CLOCKM_REFRESHTASKBAR, 0, 0);
+                    }
+                } else {
+                    PostMessageW(hDwnd, WM_TCLOCK_APPLY_REFRESH, 0, 0);
+                }
 			}
 			if(LOWORD(wParam) == IDOK || LOWORD(wParam) == IDCANCEL)
 			{

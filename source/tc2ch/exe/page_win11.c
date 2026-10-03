@@ -239,6 +239,8 @@ static void NotifyExplorerAdvancedChanged(void)
 #define IDC_AB_COLOR1 24009
 #define IDC_AB_COLOR2 24010
 #define IDC_AB_STATUS 24011
+#define IDC_AB_COUNT 24018
+#define AB_MARKER_SIZE 17
 static AB_POINTS g_abPending[AB_PROFILE_COUNT];
 static BOOL g_abDirty[AB_PROFILE_COUNT];
 static int g_abModes[AB_PROFILE_COUNT];
@@ -251,25 +253,78 @@ typedef struct AB_DIALOG {
  HWND markers[2];
  COLORREF colors[2];
  int picking;
+ int dragging;
+ BOOL writing;
+ BOOL closing;
+ AB_POINTS beforeDrag;
 } AB_DIALOG;
+
+static void ab_show_markers(AB_DIALOG* state, BOOL show);
+static void ab_write_edits(HWND dlg, const AB_POINTS* points);
+static BOOL ab_read_edits(HWND dlg, AB_POINTS* points);
+static BOOL ab_check_dialog(HWND dlg, AB_DIALOG* state);
+static void ab_preview(HWND dlg, AB_DIALOG* state);
+
+static BOOL ab_move_point(AB_DIALOG* state, int index, POINT point)
+{
+ RECT rect;
+ HWND taskbar = ab_find_taskbar(g_hwndClock);
+ if (ab_get_profile(taskbar) != state->profile || !GetWindowRect(taskbar, &rect) || !PtInRect(&rect, point) ||
+     ab_contains(g_hwndClock, point) || ab_contains(FindWindowW(L"TClockWinUIDllWindow", NULL), point)) return FALSE;
+ state->points.position[index * 2] = MulDiv(point.x - rect.left, 10000, max(1, rect.right - rect.left - 1));
+ state->points.position[index * 2 + 1] = MulDiv(point.y - rect.top, 10000, max(1, rect.bottom - rect.top - 1));
+ return TRUE;
+}
+
+static void ab_finish_drag(HWND dlg, AB_DIALOG* state, BOOL cancel)
+{
+ if (!state->dragging) return;
+ state->dragging = 0;
+ if (cancel) state->points = state->beforeDrag;
+ if (GetCapture() == state->markers[0] || GetCapture() == state->markers[1]) ReleaseCapture();
+ if (!state->closing) { ab_write_edits(dlg, &state->points); ab_preview(dlg, state); }
+}
 
 static LRESULT CALLBACK ab_handle_marker(HWND hwnd, UINT message, WPARAM wp, LPARAM lp)
 {
- if (message == WM_PAINT) {
+ HWND dlg = GetWindow(hwnd, GW_OWNER);
+ AB_DIALOG* state = (AB_DIALOG*)GetWindowLongPtrW(dlg, DWLP_USER);
+ int index = (int)GetWindowLongPtrW(hwnd, GWLP_USERDATA);
+ switch (message) {
+ case WM_MOUSEACTIVATE: return MA_NOACTIVATE;
+ case WM_SETCURSOR: SetCursor(LoadCursorW(NULL, MAKEINTRESOURCEW(32646))); return TRUE;
+ case WM_LBUTTONDOWN:
+  if (state && index < state->points.count && !state->picking && ab_check_dialog(dlg, state) && ab_read_edits(dlg, &state->points)) {
+   state->beforeDrag = state->points; state->dragging = index + 1; SetCapture(hwnd);
+  }
+  return 0;
+ case WM_MOUSEMOVE:
+  if (state && state->dragging == index + 1 && GetCapture() == hwnd) {
+   POINT point = { (short)LOWORD(lp), (short)HIWORD(lp) };
+   if (ClientToScreen(hwnd, &point) && ab_move_point(state, index, point)) { ab_write_edits(dlg, &state->points); ab_show_markers(state, TRUE); }
+  }
+  return 0;
+ case WM_LBUTTONUP:
+  if (state && state->dragging == index + 1) ab_finish_drag(dlg, state, FALSE);
+  return 0;
+ case WM_CAPTURECHANGED:
+  if (state && state->dragging == index + 1) ab_finish_drag(dlg, state, TRUE);
+  return 0;
+ case WM_PAINT: {
   PAINTSTRUCT paint;
   HDC dc = BeginPaint(hwnd, &paint);
   RECT rect;
-  HPEN pen = CreatePen(PS_SOLID, 2, RGB(255, 0, 255));
+  HPEN pen = CreatePen(PS_SOLID, 1, RGB(255, 0, 255));
+  HBRUSH brush = CreateSolidBrush(RGB(24, 24, 24));
   HGDIOBJ oldPen = SelectObject(dc, pen);
-  HGDIOBJ oldBrush = SelectObject(dc, GetStockObject(BLACK_BRUSH));
-  GetClientRect(hwnd, &rect);
-  Rectangle(dc, 0, 0, rect.right, rect.bottom);
-  SetTextColor(dc, RGB(255, 255, 0));
-  SetBkMode(dc, TRANSPARENT);
-  TextOutW(dc, 1, 1, GetWindowLongPtrW(hwnd, GWLP_USERDATA) ? L"2" : L"1", 1);
-  SelectObject(dc, oldBrush); SelectObject(dc, oldPen); DeleteObject(pen);
+  HGDIOBJ oldBrush = SelectObject(dc, brush);
+  GetClientRect(hwnd, &rect); Rectangle(dc, 0, 0, rect.right, rect.bottom);
+  SetTextColor(dc, RGB(255, 255, 0)); SetBkMode(dc, TRANSPARENT);
+  DrawTextW(dc, index ? L"2" : L"1", 1, &rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+  SelectObject(dc, oldBrush); SelectObject(dc, oldPen); DeleteObject(pen); DeleteObject(brush);
   EndPaint(hwnd, &paint);
   return 0;
+ }
  }
  return DefWindowProcW(hwnd, message, wp, lp);
 }
@@ -281,30 +336,36 @@ static void ab_show_markers(AB_DIALOG* state, BOOL show)
  int i;
  if (ab_get_profile(taskbar) != state->profile || !GetWindowRect(taskbar, &rect)) show = FALSE;
  for (i = 0; i < 2; ++i) {
-  if (show) {
+  if (show && i < state->points.count) {
    POINT point = ab_get_point(&rect, state->points.position[i * 2], state->points.position[i * 2 + 1]);
-   SetWindowPos(state->markers[i], HWND_TOPMOST, point.x - 12, point.y - 12, 25, 25, SWP_NOACTIVATE | SWP_SHOWWINDOW);
+   SetWindowPos(state->markers[i], HWND_TOPMOST, point.x - AB_MARKER_SIZE / 2, point.y - AB_MARKER_SIZE / 2, AB_MARKER_SIZE, AB_MARKER_SIZE, SWP_NOACTIVATE | SWP_SHOWWINDOW);
   } else ShowWindow(state->markers[i], SW_HIDE);
  }
 }
 
 static void ab_write_edits(HWND dlg, const AB_POINTS* points)
 {
+ AB_DIALOG* state = (AB_DIALOG*)GetWindowLongPtrW(dlg, DWLP_USER);
  int i;
+ state->writing = TRUE;
  for (i = 0; i < 4; ++i) {
   WCHAR text[24];
   wsprintfW(text, L"%d.%02d", points->position[i] / 100, points->position[i] % 100);
   SetDlgItemTextW(dlg, IDC_AB_X1 + i, text);
  }
  SetDlgItemInt(dlg, IDC_AB_BALANCE, points->balance, FALSE);
+ SendDlgItemMessageW(dlg, IDC_AB_COUNT, CB_SETCURSEL, points->count - 1, 0);
+ state->writing = FALSE;
 }
 
 static BOOL ab_read_edits(HWND dlg, AB_POINTS* points)
 {
- AB_POINTS result;
+ AB_POINTS result = *points;
  int i;
  BOOL valid;
- for (i = 0; i < 4; ++i) {
+ result.count = (int)SendDlgItemMessageW(dlg, IDC_AB_COUNT, CB_GETCURSEL, 0, 0) + 1;
+ if (result.count != 1 && result.count != 2) return FALSE;
+ for (i = 0; i < result.count * 2; ++i) {
   WCHAR text[32];
   int whole = 0, fraction = 0, decimals = 0, j;
   BOOL dot = FALSE, digit = FALSE;
@@ -324,8 +385,10 @@ static BOOL ab_read_edits(HWND dlg, AB_POINTS* points)
   result.position[i] = whole * 100 + fraction * (decimals == 1 ? 10 : 1);
   if (!digit || result.position[i] > 10000) return FALSE;
  }
- result.balance = GetDlgItemInt(dlg, IDC_AB_BALANCE, &valid, FALSE);
- if (!valid || result.balance < 0 || result.balance > 100) return FALSE;
+ if (result.count == 2) {
+  result.balance = GetDlgItemInt(dlg, IDC_AB_BALANCE, &valid, FALSE);
+  if (!valid || result.balance < 0 || result.balance > 100) return FALSE;
+ }
  *points = result;
  return TRUE;
 }
@@ -335,9 +398,20 @@ static BOOL ab_check_dialog(HWND dlg, AB_DIALOG* state)
  BOOL active = ab_get_profile(ab_find_taskbar(g_hwndClock)) == state->profile;
  BOOL editable = state->mode != AB_FUTURE;
  EnableWindow(GetDlgItem(dlg, IDC_AB_PICK1), active && editable);
- EnableWindow(GetDlgItem(dlg, IDC_AB_PICK2), active && editable);
+ EnableWindow(GetDlgItem(dlg, IDC_AB_PICK2), active && editable && state->points.count == 2);
+ EnableWindow(GetDlgItem(dlg, IDC_AB_COUNT), editable);
+ EnableWindow(GetDlgItem(dlg, IDC_AB_X2), editable && state->points.count == 2);
+ EnableWindow(GetDlgItem(dlg, IDC_AB_Y2), editable && state->points.count == 2);
+ EnableWindow(GetDlgItem(dlg, IDC_AB_BALANCE), editable && state->points.count == 2);
+ EnableWindow(GetDlgItem(dlg, IDC_AB_SPIN), editable && state->points.count == 2);
+ ShowWindow(GetDlgItem(dlg, IDC_AB_COLOR2), state->points.count == 2 ? SW_SHOW : SW_HIDE);
  EnableWindow(GetDlgItem(dlg, IDOK), active && editable);
  if (!active || !editable) {
+  if (state->dragging) {
+   state->points = state->beforeDrag; state->dragging = 0;
+   if (GetCapture() == state->markers[0] || GetCapture() == state->markers[1]) ReleaseCapture();
+   ab_write_edits(dlg, &state->points);
+  }
   if (state->picking) { state->picking = 0; if (GetCapture() == dlg) ReleaseCapture(); }
   ab_show_markers(state, FALSE);
   state->colors[0] = state->colors[1] = CLR_INVALID;
@@ -355,12 +429,13 @@ static void ab_preview(HWND dlg, AB_DIALOG* state)
  HWND taskbar = ab_find_taskbar(g_hwndClock);
  WCHAR text[120];
  int i;
- if (!ab_check_dialog(dlg, state) || state->picking) return;
+ if (state->writing || state->closing || !ab_check_dialog(dlg, state) || state->picking || state->dragging) return;
  if (!ab_read_edits(dlg, &state->points)) {
   ab_show_markers(state, FALSE);
   SetDlgItemTextW(dlg, IDC_AB_STATUS, b_EnglishMenu ? L"Enter percentages from 0 to 100." : L"\u4f4d\u7f6e\u306f0\uff5e100%\u3067\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002");
   return;
  }
+ ab_check_dialog(dlg, state);
  ab_show_markers(state, FALSE);
  DwmFlush();
  if (ab_sample(taskbar, g_hwndClock, &state->points, state->colors)) {
@@ -368,7 +443,8 @@ static void ab_preview(HWND dlg, AB_DIALOG* state)
    wsprintfW(text, L"#%02X%02X%02X", GetRValue(state->colors[i]), GetGValue(state->colors[i]), GetBValue(state->colors[i]));
    SetDlgItemTextW(dlg, IDC_AB_COLOR1 + i, text);
   }
-  SetDlgItemTextW(dlg, IDC_AB_STATUS, b_EnglishMenu ? L"0 = Point 1, 100 = Point 2. Apply in Properties." : L"0: \u30dd\u30a4\u30f3\u30c81 / 100: \u30dd\u30a4\u30f3\u30c82\u3002\u30d7\u30ed\u30d1\u30c6\u30a3\u3067\u9069\u7528\u3057\u307e\u3059\u3002");
+  if (state->points.count == 1) SetDlgItemTextW(dlg, IDC_AB_STATUS, b_EnglishMenu ? L"Use Point 1 color. Apply in Properties." : L"\u30dd\u30a4\u30f3\u30c81\u306e\u8272\u3092\u4f7f\u3044\u307e\u3059\u3002\u30d7\u30ed\u30d1\u30c6\u30a3\u3067\u9069\u7528\u3057\u307e\u3059\u3002");
+  else SetDlgItemTextW(dlg, IDC_AB_STATUS, b_EnglishMenu ? L"0 = Point 1, 100 = Point 2. Apply in Properties." : L"0: \u30dd\u30a4\u30f3\u30c81 / 100: \u30dd\u30a4\u30f3\u30c82\u3002\u30d7\u30ed\u30d1\u30c6\u30a3\u3067\u9069\u7528\u3057\u307e\u3059\u3002");
  } else {
   SetDlgItemTextW(dlg, IDC_AB_COLOR1, L"---"); SetDlgItemTextW(dlg, IDC_AB_COLOR2, L"---");
   SetDlgItemTextW(dlg, IDC_AB_STATUS, b_EnglishMenu ? L"Choose visible background outside the clock." : L"\u6642\u8a08\u3068\u91cd\u306a\u3089\u306a\u3044\u80cc\u666f\u3092\u9078\u3093\u3067\u304f\u3060\u3055\u3044\u3002");
@@ -387,18 +463,21 @@ static INT_PTR CALLBACK ab_handle_dialog(HWND dlg, UINT message, WPARAM wp, LPAR
   wc.lpfnWndProc = ab_handle_marker; wc.hInstance = g_hInst; wc.lpszClassName = L"TClockSamplePoint";
   RegisterClassW(&wc);
   for (i = 0; i < 2; ++i) {
-   state->markers[i] = CreateWindowExW(WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_TRANSPARENT,
-    wc.lpszClassName, L"", WS_POPUP, 0, 0, 25, 25, dlg, NULL, g_hInst, NULL);
+   state->markers[i] = CreateWindowExW(WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
+    wc.lpszClassName, L"", WS_POPUP, 0, 0, AB_MARKER_SIZE, AB_MARKER_SIZE, dlg, NULL, g_hInst, NULL);
    SetWindowLongPtrW(state->markers[i], GWLP_USERDATA, i);
    SetLayeredWindowAttributes(state->markers[i], RGB(0, 0, 0), 255, LWA_COLORKEY);
   }
+  SetDlgItemTextW(dlg, 24019, b_EnglishMenu ? L"Sampling points" : L"\u53d6\u5f97\u30dd\u30a4\u30f3\u30c8\u6570");
+  SendDlgItemMessageW(dlg, IDC_AB_COUNT, CB_ADDSTRING, 0, (LPARAM)(b_EnglishMenu ? L"1 point" : L"1\u70b9"));
+  SendDlgItemMessageW(dlg, IDC_AB_COUNT, CB_ADDSTRING, 0, (LPARAM)(b_EnglishMenu ? L"2 points" : L"2\u70b9"));
   if (!b_EnglishMenu) {
    SetWindowTextW(dlg, L"\u5de6\u53f3\u914d\u7f6e\u306e\u80cc\u666f\u30dd\u30a4\u30f3\u30c8");
    SetDlgItemTextW(dlg, 24012, L"\u4f4d\u7f6e\u306f\u30bf\u30b9\u30af\u30d0\u30fc\u306e\u5de6\u4e0a\u304b\u3089\u306e\u5272\u5408(%)\u3067\u3059\u3002");
    SetDlgItemTextW(dlg, 24013, L"\u30dd\u30a4\u30f3\u30c81"); SetDlgItemTextW(dlg, 24014, L"\u30dd\u30a4\u30f3\u30c82");
    SetDlgItemTextW(dlg, IDC_AB_PICK1, L"\u753b\u9762\u3067\u9078\u629e"); SetDlgItemTextW(dlg, IDC_AB_PICK2, L"\u753b\u9762\u3067\u9078\u629e");
    SetDlgItemTextW(dlg, 24015, L"2\u70b9\u306e\u8272\u306e\u30d0\u30e9\u30f3\u30b9");
-   SetDlgItemTextW(dlg, 24016, L"\u80cc\u666f\u3092\u30af\u30ea\u30c3\u30af\u3057\u3066\u9078\u629e\u3002Esc\u3067\u9078\u629e\u3092\u4e2d\u6b62\u3002");
+   SetDlgItemTextW(dlg, 24016, L"\u6b63\u65b9\u5f62\u3092\u30c9\u30e9\u30c3\u30b0\u3057\u3066\u4f4d\u7f6e\u3092\u8abf\u6574\u3067\u304d\u307e\u3059\u3002");
    SetDlgItemTextW(dlg, IDCANCEL, L"\u30ad\u30e3\u30f3\u30bb\u30eb");
   }
   SetWindowTextW(dlg, state->profile == AB_SIDE ?
@@ -406,7 +485,7 @@ static INT_PTR CALLBACK ab_handle_dialog(HWND dlg, UINT message, WPARAM wp, LPAR
    (b_EnglishMenu ? L"Top/bottom background points" : L"\u4e0a\u4e0b\u914d\u7f6e\u306e\u80cc\u666f\u30dd\u30a4\u30f3\u30c8"));
   if (state->profile == AB_HORIZONTAL && state->mode != AB_POINTS_SAVED && state->mode != AB_FUTURE) {
    SetDlgItemTextW(dlg, 24017, state->proposed ?
-    (b_EnglishMenu ? L"Proposed from legacy positions. Apply switches to two-point color; the old gradient may change." : L"\u5f93\u6765\u306e\u4f4d\u7f6e\u304b\u3089\u306e\u5019\u88dc\u3067\u3059\u3002\u9069\u7528\u3059\u308b\u30682\u70b9\u65b9\u5f0f\u306b\u5207\u308a\u66ff\u308f\u308a\u3001\u5f93\u6765\u306e\u30b0\u30e9\u30c7\u30fc\u30b7\u30e7\u30f3\u304c\u5909\u308f\u308b\u5834\u5408\u304c\u3042\u308a\u307e\u3059\u3002") :
+    (b_EnglishMenu ? L"Proposed from legacy positions. Apply switches to point sampling; the old gradient may change." : L"\u5f93\u6765\u306e\u4f4d\u7f6e\u304b\u3089\u306e\u5019\u88dc\u3067\u3059\u3002\u9069\u7528\u3059\u308b\u3068\u30dd\u30a4\u30f3\u30c8\u65b9\u5f0f\u306b\u5207\u308a\u66ff\u308f\u308a\u3001\u5f93\u6765\u306e\u30b0\u30e9\u30c7\u30fc\u30b7\u30e7\u30f3\u304c\u5909\u308f\u308b\u5834\u5408\u304c\u3042\u308a\u307e\u3059\u3002") :
     (b_EnglishMenu ? L"Default positions: choose background points. Only Properties Apply switches from legacy settings." : L"\u521d\u671f\u4f4d\u7f6e\u3067\u3059\u3002\u80cc\u666f\u3092\u9078\u629e\u3057\u3066\u304f\u3060\u3055\u3044\u3002\u30d7\u30ed\u30d1\u30c6\u30a3\u3067\u9069\u7528\u3059\u308b\u307e\u3067\u65e7\u8a2d\u5b9a\u306f\u5909\u308f\u308a\u307e\u305b\u3093\u3002"));
   } else SetDlgItemTextW(dlg, 24017, b_EnglishMenu ? L"Top/bottom and left/right positions are saved separately." : L"\u4e0a\u4e0b\u914d\u7f6e\u3068\u5de6\u53f3\u914d\u7f6e\u306e\u4f4d\u7f6e\u306f\u5225\u3005\u306b\u4fdd\u5b58\u3055\u308c\u307e\u3059\u3002");
   if (state->mode == AB_FUTURE) {
@@ -451,6 +530,11 @@ static INT_PTR CALLBACK ab_handle_dialog(HWND dlg, UINT message, WPARAM wp, LPAR
   break;
  case WM_CAPTURECHANGED: state->picking = 0; return TRUE;
  case WM_COMMAND:
+  if (!state->writing && ((HIWORD(wp) == EN_CHANGE && LOWORD(wp) >= IDC_AB_X1 && LOWORD(wp) <= IDC_AB_Y2) ||
+      (HIWORD(wp) == EN_CHANGE && LOWORD(wp) == IDC_AB_BALANCE) ||
+      (HIWORD(wp) == CBN_SELCHANGE && LOWORD(wp) == IDC_AB_COUNT))) {
+   ab_preview(dlg, state); return TRUE;
+  }
   switch (LOWORD(wp)) {
   case IDC_AB_PICK1: case IDC_AB_PICK2:
    if (!ab_check_dialog(dlg, state) || !ab_read_edits(dlg, &state->points)) { ab_preview(dlg, state); return TRUE; }
@@ -464,11 +548,13 @@ static INT_PTR CALLBACK ab_handle_dialog(HWND dlg, UINT message, WPARAM wp, LPAR
    if (!ab_sample(ab_find_taskbar(g_hwndClock), g_hwndClock, &state->points, state->colors)) { ab_preview(dlg, state); return TRUE; }
    g_abPending[state->profile] = state->points; g_abDirty[state->profile] = TRUE; EndDialog(dlg, IDOK); return TRUE;
   case IDCANCEL:
+   if (state->dragging) { ab_finish_drag(dlg, state, TRUE); return TRUE; }
    if (state->picking) { state->picking = 0; ReleaseCapture(); ab_preview(dlg, state); return TRUE; }
    EndDialog(dlg, IDCANCEL); return TRUE;
   }
   break;
  case WM_DESTROY:
+  state->closing = TRUE; ab_finish_drag(dlg, state, TRUE);
   KillTimer(dlg, 1);
   if (GetCapture() == dlg) ReleaseCapture();
   DestroyWindow(state->markers[0]); DestroyWindow(state->markers[1]); return TRUE;
@@ -654,6 +740,7 @@ static BOOL OnApply(HWND hDlg)
 	DWORD transparency;
 	BOOL alignLeft;
 	BOOL displayWinUIExperimental;
+	BOOL notifyExplorer = FALSE;
 
  {
   int profile;
@@ -679,17 +766,20 @@ static BOOL OnApply(HWND hDlg)
 	SetMyRegLong("Color_Font", "AutoBackRefreshSec", autoBackRefreshSec);
 
 	transparency = IsDlgButtonChecked(hDlg, IDC_WIN11_ENABLE_TRANSPARENCY) ? 1 : 0;
-	WritePolicyDword("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize", "EnableTransparency", transparency);
+	if (ReadPolicyDword("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize", "EnableTransparency", 1) != transparency) {
+		WritePolicyDword("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize", "EnableTransparency", transparency);
+		notifyExplorer = TRUE;
+	}
 
 	alignLeft = IsDlgButtonChecked(hDlg, IDC_WIN11_TASKBAR_ALIGN_LEFT) ? TRUE : FALSE;
 	SetMyRegLongDef("Win11", "AlignTaskbarLeft", alignLeft);
 	displayWinUIExperimental = IsDlgButtonChecked(hDlg, IDC_WIN11_EXPERIMENTAL_DISPLAY_WINUI) ? TRUE : FALSE;
 	SetMyRegLong("Win11", "ExperimentalDisplayBackend", displayWinUIExperimental ? 1 : 0);
-	if (alignLeft) {
-		WriteTaskbarAlignLeftQuiet();
-	} else {
-		WriteTaskbarAlignCenterQuiet();
+	if (ReadPolicyDword("Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced", "TaskbarAl", 1) != (DWORD)(alignLeft ? 0 : 1)) {
+		if (alignLeft) WriteTaskbarAlignLeftQuiet();
+		else WriteTaskbarAlignCenterQuiet();
+		notifyExplorer = TRUE;
 	}
-	NotifyExplorerAdvancedChanged();
+	if (notifyExplorer) NotifyExplorerAdvancedChanged();
 	return TRUE;
 }

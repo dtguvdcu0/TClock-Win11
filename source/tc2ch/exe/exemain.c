@@ -1601,6 +1601,8 @@ LRESULT CALLBACK WndProc(HWND hwnd,	UINT message, WPARAM wParam, LPARAM lParam)	
 		case CLOCKM_DLLALIVE:
 			OnDLLAliveMessage(wParam);	//wParamに情報を入れる想定(未使用)
 			return 0;
+		case WM_THEMECHANGED:
+		case WM_DWMCOLORIZATIONCOLORCHANGED:
 		case WM_WININICHANGE:		//画面テーマが変わった時の対応
 		{
 			if (b_DebugLog) WriteDebug_New2("[exemain.c][WndProc] WM_WININICHANGE received");

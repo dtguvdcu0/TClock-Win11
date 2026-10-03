@@ -5,6 +5,7 @@
 #include <gdiplus.h>
 #include "wui_api.h"
 #include "wui_text.h"
+#include "../common/taskbar_edge.h"
 
 #pragma comment(lib, "gdiplus.lib")
 #pragma comment(lib, "comctl32.lib")
@@ -18,6 +19,7 @@
 static HINSTANCE g_wuiInst = NULL;
 static HWND g_wuiTarget = NULL;
 static HWND g_wuiHost = NULL;
+static TBE_REGION g_wuiEdge = {0};
 static HWND g_wuiTooltip = NULL;
 static WCHAR g_wuiTooltipText[4096];
 static TC_DISPLAY_BACKEND_RENDER_STATE g_wuiState;
@@ -408,8 +410,17 @@ static void wui_present(HWND hwnd)
 	Gdiplus::Graphics* pGraphics = NULL;
 	BYTE* pixels = NULL;
 	SIZE_T pixelCount;
+	HWND edgeTaskbar = NULL;
 
 	if (!hwnd || !IsWindow(hwnd)) return;
+	{
+		WCHAR targetClass[80];
+		if (GetClassNameW(g_wuiTarget, targetClass, _countof(targetClass)) && !lstrcmpW(targetClass, L"TClockMain"))
+		{
+			edgeTaskbar = tbe_find_taskbar(g_wuiTarget);
+			tbe_update_region(hwnd, edgeTaskbar, &g_wuiEdge);
+		}
+	}
 	if (!GetWindowRect(hwnd, &rcWindow)) return;
 	sizeWindow.cx = rcWindow.right - rcWindow.left;
 	sizeWindow.cy = rcWindow.bottom - rcWindow.top;
@@ -461,6 +472,19 @@ static void wui_present(HWND hwnd)
 	}
 	GdiFlush();
 	wui_blend_layer(pixels, sizeWindow.cx, sizeWindow.cy, g_wuiContentLeft);
+	{
+		RECT cut;
+		COLORREF edgeColor = tbe_sample_strip(hdcScreen, hwnd, edgeTaskbar, &cut);
+		if (edgeColor != CLR_INVALID) {
+			for (LONG y = cut.top; y < cut.bottom; ++y) {
+				for (LONG x = cut.left; x < cut.right; ++x) {
+					BYTE* pixel = pixels + ((SIZE_T)y * sizeWindow.cx + x) * 4u;
+					pixel[0] = GetBValue(edgeColor); pixel[1] = GetGValue(edgeColor);
+					pixel[2] = GetRValue(edgeColor); pixel[3] = 255;
+				}
+			}
+		}
+	}
 
 	blend.BlendOp = AC_SRC_OVER;
 	blend.BlendFlags = 0;
@@ -890,6 +914,7 @@ static LRESULT CALLBACK wui_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 			return 0;
 		}
 	case WM_DESTROY:
+		ZeroMemory(&g_wuiEdge, sizeof(g_wuiEdge));
 		KillTimer(hwnd, WUI_TIMER_ID);
 		return 0;
 	}

@@ -29,6 +29,7 @@ static void ext_draw_clock(const SYSTEMTIME* time);
 #include "../common/ini_io_utf8.h"
 #include "../winuidll/wui_api.h"
 #include "../autoback_points.h"
+#include "../common/taskbar_edge.h"
 #include <math.h>
 //#include <physicalmonitorenumerationapi.h>
 
@@ -401,7 +402,10 @@ BOOL bAutoBackTransparencyEnabled = TRUE;
 COLORREF autoBackColorMain = RGB(32, 32, 32);
 COLORREF autoBackColorEdge = RGB(48, 48, 48);
 static DWORD tickAutoBackLastRefresh = 0;
+static DWORD tickAutoBackLastAttempt = 0;
 static BOOL bAutoBackInitialized = FALSE;
+static BOOL g_abThemePending = FALSE;
+static TBE_REGION g_tbeRegion = {0};
 BOOL bTimerCheckNetStat = FALSE;	//Added by TTTT
 BOOL bTimerAdjust_SysInfo = FALSE;
 BOOL bTimerAdjust_NetStat = FALSE;
@@ -1266,6 +1270,9 @@ static void RefreshAutoBackColors(BOOL force, const char* reason)
 	nowTick = GetTickCount();
 	intervalMs = (DWORD)ClampInt(autoBackRefreshSec, 1, 120) * 1000;
 	if (!force && bAutoBackInitialized && (nowTick - tickAutoBackLastRefresh < intervalMs)) return;
+	// Retry unavailable samples promptly without polling on every redraw.
+	if (!force && !bAutoBackInitialized && nowTick - tickAutoBackLastAttempt < 250) return;
+	tickAutoBackLastAttempt = nowTick;
 
 	if (ReadPersonalizeDword("EnableTransparency", &transparency)) {
 		bAutoBackTransparencyEnabled = (transparency != 0);
@@ -2325,19 +2332,12 @@ static void wui_draw_body(HDC hdc, SYSTEMTIME* pt, int beat100)
 
 static void wui_draw_main(HDC hdc, SYSTEMTIME* pt, int beat100)
 {
-	if (g_wuiCfg == TC_DISPLAY_BACKEND_WINUI) {
+	if (bWin11Main) tbe_update_region(hwndClockMain, hwndTaskBarMain, &g_tbeRegion);
+	if (g_wuiCfg == TC_DISPLAY_BACKEND_WINUI || g_wuiMode == TC_DISPLAY_BACKEND_WINUI)
 		wui_draw_body(hdc, pt, beat100);
-		return;
-	}
-	switch (g_wuiMode) {
-	case TC_DISPLAY_BACKEND_WINUI:
-		wui_draw_body(hdc, pt, beat100);
-		return;
-	case TC_DISPLAY_BACKEND_GDI:
-	default:
+	else
 		wui_draw_gdi(hdc, pt, beat100);
-		return;
-	}
+	if (bWin11Main) tbe_draw_strip(hdc, hwndClockMain, hwndTaskBarMain);
 }
 
 static void RefreshClockWorkFont(void)
@@ -2624,6 +2624,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 	switch(message)
 	{
 		case WM_NCDESTROY:
+			ZeroMemory(&g_tbeRegion, sizeof(g_tbeRegion));
 			if (oldWndProc && (WNDPROC)WndProc == (WNDPROC)GetWindowLongPtr(hwnd, GWLP_WNDPROC))
 			{
 				SubclassWindow(hwnd, oldWndProc);
@@ -2662,12 +2663,15 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 			break;
 
 		// システムの設定を反映する
+		case WM_THEMECHANGED:
+		case WM_DWMCOLORIZATIONCOLORCHANGED:
 		case WM_SYSCOLORCHANGE:
 		case WM_WININICHANGE:
 		case WM_TIMECHANGE:	
             ext_stop_timer(); flp_reset(g_flipContext);
 		case (WM_USER+101):		// 親ウィンドウから送られる
 		{
+			if (message != WM_TIMECHANGE && message != WM_USER + 101) g_abThemePending = TRUE;
 			CreateClockDC();
 
 
@@ -2873,6 +2877,12 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 				}
 			}
 			
+			else if (LOWORD(wParam) == CLOCKM_BGCOLOR_UPDATE)
+			{
+				g_abThemePending = TRUE;
+				SetTimer(hwndClockMain, IDTIMERDLL_DELEYED_RESPONSE, 500, NULL);
+				return 0;
+			}
 			else if (LOWORD(wParam) == CLOCKM_SNAPSHOT_AUTOBACK_SAVE)
 			{
 				return SaveCurrentAutoBackSnapshotToIni() ? 1 : 0;
@@ -3040,6 +3050,15 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 void DelayedResponseToSyschange(void)
 {
+	if (g_abThemePending) {
+		g_abThemePending = FALSE;
+		if (bAutoBackMatchTaskbar && !fillbackcolor) {
+			bAutoBackInitialized = FALSE;
+			tickAutoBackLastAttempt = 0;
+			RefreshAutoBackColors(TRUE, "ThemeChange");
+		}
+		InvalidateRect(hwndClockMain, NULL, FALSE);
+	}
 	if (b_DebugLog)writeDebugLog_Win10("[subclock.c] DelayedResponseToSyschange called.", 999);
 	b_WININICHANGED = TRUE;	//次のOntimer_Win10->RedrawClockのタイミングでWin11Notifyが強制更新される。
 
@@ -3295,8 +3314,11 @@ static void ReadDataMinimal(void)
 	bAutoBackInitialized = FALSE;
 	if (!fillbackcolor) {
 		ab_read_colors();
-		bAutoBackInitialized = TRUE;
-		tickAutoBackLastRefresh = GetTickCount();
+		if (bAutoBackMatchTaskbar) RefreshAutoBackColors(TRUE, "ReadDataMinimal");
+		else {
+			bAutoBackInitialized = TRUE;
+			tickAutoBackLastRefresh = GetTickCount();
+		}
 	}
 
 	grad = GetMyRegLong("Color_Font", "GradDir", GRADIENT_FILL_RECT_H);
@@ -3739,7 +3761,6 @@ void ReadData()
 	DWORD dwInfoFormat;
 	TCHAR fname[MAX_PATH];
 	LONG readDepth;
-	BOOL bAutoBackSnapshotExists;
 
 	extern BOOL b_exist_DOWzone;
 	b_exist_DOWzone = FALSE;
@@ -3855,15 +3876,10 @@ void ReadData()
 	autoBackSampleShowDesktopOffset = ClampInt(autoBackSampleShowDesktopOffset, -200, 200);
 	bAutoBackInitialized = FALSE;
 	if (!fillbackcolor) {
-		bAutoBackSnapshotExists = ab_read_colors();
+		ab_read_colors();
 		if (bAutoBackMatchTaskbar) {
-			if (bAutoBackSnapshotExists) {
-				bAutoBackInitialized = TRUE;
-				tickAutoBackLastRefresh = GetTickCount();
-			}
-			else {
-				RefreshAutoBackColors(TRUE, "ReadData");
-			}
+			// A saved color is fallback data, not a fresh acquisition after Apply/startup.
+			RefreshAutoBackColors(TRUE, "ReadData");
 		}
 		else {
 			bAutoBackInitialized = TRUE;

@@ -83,10 +83,27 @@ static HRESULT wui_make_layout(const WCHAR* text, UINT length,
     ComPtr<IDWriteTextFormat> format;
     FLOAT size = (FLOAT)abs(style.fontHeight);
     if (size <= 0.0f) size = 12.0f;
-    HRESULT hr = g_wuiWrite->CreateTextFormat(style.fontFace[0] ? style.fontFace : L"Segoe UI",
-        NULL, (DWRITE_FONT_WEIGHT)(style.fontWeight > 0 ? style.fontWeight : FW_NORMAL),
-        style.fontItalic ? DWRITE_FONT_STYLE_ITALIC : DWRITE_FONT_STYLE_NORMAL,
-        DWRITE_FONT_STRETCH_NORMAL, size, L"ja-jp", format.GetAddressOf());
+    // Property choices are GDI face names, including weight/stretch aliases.
+    // Resolve the same selection through GDI interop before creating a DirectWrite layout.
+    LOGFONTW logical = {};
+    logical.lfHeight = style.fontHeight;
+    logical.lfWeight = style.fontWeight > 0 ? style.fontWeight : FW_NORMAL;
+    logical.lfItalic = style.fontItalic;
+    logical.lfCharSet = DEFAULT_CHARSET;
+    lstrcpynW(logical.lfFaceName, style.fontFace[0] ? style.fontFace : L"Segoe UI", LF_FACESIZE);
+    ComPtr<IDWriteGdiInterop> interop;
+    ComPtr<IDWriteFont> selected;
+    ComPtr<IDWriteFontFamily> family;
+    ComPtr<IDWriteLocalizedStrings> names;
+    WCHAR familyName[256];
+    HRESULT hr = g_wuiWrite->GetGdiInterop(interop.GetAddressOf());
+    if (SUCCEEDED(hr)) hr = interop->CreateFontFromLOGFONT(&logical, selected.GetAddressOf());
+    if (SUCCEEDED(hr)) hr = selected->GetFontFamily(family.GetAddressOf());
+    if (SUCCEEDED(hr)) hr = family->GetFamilyNames(names.GetAddressOf());
+    if (SUCCEEDED(hr)) hr = names->GetString(0, familyName, _countof(familyName));
+    if (FAILED(hr)) return hr;
+    hr = g_wuiWrite->CreateTextFormat(familyName, NULL, selected->GetWeight(),
+        selected->GetStyle(), selected->GetStretch(), size, L"ja-jp", format.GetAddressOf());
     if (FAILED(hr)) return hr;
     hr = format->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
     if (FAILED(hr)) return hr;

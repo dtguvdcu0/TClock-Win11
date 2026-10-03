@@ -154,7 +154,8 @@ HFONT CreateMyFont(const char* fontname, int fontsize,
 	hdc = GetDC(NULL);
 
 	/* Avoid enum-time font-driver crashes: create font directly from face name. */
-	if(charset == 0) charset = DEFAULT_CHARSET;
+	// Explicit face selection must not be replaced by a locale charset match.
+	if (fontnameLocal[0] || charset == 0) charset = DEFAULT_CHARSET;
 	lf.lfCharSet = charset;
 
 	pt.x = 0;
@@ -246,7 +247,7 @@ HFONT CreateMyFontW(const WCHAR* fontname, int fontsize, LONG weight, LONG itali
 	if (hdc) ReleaseDC(NULL, hdc);
 	lf.lfWeight = weight;
 	lf.lfItalic = (BYTE)italic;
-	lf.lfCharSet = charset;
+	lf.lfCharSet = fontnameLocal[0] ? DEFAULT_CHARSET : charset;
 	lf.lfOutPrecision = OUT_DEFAULT_PRECIS;
 	lf.lfClipPrecision = CLIP_DEFAULT_PRECIS;
 	lf.lfQuality = DEFAULT_QUALITY;

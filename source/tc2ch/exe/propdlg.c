@@ -8,7 +8,8 @@
 #include "..\common\text_codec.h"
 #include <shobjidl.h>
 
-#define MAX_PAGE  20
+#include "../common/analog_skin.h"
+#define MAX_PAGE  21
 #define WM_TCLOCK_APPLY_REFRESH (WM_APP + 101)
 
 INT_PTR CALLBACK PropertyDialog(HWND, UINT, WPARAM, LPARAM);
@@ -23,6 +24,7 @@ INT_PTR CALLBACK PageTooltipProc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK PageGraphProc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK PageMiscProc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK PageAnalogClockProc(HWND, UINT, WPARAM, LPARAM);
+INT_PTR CALLBACK PageExtendedProc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK PageChimeProc(HWND, UINT, WPARAM, LPARAM);
 
 INT_PTR CALLBACK PageBarmeterProc(HWND, UINT, WPARAM, LPARAM);
@@ -235,6 +237,8 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 
 			CreatePageDialog(hDwnd, hDlg, bDlgFlg, 0, GetSafeLanguageOffset() + IDD_PAGECOLOR, PageColorProc);
 			nowDlg = startpage;
+            if (nowDlg == 4) nowDlg = 20; // Legacy analog navigation is now inside Extended Display.
+			if (nowDlg < 0 || nowDlg >= MAX_PAGE || nowDlg == 9 || nowDlg == 10) nowDlg = 0;
 			if (nowDlg == 6) nowDlg = 0; /* Hidden additional color page. */
 			if (nowDlg == 13) {
 				nowDlg = 14;
@@ -244,7 +248,9 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 			ShowWindow(*hNowDlg, SW_SHOW);
 			UpdateWindow(*hNowDlg);
 
-			if (nowDlg < 9)
+			if (nowDlg == 20)
+				TreeView_SelectItem(hTree, hChild[20]);
+			else if (nowDlg < 9)
 				TreeView_SelectItem(hTree, hChild[nowDlg]);
 			else
 				TreeView_SelectItem(hTree, hParent[nowDlg - 10]);
@@ -355,10 +361,10 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 							nowDlg = 3;
 							CreatePageDialog(hDwnd, hDlg, bDlgFlg, nowDlg, GetSafeLanguageOffset() + IDD_PAGEGRAPH, PageGraphProc);
 							break;
-						case 104:
-							//nowDlg -= 10;
-							nowDlg = 4;
-							CreatePageDialog(hDwnd, hDlg, bDlgFlg, nowDlg, GetSafeLanguageOffset() + IDD_PAGEANALOG, PageAnalogClockProc);
+						case 104: // Compatibility route for old analog navigation.
+						case 108:
+							nowDlg = 20;
+							CreatePageDialogW(hDwnd, hDlg, bDlgFlg, nowDlg, GetSafeLanguageOffset() + IDD_PAGEEXTENDED, PageExtendedProc);
 							break;
 
 						case 105:
@@ -411,6 +417,13 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 					lp.code = PSN_APPLY;
 					/* INI switch: [ETC] ApplyActivePageOnly=1 keeps active-page-only apply. */
 					applyActiveOnly = GetMyRegLong("ETC", "ApplyActivePageOnly", 0) ? 1 : 0;
+					if (hDlg[20] && IsWindow(hDlg[20]) && (!applyActiveOnly || nowDlg == 20) &&
+                        !SendMessageW(hDlg[20], ACS_VALIDATE, 0, 0)) {
+                        TreeView_SelectItem(hTree, hChild[20]);
+                        InterlockedExchange(&g_inApplyDispatch, 0);
+                        InterlockedDecrement(&g_propdlgCommandDepth);
+                        break;
+                    }
                     /* Commit the menu first so a failed atomic save cannot close OK or write other pages. */
                     if (hDlg[19] && IsWindow(hDlg[19]) && (!applyActiveOnly || nowDlg == 19) &&
                         !SendMessageW(hDlg[19], RM_COMMIT, 0, 0)) {

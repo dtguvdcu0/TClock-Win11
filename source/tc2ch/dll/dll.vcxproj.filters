@@ -120,4 +120,11 @@
       <Filter>リソース ファイル</Filter>
     </Image>
   </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\common\analog_skin.cpp" />
+    <ClCompile Include="..\common\flip_clock.cpp" />
+    <ClInclude Include="..\common\analog_skin.h" />
+    <ClInclude Include="..\common\flip_clock.h" />
+    <ClInclude Include="..\common\nixie_draw.h" />
+  </ItemGroup>
 </Project>

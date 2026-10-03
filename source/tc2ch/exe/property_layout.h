@@ -20,7 +20,7 @@ static void pl_tree(HWND tree, HTREEITEM roots[], HTREEITEM children[])
  children[1] = pl_insert(tree, group, 101, MyStringW(IDS_PROP_FORMAT));
  children[3] = pl_insert(tree, group, 103, MyStringW(IDS_PROP_GRAPH));
  children[5] = pl_insert(tree, group, 105, MyStringW(IDS_BARMETER));
- children[4] = pl_insert(tree, group, 104, MyStringW(IDS_PROP_ANALOG));
+ children[20] = pl_insert(tree, group, 108, b_EnglishMenu ? L"Extended Display" : L"\u62e1\u5f35\u8868\u793a");
  roots[1] = pl_insert(tree, group, 1, MyStringW(IDS_TOOLTIP));
  group = pl_insert(tree, TVI_ROOT, -1, b_EnglishMenu ? L"Interaction" : L"\u64cd\u4f5c\u30fb\u901a\u77e5");
  roots[6] = pl_insert(tree, group, 6, MyStringW(IDS_PROP_MOUSE));

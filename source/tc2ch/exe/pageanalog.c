@@ -14,7 +14,6 @@ static void OnInit(HWND hDlg);
 static void OnApply(HWND hDlg);
 static void OnBrowseAnalogClockBitmapFile(HWND hDlg);
 static int GetSpinPos(HWND hDlg, int ctrlId);
-static void clr_aclock_cfg(void);
 static void NormalizeUtf8InPlaceNoWriteback(char* value, int valueBytes);
 
 //extern int confNo;
@@ -29,8 +28,9 @@ static COMBOCOLOR combocolor[2] = {
 
 __inline void SendPSChanged(HWND hDlg)
 {
+	if (GetWindowLongPtrW(hDlg, DWLP_USER) == 2) return;
 	g_bApplyClock = TRUE;
-	SendMessage(GetParent(hDlg), PSM_CHANGED, (WPARAM)(hDlg), 0);
+	SendMessageW(GetParent(hDlg), PSM_CHANGED, (WPARAM)(hDlg), 0);
 }
 
 static int GetSpinPos(HWND hDlg, int ctrlId)
@@ -38,20 +38,6 @@ static int GetSpinPos(HWND hDlg, int ctrlId)
 	return (int)(short)SendDlgItemMessage(hDlg, ctrlId, UDM_GETPOS, 0, 0);
 }
 
-static void clr_aclock_cfg(void)
-{
-	DelMyReg("AnalogClock", "UseAnalogClock");
-	DelMyReg("AnalogClock", "AnalogClockBmp");
-	DelMyReg("AnalogClock", "AClockHourHandColor");
-	DelMyReg("AnalogClock", "AClockMinHandColor");
-	DelMyReg("AnalogClock", "AnalogClockHourHandBold");
-	DelMyReg("AnalogClock", "AnalogClockMinHandBold");
-	DelMyReg("AnalogClock", "AnalogClockPos");
-	DelMyReg("AnalogClock", "AnalogClockAtStartBtn");
-	DelMyReg("AnalogClock", "AnalogClockHPos");
-	DelMyReg("AnalogClock", "AnalogClockVPos");
-	DelMyReg("AnalogClock", "AnalogClockSize");
-}
 
 /*------------------------------------------------
   Dialog procedure
@@ -62,7 +48,9 @@ BOOL CALLBACK PageAnalogClockProc(HWND hDlg, UINT message,
 	switch(message)
 	{
 		case WM_INITDIALOG:
+			SetWindowLongPtrW(hDlg, DWLP_USER, lParam ? 2 : 0);
 			OnInit(hDlg);
+			SetWindowLongPtrW(hDlg, DWLP_USER, lParam ? 1 : 0);
 			return TRUE;
 		case WM_MEASUREITEM:
 			OnMeasureItemColorCombo(lParam);
@@ -192,8 +180,9 @@ void OnApply(HWND hDlg)
 {
 	DWORD dw;
 	char fname[MAX_PATH + 1];
-	if (!IsDlgButtonChecked(hDlg, IDC_CHECK_ACLOCK)) {
-		clr_aclock_cfg();
+	if (!GetWindowLongPtrW(hDlg, DWLP_USER) && !IsDlgButtonChecked(hDlg, IDC_CHECK_ACLOCK)) {
+		// Disabling retains bitmap, colors and geometry for a later selection.
+		SetMyRegLong("AnalogClock", "UseAnalogClock", FALSE);
 		return;
 	}
 
@@ -212,8 +201,10 @@ void OnApply(HWND hDlg)
 	//アナログ時計位置の保存
 	SetMyRegLongDef("AnalogClock", "AnalogClockPos", CBGetCurSel(hDlg, IDC_ACLOCK_POS));
 
-	SetMyRegLongDef("AnalogClock", "UseAnalogClock",
-		IsDlgButtonChecked(hDlg, IDC_CHECK_ACLOCK));
+	// The containing Extended Display page owns enablement in embedded mode.
+	if (!GetWindowLongPtrW(hDlg, DWLP_USER))
+		SetMyRegLongDef("AnalogClock", "UseAnalogClock",
+			IsDlgButtonChecked(hDlg, IDC_CHECK_ACLOCK));
 
 	SetMyRegLongDef("AnalogClock", "AnalogClockHPos",
 		GetSpinPos(hDlg, IDC_SPIN_ACLOCK_HPOS));

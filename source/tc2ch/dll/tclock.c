@@ -5,6 +5,24 @@
 -------------------------------------------------------*/
 #include "tcdll.h"
 #include "minmode.h"
+#include "../common/analog_skin.h"
+#include "../common/flip_clock.h"
+static ACS_OPTIONS g_extOptions;
+static ACS_CONTEXT* g_extContext;
+static FLP_CONTEXT* g_flipContext;
+static SIZE g_extSize;
+static BOOL g_extTimer;
+static void ext_stop_timer(void);
+static void ext_draw_frame(void);
+static BOOL ext_is_active(void)
+{
+    return g_extOptions.enabled && (g_extContext || g_flipContext);
+}
+static int g_extDiameter;
+static void ext_load_settings(void);
+static int ext_get_slot(void);
+static void ext_get_content(RECT* content, RECT* slot);
+static void ext_draw_clock(const SYSTEMTIME* time);
 #include "resource.h"
 #include "../version.h"
 #include "../common/text_codec.h"
@@ -1799,19 +1817,31 @@ static BOOL wui_fill_state(TC_DISPLAY_BACKEND_RENDER_STATE* state, SYSTEMTIME* p
 	CopyMemory(g_wuiFrameInfo, s_info, sizeof(g_wuiFrameInfo));
 	g_wuiFrameSpans = formatSpans;
 	g_wuiFrameValid = TRUE;
+    if (ext_is_active() && GetClientRect(hwndClockMain, &rcClient)) {
+        RECT slot;
+        ext_get_content(&rcClient, &slot);
+        state->contentVersion = 1;
+        state->contentRect = rcClient;
+        // Existing analog retains its edge slot within the remaining image-clock content.
+        if (nAnalogClockUseFlag == ANALOG_CLOCK_USE && nAnalogClockPos != ANALOG_CLOCK_POS_MIDDLE) {
+            if (nAnalogClockPos == ANALOG_CLOCK_POS_LEFT) state->contentRect.left += sizeAClock.cx;
+            else state->contentRect.right -= sizeAClock.cx;
+        }
+    }
 	if (!g_formatStyleRules.enabled) return TRUE;
 	if (formatSpans.overflow || !GetClientRect(hwndClockMain, &rcClient)) return FALSE;
+    if (state->contentVersion) rcClient = state->contentRect;
 	if (!hdcClock) {
 		hdcFace = GetDC(hwndClockMain);
 		if (!hdcFace) return FALSE;
 		releaseMeasureDC = TRUE;
 	}
 	else hdcFace = hdcClock;
-	if (nTextPos == 1) xcenter = 0;
-	else if (nTextPos == 2) xcenter = rcClient.right - rcClient.left - nShadowRange;
-	else xcenter = (rcClient.right - rcClient.left) / 2;
+	if (nTextPos == 1) xcenter = rcClient.left;
+	else if (nTextPos == 2) xcenter = rcClient.right - nShadowRange;
+	else xcenter = rcClient.left + (rcClient.right - rcClient.left) / 2;
 	if (!FormatStyleBuildRuns(hdcFace, sW, s_info, &formatSpans, &styleMatched) ||
-		(styleMatched && !FormatStyleLayoutRuns(hdcFace, sW, xcenter, 0,
+		(styleMatched && !FormatStyleLayoutRuns(hdcFace, sW, xcenter, rcClient.top,
 			rcClient.right - rcClient.left, rcClient.bottom - rcClient.top, &styledWidth, &styledHeight))) {
 		if (releaseMeasureDC) ReleaseDC(hwndClockMain, hdcFace);
 		return FALSE;
@@ -1954,7 +1984,7 @@ static COLORREF tc_txtclr(int infoval)
 
 static void wui_push_frame(TC_DISPLAY_BACKEND_RENDER_STATE* state)
 {
-	if (g_wuiDllLive && !g_wuiStyleFallback && IsVertTaskbar(hwndTaskBarMain) && m_color_start) {
+	if (g_wuiDllLive && !g_wuiStyleFallback && (IsVertTaskbar(hwndTaskBarMain) || (ext_is_active())) && m_color_start) {
 		GdiFlush();
 		state->layerPixels = (const BYTE*)m_color_start;
 		state->layerWidth = bmi_MainClock.bmiHeader.biWidth;
@@ -2423,7 +2453,13 @@ void EndClock(void)
 
 	if (b_DebugLog)writeDebugLog_Win10("[tclock.c] EndClock called.", 999);
 
+	ext_stop_timer();
 	wui_stop_host();
+	acs_destroy(g_extContext);
+	flp_destroy(g_flipContext);
+	g_flipContext = NULL;
+	g_extContext = NULL;
+	ZeroMemory(&g_extOptions, sizeof(g_extOptions));
 
 	if (!b_CompactMode) {
 		newCodes_close_Win10();	//	-> Limited !b_CompactoMode to cope with Win10 April2018 Update
@@ -2629,6 +2665,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 		case WM_SYSCOLORCHANGE:
 		case WM_WININICHANGE:
 		case WM_TIMECHANGE:	
+            ext_stop_timer(); flp_reset(g_flipContext);
 		case (WM_USER+101):		// 親ウィンドウから送られる
 		{
 			CreateClockDC();
@@ -2671,6 +2708,12 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 			return 0;
 		}
 		case WM_TIMER:
+            if (wParam == IDTIMERDLL_FLIP) {
+                if (b_Sleeping || !ext_is_active()) {
+                    ext_stop_timer(); flp_reset(g_flipContext);
+                } else ext_draw_frame();
+                return 0;
+            }
 //			if (b_DebugLog) writeDebugLog_Win10("[tclock.c][WndProc() WM_TIMER received with ID: ", (int)wParam);
 			if (wParam == IDTIMERDLL_STARTUP_AUTOADJUST) {
 				KillTimer(hwndClockMain, IDTIMERDLL_STARTUP_AUTOADJUST);
@@ -2845,11 +2888,13 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 		case CLOCKM_SLEEP_IN:
 			if (b_DebugLog) writeDebugLog_Win10("[tclock.c][WndProc()] CLOCKM_SLEEP_IN received", 999);
 			if (b_ModernStandbySupported) b_Sleeping = TRUE;
+            ext_stop_timer(); flp_reset(g_flipContext);
 			return 0;
 
 		case CLOCKM_SLEEP_AWAKE:
 			if (b_DebugLog) writeDebugLog_Win10("[tclock.c][WndProc()] CLOCKM_SLEEP_AWAKE received", 999);
 			b_Sleeping = FALSE;
+            flp_reset(g_flipContext);
 			return 0;
 
 		case CLOCKM_REFRESHCLOCK: // refresh the clock
@@ -3205,6 +3250,7 @@ static void ReadDataMinimal(void)
 	if (b_DebugLog) writeDebugLog_Win10("[tclock.c] ReadDataMinimal called.", 999);
 
 	UpdateSettingFile();
+	ext_load_settings();
 	SetMyRegLong("Status_DoNotEdit", "Win11TClockMain", bWin11Main);
 
 	GetModuleFileName(hmod, g_mydir_dll, MAX_PATH);
@@ -3713,6 +3759,7 @@ void ReadData()
 
 
 	UpdateSettingFile();
+	ext_load_settings();
 
 	SetMyRegLong("Status_DoNotEdit", "Win11TClockMain", bWin11Main);
 
@@ -4774,7 +4821,9 @@ void OnTimer_Win10(void)
 
 	bRedraw = FALSE;
 
-	if (bDispSecond) bRedraw = TRUE;
+	if (ext_is_active() && ((g_extOptions.mode != EXT_MODE_FLIP && g_extOptions.mode != EXT_MODE_NIXIE) || g_extOptions.seconds) &&
+        LastTime.wSecond != t.wSecond) bRedraw = TRUE;
+	else if (bDispSecond) bRedraw = TRUE;
 	else if (nDispBeat == FORMAT_BEAT1 && beatLast != (beat100 / 100)) bRedraw = TRUE;
 	else if (nDispBeat == FORMAT_BEAT2 && beatLast != beat100) bRedraw = TRUE;
 	else if (bDispSysInfo) bRedraw = TRUE;
@@ -5567,75 +5616,12 @@ static VOID SetAnalogClockSize(SIZE *s)
 
 static BOOL InitAnalogClockData(HWND hWnd)
 {
-	UNREFERENCED_PARAMETER(hWnd);
-	//実際にはhWnd = hwndClockMain
-	BOOL use;
-	int confNo;
-	TCHAR fname[MAX_PATH];
-	HDC hDC;
-
-
-	confNo = 1;
-
-	use = GetMyRegLong("AnalogClock", "UseAnalogClock", FALSE);
-	if (use == FALSE) {
-		nAnalogClockUseFlag = ANALOG_CLOCK_NOTUSE;
-		nAnalogClockPos = ANALOG_CLOCK_POS_MIDDLE;
-		sizeAClock.cx = 0;
-		sizeAClock.cy = 0;
-		return FALSE;
-	}
-
-	nAnalogClockHPos = (int)(short)GetMyRegLong("AnalogClock", "AnalogClockHPos", 0);
-	nAnalogClockVPos = (int)(short)GetMyRegLong("AnalogClock", "AnalogClockVPos", 0);
-	nAnalogClockPos = (int)(short)GetMyRegLong("AnalogClock", "AnalogClockPos", 0);
-
-	colAClockHourHandColor = (COLORREF)GetMyRegColor("AnalogClock", "AClockHourHandColor", RGB(255, 0, 0));
-	//if (colAClockHourHandColor & 0x80000000) colAClockHourHandColor = GetSysColor(colAClockHourHandColor & 0x00ffffff);
-	SetMyRegColor("AnalogClock", "AClockHourHandColor", colAClockHourHandColor);
-
-	colAClockMinHandColor = (COLORREF)GetMyRegColor("AnalogClock", "AClockMinHandColor", RGB(0, 0, 255));
-	//if (colAClockMinHandColor & 0x80000000) colAClockMinHandColor = GetSysColor(colAClockMinHandColor & 0x00ffffff);
-	SetMyRegColor("AnalogClock", "AClockMinHandColor", colAClockMinHandColor);
-
-
-	if (hpenHour) {
-		DeleteObject(hpenHour);
-	}
-	if (hpenMin) {
-		DeleteObject(hpenMin);
-	}
-
-	if (GetMyRegLong("AnalogClock", "AnalogClockHourHandBold", FALSE)) {
-		nHourPenWidth = 2;
-	} else {
-		nHourPenWidth = 1;
-	}
-	if (GetMyRegLong("AnalogClock", "AnalogClockMinHandBold", FALSE)) {
-		nMinPenWidth = 2;
-	} else {
-		nMinPenWidth = 1;
-	}
-
-	hpenHour = CreatePen(PS_SOLID, nHourPenWidth, colAClockHourHandColor);
-	hpenMin = CreatePen(PS_SOLID, nMinPenWidth, colAClockMinHandColor);
-
-	SetAnalogClockSize(&sizeAClock);
-
-	GetMyRegStr("AnalogClock", "AnalogClockBmp", fname, MAX_PATH, "..\\tclock.bmp");
-	lstrcpy(szAnalogClockBmp, fname);
-
-
-
-
-	hDC = GetDC(hwndClockMain);
-
-	CreateAnalogClockDC(hwndClockMain, hDC, szAnalogClockBmp);
-	ReleaseDC(hwndClockMain, hDC);
-
-	nAnalogClockUseFlag = ANALOG_CLOCK_USE;
-
-	return TRUE;
+    UNREFERENCED_PARAMETER(hWnd);
+    // All analog modes now use the Extended Display renderer and geometry.
+    nAnalogClockUseFlag = ANALOG_CLOCK_NOTUSE;
+    nAnalogClockPos = ANALOG_CLOCK_POS_MIDDLE;
+    sizeAClock.cx = sizeAClock.cy = 0;
+    return FALSE;
 }
 
 static VOID DrawAnalogClockHand(HDC hDC, int dx, int dy, SYSTEMTIME* pt)
@@ -6474,6 +6460,12 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
 	yclock = 0;
 	wclock = rcClock.right;
 	hclock = rcClock.bottom;
+    if (ext_is_active()) {
+        RECT slot;
+        ext_get_content(&rcClock, &slot);
+        xclock = rcClock.left; yclock = rcClock.top;
+        wclock = rcClock.right-rcClock.left; hclock = rcClock.bottom-rcClock.top;
+    }
 
 
 	if (nAnalogClockUseFlag == ANALOG_CLOCK_USE) 
@@ -6886,6 +6878,7 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
 	}
 
 	//hdcClock_workはここでお役御免なので、サブクロック描画の際の透過率算出用に再利用する(赤チャネルだけ)
+	ext_draw_clock(pt);
 	for (color = m_color_start, color_work = m_color_work_start; color < m_color_end; ++color, ++color_work) {
 		color_work->rgbRed = color->rgbReserved;
 	}
@@ -7899,6 +7892,8 @@ void CalcMainClockContentSize(void)
 
 
 
+	if (g_bVertTaskbar) h += ext_get_slot();
+	else w += ext_get_slot();
 	widthMainClockContent = w;
 	heightMainClockContent = h;
 
@@ -8757,3 +8752,156 @@ void SetWindowVisible_Win10(HWND targetHWND, BOOL bVisibility)
 //	}
 //}
 
+
+// Image-clock state is owned by the explicit clock lifecycle, never DllMain.
+static void ext_draw_frame(void)
+{
+    SYSTEMTIME time;
+    int beat100 = 0;
+    HDC dc = GetDC(hwndClockMain);
+    if (!dc) return;
+    GetDisplayTime(&time, nDispBeat ? &beat100 : NULL);
+    // Animation frames reuse the selected backend; do not refresh INI/host ownership at 30 Hz.
+    if (hdcClock) wui_draw_main(dc, &time, beat100);
+    ReleaseDC(hwndClockMain, dc);
+}
+
+static void ext_stop_timer(void)
+{
+    if (g_extTimer && hwndClockMain) KillTimer(hwndClockMain, IDTIMERDLL_FLIP);
+    g_extTimer = FALSE;
+}
+
+static void ext_load_settings(void)
+{
+    ACS_OPTIONS next = {0};
+    char value[64];
+    ACS_CONTEXT* analog = NULL;
+    FLP_CONTEXT* flip = NULL;
+    next.enabled = GetMyRegLong("ExtendedDisplay", "Enabled", 0) != 0;
+    if (!next.enabled) {
+        ext_stop_timer();
+        acs_destroy(g_extContext); flp_destroy(g_flipContext);
+        g_extContext = NULL; g_flipContext = NULL;
+        ZeroMemory(&g_extOptions, sizeof(g_extOptions));
+        return;
+    }
+    GetMyRegStr("ExtendedDisplay", "Kind", value, sizeof(value), "ImageClock");
+    if (strcmp(value, "ImageClock")) { OutputDebugStringW(L"TClock: unsupported ExtendedDisplay Kind\n"); return; }
+    GetMyRegStr("ExtendedDisplay", "Mode", value, sizeof(value), "Normal");
+    if (!strcmp(value, "Classic")) next.mode = EXT_MODE_CLASSIC;
+    else if (!strcmp(value, "Flip")) next.mode = EXT_MODE_FLIP;
+    else if (!strcmp(value, "Legacy")) next.mode = EXT_MODE_LEGACY;
+    else if (!strcmp(value, "Nixie")) next.mode = EXT_MODE_NIXIE;
+    else if (strcmp(value, "Normal")) { OutputDebugStringW(L"TClock: unsupported image-clock mode\n"); return; }
+    if (next.mode == EXT_MODE_FLIP) {
+        GetMyRegStr("ExtendedDisplay", "FlipTheme", value, sizeof(value), "White");
+        if (!strcmp(value, "Black")) next.face = 1;
+        else if (strcmp(value, "White")) { OutputDebugStringW(L"TClock: unsupported flip-clock theme\n"); return; }
+    } else if (next.mode == EXT_MODE_NIXIE) {
+        next.face = 0;
+    } else if (next.mode == EXT_MODE_LEGACY) {
+        GetMyRegStr("ExtendedDisplay", "LegacySkinId", value, sizeof(value), "legacy-default");
+        if (strcmp(value, "legacy-default")) { OutputDebugStringW(L"TClock: unsupported legacy-clock skin\n"); return; }
+    } else {
+        GetMyRegStr("ExtendedDisplay", "SkinId", value, sizeof(value), "metal-arabic");
+        // Compatibility: retired Roman skin IDs render the replacement Arabic face.
+        if (!strcmp(value, "metal-ticks")) next.face = 1;
+        else if (strcmp(value, "metal-arabic") && strcmp(value, "metal-roman")) { OutputDebugStringW(L"TClock: unsupported image-clock skin\n"); return; }
+    }
+    next.diameter = (int)GetMyRegLong("ExtendedDisplay",
+        next.mode == EXT_MODE_NIXIE ? "NixieHeightDip" :
+        next.mode == EXT_MODE_FLIP ? "FlipHeightDip" :
+        (next.mode == EXT_MODE_LEGACY ? "LegacyDiameterDip" : "DiameterDip"), 0);
+    if (next.diameter && (next.diameter < 16 || next.diameter > 256)) next.diameter = 0;
+    next.offsetX = ClampInt((int)GetMyRegLong("ExtendedDisplay", "OffsetXDip", 0), -1000, 1000);
+    next.offsetY = ClampInt((int)GetMyRegLong("ExtendedDisplay", "OffsetYDip", 0), -1000, 1000);
+    next.nixieBase = GetMyRegLong("ExtendedDisplay", "NixieShowBase", 1) != 0;
+    next.seconds = GetMyRegLong("ExtendedDisplay", "ShowSeconds", 1) != 0;
+    next.colon = GetMyRegLong("ExtendedDisplay", next.mode == EXT_MODE_NIXIE ? "NixieShowColon" : "FlipShowColon", 1) != 0;
+    next.flipStacked = GetMyRegLong("ExtendedDisplay", next.mode == EXT_MODE_NIXIE ? "NixieSideStacked" : "FlipSideStacked", 1) != 0;
+    next.flipDuration = (int)GetMyRegLong("ExtendedDisplay", next.mode == EXT_MODE_NIXIE ? "NixieDurationMs" : "FlipDurationMs", next.mode == EXT_MODE_NIXIE ? 150 : 300);
+    if (next.flipDuration < 100 || next.flipDuration > 900) next.flipDuration = next.mode == EXT_MODE_NIXIE ? 150 : 300;
+    GetMyRegStr("ExtendedDisplay", "Placement", value, sizeof(value), "Left");
+    next.trailing = !strcmp(value, "Right");
+    if (ext_is_active() && g_extOptions.mode == next.mode && g_extOptions.face == next.face) {
+        ext_stop_timer(); flp_reset(g_flipContext); g_extOptions = next; return;
+    }
+    if (next.mode == EXT_MODE_NIXIE) flip = flp_create_nixie(hmod);
+    else if (next.mode == EXT_MODE_FLIP) flip = flp_create(hmod, next.face);
+    else analog = acs_create(hmod, next.mode, next.face);
+    if (!analog && !flip) {
+        OutputDebugStringW(L"TClock: cannot load selected clock skin; retaining last successful image-clock state\n");
+        return;
+    }
+    ext_stop_timer();
+    acs_destroy(g_extContext); flp_destroy(g_flipContext);
+    g_extContext = analog; g_flipContext = flip;
+    g_extOptions = next;
+}
+
+static int ext_get_slot(void)
+{
+    int cross, margin;
+    UINT dpi;
+    if (!ext_is_active()) { g_extDiameter = 0; ZeroMemory(&g_extSize, sizeof(g_extSize)); return 0; }
+    dpi = acs_get_dpi(hwndClockMain);
+    cross = g_bVertTaskbar ? widthMainClockFrame : heightMainClockFrame;
+    margin = max(1, MulDiv(1, dpi, 96));
+    if ((g_extOptions.mode == EXT_MODE_FLIP || g_extOptions.mode == EXT_MODE_NIXIE)) {
+        g_extDiameter = flp_get_mode_height(g_extOptions.mode, g_extOptions.diameter, cross, dpi,
+            g_bVertTaskbar, g_extOptions.flipStacked, g_extOptions.seconds, g_extOptions.colon);
+        if (!g_extDiameter || !flp_get_mode_size(g_extOptions.mode, g_extDiameter, g_bVertTaskbar && g_extOptions.flipStacked,
+            g_extOptions.seconds, g_extOptions.colon, &g_extSize)) return 0;
+    } else {
+        g_extDiameter = acs_get_diameter(g_extOptions.diameter, cross, dpi);
+        g_extSize.cx = g_extSize.cy = g_extDiameter;
+    }
+    if (!g_extDiameter) return 0;
+    return (g_bVertTaskbar ? g_extSize.cy : g_extSize.cx)+margin*2;
+}
+
+static void ext_get_content(RECT* content, RECT* slot)
+{
+    int extent = ext_get_slot();
+    *slot = *content;
+    if (!extent) { SetRectEmpty(slot); return; }
+    if (g_bVertTaskbar) {
+        extent = min(extent, max(0, content->bottom-content->top-1));
+        if (g_extOptions.trailing) { slot->top = content->bottom-extent; content->bottom -= extent; }
+        else { slot->bottom = content->top+extent; content->top += extent; }
+    } else {
+        extent = min(extent, max(0, content->right-content->left-1));
+        if (g_extOptions.trailing) { slot->left = content->right-extent; content->right -= extent; }
+        else { slot->right = content->left+extent; content->left += extent; }
+    }
+}
+
+static void ext_draw_clock(const SYSTEMTIME* time)
+{
+    RECT content = {0,0,widthMainClockFrame,heightMainClockFrame}, slot;
+    UINT dpi;
+    int x, y;
+    ext_get_content(&content, &slot);
+    if (IsRectEmpty(&slot)) { ext_stop_timer(); return; }
+    if ((g_extOptions.mode == EXT_MODE_FLIP || g_extOptions.mode == EXT_MODE_NIXIE)) {
+        flp_set_base(g_flipContext, g_extOptions.nixieBase);
+        if (!flp_render(g_flipContext, g_extDiameter, g_bVertTaskbar && g_extOptions.flipStacked,
+            g_extOptions.seconds, g_extOptions.colon, time, GetTickCount64(), !b_Sleeping, g_extOptions.flipDuration)) {
+            ext_stop_timer(); return;
+        }
+        if (flp_is_active(g_flipContext)) {
+            if (!g_extTimer) g_extTimer = SetTimer(hwndClockMain, IDTIMERDLL_FLIP, 33, NULL) != 0;
+            if (!g_extTimer)
+                flp_render(g_flipContext, g_extDiameter, g_bVertTaskbar && g_extOptions.flipStacked,
+                    g_extOptions.seconds, g_extOptions.colon, time, GetTickCount64(), FALSE, g_extOptions.flipDuration);
+        } else ext_stop_timer();
+    } else if (!acs_render(g_extContext, g_extDiameter, time, g_extOptions.seconds)) return;
+    dpi = acs_get_dpi(hwndClockMain);
+    x = slot.left+(slot.right-slot.left-g_extSize.cx)/2+MulDiv(g_extOptions.offsetX, dpi, 96);
+    y = slot.top+(slot.bottom-slot.top-g_extSize.cy)/2+MulDiv(g_extOptions.offsetY, dpi, 96);
+    GdiFlush();
+    if ((g_extOptions.mode == EXT_MODE_FLIP || g_extOptions.mode == EXT_MODE_NIXIE))
+        flp_blend(g_flipContext, m_color_start, widthMainClockFrame, heightMainClockFrame, x, y, &slot);
+    else acs_blend(g_extContext, m_color_start, widthMainClockFrame, heightMainClockFrame, x, y, &slot);
+}

@@ -63,6 +63,8 @@ typedef struct TC_DISPLAY_BACKEND_RENDER_STATE {
 	const BYTE* layerPixels;
 	LONG layerWidth;
 	LONG layerHeight;
+	DWORD contentVersion; // 1: contentRect reserves the image-clock slot; run coordinates remain frame-relative.
+	RECT contentRect;
 } TC_DISPLAY_BACKEND_RENDER_STATE;
 
 typedef struct WUI_TOOLTIP_STATE {

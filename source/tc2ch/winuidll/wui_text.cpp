@@ -191,6 +191,7 @@ static HRESULT wui_paint_text(const TC_DISPLAY_BACKEND_RENDER_STATE& state, cons
     int step = pixelHeight + state.lineHeight;
     if (step <= 0) step = pixelHeight;
     FLOAT y = (FLOAT)((content.bottom - content.top - pixelHeight - (max(lines, 1) - 1) * step) / 2 + state.vertPos);
+    if (state.contentVersion == 1) y += content.top;
     lstrcpynW(buffer, state.text, _countof(buffer));
     line = wcstok_s(buffer, L"\r\n", &cursor);
     while (line) {

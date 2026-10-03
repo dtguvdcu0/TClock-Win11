@@ -1,0 +1,44 @@
+Extended Display clock skins
+
+Open TClock Properties > Display > Extended Display and choose a clock mode.
+Normal (metal) offers Arabic or tick faces. Classic uses its Arabic face.
+Legacy analog uses the same controls and preview. Flip uses native cards.
+Nixie uses native clear tubes and amber wire digits with a short crossfade.
+Size 0 automatically fits the taskbar thickness; manual sizes use DIP.
+Placement, offsets and seconds use the shared Extended Display settings.
+
+Every skin.ini declares [Skin] Version=2 and Renderer:
+  ImageHands: Normal/Classic face and hand PNGs.
+  BitmapHands: Legacy bitmap face and native line hands.
+  Native: Flip cards, with no external image atlas.
+
+[Assets] contains only files actually loaded, relative to that skin folder.
+Normal: ArabicFace, TicksFace, HourHand, MinuteHand, SecondHand.
+Classic: Face, HourHand, MinuteHand, SecondHand.
+Legacy: Face=face.bmp. Hand colors, Length and Width remain in hand sections.
+Nested relative folders and Unicode filenames are supported. Absolute paths,
+parent traversal and duplicate keys are rejected. Use UTF-8 (optional BOM)
+or UTF-16 LE with BOM. Missing/invalid required assets fail loading.
+Retired metal-roman settings use the Arabic face until the next normal settings save.
+Existing image dimension contracts remain: Normal/Classic 1254x1254 PNG;
+Legacy square 16-4096 pixels, with its corner color treated as transparent.
+
+Flip [White]/[Black] define FaceColor, BorderColor, TextColor and SeamColor
+as six hexadecimal RRGGBB digits. Card geometry/font and flip animation are
+native; no white.png, black.png or atlas crop sections are required.
+
+Keep clock-skins beside the executable/DLLs. Restart TClock after manually
+editing a skin manifest. Builds migrate v1 manifests while preserving hand
+and face geometry, keep v2 settings and existing artwork, and copy missing
+bundled assets. Custom references require their files to exist at deployment.
+Obsolete atlases/backups are archived under backups outside clock-skins.
+Images remain external files and are not embedded into the executable.
+
+Nixie clock-skins/nixie/skin.ini uses [Skin] Version=2 Renderer=Native.
+[Amber] defines GlassColor, MeshColor, BaseColor, GlowColor, WireColor and
+CoreColor as RRGGBB. There are no raster images or unused atlas assets.
+The property page remembers NixieHeightDip, NixieShowColon,
+NixieSideStacked and NixieDurationMs independently of Flip settings.
+Size 0 fits automatically; side taskbars can stack groups or show them
+inline with automatic width reduction. Seconds/placement/offsets remain
+shared Extended Display controls. Transition duration is 0.10-0.90 seconds.

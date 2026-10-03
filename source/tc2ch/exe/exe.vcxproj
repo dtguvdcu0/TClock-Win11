@@ -387,7 +387,7 @@
       <OptimizeReferences>true</OptimizeReferences>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <TargetMachine>MachineX64</TargetMachine>
-      <AdditionalDependencies>%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>ucrt.lib;vcruntime.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|ARM'">
@@ -424,6 +424,7 @@
     <ClCompile Include="page.c" />
     <ClCompile Include="pageabout.c" />
     <ClCompile Include="pageanalog.c" />
+    <ClCompile Include="pageextended.c" />
     <ClCompile Include="pagebarmeter.c" />
     <ClCompile Include="pagechime.c" />
     <ClCompile Include="pagecustomvars.c" />
@@ -450,6 +451,8 @@
     <ClCompile Include="..\common\text_file_utf8.c" />
     <ClCompile Include="..\common\ini_io_utf8.c" />
     <ClCompile Include="..\common\color_value.c" />
+    <ClCompile Include="..\common\analog_skin.cpp" />
+    <ClCompile Include="..\common\flip_clock.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="resource.h" />
@@ -458,6 +461,9 @@
     <ClInclude Include="..\common\text_file_utf8.h" />
     <ClInclude Include="..\common\ini_io_utf8.h" />
     <ClInclude Include="..\common\color_value.h" />
+    <ClInclude Include="..\common\analog_skin.h" />
+    <ClInclude Include="..\common\flip_clock.h" />
+    <ClInclude Include="..\common\nixie_draw.h" />
   </ItemGroup>
   <ItemGroup>
     <Image Include="icon3.ico" />

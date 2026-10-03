@@ -274,6 +274,7 @@ static void wui_draw_text(Gdiplus::Graphics& graphics, const RECT& rcClient)
 	totalHeight = fontPixelHeight + ((lineCount - 1) * lineStep);
 	y = ((rcClient.bottom - rcClient.top) - totalHeight) / 2;
 	y += g_wuiState.vertPos;
+	if (g_wuiState.contentVersion == 1) y += rcClient.top;
 
 	lstrcpynW(textBuffer, g_wuiState.text, _countof(textBuffer));
 	line = wcstok_s(textBuffer, L"\r\n", &context);
@@ -287,6 +288,7 @@ static void wui_draw_text(Gdiplus::Graphics& graphics, const RECT& rcClient)
 		if (g_wuiState.textPos == 1) x = 0.0f;
 		else if (g_wuiState.textPos == 2) x = (Gdiplus::REAL)((rcClient.right - rcClient.left) - rcMeasure.Width);
 		else x = ((Gdiplus::REAL)(rcClient.right - rcClient.left) - rcMeasure.Width) / 2.0f;
+		if (g_wuiState.contentVersion == 1) x += rcClient.left;
 		rcLine = Gdiplus::RectF(x, (Gdiplus::REAL)y, rcMeasure.Width + 4.0f, (Gdiplus::REAL)fontPixelHeight + 4.0f);
 		if (g_wuiState.clockShadow && g_wuiState.shadowRange > 0) {
 			Gdiplus::RectF rcShadow = rcLine;
@@ -439,12 +441,18 @@ static void wui_present(HWND hwnd)
 		pixels[(pixelIndex * 4u) + 3u] = 1;
 	}
 
-	if (!g_wuiState.textRenderer || !wui_render_text(g_wuiState,
-		RECT{ g_wuiContentLeft, 0, g_wuiContentLeft + g_wuiContentWidth, sizeWindow.cy },
-		sizeWindow.cx, sizeWindow.cy, pixels)) {
-		pGraphics = new Gdiplus::Graphics(hdcMem);
-		wui_draw_text(*pGraphics, RECT{ g_wuiContentLeft, 0, g_wuiContentLeft + g_wuiContentWidth, sizeWindow.cy });
-	}
+    {
+        RECT textArea = {g_wuiContentLeft, 0, g_wuiContentLeft + g_wuiContentWidth, sizeWindow.cy};
+        if (g_wuiState.contentVersion == 1 && !g_wuiState.runCount) {
+            textArea = g_wuiState.contentRect;
+            OffsetRect(&textArea, g_wuiContentLeft, 0);
+        }
+        if (!g_wuiState.textRenderer || !wui_render_text(g_wuiState, textArea,
+            sizeWindow.cx, sizeWindow.cy, pixels)) {
+            pGraphics = new Gdiplus::Graphics(hdcMem);
+            wui_draw_text(*pGraphics, textArea);
+        }
+    }
 
 	if (pGraphics) {
 		pGraphics->Flush(Gdiplus::FlushIntentionSync);
@@ -972,7 +980,7 @@ extern "C" BOOL WINAPI WuiUpdateState(const TC_DISPLAY_BACKEND_RENDER_STATE* sta
 	ZeroMemory(&g_wuiState, sizeof(g_wuiState));
 	CopyMemory(&g_wuiState, state, cb);
 	g_wuiState.cb = sizeof(g_wuiState);
-	if (cb < sizeof(g_wuiState)) {
+	if (cb < offsetof(TC_DISPLAY_BACKEND_RENDER_STATE, contentVersion)) {
 		g_wuiState.layerPixels = NULL;
 		g_wuiState.layerWidth = g_wuiState.layerHeight = 0;
 	}

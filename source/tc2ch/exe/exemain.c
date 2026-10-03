@@ -507,13 +507,39 @@ static MOUSE_FUNC_INFO mouse_func_list[] = {
 	{ MOUSEFUNC_SETTING,		IDS_SETTING },	//Added by TTTT
 	{ MOUSEFUNC_NETWORKSTG,		IDS_NETWORKSTG},	//Added by TTTT
 	{ MOUSEFUNC_DATAUSAGE,		IDS_DATAUSAGE },	//Added by TTTT
+	{ MOUSEFUNC_TIMESYNC,		IDS_TIMESYNC },
+	{ MOUSEFUNC_DATETIME,		IDS_PROPDATE },
 	{ MOUSEFUNC_TCARD_OPEN,		IDS_TCARD_OPEN },
 	{ MOUSEFUNC_TCALENDAR_OPEN,	IDS_TCAL_OPEN },
 	{ MOUSEFUNC_TCAPTURE_SETTINGS,	IDS_TCAP_SETTING },
-	{ MOUSEFUNC_DATETIME,		IDS_PROPDATE },
+	{ MOUSEFUNC_TCYCLE_OPEN,		IDS_TCYC_OPEN },
 	{ MOUSEFUNC_OPENFILE,		IDS_OPENFILE},
 	{ MOUSEFUNC_FILELIST,		IDS_FILELIST}
 };
+
+BOOL act_is_available(HWND dialog, int function)
+{
+    const char* section;
+    int id;
+    HWND page, checkbox, parent = dialog ? GetParent(dialog) : NULL;
+    LONG enabled;
+    switch (function) {
+    case MOUSEFUNC_TCARD_OPEN: section = "TCard"; id = IDC_ETC_TCARD_INTEGRATION; break;
+    case MOUSEFUNC_TCALENDAR_OPEN: section = "TCalendar"; id = IDC_ETC_TCALENDAR_INTEGRATION; break;
+    case MOUSEFUNC_TCAPTURE_SETTINGS: section = "TCapture"; id = IDC_ETC_TCAPTURE_INTEGRATION; break;
+    case MOUSEFUNC_TCYCLE_OPEN: section = "TCycle"; id = IDC_ETC_TCYCLE_INTEGRATION; break;
+    default: return TRUE;
+    }
+    // Candidate lists follow the current property checkbox before Apply, without writing INI.
+    for (page = parent ? GetWindow(parent, GW_CHILD) : NULL; page; page = GetWindow(page, GW_HWNDNEXT)) {
+        checkbox = GetDlgItem(page, id);
+        if (checkbox) return SendMessageW(checkbox, BM_GETCHECK, 0, 0) == BST_CHECKED;
+    }
+    enabled = GetMyRegLong(section, "Enable", -1);
+    if (enabled == -1 && function == MOUSEFUNC_TCAPTURE_SETTINGS)
+        enabled = GetMyRegLong("ETC", "TCaptureEnable", 0);
+    return enabled != -1 && enabled != 0;
+}
 
 MOUSE_FUNC_INFO *GetMouseFuncList(void)
 {
@@ -1545,6 +1571,7 @@ LRESULT CALLBACK WndProc(HWND hwnd,	UINT message, WPARAM wParam, LPARAM lParam)	
 			TerminateTClock(hwnd);
 			return 0;
 		case WM_DESTROY:	//終了時処理。実際にはすべて終わってから届くようになっている。
+			MenuCloseTimeSync();
 			if (b_DebugLog) WriteDebug_New2("[exemain.c][WndProc] WM_DESTROY received");
 			return 0;
 		case WM_ENDSESSION:	//セッション終了時のTClock終了はこちらから

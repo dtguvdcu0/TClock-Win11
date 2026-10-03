@@ -66,7 +66,6 @@ extern BOOL g_ExitRequestedFromMenu;
 #define IDC_TCAP_SETTINGS 45990
 #define IDC_TCAP_CAPTURE 45989
 #define IDC_TCAL_OPEN 45991
-#define IDC_TCYC_OPEN 45992
 #define IDC_TCARD_OPEN 45995
 
 void tc_card_seed(void)
@@ -1118,9 +1117,73 @@ static void tc_menu_resolve_label_text(int itemIndex, const char* plainLabel, co
 	lstrcpyn(out, cache->text, outLen);
 }
 
+// The main UI thread owns the handle; its existing timer polls without blocking Explorer.
+static HANDLE g_menuSyncProcess;
+
+void MenuCloseTimeSync(void)
+{
+    if (g_menuSyncProcess) CloseHandle(g_menuSyncProcess);
+    g_menuSyncProcess = NULL;
+}
+
+static void menu_report_sync(HWND window, DWORD error)
+{
+    WCHAR details[512] = {0}, text[1024];
+    if (!error) {
+        MessageBoxW(window, MyStringW(IDS_TIMESYNC_DONE), MyStringW(IDS_TIMESYNC), MB_OK | MB_ICONINFORMATION | MB_SETFOREGROUND | MB_TOPMOST);
+        return;
+    }
+    FormatMessageW(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+        NULL, error, 0, details, _countof(details), NULL);
+    swprintf_s(text, _countof(text), MyStringW(IDS_TIMESYNC_FAILED), error, details);
+    MessageBoxW(window, text, MyStringW(IDS_TIMESYNC), MB_OK | MB_ICONERROR | MB_SETFOREGROUND | MB_TOPMOST);
+}
+
+static void menu_poll_sync(HWND window)
+{
+    DWORD status, error = 0;
+    if (!g_menuSyncProcess) return;
+    status = WaitForSingleObject(g_menuSyncProcess, 0);
+    if (status == WAIT_TIMEOUT) return;
+    if (status == WAIT_FAILED || !GetExitCodeProcess(g_menuSyncProcess, &error)) error = GetLastError();
+    MenuCloseTimeSync(); // Release before reporting so nested UI cannot reuse a stale handle.
+    menu_report_sync(window, error);
+}
+
+static void menu_start_sync(HWND window)
+{
+    WCHAR path[MAX_PATH];
+    UINT length;
+    SHELLEXECUTEINFOW execute = {sizeof(execute)};
+    if (g_menuSyncProcess) {
+        MessageBoxW(window, MyStringW(IDS_TIMESYNC_BUSY), MyStringW(IDS_TIMESYNC), MB_OK | MB_ICONINFORMATION | MB_SETFOREGROUND | MB_TOPMOST);
+        return;
+    }
+    length = GetSystemDirectoryW(path, _countof(path));
+    if (!length || length + _countof(L"\\w32tm.exe") > _countof(path)) {
+        menu_report_sync(window, length ? ERROR_BUFFER_OVERFLOW : GetLastError());
+        return;
+    }
+    lstrcatW(path, L"\\w32tm.exe");
+    execute.fMask = SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NOASYNC | SEE_MASK_FLAG_NO_UI;
+    execute.hwnd = window;
+    execute.lpVerb = L"runas";
+    execute.lpFile = path;
+    execute.lpParameters = L"/resync";
+    execute.nShow = SW_HIDE;
+    if (!ShellExecuteExW(&execute)) {
+        DWORD error = GetLastError();
+        if (error != ERROR_CANCELLED) menu_report_sync(window, error);
+        return;
+    }
+    if (!execute.hProcess) { menu_report_sync(window, ERROR_INVALID_HANDLE); return; }
+    g_menuSyncProcess = execute.hProcess;
+}
+
 void MenuOnTimerTick(HWND hwnd)
 {
 	int i;
+	menu_poll_sync(hwnd);
 	tc_menu_alarm_tick_all();
 	UNREFERENCED_PARAMETER(hwnd);
 	if (!g_menuPopupActive || !hPopupMenu) return;
@@ -1234,6 +1297,12 @@ static const char* tc_menu_default_label_for_action(const char* action)
 	if (_stricmp(action, "settings_home") == 0) return MyStringUTF8(IDS_SETTING);
 	if (_stricmp(action, "settings_network") == 0) return MyStringUTF8(IDS_NETWORKSTG);
 	if (_stricmp(action, "settings_datetime") == 0) return MyStringUTF8(IDS_PROPDATE);
+	if (_stricmp(action, "time_sync") == 0) return MyStringUTF8(IDS_TIMESYNC);
+	if (_stricmp(action, "settings_datausage") == 0) return MyStringUTF8(IDS_DATAUSAGE);
+	if (_stricmp(action, "tcard_open") == 0) return MyStringUTF8(IDS_TCARD_OPEN);
+	if (_stricmp(action, "tcalendar_open") == 0) return MyStringUTF8(IDS_TCAL_OPEN);
+	if (_stricmp(action, "tcapture_settings") == 0) return MyStringUTF8(IDS_TCAP_SETTING);
+	if (_stricmp(action, "tcycle_open") == 0) return MyStringUTF8(IDS_TCYC_OPEN);
 	if (_stricmp(action, "control_datetime") == 0) return MyStringUTF8(IDS_CONTROLDATE);
 	if (_stricmp(action, "remove_drive_dynamic") == 0) return MyStringUTF8(IDS_ABOUTRMVDRV);
 	return action;
@@ -1252,6 +1321,12 @@ static BOOL tc_menu_action_to_command(const char* action, UINT* outId)
 	if (_stricmp(action, "settings_home") == 0) { *outId = IDC_SETTING; return TRUE; }
 	if (_stricmp(action, "settings_network") == 0) { *outId = IDC_NETWORKSTG; return TRUE; }
 	if (_stricmp(action, "settings_datetime") == 0) { *outId = IDC_DATETIME_Win10; return TRUE; }
+	if (_stricmp(action, "time_sync") == 0) { *outId = IDC_TIMESYNC; return TRUE; }
+	if (_stricmp(action, "settings_datausage") == 0) { *outId = IDC_DATAUSAGE; return TRUE; }
+	if (_stricmp(action, "tcard_open") == 0) { *outId = IDC_TCARD_OPEN; return TRUE; }
+	if (_stricmp(action, "tcalendar_open") == 0) { *outId = IDC_TCAL_OPEN; return TRUE; }
+	if (_stricmp(action, "tcapture_settings") == 0) { *outId = IDC_TCAP_SETTINGS; return TRUE; }
+	if (_stricmp(action, "tcycle_open") == 0) { *outId = IDC_TCYC_OPEN; return TRUE; }
 	if (_stricmp(action, "control_datetime") == 0) { *outId = IDC_CONTROLDATE; return TRUE; }
 	if (_stricmp(action, "remove_drive_dynamic") == 0) { *outId = IDC_REMOVE_DRIVE0; return TRUE; }
 	return FALSE;
@@ -1900,6 +1975,13 @@ static void tc_menu_apply_custom_from_ini(HMENU hMenu)
 				if (b_NormalLog) WriteNormalLog(warn);
 				continue;
 			}
+            {
+                int function = cmdId == IDC_TCARD_OPEN ? MOUSEFUNC_TCARD_OPEN :
+                    cmdId == IDC_TCAL_OPEN ? MOUSEFUNC_TCALENDAR_OPEN :
+                    cmdId == IDC_TCAP_SETTINGS ? MOUSEFUNC_TCAPTURE_SETTINGS :
+                    cmdId == IDC_TCYC_OPEN ? MOUSEFUNC_TCYCLE_OPEN : MOUSEFUNC_NONE;
+                if (!act_is_available(NULL, function)) continue;
+            }
 			/* Keep fixed items single-instance in menu layout. */
 			if (tc_menu_is_fixed_id(cmdId)) {
 				continue;
@@ -2418,10 +2500,12 @@ void OnTClockCommand(HWND hwnd, WORD wID, WORD wCode)
 			ShellExecuteUtf8Strict(g_hwndMain, NULL, g_mydir, NULL, NULL, SW_SHOWNORMAL);
 			break;
 		case IDC_TCARD_OPEN:
+			if (!act_is_available(NULL, MOUSEFUNC_TCARD_OPEN)) return;
 			tc_card_launch();
 			return;
 		case IDC_TCYC_OPEN: // TCycle open
 		{
+			if (!act_is_available(NULL, MOUSEFUNC_TCYCLE_OPEN)) return;
 			char tcycPathCfg[MAX_PATH];
 			char tcycPath[MAX_PATH];
 			if (b_DebugLog) WriteDebug_New2("[menu.c][OnTClockCommand] IDC_TCYC_OPEN received");
@@ -2443,6 +2527,7 @@ void OnTClockCommand(HWND hwnd, WORD wID, WORD wCode)
 		}
 		case IDC_TCAL_OPEN: // TCalendar open
 		{
+			if (!act_is_available(NULL, MOUSEFUNC_TCALENDAR_OPEN)) return;
 			char tcalPathCfg[MAX_PATH];
 			char tcalPath[MAX_PATH];
 			if (b_DebugLog) WriteDebug_New2("[menu.c][OnTClockCommand] IDC_TCAL_OPEN received");
@@ -2481,6 +2566,7 @@ void OnTClockCommand(HWND hwnd, WORD wID, WORD wCode)
 		}
 		case IDC_TCAP_SETTINGS: // TCapture settings
 		{
+			if (!act_is_available(NULL, MOUSEFUNC_TCAPTURE_SETTINGS)) return;
 			char tcapPathCfg[MAX_PATH];
 			char tcapPath[MAX_PATH];
 			if (b_DebugLog) WriteDebug_New2("[menu.c][OnTClockCommand] IDC_TCAP_SETTINGS received");
@@ -2570,6 +2656,10 @@ void OnTClockCommand(HWND hwnd, WORD wID, WORD wCode)
 		case IDC_DATAUSAGE:	//Added by TTTT
 			if (b_DebugLog) WriteDebug_New2("[menu.c][OnTClockCommand] IDC_DATAUSAGE received");
 			ShellExecuteW(NULL, L"open", L"ms-settings:datausage", NULL, NULL, SW_SHOWNORMAL);
+			return;
+
+		case IDC_TIMESYNC:
+			menu_start_sync(hwnd);
 			return;
 
 		case IDC_CONTROLDATE:

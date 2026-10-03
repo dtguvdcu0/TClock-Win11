@@ -1097,6 +1097,14 @@ void ExecuteMouseFunction(HWND hwnd, LONG fnc, int btn, int clk)
 			break;
 		}
 
+		case MOUSEFUNC_TIMESYNC:
+			PostMessageW(hwnd, WM_COMMAND, IDC_TIMESYNC, 0);
+			break;
+
+		case MOUSEFUNC_TCYCLE_OPEN:
+			PostMessageW(hwnd, WM_COMMAND, IDC_TCYC_OPEN, 0);
+			break;
+
 		case MOUSEFUNC_CONTROLDATE:
 			PostMessageW(hwnd, WM_COMMAND, IDC_CONTROLDATE, 0);
 			break;

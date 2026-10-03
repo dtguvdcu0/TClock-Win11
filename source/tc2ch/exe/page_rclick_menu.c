@@ -110,7 +110,8 @@ static void rm_get_combo_text(HWND hDlg, int id, char* out, int outBytes, const 
             return;
         }
         if (id == IDC_RM_ITEM_ACTION) {
-            lstrcpyn(out, rm_action_key_from_index(sel), outBytes);
+            int actionIndex = (int)SendDlgItemMessageW(hDlg, id, CB_GETITEMDATA, sel, 0);
+            lstrcpyn(out, rm_action_key_from_index(actionIndex), outBytes);
             return;
         }
         CBGetLBText(hDlg, id, sel, out);
@@ -220,6 +221,12 @@ static const char* rm_default_label_for_action(const char* action)
     if (lstrcmpi(action, "settings_home") == 0) return MyStringUTF8(IDS_SETTING);
     if (lstrcmpi(action, "settings_network") == 0) return MyStringUTF8(IDS_NETWORKSTG);
     if (lstrcmpi(action, "settings_datetime") == 0) return MyStringUTF8(IDS_PROPDATE);
+    if (lstrcmpi(action, "time_sync") == 0) return MyStringUTF8(IDS_TIMESYNC);
+    if (lstrcmpi(action, "settings_datausage") == 0) return MyStringUTF8(IDS_DATAUSAGE);
+    if (lstrcmpi(action, "tcard_open") == 0) return MyStringUTF8(IDS_TCARD_OPEN);
+    if (lstrcmpi(action, "tcalendar_open") == 0) return MyStringUTF8(IDS_TCAL_OPEN);
+    if (lstrcmpi(action, "tcapture_settings") == 0) return MyStringUTF8(IDS_TCAP_SETTING);
+    if (lstrcmpi(action, "tcycle_open") == 0) return MyStringUTF8(IDS_TCYC_OPEN);
     if (lstrcmpi(action, "control_datetime") == 0) return MyStringUTF8(IDS_CONTROLDATE);
     if (lstrcmpi(action, "remove_drive_dynamic") == 0) return MyStringUTF8(IDS_ABOUTRMVDRV);
     return action;
@@ -238,8 +245,14 @@ static const char* rm_action_key_from_index(int idx)
     case 7: return "control_datetime";
     case 8: return "settings_home";
     case 9: return "settings_network";
-    case 10: return "settings_datetime";
-    case 11: return "remove_drive_dynamic";
+    case 10: return "settings_datausage";
+    case 11: return "time_sync";
+    case 12: return "settings_datetime";
+    case 13: return "tcard_open";
+    case 14: return "tcalendar_open";
+    case 15: return "tcapture_settings";
+    case 16: return "tcycle_open";
+    case 17: return "remove_drive_dynamic";
     default: return "taskmgr";
     }
 }
@@ -248,7 +261,7 @@ static int rm_action_index_from_key(const char* key)
 {
     int i;
     if (!key || !key[0]) return -1;
-    for (i = 0; i < 12; ++i) {
+    for (i = 0; i < 18; ++i) {
         if (lstrcmpi(key, rm_action_key_from_index(i)) == 0) return i;
     }
     return -1;
@@ -258,8 +271,13 @@ static void rm_fill_builtin_action_combo(HWND hDlg)
 {
     int i;
     CBResetContent(hDlg, IDC_RM_ITEM_ACTION);
-    for (i = 0; i < 12; ++i) {
-        CBAddStringUTF8Compat(hDlg, IDC_RM_ITEM_ACTION, rm_default_label_for_action(rm_action_key_from_index(i)));
+    for (i = 0; i < 18; ++i) {
+        int function = i == 13 ? MOUSEFUNC_TCARD_OPEN : i == 14 ? MOUSEFUNC_TCALENDAR_OPEN :
+            i == 15 ? MOUSEFUNC_TCAPTURE_SETTINGS : i == 16 ? MOUSEFUNC_TCYCLE_OPEN : MOUSEFUNC_NONE;
+        int row;
+        if (!act_is_available(hDlg, function)) continue;
+        row = CBAddStringUTF8Compat(hDlg, IDC_RM_ITEM_ACTION, rm_default_label_for_action(rm_action_key_from_index(i)));
+        CBSetItemData(hDlg, IDC_RM_ITEM_ACTION, row, i);
     }
 }
 static void rm_fill_show_combo(HWND hDlg, int alarmMode)
@@ -618,7 +636,10 @@ static void rm_item_capture_controls(HWND hDlg, RM_MENU_ITEM_DATA* item)
     rm_get_combo_text(hDlg, IDC_RM_ITEM_TYPE, item->mode, (int)sizeof(item->mode), "builtin");
     item->enabled = IsDlgButtonChecked(hDlg, IDC_RM_ITEM_ENABLED) == BST_CHECKED;
     GetDlgItemTextUTF8(hDlg, IDC_RM_ITEM_LABEL, item->label, (int)sizeof(item->label));
-    rm_get_combo_text(hDlg, IDC_RM_ITEM_ACTION, item->action, (int)sizeof(item->action), "");
+    /* An omitted saved plugin action keeps its stable key until the user chooses another row. */
+    if (_stricmp(item->mode, "builtin") || CBGetCurSel(hDlg, IDC_RM_ITEM_ACTION) >= 0 ||
+        rm_action_index_from_key(item->action) < 0)
+        rm_get_combo_text(hDlg, IDC_RM_ITEM_ACTION, item->action, (int)sizeof(item->action), "");
     GetDlgItemTextUTF8(hDlg, IDC_RM_ITEM_PARAM, item->param, (int)sizeof(item->param));
     GetDlgItemTextUTF8(hDlg, IDC_RM_ITEM_ARGS, item->args, (int)sizeof(item->args));
     GetDlgItemTextUTF8(hDlg, IDC_RM_ITEM_WORKDIR, item->workdir, (int)sizeof(item->workdir));
@@ -648,8 +669,14 @@ static void rm_item_load_controls(HWND hDlg, const RM_MENU_ITEM_DATA* item)
     CheckDlgButton(hDlg, IDC_RM_ITEM_ENABLED, item->enabled ? BST_CHECKED : BST_UNCHECKED);
     SetDlgItemTextUTF8Strict(hDlg, IDC_RM_ITEM_LABEL, item->label);
     index = rm_action_index_from_key(item->action);
-    if (index >= 0) CBSetCurSel(hDlg, IDC_RM_ITEM_ACTION, index);
-    else SetDlgItemTextUTF8Strict(hDlg, IDC_RM_ITEM_ACTION, item->action);
+    {
+        int row, found = -1;
+        for (row = 0; row < CBGetCount(hDlg, IDC_RM_ITEM_ACTION); ++row)
+            if ((int)CBGetItemData(hDlg, IDC_RM_ITEM_ACTION, row) == index) { found = row; break; }
+        CBSetCurSel(hDlg, IDC_RM_ITEM_ACTION, found);
+        if (found < 0) SetDlgItemTextUTF8Strict(hDlg, IDC_RM_ITEM_ACTION,
+            index >= 0 ? rm_default_label_for_action(item->action) : item->action);
+    }
     SetDlgItemTextUTF8Strict(hDlg, IDC_RM_ITEM_PARAM, item->param);
     SetDlgItemTextUTF8Strict(hDlg, IDC_RM_ITEM_ARGS, item->args);
     SetDlgItemTextUTF8Strict(hDlg, IDC_RM_ITEM_WORKDIR, item->workdir);
@@ -900,6 +927,15 @@ BOOL CALLBACK PageRClickMenuProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
         return TRUE;
     case WM_INITDIALOG:
         rm_on_init(hDlg);
+        return TRUE;
+    case WM_SHOWWINDOW:
+        if (wParam && g_rm_ready && g_rm_item_count > 0) {
+            g_rm_loading = 1;
+            rm_item_capture_controls(hDlg, &g_rm_items[g_rm_selectedN - 1]);
+            rm_fill_builtin_action_combo(hDlg);
+            rm_item_load_controls(hDlg, &g_rm_items[g_rm_selectedN - 1]);
+            g_rm_loading = 0;
+        }
         return TRUE;
     case WM_COMMAND:
     {

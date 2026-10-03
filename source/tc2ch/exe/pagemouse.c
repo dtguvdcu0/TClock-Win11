@@ -35,8 +35,6 @@ static BOOL HasLegacyLeftClickZoneKeys(void);
 static void OnSansho(HWND hDlg, WORD id);
 static void InitMouseFuncList(HWND hDlg);
 static void InitMouseFuncCombo(HWND hDlg, int ctrlId);
-static LONG GetTCaptureEnableForMousePage(void);
-static LONG GetTCalendarEnableForMousePage(void);
 static void ShowZoneFuncRow(HWND hDlg, int labelId, int comboId, BOOL show);
 static void SetMouseFuncComboValue(HWND hDlg, int ctrlId, int func);
 static LONG GetZoneCountValue(int button, int click);
@@ -95,25 +93,7 @@ __inline void SendPSChanged(HWND hDlg)
 extern BOOL b_EnglishMenu;
 extern int Language_Offset;
 
-static LONG GetTCaptureEnableForMousePage(void)
-{
-	LONG v = GetMyRegLong("TCapture", "Enable", -1);
-	if (v != -1) return (v != 0) ? 1 : 0;
-	v = GetMyRegLong("ETC", "TCaptureEnable", 0);
-	SetMyRegLong("TCapture", "Enable", (v != 0) ? 1 : 0);
-	DelMyReg("ETC", "TCaptureEnable");
-	return (v != 0) ? 1 : 0;
-}
 
-static LONG GetTCalendarEnableForMousePage(void)
-{
-	LONG v = GetMyRegLong("TCalendar", "Enable", -1);
-	if (v == -1) {
-		SetMyRegLong("TCalendar", "Enable", 0);
-		return 0;
-	}
-	return (v != 0) ? 1 : 0;
-}
 
 static void ShowZoneFuncRow(HWND hDlg, int labelId, int comboId, BOOL show)
 {
@@ -177,7 +157,8 @@ static void SetMouseFuncComboValue(HWND hDlg, int ctrlId, int func)
 			return;
 		}
 	}
-	CBSetCurSel(hDlg, ctrlId, 0);
+	/* Keep omitted plugin assignments in the backing data; no replacement selection. */
+	CBSetCurSel(hDlg, ctrlId, -1);
 }
 
 static LONG GetZoneCountValue(int button, int click)
@@ -707,6 +688,15 @@ BOOL CALLBACK PageMouseProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
 		case WM_INITDIALOG:
 			OnInit(hDlg);
 			return TRUE;
+        case WM_SHOWWINDOW:
+            if (wParam && pData) {
+                InitMouseFuncCombo(hDlg, IDC_MOUSEFUNC);
+                InitMouseFuncCombo(hDlg, IDC_ZONE2FUNC);
+                InitMouseFuncCombo(hDlg, IDC_ZONE3FUNC);
+                SetMouseFuncComboValue(hDlg, IDC_MOUSEFUNC, zone_func[0]);
+                RefreshZoneControls(hDlg);
+            }
+            return TRUE;
 		case WM_COMMAND:
 		{
 			WORD id, code;
@@ -1169,6 +1159,7 @@ void OnMouseClickTime(HWND hDlg, int id)
 	if (click < 0 || click >= 4) return;
 	LoadZoneCurrent(hDlg);
 	func = zone_func[0];
+	CBSetCurSel(hDlg, IDC_MOUSEFUNC, -1);
 
 	count = CBGetCount(hDlg, IDC_MOUSEFUNC);
 	for(i = 0; i < count; i++)
@@ -1384,17 +1375,13 @@ void InitMouseFuncCombo(HWND hDlg, int ctrlId)
 {
 	int i, index, cnt;
 	MOUSE_FUNC_INFO *pmfl;
-	LONG tcapEnabled = GetTCaptureEnableForMousePage();
-	LONG tcalEnabled = GetTCalendarEnableForMousePage();
 
 	CBResetContent(hDlg, ctrlId);
 	cnt = GetMouseFuncCount();
 	pmfl = GetMouseFuncList();
 	for (i = 0; i < cnt; i++)
 	{
-		if (pmfl[i].mousefunc == MOUSEFUNC_TCARD_OPEN && !GetMyRegLong("TCard", "Enable", 0)) continue;
-		if (pmfl[i].mousefunc == MOUSEFUNC_TCALENDAR_OPEN && !tcalEnabled) continue;
-		if (pmfl[i].mousefunc == MOUSEFUNC_TCAPTURE_SETTINGS && !tcapEnabled) continue;
+		if (!act_is_available(hDlg, pmfl[i].mousefunc)) continue;
 		//リストの各項目を追加
 		index = CBAddStringUTF8Compat(hDlg, ctrlId, MyStringUTF8(pmfl[i].idstring));
 		CBSetItemData(hDlg, ctrlId, index, pmfl[i].mousefunc);

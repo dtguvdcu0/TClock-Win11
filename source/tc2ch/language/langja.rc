@@ -2315,3 +2315,20 @@ BEGIN
     EDITTEXT IDC_ACLOCKBMP,83,103,102,12,ES_AUTOHSCROLL
     PUSHBUTTON "...",IDC_ACLOCKBMPBROWSE,191,103,12,12
 END
+
+LANGUAGE LANG_JAPANESE, SUBLANG_DEFAULT
+STRINGTABLE
+BEGIN
+    IDS_TIMESYNC "時刻を同期"
+    IDS_TIMESYNC_DONE "時刻の同期が完了しました。"
+    IDS_TIMESYNC_FAILED "時刻の同期に失敗しました。\nWindows Time サービスとネットワーク接続を確認してください。\n\nエラー: %lu\n%s"
+    IDS_TIMESYNC_BUSY "時刻の同期を実行中です。"
+END
+
+STRINGTABLE
+BEGIN
+    IDS_TIMESYNC2 "Synchronize time"
+    IDS_TIMESYNC_DONE2 "Time synchronization completed."
+    IDS_TIMESYNC_FAILED2 "Time synchronization failed.\nCheck the Windows Time service and network connection.\n\nError: %lu\n%s"
+    IDS_TIMESYNC_BUSY2 "Time synchronization is already running."
+END

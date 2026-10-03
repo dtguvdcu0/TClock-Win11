@@ -167,6 +167,11 @@ int r_strcmp(const char* d, const char* s);
 
 // for mouse.c and pagemouce.c
 #define MOUSEFUNC_CONTROLDATE 215
+#define MOUSEFUNC_TIMESYNC 216
+#define MOUSEFUNC_TCYCLE_OPEN 217
+#define IDC_TCYC_OPEN 45992
+/* New actions belong in both mouse and builtin lists; plugin eligibility is shared. */
+BOOL act_is_available(HWND dialog, int function);
 #define MOUSEFUNC_NONE       -1
 #define MOUSEFUNC_DATETIME    0
 #define MOUSEFUNC_TCLOCKMENU    1
@@ -285,6 +290,7 @@ void MenuCustomRemapAlarms(const int* sourceRows, int count);
 void OnContextMenu(HWND hwnd, HWND hwndClicked, int xPos, int yPos);
 void OnTClockCommand(HWND hwnd, WORD wID, WORD wCode);
 void MenuOnTimerTick(HWND hwnd);
+void MenuCloseTimeSync(void);
 void MenuOnMenuRButtonUp(HWND hwnd, WPARAM wParam, LPARAM lParam);
 
 // mouse.c

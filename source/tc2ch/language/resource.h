@@ -191,6 +191,7 @@
 #define IDC_DATETIME_Win10              406
 #define IDC_DATETIME                    408
 #define IDC_CONTROLDATE                 409
+#define IDC_TIMESYNC                    410
 #define IDC_TASKBARPROP                 413
 #define IDC_TASKMAN                     420
 #define IDC_POWERPNL                    421
@@ -1010,3 +1011,15 @@
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif
+
+#define IDS_TIMESYNC 801
+#define IDS_TIMESYNC2 1801
+
+#define IDS_TIMESYNC_DONE 802
+#define IDS_TIMESYNC_DONE2 1802
+
+#define IDS_TIMESYNC_FAILED 803
+#define IDS_TIMESYNC_FAILED2 1803
+
+#define IDS_TIMESYNC_BUSY 804
+#define IDS_TIMESYNC_BUSY2 1804

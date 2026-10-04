@@ -453,6 +453,7 @@
     <ClCompile Include="..\common\color_value.c" />
     <ClCompile Include="..\common\analog_skin.cpp" />
     <ClCompile Include="..\common\flip_clock.cpp" />
+    <ClCompile Include="..\common\led_clock.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="resource.h" />

@@ -4,7 +4,7 @@
 extern "C" {
 #endif
 typedef struct ACS_CONTEXT ACS_CONTEXT;
-enum { EXT_MODE_NORMAL = 0, EXT_MODE_CLASSIC = 1, EXT_MODE_FLIP = 2, EXT_MODE_LEGACY = 3, EXT_MODE_NIXIE = 4 };
+enum { EXT_MODE_NORMAL = 0, EXT_MODE_CLASSIC = 1, EXT_MODE_FLIP = 2, EXT_MODE_LEGACY = 3, EXT_MODE_NIXIE = 4, EXT_MODE_LED = 5 };
 typedef struct ACS_OPTIONS {
     BOOL enabled;
     int face;

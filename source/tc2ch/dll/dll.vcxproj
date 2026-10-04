@@ -414,6 +414,8 @@
     <ClCompile Include="..\common\color_value.c" />
     <ClCompile Include="..\common\analog_skin.cpp" />
     <ClCompile Include="..\common\flip_clock.cpp" />
+    <ClCompile Include="..\common\led_clock.cpp" />
+    <ClCompile Include="..\common\led_surface.cpp" />
     <ClCompile Include="hdd.c" />
     <ClCompile Include="minmode.c" />
     <ClCompile Include="net.c" />

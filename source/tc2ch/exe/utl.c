@@ -1056,6 +1056,12 @@ void CheckNormalLog(void)
 /*------------------------------------------------
 　自分のレジストリから文字列を得る
 --------------------------------------------------*/
+static BOOL ini_is_ledformat(const char* section,const char* entry)
+{
+    return section && entry && _stricmp(section,"ExtendedDisplay")==0 &&
+        (_stricmp(entry,"LedDateFormat")==0 || _stricmp(entry,"LedFormat1")==0 || _stricmp(entry,"LedFormat2")==0 || _stricmp(entry,"LedFormat3")==0);
+}
+
 int GetMyRegStr(const char* section, const char* entry, char* val, int cbData,
 	const char* defval)
 {
@@ -1085,6 +1091,11 @@ int GetMyRegStr(const char* section, const char* entry, char* val, int cbData,
 
 	{
 		if (tc_ini_utf8_detect_file(g_inifile, &isUtf8, NULL) && isUtf8) {
+            // UTF-8 textual compatibility boundary: format quotes must survive unchanged.
+            if(ini_is_ledformat(section,entry)) {
+                r=tc_ini_utf8_read_string(g_inifile,key,entry,defval?defval:"",val,cbData);
+                goto getmyregstr_done;
+            }
 			isUtf8Target = tc_is_utf8_hex_target_key(section, entry);
 			if (tc_is_utf8_hex_target_key(section, entry)) {
 				char mainbuf[4096];
@@ -1343,7 +1354,11 @@ BOOL SetMyRegStr(const char* section, const char* entry, const char* val)
 		lstrcpyn(saveval, val, (int)sizeof(saveval));
 
 	if (tc_ini_utf8_detect_file(g_inifile, &isUtf8, NULL) && isUtf8) {
-		if (tc_is_utf8_hex_target_key(section, entry)) {
+		if(ini_is_ledformat(section,entry)) {
+                // Raw UTF-8 format contract; do not add storage quotes.
+                r=tc_ini_utf8_write_string(g_inifile,key,entry,val);
+            }
+            else if (tc_is_utf8_hex_target_key(section, entry)) {
 			char hexbuf[4096];
 			char hexEntry[128];
 			char currentHex[4096];

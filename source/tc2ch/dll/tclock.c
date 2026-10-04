@@ -7,27 +7,34 @@
 #include "minmode.h"
 #include "../common/analog_skin.h"
 #include "../common/flip_clock.h"
+#include "../common/led_clock.h"
+#include "../common/led_surface.h"
 static ACS_OPTIONS g_extOptions;
 static ACS_CONTEXT* g_extContext;
 static FLP_CONTEXT* g_flipContext;
+static LED_CONTEXT* g_ledContext;
+static LED_OPTIONS g_ledOptions;
+static int g_ledLayoutColumns;
 static SIZE g_extSize;
 static BOOL g_extTimer;
 static void ext_stop_timer(void);
 static void ext_draw_frame(void);
 static BOOL ext_is_active(void)
 {
-    return g_extOptions.enabled && (g_extContext || g_flipContext);
+    return g_extOptions.enabled && (g_extContext || g_flipContext || g_ledContext);
 }
 static int g_extDiameter;
 static void ext_load_settings(void);
 static int ext_get_slot(void);
 static void ext_get_content(RECT* content, RECT* slot);
 static void ext_draw_clock(const SYSTEMTIME* time);
+static BOOL ext_update_surface(const SYSTEMTIME* time,const RECT* slot);
 #include "resource.h"
 #include "../version.h"
 #include "../common/text_codec.h"
 #include "../common/ini_io_utf8.h"
 #include "../winuidll/wui_api.h"
+static LED_SURFACE* g_ledSurface;
 #include "../autoback_points.h"
 #include "../common/taskbar_edge.h"
 #include <math.h>
@@ -2454,10 +2461,12 @@ void EndClock(void)
 	if (b_DebugLog)writeDebugLog_Win10("[tclock.c] EndClock called.", 999);
 
 	ext_stop_timer();
+    led_stop_surface(g_ledSurface);g_ledSurface=NULL;
 	wui_stop_host();
 	w11_close_desktop();
 	acs_destroy(g_extContext);
 	flp_destroy(g_flipContext);
+    led_destroy(g_ledContext); g_ledContext = NULL;
 	g_flipContext = NULL;
 	g_extContext = NULL;
 	ZeroMemory(&g_extOptions, sizeof(g_extOptions));
@@ -2899,6 +2908,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 		case CLOCKM_SLEEP_IN:
 			if (b_DebugLog) writeDebugLog_Win10("[tclock.c][WndProc()] CLOCKM_SLEEP_IN received", 999);
 			if (b_ModernStandbySupported) b_Sleeping = TRUE;
+            led_stop_surface(g_ledSurface);g_ledSurface=NULL;
             ext_stop_timer(); flp_reset(g_flipContext);
 			return 0;
 
@@ -4655,6 +4665,36 @@ void GetDisplayTime(SYSTEMTIME* pt, int* beat100)
 	memcpy(pt, &lt, sizeof(lt));
 }
 
+BOOL WINAPI FormatDisplayTextW(const WCHAR* fmt,const SYSTEMTIME* time,WCHAR* output,int capacity)
+{
+    char raw[LED_FORMAT_MAX*4+1],wrapped[LED_FORMAT_MAX*8+16],info[1024] = {0};
+    WCHAR wrappedW[LED_FORMAT_MAX*8+16],result[LED_TEXT_MAX+2] = {0};
+    SYSTEMTIME local,utc;
+    DWORD infoFlags;
+    int beat100;
+    if(!fmt || !time || !output || capacity<1)return FALSE;
+    output[0]=0;
+    if(lstrlenW(fmt)>LED_FORMAT_MAX)return FALSE;
+    // Text-only UTF-8 bridge to the existing clock-format wrapper; paths remain UTF-16.
+    if(!WideCharToMultiByte(CP_UTF8,WC_ERR_INVALID_CHARS,fmt,-1,raw,sizeof(raw),NULL,NULL))return FALSE;
+    BuildMainFormatWrapped(raw,wrapped,sizeof(wrapped),FALSE,"[LED format]");
+    if(!MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,wrapped,-1,wrappedW,_countof(wrappedW)))return FALSE;
+    infoFlags=FindFormatW(wrappedW);
+    if(infoFlags & (FORMAT_BATTERY|FORMAT_MEMORY|FORMAT_NET|FORMAT_HDD|FORMAT_CPU|FORMAT_VOL|FORMAT_GPU|FORMAT_TEMP))
+        UpdateSysRes((infoFlags&FORMAT_BATTERY)!=0,(infoFlags&FORMAT_MEMORY)!=0,(infoFlags&FORMAT_NET)!=0,
+            (infoFlags&FORMAT_HDD)!=0,(infoFlags&FORMAT_CPU)!=0,(infoFlags&FORMAT_VOL)!=0,
+            (infoFlags&FORMAT_GPU)!=0,(infoFlags&FORMAT_TEMP)!=0);
+    local=*time;utc=local;
+    TzSpecificLocalTimeToSystemTime(NULL,&local,&utc);
+    beat100=(((utc.wHour*3600+utc.wMinute*60+utc.wSecond+3600)%86400)*1000)/864;
+    bHour12=GetMyRegLong("Format","Hour12",0);
+    bHourZero=GetMyRegLong("Format","HourZero",0);
+    InitFormat(&local);
+    MakeFormatW(result,_countof(result),info,&local,beat100,wrappedW);
+    if(lstrlenW(result)>LED_TEXT_MAX || lstrlenW(result)>=capacity)return FALSE;
+    lstrcpyW(output,result);return TRUE;
+}
+
 BOOL WINAPI FormatMenuLabel_Win11(const char* fmt, char* out, int outBytes)
 {
 	SYSTEMTIME t;
@@ -4753,6 +4793,12 @@ void OnTimer_Win10(void)
 		CustomFormatVarsTick();
 		GipTick();
 	}
+    if(ext_is_active() && g_extOptions.mode==EXT_MODE_LED && !g_ledOptions.columns) {
+        int columns=led_get_columns(g_ledContext,&t);
+        if(g_ledLayoutColumns && columns!=g_ledLayoutColumns && !g_formatStyleResizePending &&
+            PostMessageW(hwndClockMain,CLOCKM_UPDATE_EXTTEXT,0,0))g_formatStyleResizePending=TRUE;
+        g_ledLayoutColumns=columns;
+    }
 
 	if (b_DebugLog)
 	{
@@ -8778,7 +8824,7 @@ static void ext_draw_frame(void)
     HDC dc = GetDC(hwndClockMain);
     if (!dc) return;
     GetDisplayTime(&time, nDispBeat ? &beat100 : NULL);
-    // Animation frames reuse the selected backend; do not refresh INI/host ownership at 30 Hz.
+    // The independent LED surface owns animation while the main UI refreshes the clock normally.
     if (hdcClock) wui_draw_main(dc, &time, beat100);
     ReleaseDC(hwndClockMain, dc);
 }
@@ -8795,11 +8841,15 @@ static void ext_load_settings(void)
     char value[64];
     ACS_CONTEXT* analog = NULL;
     FLP_CONTEXT* flip = NULL;
+    LED_CONTEXT* led = NULL;
+    LED_OPTIONS ledOptions = {0};
     next.enabled = GetMyRegLong("ExtendedDisplay", "Enabled", 0) != 0;
     if (!next.enabled) {
+        led_stop_surface(g_ledSurface);g_ledSurface=NULL;
         ext_stop_timer();
         acs_destroy(g_extContext); flp_destroy(g_flipContext);
         g_extContext = NULL; g_flipContext = NULL;
+        led_destroy(g_ledContext); g_ledContext = NULL;
         ZeroMemory(&g_extOptions, sizeof(g_extOptions));
         return;
     }
@@ -8810,11 +8860,15 @@ static void ext_load_settings(void)
     else if (!strcmp(value, "Flip")) next.mode = EXT_MODE_FLIP;
     else if (!strcmp(value, "Legacy")) next.mode = EXT_MODE_LEGACY;
     else if (!strcmp(value, "Nixie")) next.mode = EXT_MODE_NIXIE;
+    else if (!strcmp(value, "LED")) next.mode = EXT_MODE_LED;
     else if (strcmp(value, "Normal")) { OutputDebugStringW(L"TClock: unsupported image-clock mode\n"); return; }
     if (next.mode == EXT_MODE_FLIP) {
         GetMyRegStr("ExtendedDisplay", "FlipTheme", value, sizeof(value), "White");
         if (!strcmp(value, "Black")) next.face = 1;
         else if (strcmp(value, "White")) { OutputDebugStringW(L"TClock: unsupported flip-clock theme\n"); return; }
+    } else if (next.mode == EXT_MODE_LED) {
+        led_load(&ledOptions, GetMyRegLong, GetMyRegStr);
+        g_ledLayoutColumns=0;
     } else if (next.mode == EXT_MODE_NIXIE) {
         next.face = 0;
     } else if (next.mode == EXT_MODE_LEGACY) {
@@ -8827,6 +8881,7 @@ static void ext_load_settings(void)
         else if (strcmp(value, "metal-arabic") && strcmp(value, "metal-roman")) { OutputDebugStringW(L"TClock: unsupported image-clock skin\n"); return; }
     }
     next.diameter = (int)GetMyRegLong("ExtendedDisplay",
+        next.mode == EXT_MODE_LED ? "LedHeightDip" :
         next.mode == EXT_MODE_NIXIE ? "NixieHeightDip" :
         next.mode == EXT_MODE_FLIP ? "FlipHeightDip" :
         (next.mode == EXT_MODE_LEGACY ? "LegacyDiameterDip" : "DiameterDip"), 0);
@@ -8842,17 +8897,22 @@ static void ext_load_settings(void)
     GetMyRegStr("ExtendedDisplay", "Placement", value, sizeof(value), "Left");
     next.trailing = !strcmp(value, "Right");
     if (ext_is_active() && g_extOptions.mode == next.mode && g_extOptions.face == next.face) {
-        ext_stop_timer(); flp_reset(g_flipContext); g_extOptions = next; return;
+        ext_stop_timer(); flp_reset(g_flipContext);
+        if (next.mode == EXT_MODE_LED) { led_configure(g_ledContext, &ledOptions); g_ledOptions = ledOptions; }
+        g_extOptions = next; return;
     }
-    if (next.mode == EXT_MODE_NIXIE) flip = flp_create_nixie(hmod);
+    if (next.mode == EXT_MODE_LED) { led = led_create(); led_configure(led, &ledOptions); }
+    else if (next.mode == EXT_MODE_NIXIE) flip = flp_create_nixie(hmod);
     else if (next.mode == EXT_MODE_FLIP) flip = flp_create(hmod, next.face);
     else analog = acs_create(hmod, next.mode, next.face);
-    if (!analog && !flip) {
+    if (!analog && !flip && !led) {
         OutputDebugStringW(L"TClock: cannot load selected clock skin; retaining last successful image-clock state\n");
         return;
     }
+    led_stop_surface(g_ledSurface);g_ledSurface=NULL;
     ext_stop_timer();
     acs_destroy(g_extContext); flp_destroy(g_flipContext);
+    led_destroy(g_ledContext); g_ledContext = led; g_ledOptions = ledOptions;
     g_extContext = analog; g_flipContext = flip;
     g_extOptions = next;
 }
@@ -8865,7 +8925,11 @@ static int ext_get_slot(void)
     dpi = acs_get_dpi(hwndClockMain);
     cross = g_bVertTaskbar ? widthMainClockFrame : heightMainClockFrame;
     margin = max(1, MulDiv(1, dpi, 96));
-    if ((g_extOptions.mode == EXT_MODE_FLIP || g_extOptions.mode == EXT_MODE_NIXIE)) {
+    if (g_extOptions.mode == EXT_MODE_LED) {
+        SYSTEMTIME time;GetDisplayTime(&time,NULL);
+        if (!led_get_size(g_extOptions.diameter, cross, dpi, g_bVertTaskbar, led_get_columns(g_ledContext,&time), &g_extSize)) return 0;
+        g_extDiameter = g_extSize.cy;
+    } else if ((g_extOptions.mode == EXT_MODE_FLIP || g_extOptions.mode == EXT_MODE_NIXIE)) {
         g_extDiameter = flp_get_mode_height(g_extOptions.mode, g_extOptions.diameter, cross, dpi,
             g_bVertTaskbar, g_extOptions.flipStacked, g_extOptions.seconds, g_extOptions.colon);
         if (!g_extDiameter || !flp_get_mode_size(g_extOptions.mode, g_extDiameter, g_bVertTaskbar && g_extOptions.flipStacked,
@@ -8876,6 +8940,23 @@ static int ext_get_slot(void)
     }
     if (!g_extDiameter) return 0;
     return (g_bVertTaskbar ? g_extSize.cy : g_extSize.cx)+margin*2;
+}
+
+static BOOL ext_update_surface(const SYSTEMTIME* time,const RECT* slot)
+{
+    LED_SURFACE_STATE state={0};UINT dpi=acs_get_dpi(hwndClockMain);
+    int x=slot->left+(slot->right-slot->left-g_extSize.cx)/2+MulDiv(g_extOptions.offsetX,dpi,96);
+    int y=slot->top+(slot->bottom-slot->top-g_extSize.cy)/2+MulDiv(g_extOptions.offsetY,dpi,96);
+    state.target=hwndClockMain;state.taskbar=hwndTaskBarMain;
+    while((state.host=FindWindowExW(NULL,state.host,L"TClockWinUIDllWindow",NULL))!=NULL)
+        if(GetWindow(state.host,GW_OWNER)==state.target||
+            GetWindow(state.host,GW_OWNER)==GetAncestor(state.target,GA_ROOT))break;
+    state.size=g_extSize;state.clip=*slot;state.visible=!b_Sleeping;
+    SetRect(&state.bounds,x,y,x+g_extSize.cx,y+g_extSize.cy);
+    if(!led_take_snapshot(g_ledContext,time,&state.text))return FALSE;
+    if(g_ledSurface&&led_publish_surface(g_ledSurface,&state))return TRUE;
+    led_stop_surface(g_ledSurface);g_ledSurface=led_start_surface(hmod,&state);
+    return g_ledSurface!=NULL;
 }
 
 static void ext_get_content(RECT* content, RECT* slot)
@@ -8900,8 +8981,14 @@ static void ext_draw_clock(const SYSTEMTIME* time)
     UINT dpi;
     int x, y;
     ext_get_content(&content, &slot);
-    if (IsRectEmpty(&slot)) { ext_stop_timer(); return; }
-    if ((g_extOptions.mode == EXT_MODE_FLIP || g_extOptions.mode == EXT_MODE_NIXIE)) {
+    if (IsRectEmpty(&slot)) { led_stop_surface(g_ledSurface);g_ledSurface=NULL;ext_stop_timer();return; }
+    if (g_extOptions.mode == EXT_MODE_LED) {
+        if(ext_update_surface(time,&slot)){ext_stop_timer();return;}
+        if (!led_render(g_ledContext, g_extSize, time, GetTickCount64(), !b_Sleeping)) { ext_stop_timer(); return; }
+        if (!b_Sleeping && led_is_active(g_ledContext)) {
+            if (!g_extTimer) g_extTimer = SetTimer(hwndClockMain, IDTIMERDLL_FLIP, LED_FRAME_MS, NULL) != 0;
+        } else ext_stop_timer();
+    } else if ((g_extOptions.mode == EXT_MODE_FLIP || g_extOptions.mode == EXT_MODE_NIXIE)) {
         flp_set_base(g_flipContext, g_extOptions.nixieBase);
         if (!flp_render(g_flipContext, g_extDiameter, g_bVertTaskbar && g_extOptions.flipStacked,
             g_extOptions.seconds, g_extOptions.colon, time, GetTickCount64(), !b_Sleeping, g_extOptions.flipDuration)) {
@@ -8918,7 +9005,9 @@ static void ext_draw_clock(const SYSTEMTIME* time)
     x = slot.left+(slot.right-slot.left-g_extSize.cx)/2+MulDiv(g_extOptions.offsetX, dpi, 96);
     y = slot.top+(slot.bottom-slot.top-g_extSize.cy)/2+MulDiv(g_extOptions.offsetY, dpi, 96);
     GdiFlush();
-    if ((g_extOptions.mode == EXT_MODE_FLIP || g_extOptions.mode == EXT_MODE_NIXIE))
+    if (g_extOptions.mode == EXT_MODE_LED)
+        led_blend(g_ledContext, m_color_start, widthMainClockFrame, heightMainClockFrame, x, y, &slot);
+    else if ((g_extOptions.mode == EXT_MODE_FLIP || g_extOptions.mode == EXT_MODE_NIXIE))
         flp_blend(g_flipContext, m_color_start, widthMainClockFrame, heightMainClockFrame, x, y, &slot);
     else acs_blend(g_extContext, m_color_start, widthMainClockFrame, heightMainClockFrame, x, y, &slot);
 }

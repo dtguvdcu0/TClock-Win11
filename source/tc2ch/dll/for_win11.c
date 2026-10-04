@@ -1,6 +1,7 @@
 #include "tcdll.h"
 #include "resource.h"
 #include "../common/taskbar_edge.h"
+#include "../common/taskbar_surface.h"
 
 
 
@@ -1375,6 +1376,7 @@ static void w11_draw_desktop(HDC dc)
 // The native taskbar composes its child GDI surfaces; keep the desktop material opaque.
 // The layered popup forwards pointer actions to the existing desktop button.
 static HWND g_w11DesktopSurface;
+static BOOL g_w11DesktopReady;
 
 void w11_close_desktop(void)
 {
@@ -1383,11 +1385,36 @@ void w11_close_desktop(void)
  if (hwndWin11Notify && GetCapture() == hwndWin11Notify) ReleaseCapture();
  if (g_w11DesktopSurface) DestroyWindow(g_w11DesktopSurface);
  g_w11DesktopSurface = NULL;
+ g_w11DesktopReady = FALSE;
+}
+
+// The visual popup must follow taskbar visibility and fullscreen transitions.
+static BOOL w11_can_present(void)
+{
+ RECT client;
+ return !IsVertTaskbar(hwndTaskBarMain) && tbs_can_present(hwndWin11Notify, hwndTaskBarMain) &&
+  GetClientRect(hwndWin11Notify, &client) && client.right > posXShowDesktopArea;
+}
+
+static void w11_sync_desktop(void)
+{
+ if (!g_w11DesktopSurface) return;
+ if (!g_w11DesktopReady || !w11_can_present()) {
+  g_w11DesktopHot = FALSE;
+  g_w11DesktopDown = FALSE;
+  if (GetCapture() == hwndWin11Notify) ReleaseCapture();
+  ShowWindow(g_w11DesktopSurface, SW_HIDE);
+  return;
+ }
+ tbs_sync_order(g_w11DesktopSurface, hwndTaskBarMain);
 }
 
 static LRESULT CALLBACK w11_surface_proc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
  switch (message) {
+ case WM_TIMER:
+  if (wParam == 1) { w11_sync_desktop(); return 0; }
+  break;
  case WM_MOUSEACTIVATE:
   return MA_NOACTIVATE;
  case WM_MOUSEMOVE:
@@ -1398,7 +1425,10 @@ static LRESULT CALLBACK w11_surface_proc(HWND hwnd, UINT message, WPARAM wParam,
   if (IsWindow(hwndWin11Notify)) return SendMessageW(hwndWin11Notify, message, wParam, lParam);
   return 0;
  case WM_NCDESTROY:
-  if (g_w11DesktopSurface == hwnd) g_w11DesktopSurface = NULL;
+  if (g_w11DesktopSurface == hwnd) {
+   g_w11DesktopSurface = NULL;
+   g_w11DesktopReady = FALSE;
+  }
   SetWindowLongPtrW(hwnd, GWLP_WNDPROC, (LONG_PTR)DefWindowProcW);
   break;
  }
@@ -1416,8 +1446,8 @@ static void w11_present_desktop(HDC dc)
  POINT destination, source = { 0, 0 };
  SIZE size;
  BLENDFUNCTION blend = { AC_SRC_OVER, 0, 255, AC_SRC_ALPHA };
- if (IsVertTaskbar(hwndTaskBarMain)) {
-  if (g_w11DesktopSurface) ShowWindow(g_w11DesktopSurface, SW_HIDE);
+ if (!w11_can_present()) {
+  w11_sync_desktop();
   return;
  }
  if (!GetWindowRect(hwndWin11Notify, &window) || !GetClientRect(hwndWin11Notify, &client) ||
@@ -1434,10 +1464,11 @@ static void w11_present_desktop(HDC dc)
  w11_draw_desktop(dc);
  if (!g_w11DesktopSurface) {
   g_w11DesktopSurface = CreateWindowExW(WS_EX_LAYERED | WS_EX_NOACTIVATE |
-   WS_EX_TOOLWINDOW | WS_EX_TOPMOST, L"STATIC", L"TClockDesktopSurface", WS_POPUP,
+   WS_EX_TOOLWINDOW, L"STATIC", L"TClockDesktopSurface", WS_POPUP,
    window.left, window.top, client.right, client.bottom, hwndWin11Notify, NULL, hmod, NULL);
   if (!g_w11DesktopSurface) return;
   SetWindowLongPtrW(g_w11DesktopSurface, GWLP_WNDPROC, (LONG_PTR)w11_surface_proc);
+  SetTimer(g_w11DesktopSurface, 1, 100, NULL);
  }
  screen = GetDC(NULL);
  if (!screen) return;
@@ -1462,7 +1493,10 @@ static void w11_present_desktop(HDC dc)
   size.cx = client.right;
   size.cy = client.bottom;
   if (UpdateLayeredWindow(g_w11DesktopSurface, screen, &destination, &size, memory, &source,
-      0, &blend, ULW_ALPHA)) ShowWindow(g_w11DesktopSurface, SW_SHOWNOACTIVATE);
+      0, &blend, ULW_ALPHA)) {
+   g_w11DesktopReady = TRUE;
+   w11_sync_desktop();
+  }
   SelectObject(memory, previous);
  }
  if (bitmap) DeleteObject(bitmap);
@@ -1960,6 +1994,7 @@ static void w11_place_vert(void)
 	SetWindowPos(hwndClockMain, HWND_TOP, 0, clockY, widthTaskbar, clockHeight,
 		SWP_NOACTIVATE | SWP_NOSENDCHANGING | SWP_SHOWWINDOW);
 	if (IsWindow(hwndWin11Notify)) ShowWindow(hwndWin11Notify, SW_HIDE);
+	w11_sync_desktop();
 	if (b_DebugLog) writeDebugLog_Win10("[for_win11.c] Applied vertical taskbar clock layout.", clockY);
 }
 

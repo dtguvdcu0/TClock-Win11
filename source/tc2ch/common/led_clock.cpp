@@ -43,7 +43,7 @@ void led_load(LED_OPTIONS* o, LED_READ_LONG number, LED_READ_STRING text)
     o->colon = number(section,"LedShowColon",1)!=0;
     o->frame = number(section,"LedFrame",1)!=0;
     o->count = led_bound(number(section,"LedMessageCount",1),0,3,1);
-    o->columns = led_bound(number(section,"LedMaxChars",number(section,"LedColumns",20)),0,LED_TEXT_MAX,0);
+    o->columns = led_bound(number(section,"LedMaxChars",number(section,"LedColumns",17)),0,LED_TEXT_MAX,0);
     o->speed = led_bound(number(section,"LedSpeed",30),5,50,30);
     o->brightness = led_bound(number(section,"LedBrightness",100),20,100,100);
     o->clockSeconds = led_bound(number(section,"LedClockSeconds",4),1,60,4);

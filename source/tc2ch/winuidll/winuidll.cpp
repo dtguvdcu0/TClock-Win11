@@ -16,6 +16,8 @@
 #define WUI_TIP_TIMER_ID 2
 #define WUI_TIP_LEAVE_TIMER_ID 4
 #define WUI_TIP_LEAVE_MS 320
+#define WUI_TIP_MOVE_TIMER_ID 5
+#define WUI_TIP_MOVE_MS 300
 
 static HINSTANCE g_wuiInst = NULL;
 static HWND g_wuiTarget = NULL;
@@ -39,6 +41,13 @@ static BOOL g_wuiHoverInside = FALSE;
 static BOOL g_wuiTipSuppressed = FALSE;
 static BOOL g_wuiTipPending = FALSE;
 static BOOL g_wuiTipVisible = FALSE;
+static POINT g_wuiTipPoint = {};
+static BOOL g_wuiTipHasPoint = FALSE;
+static BOOL g_wuiTipMoving = FALSE;
+static POINT g_wuiTipStill = {};
+static ULONGLONG g_wuiTipMoveTick = 0;
+static UINT g_wuiTipMoveDelay = WUI_TIP_MOVE_MS;
+static int g_wuiTipSlot = 0;
 static BOOL g_wuiTipShownOnce = FALSE;
 static UINT g_wuiTipAutoPopDelay = 0;
 static HFONT g_wuiTipFont = NULL;
@@ -610,8 +619,11 @@ static void wui_hide_tip(void)
 
 	if (g_wuiHost) KillTimer(g_wuiHost, WUI_TIP_TIMER_ID);
 	if (g_wuiHost) KillTimer(g_wuiHost, WUI_TIP_LEAVE_TIMER_ID);
+	if (g_wuiHost) KillTimer(g_wuiHost, WUI_TIP_MOVE_TIMER_ID);
+	g_wuiTipMoving = FALSE;
 	g_wuiTipPending = FALSE;
 	g_wuiTipVisible = FALSE;
+	g_wuiTipHasPoint = FALSE;
 	g_wuiTipShownOnce = FALSE;
 	if (!g_wuiTooltip || !g_wuiTarget) return;
 	ZeroMemory(&ti, sizeof(ti));
@@ -683,10 +695,11 @@ static void wui_fit_tip(void)
 	MONITORINFO monitor = { sizeof(monitor) };
 	int x = rcTip.left, y = rcTip.top;
 	if (GetWindowRect(g_wuiTarget, &target)
-	 && GetMonitorInfoW(MonitorFromWindow(g_wuiTarget, MONITOR_DEFAULTTONEAREST), &monitor)) {
-		if (target.top <= monitor.rcMonitor.top) { x = target.left + 8; y = target.bottom + 8; }
-		else if (target.bottom >= monitor.rcMonitor.bottom) { x = target.left + 8; y = target.top - height - 8; }
-		else { x = target.right + 8; y = target.bottom - height;
+	 && GetMonitorInfoW(MonitorFromPoint(g_wuiTipPoint, MONITOR_DEFAULTTONEAREST), &monitor)) {
+		// Keep the hover anchor while the text or title changes size.
+		if (target.top <= monitor.rcMonitor.top) { x = g_wuiTipPoint.x - width / 2; y = target.bottom + 8; }
+		else if (target.bottom >= monitor.rcMonitor.bottom) { x = g_wuiTipPoint.x - width / 2; y = target.top - height - 8; }
+		else { x = target.right + 8; y = g_wuiTipPoint.y - height / 2;
 			if (x + width > monitor.rcWork.right) x = target.left - width - 8; }
 		x = max(monitor.rcWork.left, min(x, monitor.rcWork.right - width));
 		y = max(monitor.rcWork.top, min(y, monitor.rcWork.bottom - height));
@@ -703,38 +716,16 @@ static void wui_fit_tip(void)
 static void wui_activate_tip(void)
 {
 	TOOLINFOW ti;
-	RECT rcTarget;
-	RECT rcWork;
-	MONITORINFO monitor = { sizeof(monitor) };
-	int gap = 8;
-	int x;
-	int y;
+	RECT target;
 
 	if (!g_wuiTooltip || !g_wuiTarget || !g_wuiTooltipText[0]) return;
-	if (!GetWindowRect(g_wuiTarget, &rcTarget)) return;
-	if (!GetMonitorInfoW(MonitorFromWindow(g_wuiTarget, MONITOR_DEFAULTTONEAREST), &monitor)) return;
-	rcWork = monitor.rcWork;
-	if (rcTarget.top <= monitor.rcMonitor.top) {
-		x = rcTarget.left + gap;
-		y = rcTarget.bottom + gap;
-		if (x > rcWork.right - gap) x = rcWork.right - gap;
-		if (x < rcWork.left) x = rcWork.left;
-		if (y > rcWork.bottom - gap) y = rcWork.bottom - gap;
-	}
-	else if (rcTarget.bottom >= monitor.rcMonitor.bottom) {
-		x = rcTarget.left + gap;
-		y = rcTarget.top - gap;
-		if (x > rcWork.right - gap) x = rcWork.right - gap;
-		if (x < rcWork.left) x = rcWork.left;
-		if (y < rcWork.top) y = rcWork.top;
-	}
-	else {
-		x = rcTarget.right + gap;
-		if (x > rcWork.right - gap) x = rcTarget.left - gap;
-		if (x < rcWork.left) x = rcWork.left;
-		y = rcTarget.bottom - gap;
-		if (y > rcWork.bottom - gap) y = rcWork.bottom - gap;
-		if (y < rcWork.top) y = rcWork.top;
+	if (!GetWindowRect(g_wuiTarget, &target)) return;
+	if (!g_wuiTipHasPoint) {
+		if (!GetCursorPos(&g_wuiTipPoint)) {
+			g_wuiTipPoint.x = target.left + (target.right - target.left) / 2;
+			g_wuiTipPoint.y = target.top + (target.bottom - target.top) / 2;
+		}
+		g_wuiTipHasPoint = TRUE;
 	}
 	ZeroMemory(&ti, sizeof(ti));
 	ti.cbSize = sizeof(ti);
@@ -742,9 +733,63 @@ static void wui_activate_tip(void)
 	ti.hwnd = g_wuiTarget;
 	ti.uId = 1;
 	ti.lpszText = LPSTR_TEXTCALLBACKW;
-	SendMessageW(g_wuiTooltip, TTM_TRACKPOSITION, 0, MAKELPARAM(x, y));
+	SendMessageW(g_wuiTooltip, TTM_TRACKPOSITION, 0, MAKELPARAM(g_wuiTipPoint.x, g_wuiTipPoint.y));
 	SendMessageW(g_wuiTooltip, TTM_TRACKACTIVATE, TRUE, (LPARAM)&ti);
 	wui_fit_tip();
+}
+
+static int wui_scale_tip(int value)
+{
+	UINT dpi = g_wuiHost ? GetDpiForWindow(g_wuiHost) : 96;
+	return max(1, MulDiv(value, dpi ? dpi : 96, 96));
+}
+
+static BOOL wui_test_move(POINT point, POINT origin, int distance)
+{
+	LONGLONG dx = (LONGLONG)point.x - origin.x;
+	LONGLONG dy = (LONGLONG)point.y - origin.y;
+	return dx * dx + dy * dy > (LONGLONG)distance * distance;
+}
+
+static int wui_pick_tip(POINT point, int previous)
+{
+	RECT target;
+	int slots = (int)(INT_PTR)GetPropW(g_wuiTarget, WUI_TIP_SLOTS_PROP);
+	BOOL vertical = GetPropW(g_wuiTarget, WUI_TIP_AXIS_PROP) != NULL;
+	if (slots < 2 || slots > 3 || !GetWindowRect(g_wuiTarget, &target)) return 0;
+	int length = vertical ? target.bottom - target.top : target.right - target.left;
+	int position = vertical ? point.y - target.top : point.x - target.left;
+	if (length <= 0) return 0;
+	int slot;
+	if (slots == 3) slot = position < length / 3 ? 0 : position <= 2 * length / 3 ? 1 : 2;
+	else slot = position <= length / 2 ? 0 : 1;
+	if (previous >= 0 && previous < slots && slot != previous) {
+		int margin = min(wui_scale_tip(4), max(1, length / slots / 4));
+		int boundary = slot > previous ? (previous + 1) * length / slots : previous * length / slots;
+		if (slot > previous ? position <= boundary + margin : position >= boundary - margin) return previous;
+	}
+	return slot;
+}
+
+static BOOL wui_move_tip(POINT point)
+{
+	if (g_wuiTipVisible) {
+		if (!wui_test_move(point, g_wuiTipPoint, wui_scale_tip(28))
+		 && wui_pick_tip(point, g_wuiTipSlot) == g_wuiTipSlot) return TRUE;
+		wui_hide_tip();
+		g_wuiTipMoving = TRUE;
+		g_wuiTipPending = TRUE;
+		g_wuiTipStill = point;
+		g_wuiTipMoveTick = GetTickCount64();
+		SetTimer(g_wuiHost, WUI_TIP_MOVE_TIMER_ID, g_wuiTipMoveDelay, NULL);
+	} else if (g_wuiTipMoving && wui_test_move(point, g_wuiTipStill, wui_scale_tip(6))) {
+		g_wuiTipStill = point;
+		g_wuiTipMoveTick = GetTickCount64();
+		SetTimer(g_wuiHost, WUI_TIP_MOVE_TIMER_ID, g_wuiTipMoveDelay, NULL);
+	}
+	g_wuiTipPoint = point;
+	g_wuiTipHasPoint = TRUE;
+	return FALSE;
 }
 
 static void wui_show_tip(void)
@@ -753,6 +798,8 @@ static void wui_show_tip(void)
 	wui_activate_tip();
 	g_wuiTipPending = FALSE;
 	g_wuiTipVisible = TRUE;
+	g_wuiTipMoving = FALSE;
+	g_wuiTipSlot = wui_pick_tip(g_wuiTipPoint, -1);
 	g_wuiTipShownOnce = TRUE;
 	if (g_wuiTipAutoPopDelay) SetTimer(g_wuiHost, WUI_TIP_TIMER_ID, g_wuiTipAutoPopDelay, NULL);
 }
@@ -791,8 +838,13 @@ static LRESULT CALLBACK wui_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 	case WM_MOUSEMOVE:
 		KillTimer(hwnd, WUI_TIP_LEAVE_TIMER_ID);
 		wui_track_leave(hwnd);
-		if (g_wuiTipVisible) return 0;
 		if (g_wuiTipSuppressed) return 0;
+		{
+			POINT point = { (short)LOWORD(lParam), (short)HIWORD(lParam) };
+			if (ClientToScreen(hwnd, &point)) {
+				if (wui_move_tip(point)) return 0;
+			}
+		}
 	case WM_MOUSEWHEEL:
 	case WM_MOUSEHWHEEL:
 		wui_forward_mouse(hwnd, msg, wParam, lParam);
@@ -827,8 +879,40 @@ static LRESULT CALLBACK wui_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 			if (!g_wuiHoverInside) wui_hide_tip();
 			return 0;
 		}
+		if (wParam == WUI_TIP_MOVE_TIMER_ID) {
+			KillTimer(hwnd, WUI_TIP_MOVE_TIMER_ID);
+			if (!g_wuiTipMoving) return 0;
+			ULONGLONG elapsed = GetTickCount64() - g_wuiTipMoveTick;
+			if (elapsed < g_wuiTipMoveDelay) {
+				SetTimer(hwnd, WUI_TIP_MOVE_TIMER_ID, (UINT)(g_wuiTipMoveDelay - elapsed), NULL);
+				return 0;
+			}
+			POINT point;
+			if (!g_wuiHoverInside || g_wuiTipSuppressed || !GetCursorPos(&point)
+			 || !g_wuiTarget || !IsWindow(g_wuiTarget)) {
+				wui_hide_tip();
+				return 0;
+			}
+			RECT target;
+			if (!GetWindowRect(g_wuiTarget, &target) || !PtInRect(&target, point)) {
+				wui_hide_tip();
+				return 0;
+			}
+			if (wui_test_move(point, g_wuiTipStill, wui_scale_tip(6))) {
+				wui_move_tip(point);
+				return 0;
+			}
+			g_wuiTipPoint = point;
+			g_wuiTipHasPoint = TRUE;
+			ScreenToClient(g_wuiTarget, &point);
+			SendMessageW(g_wuiTarget, WM_MOUSEMOVE, 0, MAKELPARAM(point.x, point.y));
+			if (g_wuiTipMoving && g_wuiTipPending && g_wuiHoverInside && !g_wuiTipSuppressed)
+				wui_show_tip();
+			return 0;
+		}
 		if (wParam == WUI_TIP_TIMER_ID) {
 			KillTimer(hwnd, WUI_TIP_TIMER_ID);
+			if (g_wuiTipMoving) return 0;
 			if (g_wuiTipPending && g_wuiHoverInside) {
 				if (wui_post_tip_move()) wui_show_tip();
 				else wui_hide_tip();
@@ -983,6 +1067,8 @@ extern "C" BOOL WINAPI WuiSetTooltip(const WCHAR* text, BOOL visible, HFONT font
 		return TRUE;
 	}
 	if (!text || !text[0]) return FALSE;
+	if (g_wuiTipSuppressed) return TRUE;
+	g_wuiTipMoveDelay = max((UINT)WUI_TIP_MOVE_MS, max(initialDelay, reshowDelay));
 	if (g_wuiTipVisible || g_wuiTipPending) {
 		// Preserve the previous snapshot until refresh has compared and fitted it.
 		WUI_TOOLTIP_STATE state = { sizeof(state) };

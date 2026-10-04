@@ -8,6 +8,10 @@
 #define WUI_API __declspec(dllimport)
 #endif
 
+// Scalar target-window properties publish tooltip partitioning; no HANDLE ownership.
+#define WUI_TIP_SLOTS_PROP L"TClock.TooltipSlots"
+#define WUI_TIP_AXIS_PROP L"TClock.TooltipVertical"
+
 #define TC_WUI_STYLE_VERSION 1
 #define TC_WUI_BASELINE_VERSION 1
 #define TC_WUI_MAX_STYLES 64

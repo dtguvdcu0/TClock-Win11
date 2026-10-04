@@ -61,6 +61,8 @@ static HWND hwndTooltip = NULL;
 static HWND hwndCurrentTooltipOwner = NULL;
 static int uIdCurrentTooltipOwner = 1;
 static int iTooltipSelected = 0;
+static POINT tip_hover_point;
+static BOOL tip_has_point = FALSE;
 static BOOL bTooltipCustomDrawDisable = FALSE;
 
 static BOOL bTooltipUpdateEnable[3] = {FALSE, FALSE, FALSE};
@@ -319,8 +321,18 @@ static void TooltipEnsureWideReady(void)
 /*------------------------------------------------
 　ツールチップウィンドウの作成
 --------------------------------------------------*/
+static void tip_publish_area(void)
+{
+	// Shared scalar properties let the WinUI host detect semantic hover regions.
+	if (hwndClockMain) {
+		SetPropW(hwndClockMain, WUI_TIP_SLOTS_PROP, (HANDLE)(INT_PTR)(bTooltip2 ? (bTooltip3 ? 3 : 2) : 1));
+		SetPropW(hwndClockMain, WUI_TIP_AXIS_PROP, (HANDLE)(INT_PTR)(bTooltipTate ? 1 : 0));
+	}
+}
+
 void TooltipInit(HWND hwnd)
 {
+	tip_publish_area();
 	TOOLINFO ti;
 	extern int widthMainClockFrame, heightMainClockFrame;
 
@@ -450,6 +462,9 @@ void TooltipEnd(HWND hwnd)
 		hwndTooltip = NULL;
 	}
 	bWin11VerticalTipActive = FALSE;
+	tip_has_point = FALSE;
+	RemovePropW(hwnd, WUI_TIP_SLOTS_PROP);
+	RemovePropW(hwnd, WUI_TIP_AXIS_PROP);
 
 }
 
@@ -787,6 +802,8 @@ static void TooltipUpdateText(void)
 
 		GetWindowRect(hwndCurrentTooltipOwner, &rcClock);
 		dw = GetMessagePos();
+		if (bWin11Main && tip_has_point && hwndCurrentTooltipOwner == hwndClockMain)
+			dw = MAKELONG(tip_hover_point.x, tip_hover_point.y);
 		if (bTooltipTate)
 		{
 			clLen = rcClock.bottom - rcClock.top;
@@ -967,6 +984,7 @@ void TooltipReadData(void)
 	bTooltip2 = GetMyRegLong("Tooltip", "Tip2Use", FALSE);
 	bTooltip3 = GetMyRegLong("Tooltip", "Tip3Use", FALSE);
 	bTooltipTate = GetMyRegLong("Tooltip", "TipTateFlg", FALSE);
+	tip_publish_area();
 
 	bEnableTooltip = GetMyRegLong("Tooltip", "EnableTooltip", TRUE);
 
@@ -1291,6 +1309,11 @@ void TooltipOnMouseEvent(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam, 
 			UINT reshowDelay = 0;
 			UINT autoPopDelay = 0;
 			tip_read_delays(&initialDelay, &reshowDelay, &autoPopDelay);
+			tip_hover_point.x = GET_X_LPARAM(lParam);
+			tip_hover_point.y = GET_Y_LPARAM(lParam);
+			tip_has_point = ClientToScreen(hwnd, &tip_hover_point);
+			hwndCurrentTooltipOwner = hwnd;
+			uIdCurrentTooltipOwner = uid;
 			TooltipUpdateText();
 			if (tip_wui_show(initialDelay, reshowDelay, autoPopDelay)) {
 				bTooltipShow = TRUE;

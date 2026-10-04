@@ -44,16 +44,16 @@ if not exist "%REL_DIR%\tclang-win11.lib" set "REPAIR_MISSING_LIBS=1"
 if defined REPAIR_MISSING_LIBS (
     echo INFO: Required import libs are missing. Rebuilding language/dll projects...
     "%MSBUILD%" "%LANG_PROJ%" /m /t:Rebuild /p:Configuration=Release;Platform=x64
-    set "ERR=%ERRORLEVEL%"
-    if not "%ERR%"=="0" goto BUILD_FAIL
+    if errorlevel 1 goto BUILD_FAIL
+    if not errorlevel 0 goto BUILD_FAIL
     "%MSBUILD%" "%DLL_PROJ%" /m /t:Rebuild /p:Configuration=Release;Platform=x64
-    set "ERR=%ERRORLEVEL%"
-    if not "%ERR%"=="0" goto BUILD_FAIL
+    if errorlevel 1 goto BUILD_FAIL
+    if not errorlevel 0 goto BUILD_FAIL
 )
 
 "%MSBUILD%" "%SLN%" /m /t:Build /p:Configuration=Release;Platform=x64
-set "ERR=%ERRORLEVEL%"
-if not "%ERR%"=="0" goto BUILD_FAIL
+if errorlevel 1 goto BUILD_FAIL
+if not errorlevel 0 goto BUILD_FAIL
 
 echo TClock build succeeded.
 exit /b 0
@@ -79,5 +79,5 @@ echo ERROR: MSBuild not found: %MSBUILD%
 exit /b 1
 
 :BUILD_FAIL
-echo TClock build failed with error %ERR%.
-exit /b %ERR%
+echo TClock build failed with error %ERRORLEVEL%.
+exit /b %ERRORLEVEL%

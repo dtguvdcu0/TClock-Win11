@@ -1400,6 +1400,7 @@ static void w11_draw_desktop(HDC dc, COLORREF material)
 // The layered popup forwards pointer actions to the existing desktop button.
 static HWND g_w11DesktopSurface;
 static BOOL g_w11DesktopReady;
+static TBE_FRAME g_w11DesktopFrame = {0};
 
 void w11_close_desktop(void)
 {
@@ -1407,6 +1408,8 @@ void w11_close_desktop(void)
  g_w11DesktopDown = FALSE;
  if (hwndWin11Notify && GetCapture() == hwndWin11Notify) ReleaseCapture();
  if (g_w11DesktopSurface) DestroyWindow(g_w11DesktopSurface);
+ tbe_release_frame(&g_w11DesktopFrame);
+ tbe_reset_color();
  g_w11DesktopSurface = NULL;
  g_w11DesktopReady = FALSE;
 }
@@ -1447,8 +1450,20 @@ static LRESULT CALLBACK w11_surface_proc(HWND hwnd, UINT message, WPARAM wParam,
  case WM_RBUTTONDOWN:
   if (IsWindow(hwndWin11Notify)) return SendMessageW(hwndWin11Notify, message, wParam, lParam);
   return 0;
+ case WM_THEMECHANGED:
+ case WM_DWMCOLORIZATIONCOLORCHANGED:
+ case WM_SETTINGCHANGE:
+ case WM_DISPLAYCHANGE:
+#ifdef WM_DPICHANGED
+ case WM_DPICHANGED:
+#endif
+  tbe_reset_color();
+  if (IsWindow(hwndWin11Notify)) InvalidateRect(hwndWin11Notify, NULL, FALSE);
+  break;
  case WM_NCDESTROY:
   if (g_w11DesktopSurface == hwnd) {
+   tbe_release_frame(&g_w11DesktopFrame);
+   tbe_reset_color();
    g_w11DesktopSurface = NULL;
    g_w11DesktopReady = FALSE;
   }
@@ -1463,10 +1478,7 @@ static void w11_present_desktop(HDC dc)
  RECT window, client;
  COLORREF material;
  HDC screen = NULL, memory = NULL;
- HBITMAP bitmap = NULL;
- HGDIOBJ previous = NULL;
  RGBQUAD* pixels = NULL;
- BITMAPINFO info = { 0 };
  POINT destination, source = { 0, 0 };
  SIZE size;
  BLENDFUNCTION blend = { AC_SRC_OVER, 0, 255, AC_SRC_ALPHA };
@@ -1485,9 +1497,8 @@ static void w11_present_desktop(HDC dc)
   if (GetCursorPos(&pointer))
    g_w11DesktopHot = PtInRect(&window, pointer) && pointer.x >= window.left + posXShowDesktopArea;
  }
- // Both drawing passes use the same native material sample for this presentation.
+ // Construct one complete image for both destinations before either is presented.
  material = w11_read_material();
- w11_draw_desktop(dc, material);
  if (!g_w11DesktopSurface) {
   g_w11DesktopSurface = CreateWindowExW(WS_EX_LAYERED | WS_EX_NOACTIVATE |
    WS_EX_TOOLWINDOW, L"STATIC", L"TClockDesktopSurface", WS_POPUP,
@@ -1498,22 +1509,24 @@ static void w11_present_desktop(HDC dc)
  }
  screen = GetDC(NULL);
  if (!screen) return;
- memory = CreateCompatibleDC(screen);
- info.bmiHeader.biSize = sizeof(info.bmiHeader);
- info.bmiHeader.biWidth = client.right;
- info.bmiHeader.biHeight = -client.bottom;
- info.bmiHeader.biPlanes = 1;
- info.bmiHeader.biBitCount = 32;
- info.bmiHeader.biCompression = BI_RGB;
- if (memory) bitmap = CreateDIBSection(screen, &info, DIB_RGB_COLORS, (void**)&pixels, NULL, 0);
- if (bitmap && pixels) {
-  previous = SelectObject(memory, bitmap);
-  ZeroMemory(pixels, (SIZE_T)client.right * client.bottom * sizeof(*pixels));
-  w11_draw_desktop(memory, material);
-  GdiFlush();
-  for (LONG y = 0; y < client.bottom; ++y)
-   for (LONG x = max(0, posXShowDesktopArea); x < client.right; ++x)
-    pixels[y * client.right + x].rgbReserved = 255;
+ if (!tbe_ensure_frame(&g_w11DesktopFrame, client.right, client.bottom)) {
+  ReleaseDC(NULL, screen);
+  return;
+ }
+ memory = g_w11DesktopFrame.dc;
+ pixels = g_w11DesktopFrame.pixels;
+ ZeroMemory(pixels, (SIZE_T)client.right * client.bottom * sizeof(*pixels));
+ w11_draw_desktop(memory, material);
+ GdiFlush();
+ // Fully transparent pixels must also have zero premultiplied RGB.
+ for (LONG y = 0; y < client.bottom; ++y)
+  ZeroMemory(pixels + (SIZE_T)y * client.right, (SIZE_T)max(0, posXShowDesktopArea) * sizeof(*pixels));
+ for (LONG y = 0; y < client.bottom; ++y)
+  for (LONG x = max(0, posXShowDesktopArea); x < client.right; ++x)
+   pixels[(SIZE_T)y * client.right + x].rgbReserved = 255;
+ // Leave the notification icon pixels untouched; transfer only the desktop button.
+ BitBlt(dc, max(0, posXShowDesktopArea), 0, client.right - max(0, posXShowDesktopArea),
+  client.bottom, memory, max(0, posXShowDesktopArea), 0, SRCCOPY);
   destination.x = window.left;
   destination.y = window.top;
   size.cx = client.right;
@@ -1523,10 +1536,6 @@ static void w11_present_desktop(HDC dc)
    g_w11DesktopReady = TRUE;
    w11_sync_desktop();
   }
-  SelectObject(memory, previous);
- }
- if (bitmap) DeleteObject(bitmap);
- if (memory) DeleteDC(memory);
  ReleaseDC(NULL, screen);
 }
 
@@ -1775,6 +1784,10 @@ void DrawWin11Notify(BOOL b_forceUpdate)
 	}
 	else if (bEnableWin11NotifyIcon)
 	{
+		static COLORREF presentedEdge = CLR_INVALID;
+		RECT edgeArea;
+		COLORREF edgeColor = tbe_sample_strip(NULL, hwndWin11Notify, hwndTaskBarMain, &edgeArea);
+		if (edgeColor != presentedEdge) b_update = TRUE;
 		intWin11FocusAssist = GetFocusAssistState();
 		intWin11NotificationNumber = GetNotificationNumber();
 		if (b_DebugLog) {
@@ -1877,7 +1890,10 @@ void DrawWin11Notify(BOOL b_forceUpdate)
 				}
 			}
 
-			BitBlt(hdc, 0, 0, widthWin11Notify, heightWin11Notify, hdcWin11Notify, 0, 0, SRCCOPY);
+			// Include the native edge before the full-width notification frame is exposed.
+			tbe_draw_strip(hdcWin11Notify, hwndWin11Notify, hwndTaskBarMain);
+			if (BitBlt(hdc, 0, 0, widthWin11Notify, heightWin11Notify, hdcWin11Notify, 0, 0, SRCCOPY))
+				presentedEdge = edgeColor;
 		}
 
 		w11_present_desktop(hdc);

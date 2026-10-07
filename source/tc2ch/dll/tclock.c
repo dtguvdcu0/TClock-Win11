@@ -423,6 +423,7 @@ static DWORD tickAutoBackLastAttempt = 0;
 static BOOL bAutoBackInitialized = FALSE;
 static BOOL g_abThemePending = FALSE;
 static TBE_REGION g_tbeRegion = {0};
+static TBE_FRAME g_tbeFrame = {0};
 BOOL bTimerCheckNetStat = FALSE;	//Added by TTTT
 BOOL bTimerAdjust_SysInfo = FALSE;
 BOOL bTimerAdjust_NetStat = FALSE;
@@ -2343,7 +2344,6 @@ static void wui_draw_main(HDC hdc, SYSTEMTIME* pt, int beat100)
 		wui_draw_body(hdc, pt, beat100);
 	else
 		wui_draw_gdi(hdc, pt, beat100);
-	if (bWin11Main) tbe_draw_strip(hdc, hwndClockMain, hwndTaskBarMain);
 }
 
 static void RefreshClockWorkFont(void)
@@ -2462,6 +2462,8 @@ void EndClock(void)
 	ext_stop_timer();
     ext_stop_surfaces();
 	wui_stop_host();
+	tbe_release_frame(&g_tbeFrame);
+	tbe_reset_color();
 	w11_close_desktop();
 	acs_destroy(g_extContext);
 	flp_destroy(g_flipContext);
@@ -2636,6 +2638,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 	{
         case EXT_DETACH_LAYOUT:ext_refresh_layout();return 0;
 		case WM_NCDESTROY:
+			tbe_release_frame(&g_tbeFrame);
+			tbe_reset_color();
 			ZeroMemory(&g_tbeRegion, sizeof(g_tbeRegion));
 			if (oldWndProc && (WNDPROC)WndProc == (WNDPROC)GetWindowLongPtr(hwnd, GWLP_WNDPROC))
 			{
@@ -2683,7 +2687,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
             ext_stop_timer(); flp_reset(g_flipContext);
 		case (WM_USER+101):		// 親ウィンドウから送られる
 		{
-			if (message != WM_TIMECHANGE && message != WM_USER + 101) g_abThemePending = TRUE;
+			if (message != WM_TIMECHANGE && message != WM_USER + 101) {
+				g_abThemePending = TRUE;
+				tbe_reset_color();
+			}
 			CreateClockDC();
 
 
@@ -2891,6 +2898,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 			
 			else if (LOWORD(wParam) == CLOCKM_BGCOLOR_UPDATE)
 			{
+				tbe_reset_color();
 				g_abThemePending = TRUE;
 				SetTimer(hwndClockMain, IDTIMERDLL_DELEYED_RESPONSE, 500, NULL);
 				return 0;
@@ -6993,17 +7001,28 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
 	//点滅処理は、フォントのみ反転として、TextColorFromInfoVal()の機能として実装
 	RECT present;ext_get_source(hwndClockMain,&present);
 	if (!g_wuiSubOnly) {
-		if (!fillbackcolor) {
-			BLENDFUNCTION blend;
-			blend.BlendOp = 0;
-			blend.BlendFlags = 0;
-			blend.SourceConstantAlpha = 255;
-			blend.AlphaFormat = AC_SRC_ALPHA;
-			MyAlphaBlend(hdc, 0, 0, present.right-present.left, present.bottom-present.top,
-				hdcClock, present.left, present.top, present.right-present.left, present.bottom-present.top, blend);
+		HDC source = hdcClock;
+		POINT origin = {present.left, present.top};
+		BOOL complete = TRUE;
+		RECT edge;
+		COLORREF edgeColor = bWin11Main ? tbe_sample_strip(NULL, hwndClockMain, hwndTaskBarMain, &edge) : CLR_INVALID;
+		if (edgeColor != CLR_INVALID) {
+			// Keep the shared subclock/detached source intact; compose only the final main crop.
+			complete = tbe_copy_frame(&g_tbeFrame, hdcClock, &present, bmi_MainClock.bmiHeader.biHeight < 0);
+			if (complete) {
+				tbe_write_strip(g_tbeFrame.pixels, g_tbeFrame.size.cx, g_tbeFrame.size.cy, &edge, edgeColor);
+				source = g_tbeFrame.dc; origin.x = 0; origin.y = 0;
+			}
 		}
-		else {
-			BitBlt(hdc, 0, 0, present.right-present.left, present.bottom-present.top, hdcClock, present.left, present.top, SRCCOPY);
+		// Allocation/copy failure leaves the previous complete visible frame intact.
+		if (complete && !fillbackcolor) {
+			BLENDFUNCTION blend = {AC_SRC_OVER, 0, 255, AC_SRC_ALPHA};
+			MyAlphaBlend(hdc, 0, 0, present.right-present.left, present.bottom-present.top,
+				source, origin.x, origin.y, present.right-present.left, present.bottom-present.top, blend);
+		}
+		else if (complete) {
+			BitBlt(hdc, 0, 0, present.right-present.left, present.bottom-present.top,
+				source, origin.x, origin.y, SRCCOPY);
 		}
 	}
 

@@ -23,6 +23,7 @@ static HINSTANCE g_wuiInst = NULL;
 static HWND g_wuiTarget = NULL;
 static HWND g_wuiHost = NULL;
 static TBE_REGION g_wuiEdge = {0};
+static TBE_FRAME g_wuiFrame = {0};
 static HWND g_wuiTooltip = NULL;
 static WCHAR g_wuiTooltipText[4096];
 static TC_DISPLAY_BACKEND_RENDER_STATE g_wuiState;
@@ -411,12 +412,8 @@ static void wui_present(HWND hwnd)
 	POINT ptSrc;
 	SIZE sizeWindow;
 	BLENDFUNCTION blend;
-	BITMAPINFO bmi;
-	void* pBits = NULL;
 	HDC hdcScreen = NULL;
 	HDC hdcMem = NULL;
-	HBITMAP hBitmap = NULL;
-	HGDIOBJ hOldBitmap = NULL;
 	Gdiplus::Graphics* pGraphics = NULL;
 	BYTE* pixels = NULL;
 	SIZE_T pixelCount;
@@ -442,21 +439,10 @@ static void wui_present(HWND hwnd)
 
 	hdcScreen = GetDC(NULL);
 	if (!hdcScreen) return;
-	hdcMem = CreateCompatibleDC(hdcScreen);
-	if (!hdcMem) goto cleanup;
-
-	ZeroMemory(&bmi, sizeof(bmi));
-	bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-	bmi.bmiHeader.biWidth = sizeWindow.cx;
-	bmi.bmiHeader.biHeight = -sizeWindow.cy;
-	bmi.bmiHeader.biPlanes = 1;
-	bmi.bmiHeader.biBitCount = 32;
-	bmi.bmiHeader.biCompression = BI_RGB;
-	hBitmap = CreateDIBSection(hdcScreen, &bmi, DIB_RGB_COLORS, &pBits, NULL, 0);
-	if (!hBitmap || !pBits) goto cleanup;
-	hOldBitmap = SelectObject(hdcMem, hBitmap);
-	ZeroMemory(pBits, (size_t)sizeWindow.cx * (size_t)sizeWindow.cy * 4u);
-	pixels = (BYTE*)pBits;
+	if (!tbe_ensure_frame(&g_wuiFrame, sizeWindow.cx, sizeWindow.cy)) goto cleanup;
+	hdcMem = g_wuiFrame.dc;
+	pixels = (BYTE*)g_wuiFrame.pixels;
+	ZeroMemory(pixels, (SIZE_T)sizeWindow.cx * (SIZE_T)sizeWindow.cy * 4u);
 	pixelCount = (SIZE_T)sizeWindow.cx * (SIZE_T)sizeWindow.cy;
 	for (SIZE_T pixelIndex = 0; pixelIndex < pixelCount; ++pixelIndex) {
 		pixels[(pixelIndex * 4u) + 3u] = 1;
@@ -485,15 +471,7 @@ static void wui_present(HWND hwnd)
 	{
 		RECT cut;
 		COLORREF edgeColor = tbe_sample_strip(hdcScreen, hwnd, edgeTaskbar, &cut);
-		if (edgeColor != CLR_INVALID) {
-			for (LONG y = cut.top; y < cut.bottom; ++y) {
-				for (LONG x = cut.left; x < cut.right; ++x) {
-					BYTE* pixel = pixels + ((SIZE_T)y * sizeWindow.cx + x) * 4u;
-					pixel[0] = GetBValue(edgeColor); pixel[1] = GetGValue(edgeColor);
-					pixel[2] = GetRValue(edgeColor); pixel[3] = 255;
-				}
-			}
-		}
+		tbe_write_strip((RGBQUAD*)pixels, sizeWindow.cx, sizeWindow.cy, &cut, edgeColor);
 	}
 
 	blend.BlendOp = AC_SRC_OVER;
@@ -504,9 +482,6 @@ static void wui_present(HWND hwnd)
 
 cleanup:
 	delete pGraphics;
-	if (hOldBitmap) SelectObject(hdcMem, hOldBitmap);
-	if (hBitmap) DeleteObject(hBitmap);
-	if (hdcMem) DeleteDC(hdcMem);
 	if (hdcScreen) ReleaseDC(NULL, hdcScreen);
 }
 
@@ -938,7 +913,16 @@ static LRESULT CALLBACK wui_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 			wui_present(hwnd);
 			return 0;
 		}
+	case WM_THEMECHANGED:
+	case WM_DWMCOLORIZATIONCOLORCHANGED:
+	case WM_SETTINGCHANGE:
+	case WM_DISPLAYCHANGE:
+	case WM_DPICHANGED:
+		tbe_reset_color();
+		break;
 	case WM_DESTROY:
+		tbe_release_frame(&g_wuiFrame);
+		tbe_reset_color();
 		ZeroMemory(&g_wuiEdge, sizeof(g_wuiEdge));
 		KillTimer(hwnd, WUI_TIMER_ID);
 		return 0;
@@ -1003,6 +987,8 @@ extern "C" void WINAPI WuiDestroyHost(void)
 		KillTimer(g_wuiHost, WUI_TIMER_ID);
 		DestroyWindow(g_wuiHost);
 	}
+	tbe_release_frame(&g_wuiFrame);
+	tbe_reset_color();
 	g_wuiHost = NULL;
 	g_wuiTarget = NULL;
 	g_wuiHasTarget = FALSE;

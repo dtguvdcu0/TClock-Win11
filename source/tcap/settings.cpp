@@ -139,6 +139,8 @@ void normalizeSettings(AppSettings& s) {
     if (s.format != "png" && s.format != "jpg") {
         s.format = "png";
     }
+    // Opening images is interactive; never launch apps on an automatic or burst loop.
+    if (s.openAfterCapture) { s.burstFps = 0; s.autoCapture = false; }
     s.pngCompression = std::clamp(s.pngCompression, 0, 9);
     s.jpgQuality = std::clamp(s.jpgQuality, 1, 100);
     s.compression = (s.format == "png") ? s.pngCompression : s.jpgQuality;
@@ -187,6 +189,14 @@ static void applyKeyValue(AppSettings& settings, ParseCompressionState& compStat
     std::string trimmedValue = trim(value);
     if (lowerKey == "output_dir" || lowerKey == "output") {
         settings.outputDir = trimmedValue.empty() ? "." : trimmedValue;
+    } else if (lowerKey == "capture_action") {
+        const auto action = toLower(trimmedValue);
+        settings.openAfterCapture = (action == "open" || action == "save_open");
+        settings.saveBeforeOpen = (action == "save_open");
+    } else if (lowerKey == "open_executable") {
+        settings.openExecutable = utf8ToWide(trimmedValue);
+    } else if (lowerKey == "open_app") {
+        settings.openApp = utf8ToWide(trimmedValue);
     } else if (lowerKey == "format") {
         std::string fmt = toLower(trimmedValue);
         if (fmt == "png" || fmt == "jpg" || fmt == "jpeg") {
@@ -359,6 +369,9 @@ bool saveSettingsProfiles(const std::vector<ProfileSettings>& profiles, const fs
     auto writeProfile = [&](const ProfileSettings& p) {
         out << "[" << p.name << "]\n";
         out << "output_dir=" << p.settings.outputDir << "\n";
+        out << "capture_action=" << (p.settings.openAfterCapture ? (p.settings.saveBeforeOpen ? "save_open" : "open") : "save") << "\n";
+        out << "open_app=" << wideToUtf8(p.settings.openApp) << "\n";
+        out << "open_executable=" << wideToUtf8(p.settings.openExecutable) << "\n";
         out << "format=" << p.settings.format << "\n";
         out << "compression_png=" << p.settings.pngCompression << "\n";
         out << "compression_jpg=" << p.settings.jpgQuality << "\n";

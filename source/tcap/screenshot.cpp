@@ -23,6 +23,7 @@
 #include <algorithm>
 #include <thread>
 #include "settings.h"
+#include "open_app.h"
 
 #ifndef DWMWA_EXTENDED_FRAME_BOUNDS
 #define DWMWA_EXTENDED_FRAME_BOUNDS 9
@@ -200,6 +201,7 @@ bool saveImageWic(const std::wstring& filename, int width, int height,
 class ScreenshotTool {
 private:
     std::vector<DisplayInfo> displays;
+    std::vector<std::wstring> openedImages;
 
 public:
     ScreenshotTool() = default;
@@ -233,6 +235,21 @@ public:
         return !displays.empty();
     }
 
+    bool openImages(const AppSettings& settings) {
+        bool success = true;
+        for (const auto& filename : openedImages) {
+            const HRESULT result = tcap_open_image(filename, settings.openApp, settings.openExecutable);
+            if (FAILED(result)) {
+                success = false;
+                const std::wstring message = (settings.language == "ja" ?
+                    L"\u753b\u50cf\u3092\u30a2\u30d7\u30ea\u3067\u958b\u3051\u307e\u305b\u3093\u3067\u3057\u305f\u3002\u958b\u304f\u30a2\u30d7\u30ea\u3092\u9078\u3073\u76f4\u3057\u3066\u304f\u3060\u3055\u3044\u3002\n\u753b\u50cf\u306f\u6b21\u306e\u5834\u6240\u306b\u6b8b\u3057\u3066\u3044\u307e\u3059:\n" :
+                    L"Could not open the image. Select another app in settings.\nThe image was kept at:\n") + filename;
+                MessageBoxW(nullptr, message.c_str(), L"TCapture", MB_OK | MB_ICONERROR);
+            }
+        }
+        return success;
+    }
+
     void listDisplays() const {
         std::cout << "Detected displays: " << displays.size() << std::endl;
         std::cout << std::string(60, '-') << std::endl;
@@ -255,7 +272,7 @@ public:
         return -1;
     }
 
-    std::wstring generateFilename(const std::string& displayLabel, const std::string& outputDir,
+    std::wstring generateFilename(const std::string& displayLabel, const std::wstring& outputDir,
                                   const std::string& format, std::time_t timestamp,
                                   int frameNumber, bool includeFrame) const {
         auto tm = *std::localtime(&timestamp);
@@ -269,7 +286,7 @@ public:
         }
         oss << "." << ext;
 
-        std::wstring outputPath = outputDir.empty() ? L"." : utf8ToWide(outputDir);
+        std::wstring outputPath = outputDir.empty() ? L"." : outputDir;
         if (outputPath.empty()) return {};
         fs::path path(outputPath);
         path /= utf8ToWide(oss.str());
@@ -437,11 +454,18 @@ private:
         DeleteDC(memDC);
         ReleaseDC(nullptr, screenDC);
 
-        std::wstring filename = generateFilename(displayLabel, settings.outputDir, settings.format, timestamp, frameNumber, includeFrame);
+        std::wstring outputDir = utf8ToWide(settings.outputDir);
+        if (settings.openAfterCapture && !settings.saveBeforeOpen) {
+            // Keep the file after launch: Photos may load it asynchronously, and editors can save back to it.
+            outputDir = (fs::temp_directory_path() / L"TCapture").wstring();
+            fs::create_directories(fs::path(outputDir));
+        }
+        std::wstring filename = generateFilename(displayLabel, outputDir, settings.format, timestamp, frameNumber, includeFrame);
         if (filename.empty()) {
             std::cerr << "Failed to build output path." << std::endl;
             return false;
         }
+        if (settings.openAfterCapture) filename = fs::absolute(fs::path(filename)).wstring();
         std::wstring savedFilename;
         int effectiveCompression = (toLower(settings.format) == "png") ? settings.pngCompression : settings.jpgQuality;
         if (!saveImageWic(filename, width, height, buffer, rowStride, settings.format, effectiveCompression, savedFilename)) {
@@ -449,6 +473,7 @@ private:
             return false;
         }
 
+        if (settings.openAfterCapture) openedImages.push_back(savedFilename);
         std::error_code ec;
         auto fileSize = fs::file_size(fs::path(savedFilename), ec);
         double kb = ec ? 0.0 : static_cast<double>(fileSize) / 1024.0;
@@ -527,8 +552,8 @@ int RunCaptureMain(int argc, char* argv[]) {
     };
 
     struct ComGuard {
-        ComGuard() { CoInitializeEx(nullptr, COINIT_MULTITHREADED); }
-        ~ComGuard() { CoUninitialize(); }
+        HRESULT result = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+        ~ComGuard() { if (SUCCEEDED(result)) CoUninitialize(); }
     } comGuard;
 
     try {
@@ -705,10 +730,10 @@ int RunCaptureMain(int argc, char* argv[]) {
             }
         }
 
-        if (!settings.outputDir.empty() && settings.outputDir != ".") {
-            fs::path outPath(settings.outputDir);
+        if ((!settings.openAfterCapture || settings.saveBeforeOpen) && !settings.outputDir.empty() && settings.outputDir != ".") {
+            fs::path outPath(utf8ToWide(settings.outputDir));
             if (!fs::exists(outPath)) {
-                std::cout << "Creating output directory: " << outPath.string() << std::endl;
+                std::cout << "Creating output directory: " << wideToUtf8(outPath.wstring()) << std::endl;
                 fs::create_directories(outPath);
             }
         }
@@ -776,6 +801,8 @@ int RunCaptureMain(int argc, char* argv[]) {
             }
         }
 
+        // Complete all captures before opening apps so they cannot appear in later monitor images.
+        if (settings.openAfterCapture && !tool.openImages(settings)) success = false;
         return success ? 0 : 1;
 
     } catch (const std::exception& e) {

@@ -38,6 +38,7 @@
 #include <cwctype>
 
 #include "settings.h"
+#include "open_app.h"
 #include "resource.h"
 #include "../common/native_edit.h"
 
@@ -170,6 +171,17 @@ void writeDefaultSettingsIni(const fs::path& path) {
 struct SettingsDialog {
     AppState* app = nullptr;
     HWND hwnd = nullptr;
+    HWND panel = nullptr;
+    HWND actionCombo = nullptr, openAppCombo = nullptr;
+    std::vector<TcapAppChoice> openApps;
+    std::string appsFormat;
+    HFONT uiFont = nullptr, titleFont = nullptr, smallFont = nullptr;
+    bool detailsOpen = false, arranging = false;
+    int targetMode = 0, scrollOffset = 0, contentHeight = 0;
+    UINT uiDpi = 96;
+    struct Placement { HWND window; int x, y, width, height; bool visible; };
+    std::vector<Placement> placements;
+    std::vector<int> separators;
     HWND tab = nullptr;
     HWND addBtn = nullptr;
     HWND deleteBtn = nullptr;
@@ -235,26 +247,25 @@ void applyControlTheme(SettingsDialog* dlg, HWND hwnd, bool setEditBackground) {
     }
 }
 
+void tcap_sync_controls(SettingsDialog* dlg);
+void tcap_fill_apps(SettingsDialog* dlg, const std::wstring& selected, const std::wstring& executable);
+void tcap_layout_controls(SettingsDialog* dlg);
+void tcap_refresh_fonts(SettingsDialog* dlg);
+bool tcap_draw_item(SettingsDialog* dlg, const DRAWITEMSTRUCT& item);
+void tcap_paint_surface(SettingsDialog* dlg, HWND window, HDC dc);
+bool tcap_handle_command(SettingsDialog* dlg, WPARAM wp, LPARAM lp);
+
 void adjustSettingsWindowSize(SettingsDialog* dlg) {
-    if (!dlg || !dlg->hwnd || dlg->layoutClientHeight <= 0 || dlg->layoutClientWidth <= 0) return;
-    RECT client{};
-    GetClientRect(dlg->hwnd, &client);
-    int currentClientWidth = client.right - client.left;
-    int currentClientHeight = client.bottom - client.top;
-    int targetClientWidth = dlg->layoutClientWidth;
-    int targetClientHeight = dlg->layoutClientHeight;
-    if (currentClientWidth == targetClientWidth && currentClientHeight == targetClientHeight) return;
-
-    DWORD style = static_cast<DWORD>(GetWindowLongW(dlg->hwnd, GWL_STYLE));
-    DWORD exStyle = static_cast<DWORD>(GetWindowLongW(dlg->hwnd, GWL_EXSTYLE));
-    RECT adjusted{0, 0, targetClientWidth, targetClientHeight};
-    AdjustWindowRectEx(&adjusted, style, FALSE, exStyle);
-
-    RECT window{};
-    GetWindowRect(dlg->hwnd, &window);
-    int width = adjusted.right - adjusted.left;
-    int height = adjusted.bottom - adjusted.top;
-    SetWindowPos(dlg->hwnd, nullptr, 0, 0, width, height, SWP_NOMOVE | SWP_NOZORDER);
+    if(!dlg||!dlg->hwnd)return;
+    const UINT dpi=GetDpiForWindow(dlg->hwnd);
+    RECT rect{0,0,MulDiv(800,dpi,96),MulDiv(608,dpi,96)};
+    AdjustWindowRectExForDpi(&rect,static_cast<DWORD>(GetWindowLongPtrW(dlg->hwnd,GWL_STYLE)),FALSE,0,dpi);
+    MONITORINFO monitor{sizeof(monitor)};GetMonitorInfoW(MonitorFromWindow(dlg->hwnd,MONITOR_DEFAULTTONEAREST),&monitor);
+    RECT current{};GetWindowRect(dlg->hwnd,&current);
+    const int width=std::min(rect.right-rect.left,monitor.rcWork.right-monitor.rcWork.left);
+    const int height=std::min(rect.bottom-rect.top,monitor.rcWork.bottom-monitor.rcWork.top);
+    SetWindowPos(dlg->hwnd,nullptr,std::clamp(current.left,monitor.rcWork.left,monitor.rcWork.right-width),
+        std::clamp(current.top,monitor.rcWork.top,monitor.rcWork.bottom-height),width,height,SWP_NOZORDER|SWP_NOACTIVATE);
 }
 
 bool namesEqual(const std::string& a, const std::string& b);
@@ -1408,6 +1419,7 @@ void loadProfileToControls(SettingsDialog* dlg, int index) {
     dlg->activeProfile = index;
     const auto& s = dlg->app->profiles[index].settings;
     setControlText(dlg->outputEdit, s.outputDir);
+    SendMessageW(dlg->actionCombo, CB_SETCURSEL, s.openAfterCapture ? (s.saveBeforeOpen ? 2 : 1) : 0, 0);
     setBurstFpsSelection(dlg->burstFpsCombo, s.burstFps);
     setControlText(dlg->burstSecondsEdit, std::to_string(s.burstSeconds));
     SendMessageW(dlg->autoCaptureCheck, BM_SETCHECK, s.autoCapture ? BST_CHECKED : BST_UNCHECKED, 0);
@@ -1416,6 +1428,7 @@ void loadProfileToControls(SettingsDialog* dlg, int index) {
     setHotkeyCombosFromSettings(dlg, s.captureHotkey);
     int fmtIndex = toLower(s.format) == "jpg" ? 1 : 0;
     SendMessageW(dlg->formatCombo, CB_SETCURSEL, fmtIndex, 0);
+    tcap_fill_apps(dlg, s.openApp, s.openExecutable);
     populateCompressionCombos(dlg);
     setControlText(dlg->compressionEditPng, std::to_string(s.pngCompression));
     setControlText(dlg->compressionEditJpg, std::to_string(s.jpgQuality));
@@ -1423,12 +1436,24 @@ void loadProfileToControls(SettingsDialog* dlg, int index) {
     updateCompressionFields(dlg);
     updateAutoStatusLabel(dlg);
     updateSettingsWindowTitle(dlg);
+    tcap_sync_controls(dlg);
 }
 
 bool saveControlsToProfile(SettingsDialog* dlg, int index, bool showErrors) {
     if (index < 0 || index >= static_cast<int>(dlg->app->profiles.size())) return false;
     ProfileSettings& profile = dlg->app->profiles[index];
     profile.settings.outputDir = trimCopy(getControlText(dlg->outputEdit));
+    const auto action = SendMessageW(dlg->actionCombo, CB_GETCURSEL, 0, 0);
+    profile.settings.openAfterCapture = action > 0;
+    profile.settings.saveBeforeOpen = action == 2;
+    const auto appIndex = SendMessageW(dlg->openAppCombo, CB_GETCURSEL, 0, 0);
+    if (appIndex >= 0 && static_cast<size_t>(appIndex) < dlg->openApps.size()) {
+        const auto& choice = dlg->openApps[static_cast<size_t>(appIndex)];
+        if (!choice.browse) {
+            profile.settings.openApp = choice.executable ? L"" : choice.name;
+            profile.settings.openExecutable = choice.executable ? choice.name : L"";
+        }
+    }
     profile.settings.format = trimCopy(getControlText(dlg->formatCombo));
     profile.settings.displaysRaw = trimCopy(getControlText(dlg->displaysEdit));
     profile.settings.captureHotkey = trimCopy(getHotkeyFromControls(dlg));
@@ -1675,7 +1700,9 @@ bool beginInlineRenameProfile(SettingsDialog* dlg, int index) {
     int y = rc.top;
     int w = rc.right - rc.left;
     int h = rc.bottom - rc.top;
-    if (h < 20) h = 20;
+    const int inset = MulDiv(10, dlg->uiDpi, 96);
+    x += inset; y += inset; w -= inset * 2;
+    h = MulDiv(30, dlg->uiDpi, 96);
 
     dlg->inlineEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"",
                                       WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
@@ -1847,300 +1874,7 @@ std::vector<ProfileSettings> mergeProfilesForSave(SettingsDialog* dlg, const Pro
     return merged;
 }
 
-void buildSettingsLayout(SettingsDialog* dlg) {
-    static HFONT font = static_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
-
-    RECT rc{};
-    GetClientRect(dlg->hwnd, &rc);
-    int margin = 8;
-    int labelWidth = 88;
-    int rowHeight = 24;
-    int sidebarWidth = 176;
-    int sidebarGap = 8;
-    int buttonWidth = 34;
-    int controlSpacing = 6;
-    int sectionSpacing = 12;
-    int groupPadding = 8;
-    int groupHeader = 16;
-
-    int clientWidth = static_cast<int>(rc.right - rc.left);
-    int clientHeight = static_cast<int>(rc.bottom - rc.top);
-    int desiredFieldWidth = 230;
-    int desiredClientWidth = margin * 2 + sidebarWidth + sidebarGap + groupPadding * 2 + labelWidth + desiredFieldWidth;
-    int layoutWidth = desiredClientWidth;
-    dlg->layoutClientWidth = layoutWidth;
-
-    int listHeight = rowHeight * 6 + 6;
-    dlg->tab = CreateWindowExW(WS_EX_CLIENTEDGE, L"LISTBOX", L"", WS_CHILD | WS_VISIBLE | LBS_NOTIFY | WS_VSCROLL | LBS_NOINTEGRALHEIGHT,
-                               margin, margin, sidebarWidth, listHeight, dlg->hwnd,
-                               reinterpret_cast<HMENU>(120), dlg->app->hInstance, nullptr);
-    SendMessageW(dlg->tab, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
-    applyControlTheme(dlg, dlg->tab, false);
-
-    const int addBtnWidth = 32;
-    const int deleteBtnWidth = 40;
-    const int renameBtnWidth = 76;
-    const int taskBtnGap = 4;
-    int btnX = margin;
-    int btnY = margin + listHeight + 6;
-    dlg->addBtn = CreateWindowExW(0, L"BUTTON", L"+", WS_CHILD | WS_VISIBLE,
-                                  btnX, btnY, addBtnWidth, rowHeight, dlg->hwnd,
-                                  reinterpret_cast<HMENU>(130), dlg->app->hInstance, nullptr);
-    dlg->deleteBtn = CreateWindowExW(0, L"BUTTON", translateId(*dlg->app, L"button_delete", L"Delete").c_str(), WS_CHILD | WS_VISIBLE,
-                                     btnX + addBtnWidth + taskBtnGap, btnY, deleteBtnWidth, rowHeight, dlg->hwnd,
-                                     reinterpret_cast<HMENU>(132), dlg->app->hInstance, nullptr);
-    dlg->renameBtn = CreateWindowExW(0, L"BUTTON", translateId(*dlg->app, L"button_rename", L"Rename").c_str(), WS_CHILD | WS_VISIBLE,
-                                     btnX + addBtnWidth + taskBtnGap + deleteBtnWidth + taskBtnGap, btnY, renameBtnWidth, rowHeight, dlg->hwnd,
-                                     reinterpret_cast<HMENU>(131), dlg->app->hInstance, nullptr);
-    int captureBtnWidth = sidebarWidth;
-    SendMessageW(dlg->addBtn, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
-    SendMessageW(dlg->deleteBtn, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
-    SendMessageW(dlg->renameBtn, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
-    applyControlTheme(dlg, dlg->addBtn, false);
-    applyControlTheme(dlg, dlg->deleteBtn, false);
-    applyControlTheme(dlg, dlg->renameBtn, false);
-
-    int contentX = margin + sidebarWidth + sidebarGap;
-    int groupWidth = layoutWidth - contentX - margin;
-
-    auto createLabel = [&](int yPos, const wchar_t* text, int xOffset = 0) -> HWND {
-        HWND h = CreateWindowExW(0, L"STATIC", text, WS_CHILD | WS_VISIBLE | SS_NOTIFY, contentX + xOffset, yPos + 5, labelWidth, rowHeight, dlg->hwnd, nullptr, dlg->app->hInstance, nullptr);
-        SendMessageW(h, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
-        applyControlTheme(dlg, h, false);
-        return h;
-    };
-    auto createEdit = [&](int yPos, int width, int controlId, int xOffset = 0) -> HWND {
-        HWND h = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
-                                 contentX + labelWidth + xOffset, yPos, width, rowHeight, dlg->hwnd,
-                                 reinterpret_cast<HMENU>(static_cast<INT_PTR>(controlId)), dlg->app->hInstance, nullptr);
-        SendMessageW(h, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
-        applyControlTheme(dlg, h, true);
-        return h;
-    };
-    auto createLabelAt = [&](int xPos, int yPos, int width, const wchar_t* text) -> HWND {
-        HWND h = CreateWindowExW(0, L"STATIC", text, WS_CHILD | WS_VISIBLE | SS_NOTIFY, xPos, yPos + 5, width, rowHeight, dlg->hwnd, nullptr, dlg->app->hInstance, nullptr);
-        SendMessageW(h, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
-        applyControlTheme(dlg, h, false);
-        return h;
-    };
-    auto createEditAt = [&](int xPos, int yPos, int width, int controlId) -> HWND {
-        HWND h = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL | ES_NUMBER,
-                                 xPos, yPos, width, rowHeight, dlg->hwnd,
-                                 reinterpret_cast<HMENU>(static_cast<INT_PTR>(controlId)), dlg->app->hInstance, nullptr);
-        SendMessageW(h, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
-        applyControlTheme(dlg, h, true);
-        return h;
-    };
-    auto createGroup = [&](int yPos, int height, const std::wstring& title) -> HWND {
-        HWND h = CreateWindowExW(0, L"BUTTON", title.c_str(), WS_CHILD | WS_VISIBLE | BS_GROUPBOX,
-                                 contentX, yPos, groupWidth, height, dlg->hwnd,
-                                 nullptr, dlg->app->hInstance, nullptr);
-        SendMessageW(h, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
-        applyControlTheme(dlg, h, false);
-        return h;
-    };
-    auto addFieldTip = [&](HWND labelHwnd, HWND fieldHwnd, const std::wstring& tip) {
-        if (!tip.empty()) {
-            addTooltip(dlg, labelHwnd, tip);
-            if (fieldHwnd) addTooltip(dlg, fieldHwnd, tip);
-        }
-    };
-
-    int y = margin;
-    HWND hint = CreateWindowExW(0, L"STATIC", translateId(*dlg->app, L"hint_tabs", L"Right-click a tab to rename. Changes save instantly.").c_str(), WS_CHILD | WS_VISIBLE,
-                                contentX, y, groupWidth, rowHeight, dlg->hwnd, nullptr, dlg->app->hInstance, nullptr);
-    SendMessageW(hint, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
-    applyControlTheme(dlg, hint, false);
-    y += rowHeight + 4;
-
-    // Language is controlled via tray menu; no selector in the dialog.
-
-    // Save settings section
-    int sectionHeight = groupHeader + groupPadding * 2 + rowHeight * 2 + controlSpacing;
-    createGroup(y, sectionHeight, translateId(*dlg->app, L"save_group", L"Save settings").c_str());
-    int sectionY = y + groupHeader + groupPadding;
-    int fieldX = contentX + groupPadding + labelWidth;
-    int fieldWidth = groupWidth - groupPadding * 2 - labelWidth;
-    int innerWidth = groupWidth - groupPadding * 2;
-
-    HWND lblOutput = createLabel(sectionY, translateId(*dlg->app, L"output_dir", L"Folder").c_str(), groupPadding);
-    int browseBtnWidth = 32;
-    int outputEditWidth = std::max(0, fieldWidth - browseBtnWidth - 6);
-    dlg->outputEdit = createEdit(sectionY, outputEditWidth, 101, groupPadding);
-    HWND browseBtn = CreateWindowExW(0, L"BUTTON", L"...", WS_CHILD | WS_VISIBLE,
-                                     fieldX + outputEditWidth + 4, sectionY,
-                                     browseBtnWidth, rowHeight, dlg->hwnd,
-                                     reinterpret_cast<HMENU>(140), dlg->app->hInstance, nullptr);
-    SendMessageW(browseBtn, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
-    applyControlTheme(dlg, browseBtn, false);
-    addFieldTip(lblOutput, dlg->outputEdit, translateId(*dlg->app, L"example_output", L"Example: C:\\captures or .\\shots (relative)").c_str());
-    sectionY += rowHeight + controlSpacing;
-
-    // Format + compression/quality on a single row (toggle by format)
-    int formatLabelWidth = (layoutWidth < 520) ? 64 : 70;
-    int compLabelWidth = (layoutWidth < 520) ? 70 : 90;
-    int gapSmall = 4;
-    int gapMid = (layoutWidth < 520) ? 6 : 10;
-    int remainingFmt = std::max(0, innerWidth - (formatLabelWidth + compLabelWidth) - gapSmall * 2 - gapMid);
-    int fmtComboWidth = remainingFmt / 2;
-    int compComboWidth = remainingFmt - fmtComboWidth;
-    int startX = contentX + groupPadding;
-    int x = startX;
-
-    HWND lblFmtInline = createLabelAt(x, sectionY, formatLabelWidth, translateId(*dlg->app, L"format", L"Format").c_str());
-    x += formatLabelWidth + gapSmall;
-    dlg->formatCombo = CreateWindowExW(0, L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | CBS_AUTOHSCROLL,
-                                       x, sectionY, fmtComboWidth, rowHeight * 6, dlg->hwnd,
-                                       reinterpret_cast<HMENU>(102), dlg->app->hInstance, nullptr);
-    SendMessageW(dlg->formatCombo, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
-    applyControlTheme(dlg, dlg->formatCombo, false);
-    SendMessageW(dlg->formatCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"png"));
-    SendMessageW(dlg->formatCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"jpg"));
-    addFieldTip(lblFmtInline, dlg->formatCombo, L"");
-
-    x += fmtComboWidth + gapMid;
-    int compX = x;
-    dlg->compressionLabelPng = createLabelAt(compX, sectionY, compLabelWidth, translateId(*dlg->app, L"compression_png", L"PNG compression").c_str());
-    dlg->compressionLabelJpg = createLabelAt(compX, sectionY, compLabelWidth, translateId(*dlg->app, L"compression_jpg", L"JPG quality").c_str());
-    x += compLabelWidth + gapSmall;
-    dlg->compressionEditPng = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL | ES_NUMBER,
-                                              x, sectionY, compComboWidth, rowHeight, dlg->hwnd,
-                                              reinterpret_cast<HMENU>(103), dlg->app->hInstance, nullptr);
-    SendMessageW(dlg->compressionEditPng, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
-    applyControlTheme(dlg, dlg->compressionEditPng, true);
-    dlg->compressionEditJpg = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL | ES_NUMBER,
-                                              x, sectionY, compComboWidth, rowHeight, dlg->hwnd,
-                                              reinterpret_cast<HMENU>(113), dlg->app->hInstance, nullptr);
-    SendMessageW(dlg->compressionEditJpg, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
-    applyControlTheme(dlg, dlg->compressionEditJpg, true);
-    addFieldTip(dlg->compressionLabelPng, dlg->compressionEditPng, L"");
-    addFieldTip(dlg->compressionLabelJpg, dlg->compressionEditJpg, L"");
-
-    sectionY += rowHeight + controlSpacing;
-    y += sectionHeight + sectionSpacing;
-
-    // Burst capture section
-    sectionHeight = groupHeader + groupPadding * 2 + rowHeight;
-    createGroup(y, sectionHeight, translateId(*dlg->app, L"burst_group", L"Burst capture").c_str());
-    sectionY = y + groupHeader + groupPadding;
-
-    int fpsLabelWidth = (layoutWidth < 520) ? 56 : 68;
-    int burstLabelWidth = (layoutWidth < 520) ? 100 : 120;
-    int spacing1 = 4;
-    int spacing2 = (layoutWidth < 520) ? 6 : 10;
-    int gaps = spacing1 * 2 + spacing2;
-    int remainingBurst = std::max(0, innerWidth - fpsLabelWidth - burstLabelWidth - gaps);
-    int fpsComboWidth = remainingBurst / 2;
-    int burstSecondsWidth = remainingBurst - fpsComboWidth;
-    int startBurstX = contentX + groupPadding;
-
-    HWND lblBurstFps = createLabelAt(startBurstX, sectionY, fpsLabelWidth,
-                                     translateId(*dlg->app, L"burst_fps_label", L"FPS").c_str());
-    int burstX = startBurstX + fpsLabelWidth + spacing1;
-    dlg->burstFpsCombo = CreateWindowExW(0, L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | CBS_NOINTEGRALHEIGHT | WS_VSCROLL,
-                                         burstX, sectionY, fpsComboWidth, rowHeight * 7, dlg->hwnd,
-                                         reinterpret_cast<HMENU>(107), dlg->app->hInstance, nullptr);
-    SendMessageW(dlg->burstFpsCombo, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
-    applyControlTheme(dlg, dlg->burstFpsCombo, false);
-    populateBurstFpsCombo(dlg->burstFpsCombo);
-    SendMessageW(dlg->burstFpsCombo, CB_SETCURSEL, 0, 0);
-    SendMessageW(dlg->burstFpsCombo, CB_SETMINVISIBLE, 7, 0);
-    addFieldTip(lblBurstFps, dlg->burstFpsCombo, translateId(*dlg->app, L"burst_note", L"Set FPS=0 to disable burst").c_str());
-
-    burstX += fpsComboWidth + spacing2;
-    HWND lblBurstSeconds = createLabelAt(burstX, sectionY, burstLabelWidth,
-                                         translateId(*dlg->app, L"burst_seconds_label", L"Duration (sec)").c_str());
-    dlg->burstSecondsEdit = createEditAt(burstX + burstLabelWidth, sectionY, burstSecondsWidth, 108);
-    addFieldTip(lblBurstSeconds, dlg->burstSecondsEdit, translateId(*dlg->app, L"burst_note", L"Set FPS=0 to disable burst").c_str());
-    y += sectionHeight + sectionSpacing;
-
-    // Auto capture section
-    sectionHeight = groupHeader + groupPadding * 2 + rowHeight;
-    createGroup(y, sectionHeight, translateId(*dlg->app, L"auto_group", L"Auto capture").c_str());
-    sectionY = y + groupHeader + groupPadding;
-    int labelAutoWidth = 92;
-    int buttonWidthAuto = 88;
-    int spacingAuto = 6;
-    int autoIntervalWidth = std::max(0, innerWidth - labelAutoWidth - buttonWidthAuto - spacingAuto);
-    HWND lblAuto = createLabelAt(contentX + groupPadding, sectionY, labelAutoWidth,
-                                 translateId(*dlg->app, L"auto_interval_label", L"Interval (sec)").c_str());
-    dlg->autoIntervalEdit = createEditAt(contentX + groupPadding + labelAutoWidth, sectionY, autoIntervalWidth, 110);
-    dlg->autoCaptureCheck = CreateWindowExW(0, L"BUTTON", translateId(*dlg->app, L"enable", L"Enable").c_str(),
-                                            WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX | BS_PUSHLIKE,
-                                            contentX + groupPadding + labelAutoWidth + autoIntervalWidth + spacingAuto, sectionY,
-                                            buttonWidthAuto, rowHeight, dlg->hwnd,
-                                            reinterpret_cast<HMENU>(109), dlg->app->hInstance, nullptr);
-    SendMessageW(dlg->autoCaptureCheck, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
-    applyControlTheme(dlg, dlg->autoCaptureCheck, false);
-    addFieldTip(lblAuto, dlg->autoIntervalEdit, translateId(*dlg->app, L"auto_note", L"Check to start, uncheck to stop. Per-profile setting.").c_str());
-    addFieldTip(lblAuto, dlg->autoCaptureCheck, translateId(*dlg->app, L"auto_note", L"Check to start, uncheck to stop. Per-profile setting.").c_str());
-    y += sectionHeight + sectionSpacing;
-
-    // Target and hotkey section
-    sectionHeight = groupHeader + groupPadding * 2 + rowHeight * 2 + controlSpacing;
-    createGroup(y, sectionHeight, translateId(*dlg->app, L"targets_group", L"Capture target").c_str());
-    sectionY = y + groupHeader + groupPadding;
-
-    HWND lblDisplays = createLabel(sectionY, translateId(*dlg->app, L"displays", L"Display").c_str(), groupPadding);
-    int displayBtnWidth = 44;
-    int displayEditWidth = std::max(0, fieldWidth - displayBtnWidth - 6);
-    dlg->displaysEdit = createEdit(sectionY, displayEditWidth, 104, groupPadding);
-    dlg->displaysHelpBtn = CreateWindowExW(0, L"BUTTON", translateId(*dlg->app, L"button_list", L"List").c_str(), WS_CHILD | WS_VISIBLE,
-                                           fieldX + displayEditWidth + 4, sectionY,
-                                           displayBtnWidth, rowHeight, dlg->hwnd,
-                                           reinterpret_cast<HMENU>(141), dlg->app->hInstance, nullptr);
-    SendMessageW(dlg->displaysHelpBtn, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
-    applyControlTheme(dlg, dlg->displaysHelpBtn, false);
-    addFieldTip(lblDisplays, dlg->displaysEdit, translateId(*dlg->app, L"displays_examples", L"Examples: all / 1,3 / active_display / active_window").c_str());
-    sectionY += rowHeight + controlSpacing;
-
-    HWND lblHotkey = createLabel(sectionY, translateId(*dlg->app, L"hotkey", L"Hotkey").c_str(), groupPadding);
-    int modWidth = std::max(0, fieldWidth / 2 - 4);
-    int keyWidth = std::max(0, fieldWidth - modWidth - 8);
-    dlg->hotkeyModCombo = CreateWindowExW(0, L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | CBS_NOINTEGRALHEIGHT | WS_VSCROLL,
-                                          fieldX, sectionY, modWidth, rowHeight * 8, dlg->hwnd,
-                                          reinterpret_cast<HMENU>(105), dlg->app->hInstance, nullptr);
-    dlg->hotkeyKeyCombo = CreateWindowExW(0, L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | CBS_NOINTEGRALHEIGHT | WS_VSCROLL,
-                                          fieldX + modWidth + 8, sectionY, keyWidth, rowHeight * 14, dlg->hwnd,
-                                          reinterpret_cast<HMENU>(106), dlg->app->hInstance, nullptr);
-    SendMessageW(dlg->hotkeyModCombo, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
-    SendMessageW(dlg->hotkeyKeyCombo, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
-    applyControlTheme(dlg, dlg->hotkeyModCombo, false);
-    applyControlTheme(dlg, dlg->hotkeyKeyCombo, false);
-    SendMessageW(dlg->hotkeyModCombo, CB_SETEXTENDEDUI, TRUE, 0);
-    SendMessageW(dlg->hotkeyKeyCombo, CB_SETEXTENDEDUI, TRUE, 0);
-    for (const auto& opt : modOptions()) {
-        const auto label = opt.label == L"None" ? translateId(*dlg->app, L"option_none", L"None") : opt.label;
-        SendMessageW(dlg->hotkeyModCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label.c_str()));
-    }
-    for (const auto& opt : keyOptions()) {
-        const auto label = opt.label == L"(None)" ? translateId(*dlg->app, L"option_none", L"None") : opt.label;
-        SendMessageW(dlg->hotkeyKeyCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label.c_str()));
-    }
-    SendMessageW(dlg->hotkeyModCombo, CB_SETMINVISIBLE, 8, 0);
-    SendMessageW(dlg->hotkeyKeyCombo, CB_SETMINVISIBLE, 14, 0);
-    addFieldTip(lblHotkey, dlg->hotkeyModCombo, L"");
-    addFieldTip(lblHotkey, dlg->hotkeyKeyCombo, L"");
-    y += sectionHeight + controlSpacing;
-
-    // Status bar
-    updateStatusBrush(dlg);
-    int statusWidth = groupWidth;
-    dlg->autoStatusLabel = CreateWindowExW(0, L"STATIC", translateId(*dlg->app, L"auto_stopped", L"Auto capture: stopped").c_str(), WS_CHILD | WS_VISIBLE | SS_CENTER,
-                                           contentX, y, statusWidth, rowHeight + 6,
-                                           dlg->hwnd, reinterpret_cast<HMENU>(111), dlg->app->hInstance, nullptr);
-    SendMessageW(dlg->autoStatusLabel, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
-    applyControlTheme(dlg, dlg->autoStatusLabel, false);
-    int plannedClientHeight = y + rowHeight + 6 + margin;
-    int captureBtnY = plannedClientHeight - margin - rowHeight - 14;
-    dlg->captureBtn = CreateWindowExW(0, L"BUTTON", translateId(*dlg->app, L"capture", L"Capture").c_str(), WS_CHILD | WS_VISIBLE,
-                                      margin, captureBtnY, captureBtnWidth, rowHeight, dlg->hwnd,
-                                      reinterpret_cast<HMENU>(142), dlg->app->hInstance, nullptr);
-    SendMessageW(dlg->captureBtn, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
-    applyControlTheme(dlg, dlg->captureBtn, false);
-    dlg->layoutClientHeight = plannedClientHeight;
-    native_edit::prepare(dlg->hwnd);
-}
+#include "settings_ui.h"
 
 bool persistActiveProfile(SettingsDialog* dlg, bool showErrors) {
     if (dlg->suppressSave) return true;
@@ -2164,6 +1898,7 @@ bool persistActiveProfile(SettingsDialog* dlg, bool showErrors) {
         }
         return false;
     }
+    tcap_sync_controls(dlg);
     return true;
 }
 
@@ -2188,6 +1923,7 @@ bool persistActiveProfileNoUI(SettingsDialog* dlg, bool showErrors) {
     updateAutoCaptureTimers(*dlg->app);
     maybeStopAgentIfIdle(*dlg->app);
     updateAutoStatusLabel(dlg);
+    tcap_sync_controls(dlg);
     return true;
 }
 
@@ -2203,11 +1939,11 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
     }
     case WM_CREATE:
         if (dlg && !dlg->backgroundBrush) {
-            dlg->backgroundColor = GetSysColor(COLOR_BTNFACE);
+            dlg->backgroundColor = RGB(255,255,255);
             dlg->backgroundBrush = CreateSolidBrush(dlg->backgroundColor);
             dlg->editBackgroundColor = GetSysColor(COLOR_WINDOW);
             dlg->editBackgroundBrush = CreateSolidBrush(dlg->editBackgroundColor);
-            dlg->listBackgroundColor = GetSysColor(COLOR_WINDOW);
+            dlg->listBackgroundColor = RGB(246,248,251);
             dlg->listBackgroundBrush = CreateSolidBrush(dlg->listBackgroundColor);
         }
         buildSettingsLayout(dlg);
@@ -2220,6 +1956,36 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
         populateTabs(dlg);
         loadProfileToControls(dlg, dlg->activeProfile);
         return 0;
+    case WM_SIZE:
+        if(dlg&&wParam!=SIZE_MINIMIZED)tcap_layout_controls(dlg);
+        return 0;
+    case WM_DPICHANGED:
+        if(dlg){
+            tcap_refresh_fonts(dlg);
+            const auto* rect=reinterpret_cast<const RECT*>(lParam);
+            SetWindowPos(hwnd,nullptr,rect->left,rect->top,rect->right-rect->left,rect->bottom-rect->top,SWP_NOZORDER|SWP_NOACTIVATE);
+            tcap_layout_controls(dlg);
+        }
+        return 0;
+    case WM_GETMINMAXINFO:
+        if(dlg){
+            const UINT dpi=GetDpiForWindow(hwnd);
+            auto* info=reinterpret_cast<MINMAXINFO*>(lParam);
+            RECT minimum{0,0,MulDiv(680,dpi,96),MulDiv(410,dpi,96)};
+            AdjustWindowRectExForDpi(&minimum,static_cast<DWORD>(GetWindowLongPtrW(hwnd,GWL_STYLE)),FALSE,
+                                    static_cast<DWORD>(GetWindowLongPtrW(hwnd,GWL_EXSTYLE)),dpi);
+            info->ptMinTrackSize={minimum.right-minimum.left,minimum.bottom-minimum.top};
+        }
+        return 0;
+    case WM_DRAWITEM:
+        if(dlg&&tcap_draw_item(dlg,*reinterpret_cast<DRAWITEMSTRUCT*>(lParam)))return TRUE;
+        break;
+    case WM_MEASUREITEM:
+        if(dlg){reinterpret_cast<MEASUREITEMSTRUCT*>(lParam)->itemHeight=MulDiv(58,GetDpiForWindow(hwnd),96);return TRUE;}
+        break;
+    case WM_PAINT:
+        if(dlg){PAINTSTRUCT ps{};BeginPaint(hwnd,&ps);tcap_paint_surface(dlg,hwnd,ps.hdc);EndPaint(hwnd,&ps);return 0;}
+        break;
     case WM_ERASEBKGND: {
         if (dlg && dlg->backgroundBrush) {
             RECT rect{};
@@ -2272,6 +2038,12 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
     case WM_CTLCOLORSTATIC: {
         HDC hdc = reinterpret_cast<HDC>(wParam);
         HWND target = reinterpret_cast<HWND>(lParam);
+        if (dlg && (GetDlgCtrlID(target) == 170 || GetDlgCtrlID(target) == 171)) {
+            const COLORREF color = GetDlgCtrlID(target) == 170 ? RGB(246,248,251) : RGB(250,251,253);
+            SetBkColor(hdc, color);
+            SetDCBrushColor(hdc, color);
+            return reinterpret_cast<INT_PTR>(GetStockObject(DC_BRUSH));
+        }
         if (dlg && target == dlg->autoStatusLabel) {
             if (dlg->autoStatusActive) {
                 SetTextColor(hdc, RGB(160, 0, 0));
@@ -2319,6 +2091,7 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
         break;
     }
     case WM_COMMAND:
+        if(dlg&&tcap_handle_command(dlg,wParam,lParam))return 0;
         switch (LOWORD(wParam)) {
         case 120: // profile list
             if (HIWORD(wParam) == LBN_SELCHANGE) {
@@ -2341,9 +2114,11 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
             }
             return 0;
         case 130: { // Add
+            if (HIWORD(wParam) != BN_CLICKED) return 0;
             saveControlsToProfile(dlg, dlg->activeProfile, false);
             ProfileSettings base = dlg->app->profiles.empty() ? ProfileSettings{} : dlg->app->profiles[dlg->activeProfile];
             base.settings.captureHotkey.clear(); // start new profile with no hotkey to avoid conflicts
+            base.settings.autoCapture=false;
             std::string newNameBase = "profile";
             int suffix = static_cast<int>(dlg->app->profiles.size()) + 1;
             auto isDuplicate = [&](const std::string& name) {
@@ -2366,6 +2141,7 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
             return 0;
         }
         case 131: { // Rename
+            if (HIWORD(wParam) != BN_CLICKED) return 0;
             int sel = static_cast<int>(SendMessageW(dlg->tab, LB_GETCURSEL, 0, 0));
             if (sel < 0) sel = dlg->activeProfile;
             if (sel >= 0) {
@@ -2374,6 +2150,7 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
             return 0;
         }
         case 132: { // Delete
+            if (HIWORD(wParam) != BN_CLICKED) return 0;
             if (dlg->app->profiles.size() <= 1) {
                 MessageBoxW(dlg->hwnd, translateId(*dlg->app, L"profile_required", L"At least one profile must remain.").c_str(),
                             translateId(*dlg->app, L"app_name", L"TCapture").c_str(), MB_ICONINFORMATION);
@@ -2435,6 +2212,7 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
             }
             return 0;
         case 140: { // browse output dir
+            if (HIWORD(wParam) != BN_CLICKED) return 0;
             std::wstring initial = utf8ToWide(trimCopy(getControlText(dlg->outputEdit)));
             std::wstring title = translateId(*dlg->app, L"output_dir", L"Output dir");
             std::wstring selected = browseForFolder(dlg->hwnd, initial, title);
@@ -2447,6 +2225,7 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
             return 0;
         }
         case 141: { // list displays
+            if (HIWORD(wParam) != BN_CLICKED) return 0;
             std::wstring info = buildDisplayListText();
             MessageBoxW(dlg->hwnd, info.c_str(), translateId(*dlg->app, L"displays", L"Display").c_str(), MB_ICONINFORMATION);
             return 0;
@@ -2490,6 +2269,7 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
                 dlg->tabOldProc = nullptr;
             }
             if (dlg->tooltip) DestroyWindow(dlg->tooltip);
+            for(HFONT font:{dlg->uiFont,dlg->smallFont,dlg->titleFont})if(font)DeleteObject(font);
             if (dlg->statusBrushActive) DeleteObject(dlg->statusBrushActive);
             if (dlg->statusBrushInactive) DeleteObject(dlg->statusBrushInactive);
             if (dlg->backgroundBrush) DeleteObject(dlg->backgroundBrush);
@@ -2533,7 +2313,7 @@ HWND showSettingsWindow(AppState& app) {
     std::wstring appTitle = translateId(app, L"app_name", L"TCapture");
     std::wstring windowTitle = appTitle;
     HWND hwnd = CreateWindowExW(WS_EX_DLGMODALFRAME, CLASS_NAME, windowTitle.c_str(),
-                                WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
+                                WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_THICKFRAME | WS_CLIPCHILDREN,
                                 CW_USEDEFAULT, CW_USEDEFAULT, 720, 660,
                                 nullptr, nullptr, app.hInstance, dlg);
     if (hwnd) {
@@ -2757,6 +2537,7 @@ int APIENTRY wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int) {
         return RunCaptureMain(static_cast<int>(argv.size()), argv.data());
     }
 
+    SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     INITCOMMONCONTROLSEX icc{ sizeof(INITCOMMONCONTROLSEX), ICC_STANDARD_CLASSES | ICC_TAB_CLASSES | ICC_WIN95_CLASSES };
     InitCommonControlsEx(&icc);
 

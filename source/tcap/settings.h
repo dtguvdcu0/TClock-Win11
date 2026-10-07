@@ -6,6 +6,10 @@
 
 struct AppSettings {
     std::string outputDir = ".";
+    bool openAfterCapture = false;
+    bool saveBeforeOpen = false;
+    std::wstring openExecutable; // Optional executable selected directly instead of a Shell handler.
+    std::wstring openApp; // Shell handler identity; empty selects the Windows default app.
     std::string format = "png"; // png or jpg
     int pngCompression = 6;     // 0-9
     int jpgQuality = 94;        // 1-100

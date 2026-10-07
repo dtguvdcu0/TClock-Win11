@@ -19,6 +19,9 @@ The executable directory is the preferred and stable location.
 These keys are the normalized keys written by the current implementation.
 
 - `output_dir`: output directory, empty is normalized to `.`
+- `capture_action`: `save` (default), `open`, or `save_open`
+- `open_app`: Windows Shell handler identity in UTF-8; empty uses the Windows default image app
+- `open_executable`: optional executable path in UTF-8; takes priority over `open_app`
 - `format`: `png` or `jpg`
 - `compression_png`: PNG compression level
 - `compression_jpg`: JPEG quality
@@ -85,6 +88,19 @@ These aliases are accepted while reading the INI.
 - `lang`
 
 ## Value Rules
+
+### `capture_action` and `open_app`
+- Missing or unrecognized `capture_action` values use the existing save behavior.
+- `save_open` saves in `output_dir`, then opens that same file for viewing or editing.
+- `open` writes to `%TEMP%\TCapture`, then opens each image using the selected Shell handler.
+- The GUI lists recommended apps registered for the selected PNG or JPEG format, including packaged apps.
+- Choose `Choose executable...` in the app list to select an unregistered desktop tool.
+- A custom executable receives one quoted image path argument and runs with its own directory as the working directory. A new process is requested for each image; tools may manage their own windows/tabs.
+- App selection is per profile. Changing format refreshes the list without silently replacing the saved choice.
+- An unavailable app reports an error and retains the image for recovery.
+- Temporary images remain available after launch for asynchronous loading and editing; they can be removed later through Windows temporary-file cleanup.
+- Open mode disables burst and automatic capture. Switching back to save leaves those features off until explicitly enabled.
+- All requested displays are captured before any application is opened.
 
 ### `format`
 - `png` and `jpg` are the normalized values.

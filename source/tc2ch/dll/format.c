@@ -48,6 +48,7 @@ extern BOOL b_DebugLog;
 #define TC_CUSTOM_FAIL_MAX 256
 #define TC_CUSTOM_JSON_PATH_MAX 256
 #define TC_CUSTOM_FILE_MAX_BYTES (64 * 1024)
+#define TC_CUSTOM_JSON_BATCH_CACHE_MAX_BYTES (1024 * 1024)
 #define TC_CUSTOM_MAX_CHARS_DEFAULT 20
 #define TC_CUSTOM_REFRESH_DEFAULT 60
 #define TC_CUSTOM_PRELOAD_DEFAULT 1
@@ -138,6 +139,17 @@ typedef struct {
 	BOOL hasPath;
 } TC_CUSTOM_VAR_ENTRY;
 
+typedef struct {
+	WCHAR fullPath[MAX_PATH];
+	wchar_t* text;
+} TC_CUSTOM_BATCH_TEXT_ENTRY;
+
+typedef struct {
+	TC_CUSTOM_BATCH_TEXT_ENTRY entries[TC_CUSTOM_VAR_MAX];
+	SIZE_T retainedBytes;
+} TC_CUSTOM_BATCH_TEXT;
+
+static volatile LONG g_customScriptLaunchGeneration = 0;
 static TC_CUSTOM_VAR_ENTRY g_customVars[TC_CUSTOM_VAR_MAX];
 static int g_customDefaultRefreshSec = TC_CUSTOM_REFRESH_DEFAULT;
 static int g_customDefaultMaxChars = TC_CUSTOM_MAX_CHARS_DEFAULT;
@@ -367,7 +379,58 @@ static BOOL tc_custom_decode_to_wide(const BYTE* raw, DWORD bytes, wchar_t* outW
 	return FALSE;
 }
 
-static BOOL tc_custom_read_text_wide(const char* path, wchar_t* outWide, int outCch, BOOL firstLineOnly)
+/* Existing CustomVars paths use a UTF-8 char contract; keep conversion at this explicit legacy ingress boundary. */
+static BOOL cv_convert_path(const char* path, WCHAR* wPath, int outCch)
+{
+	if (!path || !path[0] || !wPath || outCch <= 0) return FALSE;
+	wPath[0] = L'\0';
+	if (tc_utf8_to_utf16(path, wPath, outCch) > 0) return TRUE;
+	return tc_ansi_to_utf16_compat(0, path, wPath, outCch) > 0;
+}
+
+static BOOL cv_normalize_path(const WCHAR* path, WCHAR* outPath, int outCch)
+{
+	DWORD length;
+	int i;
+	if (!path || !path[0] || !outPath || outCch <= 0) return FALSE;
+	length = GetFullPathNameW(path, (DWORD)outCch, outPath, NULL);
+	if (length == 0 || length >= (DWORD)outCch) { outPath[0] = L'\0'; return FALSE; }
+	for (i = 0; outPath[i]; ++i) if (outPath[i] == L'/') outPath[i] = L'\\';
+	return TRUE;
+}
+
+static wchar_t* cv_read_text(const WCHAR* path, SIZE_T* allocationBytes)
+{
+	HANDLE h = INVALID_HANDLE_VALUE;
+	DWORD sizeLow;
+	DWORD readBytes = 0;
+	BYTE* raw = NULL;
+	wchar_t* text = NULL;
+	BOOL ok = FALSE;
+	if (!path || !path[0] || !allocationBytes) return NULL;
+	*allocationBytes = 0;
+	h = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (h == INVALID_HANDLE_VALUE) return NULL;
+	sizeLow = GetFileSize(h, NULL);
+	if (sizeLow == INVALID_FILE_SIZE && GetLastError() != NO_ERROR) goto cleanup;
+	if (sizeLow == 0 || sizeLow > TC_CUSTOM_FILE_MAX_BYTES) goto cleanup;
+	raw = (BYTE*)HeapAlloc(GetProcessHeap(), 0, (SIZE_T)sizeLow + 2);
+	text = (wchar_t*)HeapAlloc(GetProcessHeap(), 0, ((SIZE_T)sizeLow + 1) * sizeof(wchar_t));
+	if (!raw || !text) goto cleanup;
+	if (!ReadFile(h, raw, sizeLow, &readBytes, NULL)) goto cleanup;
+	if (readBytes == 0 || readBytes > TC_CUSTOM_FILE_MAX_BYTES) goto cleanup;
+	if (!tc_custom_decode_to_wide(raw, readBytes, text, (int)sizeLow + 1)) goto cleanup;
+	*allocationBytes = ((SIZE_T)sizeLow + 1) * sizeof(wchar_t);
+	ok = TRUE;
+cleanup:
+	if (raw) HeapFree(GetProcessHeap(), 0, raw);
+	CloseHandle(h);
+	if (!ok && text) { HeapFree(GetProcessHeap(), 0, text); text = NULL; }
+	return text;
+}
+
+/* Preserve the legacy line-mode decode capacity before truncating at the first line. */
+static BOOL cv_read_line(const WCHAR* path, wchar_t* outWide, int outCch)
 {
 	HANDLE h;
 	DWORD sizeLow;
@@ -377,42 +440,24 @@ static BOOL tc_custom_read_text_wide(const char* path, wchar_t* outWide, int out
 	DWORD i;
 	if (!path || !path[0] || !outWide || outCch <= 0) return FALSE;
 	outWide[0] = L'\0';
-	{
-		wchar_t wPath[MAX_PATH];
-		if (tc_utf8_to_utf16(path, wPath, (int)(sizeof(wPath) / sizeof(wPath[0]))) <= 0) {
-			if (tc_ansi_to_utf16_compat(0, path, wPath, (int)(sizeof(wPath) / sizeof(wPath[0]))) <= 0) return FALSE;
-		}
-		h = CreateFileW(wPath, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-	}
+	h = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 	if (h == INVALID_HANDLE_VALUE) return FALSE;
 	sizeLow = GetFileSize(h, NULL);
-	if (sizeLow == INVALID_FILE_SIZE && GetLastError() != NO_ERROR) { CloseHandle(h); return FALSE; }
-	if (sizeLow == 0 || sizeLow > TC_CUSTOM_FILE_MAX_BYTES) { CloseHandle(h); return FALSE; }
+	if (sizeLow == INVALID_FILE_SIZE && GetLastError() != NO_ERROR) goto cleanup;
+	if (sizeLow == 0 || sizeLow > TC_CUSTOM_FILE_MAX_BYTES) goto cleanup;
 	raw = (BYTE*)HeapAlloc(GetProcessHeap(), 0, (SIZE_T)sizeLow + 2);
-	if (!raw) { CloseHandle(h); return FALSE; }
+	if (!raw) goto cleanup;
 	if (!ReadFile(h, raw, sizeLow, &readBytes, NULL)) goto cleanup;
 	if (readBytes == 0 || readBytes > TC_CUSTOM_FILE_MAX_BYTES) goto cleanup;
 	if (!tc_custom_decode_to_wide(raw, readBytes, outWide, outCch)) goto cleanup;
-	if (firstLineOnly) {
-		for (i = 0; outWide[i]; ++i) {
-			if (outWide[i] == L'\r' || outWide[i] == L'\n') { outWide[i] = L'\0'; break; }
-		}
+	for (i = 0; outWide[i]; ++i) {
+		if (outWide[i] == L'\r' || outWide[i] == L'\n') { outWide[i] = L'\0'; break; }
 	}
 	ok = TRUE;
 cleanup:
 	if (raw) HeapFree(GetProcessHeap(), 0, raw);
 	CloseHandle(h);
 	return ok;
-}
-
-static BOOL tc_custom_read_first_line_wide(const char* path, wchar_t* outWide, int outCch)
-{
-	return tc_custom_read_text_wide(path, outWide, outCch, TRUE);
-}
-
-static BOOL tc_custom_read_all_wide(const char* path, wchar_t* outWide, int outCch)
-{
-	return tc_custom_read_text_wide(path, outWide, outCch, FALSE);
 }
 
 typedef struct TC_CUSTOM_JSON_NODE_TAG TC_CUSTOM_JSON_NODE;
@@ -434,6 +479,50 @@ enum {
 	TC_JSON_NODE_OBJECT = 4,
 	TC_JSON_NODE_ARRAY = 5
 };
+
+static void cv_clear_batch(TC_CUSTOM_BATCH_TEXT* batch)
+{
+	int i;
+	if (!batch) return;
+	for (i = 0; i < TC_CUSTOM_VAR_MAX; ++i) {
+		if (batch->entries[i].text) HeapFree(GetProcessHeap(), 0, batch->entries[i].text);
+		ZeroMemory(&batch->entries[i], sizeof(batch->entries[i]));
+	}
+	batch->retainedBytes = 0;
+}
+
+static wchar_t* cv_get_text(TC_CUSTOM_BATCH_TEXT* batch, const WCHAR* path, BOOL* callerOwns)
+{
+	WCHAR fullPath[MAX_PATH];
+	TC_CUSTOM_BATCH_TEXT_ENTRY* freeEntry = NULL;
+	wchar_t* text;
+	SIZE_T allocationBytes = 0;
+	BOOL cacheable;
+	int i;
+	if (callerOwns) *callerOwns = FALSE;
+	if (!path || !path[0]) return NULL;
+	cacheable = cv_normalize_path(path, fullPath, (int)(sizeof(fullPath) / sizeof(fullPath[0])));
+	if (batch && cacheable) {
+		for (i = 0; i < TC_CUSTOM_VAR_MAX; ++i) {
+			TC_CUSTOM_BATCH_TEXT_ENTRY* entry = &batch->entries[i];
+			if (entry->text && CompareStringOrdinal(entry->fullPath, -1, fullPath, -1, TRUE) == CSTR_EQUAL) {
+				return entry->text;
+			}
+			if (!entry->text && !freeEntry) freeEntry = entry;
+		}
+	}
+	text = cv_read_text(path, &allocationBytes);
+	if (!text) return NULL;
+	if (batch && cacheable && freeEntry && allocationBytes <= (TC_CUSTOM_JSON_BATCH_CACHE_MAX_BYTES - batch->retainedBytes)) {
+		lstrcpynW(freeEntry->fullPath, fullPath, (int)(sizeof(freeEntry->fullPath) / sizeof(freeEntry->fullPath[0])));
+		freeEntry->text = text;
+		batch->retainedBytes += allocationBytes;
+		return text;
+	}
+	if (callerOwns) *callerOwns = TRUE;
+	return text;
+}
+
 
 static TC_CUSTOM_JSON_NODE* tc_custom_json_new_node(int type)
 {
@@ -1096,6 +1185,7 @@ static void tc_custom_run_script(TC_CUSTOM_VAR_ENTRY* e)
 	}
 	CloseHandle(pi.hThread);
 	CloseHandle(pi.hProcess);
+	InterlockedIncrement(&g_customScriptLaunchGeneration);
 	if (b_DebugLog) writeDebugLog_Win10("[format.c][CustomVars] script launched", 999);
 }
 
@@ -1125,16 +1215,24 @@ static void tc_custom_maybe_run_script(TC_CUSTOM_VAR_ENTRY* e, DWORD nowTick, BO
 	}
 }
 
-static void tc_custom_refresh_one(int idx, DWORD nowTick, BOOL forceRefresh)
+static void tc_custom_refresh_one(TC_CUSTOM_BATCH_TEXT* batch, int idx, DWORD nowTick, BOOL forceRefresh)
 {
 	TC_CUSTOM_VAR_ENTRY* e;
 	wchar_t wbuf[TC_CUSTOM_VALUE_MAX];
-	wchar_t wjson[TC_CUSTOM_FILE_MAX_BYTES + 8];
+	WCHAR wPath[MAX_PATH];
+	wchar_t* sharedText;
 	char resolved[TC_CUSTOM_PATH_MAX + MAX_PATH];
 	char ansi[TC_CUSTOM_VALUE_MAX];
+	BOOL callerOwnsText = FALSE;
+	BOOL extracted;
+	LONG scriptGeneration;
 	if (idx < 0 || idx >= TC_CUSTOM_VAR_MAX) return;
 	e = &g_customVars[idx];
+	scriptGeneration = InterlockedCompareExchange(&g_customScriptLaunchGeneration, 0, 0);
 	tc_custom_maybe_run_script(e, nowTick, forceRefresh);
+	if (batch && scriptGeneration != InterlockedCompareExchange(&g_customScriptLaunchGeneration, 0, 0)) {
+		cv_clear_batch(batch);
+	}
 	if (!forceRefresh && !tc_custom_tick_expired(nowTick, e->nextRefreshTick)) return;
 	if (!e->hasPath) {
 		tc_custom_set_fallback(e);
@@ -1142,28 +1240,27 @@ static void tc_custom_refresh_one(int idx, DWORD nowTick, BOOL forceRefresh)
 		return;
 	}
 	tc_custom_resolve_path(e->path, resolved, (int)sizeof(resolved));
-	if (!resolved[0]) {
+	if (!resolved[0] || !cv_convert_path(resolved, wPath, (int)(sizeof(wPath) / sizeof(wPath[0])))) {
 		tc_custom_set_fallback(e);
 		e->nextRefreshTick = nowTick + (DWORD)(e->refreshSec * 1000);
 		return;
 	}
 	if (e->mode == TC_CUSTOM_MODE_JSON) {
-		if (!tc_custom_read_all_wide(resolved, wjson, (int)(sizeof(wjson) / sizeof(wjson[0])))) {
+		sharedText = cv_get_text(batch, wPath, &callerOwnsText);
+		if (!sharedText) {
 			tc_custom_set_fallback(e);
 			e->nextRefreshTick = nowTick + (DWORD)(e->refreshSec * 1000);
 			return;
 		}
-		if (!tc_custom_json_extract_text(e, wjson, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0])))) {
-			tc_custom_set_fallback(e);
-			e->nextRefreshTick = nowTick + (DWORD)(e->refreshSec * 1000);
-			return;
-		}
+		extracted = tc_custom_json_extract_text(e, sharedText, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0])));
+		if (callerOwnsText) HeapFree(GetProcessHeap(), 0, sharedText);
 	} else {
-		if (!tc_custom_read_first_line_wide(resolved, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0])))) {
-			tc_custom_set_fallback(e);
-			e->nextRefreshTick = nowTick + (DWORD)(e->refreshSec * 1000);
-			return;
-		}
+		extracted = cv_read_line(wPath, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0])));
+	}
+	if (!extracted) {
+		tc_custom_set_fallback(e);
+		e->nextRefreshTick = nowTick + (DWORD)(e->refreshSec * 1000);
+		return;
 	}
 	tc_custom_trim_edges_wide(wbuf, e->whitespaceMode);
 	if (e->maxChars > 0 && lstrlenW(wbuf) > e->maxChars) wbuf[e->maxChars] = L'\0';
@@ -1363,11 +1460,14 @@ void CustomFormatVarsPreloadIfEnabled(void)
 {
 	int i;
 	DWORD nowTick;
+	TC_CUSTOM_BATCH_TEXT batch;
 	if (!g_customSettingsLoaded) CustomFormatVarsReadSettings();
 	if (InterlockedExchange(&g_customSuppressPreloadOnce, 0) != 0) return;
 	if (!g_customPreloadOnStartup) return;
+	ZeroMemory(&batch, sizeof(batch));
 	nowTick = GetTickCount();
-	for (i = 0; i < TC_CUSTOM_VAR_MAX; ++i) tc_custom_refresh_one(i, nowTick, TRUE);
+	for (i = 0; i < TC_CUSTOM_VAR_MAX; ++i) tc_custom_refresh_one(&batch, i, nowTick, TRUE);
+	cv_clear_batch(&batch);
 }
 
 void CustomFormatVarsSuppressNextPreload(void)
@@ -1392,10 +1492,13 @@ void CustomFormatVarsTick(void)
 {
 	int i;
 	DWORD nowTick;
+	TC_CUSTOM_BATCH_TEXT batch;
 	if (!g_customSettingsLoaded) CustomFormatVarsReadSettings();
 	nowTick = GetTickCount();
 	if (InterlockedExchange(&g_customDeferIntervalBootstrapOnce, 0) != 0) tc_custom_defer_interval_bootstrap(nowTick);
-	for (i = 0; i < TC_CUSTOM_VAR_MAX; ++i) tc_custom_refresh_one(i, nowTick, FALSE);
+	ZeroMemory(&batch, sizeof(batch));
+	for (i = 0; i < TC_CUSTOM_VAR_MAX; ++i) tc_custom_refresh_one(&batch, i, nowTick, FALSE);
+	cv_clear_batch(&batch);
 }
 
 void CustomFormatVarsInvalidateSettings(void)
@@ -1704,7 +1807,7 @@ static const char* tc_custom_get_value(int index1)
 	if (!g_customSettingsLoaded) CustomFormatVarsReadSettings();
 	e = &g_customVars[index1 - 1];
 	nowTick = GetTickCount();
-	tc_custom_refresh_one(index1 - 1, nowTick, FALSE);
+	tc_custom_refresh_one(NULL, index1 - 1, nowTick, FALSE);
 	return tc_custom_get_emit_value(e);
 }
 

@@ -238,13 +238,21 @@ static DWORD tc_hash_wide(const wchar_t* path)
     return hash;
 }
 
-void tc_ini_utf8_clear_cache(void)
+static volatile LONG g_iniReadGeneration;
+
+static void ini_clear_data(void)
 {
     if (g_iniUtf8Cache.text) {
         tc_free_text_buffer(g_iniUtf8Cache.text);
         g_iniUtf8Cache.text = NULL;
     }
     ZeroMemory(&g_iniUtf8Cache, sizeof(g_iniUtf8Cache));
+}
+
+void tc_ini_utf8_clear_cache(void)
+{
+    InterlockedIncrement(&g_iniReadGeneration);
+    ini_clear_data();
 }
 
 static int tc_ini_utf8_parse_section_multisz(const char* text, DWORD size, const char* sec,
@@ -400,7 +408,7 @@ static BOOL tc_ini_utf8_cache_get_locked(const char* iniPath, char** text, DWORD
         return FALSE;
     }
 
-    tc_ini_utf8_clear_cache();
+    ini_clear_data();
     lstrcpyn(g_iniUtf8Cache.path, iniPath, (int)sizeof(g_iniUtf8Cache.path));
     g_iniUtf8Cache.ftWrite = ftWrite;
     g_iniUtf8Cache.fileSizeLow = fileSizeLow;
@@ -447,6 +455,285 @@ static void tc_ini_lock_leave(HANDLE h)
     CloseHandle(h);
 }
 
+typedef struct tc_ini_index_entry_s {
+    DWORD secOff;
+    DWORD secLen;
+    DWORD keyOff;
+    DWORD keyLen;
+    DWORD valOff;
+    DWORD valLen;
+} ini_index_entry_t;
+
+typedef struct ini_read_session_s {
+    BOOL active;
+    int depth;
+    wchar_t path[MAX_PATH];
+    char* text;
+    DWORD size;
+    BOOL hadBom;
+    DWORD* slots;
+    DWORD slotCount;
+    ini_index_entry_t* entries;
+    DWORD entryCount;
+    LONG generation;
+} ini_read_session_t;
+
+static DWORD g_iniReadTlsSlot = TLS_OUT_OF_INDEXES;
+static LONG g_iniReadActiveScopes;
+static SRWLOCK g_iniReadTlsLock = SRWLOCK_INIT;
+
+static ini_read_session_t* ini_get_session(void)
+{
+    ini_read_session_t* session=NULL;
+    AcquireSRWLockShared(&g_iniReadTlsLock);
+    if (g_iniReadTlsSlot!=TLS_OUT_OF_INDEXES) session=(ini_read_session_t*)TlsGetValue(g_iniReadTlsSlot);
+    ReleaseSRWLockShared(&g_iniReadTlsLock);
+    return session;
+}
+
+static BOOL ini_install_session(ini_read_session_t* session)
+{
+    BOOL allocated=FALSE,ok=FALSE;
+    AcquireSRWLockExclusive(&g_iniReadTlsLock);
+    if (g_iniReadTlsSlot==TLS_OUT_OF_INDEXES) {
+        g_iniReadTlsSlot=TlsAlloc();
+        if (g_iniReadTlsSlot!=TLS_OUT_OF_INDEXES) allocated=TRUE;
+    }
+    if (g_iniReadTlsSlot!=TLS_OUT_OF_INDEXES && TlsSetValue(g_iniReadTlsSlot,session)) {
+        ++g_iniReadActiveScopes;
+        ok=TRUE;
+    }
+    else if (allocated) {
+        TlsFree(g_iniReadTlsSlot);
+        g_iniReadTlsSlot=TLS_OUT_OF_INDEXES;
+    }
+    ReleaseSRWLockExclusive(&g_iniReadTlsLock);
+    return ok;
+}
+
+static BOOL ini_equal_span(const char* a,const char* b,DWORD n)
+{
+    DWORD i;
+    for (i=0;i<n;++i) if (tc_tolower_ascii((unsigned char)a[i])!=tc_tolower_ascii((unsigned char)b[i])) return FALSE;
+    return TRUE;
+}
+
+static DWORD ini_hash_pair(const char* sec, int secLen, const char* key, int keyLen)
+{
+    DWORD h = 2166136261u;
+    int i;
+    for (i = 0; i < secLen; ++i) h = (h ^ (DWORD)tc_tolower_ascii((unsigned char)sec[i])) * 16777619u;
+    h = (h ^ 0xFFu) * 16777619u;
+    for (i = 0; i < keyLen; ++i) h = (h ^ (DWORD)tc_tolower_ascii((unsigned char)key[i])) * 16777619u;
+    return h ? h : 1u;
+}
+
+static BOOL ini_build_index(ini_read_session_t* s)
+{
+    DWORD i = 0, lineCount = 1, slots = 8;
+    BOOL inSection = FALSE;
+    DWORD secOff = 0, secLen = 4;
+    if (!s || !s->text) return FALSE;
+    for (i = 0; i < s->size; ++i) {
+        if (s->text[i] == '\r') { ++lineCount; if (i+1<s->size && s->text[i+1]=='\n') ++i; }
+        else if (s->text[i] == '\n') ++lineCount;
+    }
+    if (lineCount > 0x1FFFFFFFu) return FALSE;
+    while (slots < lineCount * 2u) { if (slots > 0x40000000u) return FALSE; slots <<= 1; }
+    s->slots=(DWORD*)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, (SIZE_T)slots*sizeof(DWORD));
+    s->entries=(ini_index_entry_t*)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, (SIZE_T)lineCount*sizeof(ini_index_entry_t));
+    if (!s->slots || !s->entries) return FALSE;
+    s->slotCount=slots;
+    i=0;
+    while (i<s->size) {
+        DWORD ls=i, le=i, end, eq;
+        int l, r, kl, kr, vl, vr;
+        while (le<s->size && s->text[le]!='\r' && s->text[le]!='\n') ++le;
+        end=le;
+        if (le<s->size && s->text[le]=='\r') { ++le; if (le<s->size && s->text[le]=='\n') ++le; }
+        else if (le<s->size && s->text[le]=='\n') ++le;
+        if (tc_line_is_any_section(s->text+ls,(int)(end-ls))) {
+            tc_trim_lr(s->text+ls,(int)(end-ls),&l,&r);
+            inSection=TRUE; secOff=ls+(DWORD)l+1; secLen=(DWORD)(r-l-2);
+            i=le; continue;
+        }
+        if (!inSection) { i=le; continue; }
+        tc_trim_lr(s->text+ls,(int)(end-ls),&l,&r);
+        if (l>=r || s->text[ls+l]==';' || s->text[ls+l]=='#') { i=le; continue; }
+        eq=ls+(DWORD)l; while (eq<ls+(DWORD)r && s->text[eq]!='=') ++eq;
+        if (eq>=ls+(DWORD)r) { i=le; continue; }
+        tc_trim_lr(s->text+ls+l,(int)(eq-(ls+(DWORD)l)),&kl,&kr);
+        if (kr<=kl) { i=le; continue; }
+        tc_trim_lr(s->text+eq+1,(int)(ls+(DWORD)r-eq-1),&vl,&vr);
+        {
+            DWORD hash=ini_hash_pair(s->text+secOff,(int)secLen,s->text+ls+l+kl,kr-kl);
+            DWORD slot=hash&(slots-1);
+            BOOL found=FALSE;
+            while (s->slots[slot]) {
+                ini_index_entry_t* e=&s->entries[s->slots[slot]-1];
+                if (e->secLen==secLen && ini_equal_span(s->text+e->secOff,s->text+secOff,secLen) &&
+                    e->keyLen==(DWORD)(kr-kl) && ini_equal_span(s->text+e->keyOff,s->text+ls+l+kl,e->keyLen)) { found=TRUE; break; }
+                slot=(slot+1)&(slots-1);
+            }
+            if (!found) {
+                ini_index_entry_t* e=&s->entries[s->entryCount];
+                e->secOff=secOff; e->secLen=secLen; e->keyOff=ls+(DWORD)l+(DWORD)kl; e->keyLen=(DWORD)(kr-kl);
+                e->valOff=eq+1+(DWORD)vl; e->valLen=(DWORD)(vr-vl);
+                s->slots[slot]=++s->entryCount;
+            }
+        }
+        i=le;
+    }
+    return TRUE;
+}
+
+static void ini_release_session(ini_read_session_t* s)
+{
+    if (!s) return;
+    if (s->text) HeapFree(GetProcessHeap(),0,s->text);
+    if (s->slots) HeapFree(GetProcessHeap(),0,s->slots);
+    if (s->entries) HeapFree(GetProcessHeap(),0,s->entries);
+    ZeroMemory(s,sizeof(*s));
+}
+
+static BOOL ini_load_session(ini_read_session_t* s)
+{
+    HANDLE f=INVALID_HANDLE_VALUE;
+    DWORD sz=0, rd=0, start=0;
+    unsigned char* raw=NULL;
+    BOOL ok=FALSE;
+    LONG startGeneration=InterlockedCompareExchange(&g_iniReadGeneration,0,0);
+    f=CreateFileW(s->path,GENERIC_READ,FILE_SHARE_READ,NULL,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,NULL);
+    if (f==INVALID_HANDLE_VALUE) return FALSE;
+    sz=GetFileSize(f,NULL);
+    if (sz==INVALID_FILE_SIZE && GetLastError()!=NO_ERROR) goto done;
+    raw=(unsigned char*)HeapAlloc(GetProcessHeap(),0,(SIZE_T)sz+1);
+    if (!raw) goto done;
+    if (sz && (!ReadFile(f,raw,sz,&rd,NULL) || rd!=sz)) goto done;
+    raw[rd]=0;
+    if (rd>=3 && raw[0]==0xEF && raw[1]==0xBB && raw[2]==0xBF) { start=3; s->hadBom=TRUE; }
+    if (rd>start) {
+        if (rd-start>(DWORD)INT_MAX) goto done;
+        if (MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,(const char*)raw+start,(int)(rd-start),NULL,0)<=0) goto done;
+        if (memchr(raw+start,0,rd-start)) goto done;
+    }
+    if (start) { memmove(raw,raw+start,rd-start); rd-=start; raw[rd]=0; }
+    s->text=(char*)raw; raw=NULL; s->size=rd;
+    if (!ini_build_index(s)) goto done;
+    if (InterlockedCompareExchange(&g_iniReadGeneration,0,0)!=startGeneration) goto done;
+    s->generation=startGeneration;
+    ok=TRUE;
+done:
+    if (raw) HeapFree(GetProcessHeap(),0,raw);
+    if (f!=INVALID_HANDLE_VALUE) CloseHandle(f);
+    if (!ok) {
+        if (s->text) HeapFree(GetProcessHeap(),0,s->text); s->text=NULL;
+        if (s->slots) HeapFree(GetProcessHeap(),0,s->slots); s->slots=NULL;
+        if (s->entries) HeapFree(GetProcessHeap(),0,s->entries); s->entries=NULL;
+        s->slotCount=s->entryCount=s->size=0; s->hadBom=FALSE;
+    }
+    return ok;
+}
+
+static BOOL ini_session_valid(const ini_read_session_t* s)
+{
+    return s && s->active && s->text && s->slots && s->entries;
+}
+
+static BOOL ini_ensure_session(ini_read_session_t* s)
+{
+    LONG now; HANDLE lock; wchar_t path[MAX_PATH]; int depth, attempt;
+    if (!s || !s->active) return FALSE;
+    now=InterlockedCompareExchange(&g_iniReadGeneration,0,0);
+    if (now==s->generation && ini_session_valid(s)) return TRUE;
+    CopyMemory(path,s->path,sizeof(path)); depth=s->depth;
+    lock=tc_lock_wide(path);
+    if (!lock) return FALSE;
+    for (attempt=0;attempt<2;++attempt) {
+        now=InterlockedCompareExchange(&g_iniReadGeneration,0,0);
+        if (now==s->generation && ini_session_valid(s)) { tc_ini_lock_leave(lock); return TRUE; }
+        ini_release_session(s); s->active=TRUE; s->depth=depth; CopyMemory(s->path,path,sizeof(path));
+        if (!ini_load_session(s)) {
+            LONG after=InterlockedCompareExchange(&g_iniReadGeneration,0,0);
+            ini_release_session(s); s->active=TRUE; s->depth=depth; CopyMemory(s->path,path,sizeof(path)); s->generation=after;
+            if (after!=now) continue;
+            tc_ini_lock_leave(lock); return FALSE;
+        }
+        if (InterlockedCompareExchange(&g_iniReadGeneration,0,0)==s->generation && ini_session_valid(s)) {
+            tc_ini_lock_leave(lock); return TRUE;
+        }
+    }
+    {
+        LONG after=InterlockedCompareExchange(&g_iniReadGeneration,0,0);
+        ini_release_session(s); s->active=TRUE; s->depth=depth; CopyMemory(s->path,path,sizeof(path)); s->generation=after;
+    }
+    tc_ini_lock_leave(lock); return FALSE;
+}
+
+static ini_read_session_t* ini_match_session(const char* iniPath)
+{
+    wchar_t path[MAX_PATH];
+    ini_read_session_t* s=ini_get_session();
+    if (!s || !s->active || !iniPath) return NULL;
+    if (!tc_path_utf8_or_ansi_to_utf16(iniPath,path,_countof(path))) return NULL;
+    if (lstrcmpiW(path,s->path)!=0) return NULL;
+    return ini_ensure_session(s) ? s : NULL;
+}
+
+static const ini_index_entry_t* ini_find_session(const ini_read_session_t* s,const char* section,const char* key)
+{
+    DWORD hash,slot; int secLen,keyLen;
+    if (!s || !section || !key || !s->slotCount) return NULL;
+    secLen=lstrlen(section); keyLen=lstrlen(key);
+    hash=ini_hash_pair(section,secLen,key,keyLen); slot=hash&(s->slotCount-1);
+    while (s->slots[slot]) {
+        const ini_index_entry_t* e=&s->entries[s->slots[slot]-1];
+        if (e->secLen==(DWORD)secLen && e->keyLen==(DWORD)keyLen &&
+            tc_ieq_ascii_n(s->text+e->secOff,(int)e->secLen,section) &&
+            tc_ieq_ascii_n(s->text+e->keyOff,(int)e->keyLen,key)) return e;
+        slot=(slot+1)&(s->slotCount-1);
+    }
+    return NULL;
+}
+
+BOOL tc_ini_beginW(LPCWSTR path)
+{
+    HANDLE lock;
+    ini_read_session_t* s;
+    if (!path || !path[0]) return FALSE;
+    s=ini_get_session();
+    if (s && s->active) {
+        if (lstrcmpiW(path,s->path)!=0 || !ini_ensure_session(s)) return FALSE;
+        ++s->depth; return TRUE;
+    }
+    s=(ini_read_session_t*)HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY,sizeof(*s));
+    if (!s) return FALSE;
+    lstrcpynW(s->path,path,MAX_PATH);
+    if (lstrcmpiW(s->path,path)!=0) { HeapFree(GetProcessHeap(),0,s); return FALSE; }
+    lock=tc_lock_wide(s->path);
+    if (!lock) { HeapFree(GetProcessHeap(),0,s); return FALSE; }
+    s->active=TRUE; s->depth=1;
+    if (!ini_load_session(s)) { ini_release_session(s); tc_ini_lock_leave(lock); HeapFree(GetProcessHeap(),0,s); return FALSE; }
+    tc_ini_lock_leave(lock);
+    if (!ini_install_session(s)) { ini_release_session(s); HeapFree(GetProcessHeap(),0,s); return FALSE; }
+    return TRUE;
+}
+
+void tc_ini_end(void)
+{
+    ini_read_session_t* s;
+    DWORD slot;
+    AcquireSRWLockExclusive(&g_iniReadTlsLock);
+    slot=g_iniReadTlsSlot;
+    s=slot==TLS_OUT_OF_INDEXES ? NULL : (ini_read_session_t*)TlsGetValue(slot);
+    if (!s || !s->active) { ReleaseSRWLockExclusive(&g_iniReadTlsLock); return; }
+    if (s->depth>1) { --s->depth; ReleaseSRWLockExclusive(&g_iniReadTlsLock); return; }
+    if (!TlsSetValue(slot,NULL)) { ReleaseSRWLockExclusive(&g_iniReadTlsLock); return; }
+    ini_release_session(s); HeapFree(GetProcessHeap(),0,s);
+    if (g_iniReadActiveScopes>0) --g_iniReadActiveScopes;
+    if (g_iniReadActiveScopes==0 && TlsFree(slot)) g_iniReadTlsSlot=TLS_OUT_OF_INDEXES;
+    ReleaseSRWLockExclusive(&g_iniReadTlsLock);
+}
 static BOOL tc_ini_utf8_rewrite_key(const char* iniPath, const char* text, DWORD size,
                                     const char* section, const char* key, const char* utf8Value,
                                     char** outText, DWORD* outSize)
@@ -709,10 +996,18 @@ BOOL tc_ini_utf8_detect_file(const char* iniPath, BOOL* isUtf8, BOOL* hasBom)
     DWORD size = 0;
     BOOL bom = FALSE;
     HANDLE hLock = NULL;
+    ini_read_session_t* session;
 
     if (!iniPath) return FALSE;
     if (isUtf8) *isUtf8 = FALSE;
     if (hasBom) *hasBom = FALSE;
+
+    session=ini_match_session(iniPath);
+    if (session) {
+        if (isUtf8) *isUtf8 = TRUE;
+        if (hasBom) *hasBom = session->hadBom;
+        return TRUE;
+    }
 
     /* Prefer BOM as UTF-8 intent marker even if legacy bytes polluted the body. */
     if (tc_file_has_utf8_bom(iniPath, &bom) && bom) {
@@ -813,12 +1108,27 @@ int tc_ini_utf8_read_string(const char* iniPath, const char* section, const char
     int r = 0;
     char secNorm[128];
     char keyNorm[128];
+    ini_read_session_t* session;
 
     if (!iniPath || !key || !outVal || outSize <= 0) return 0;
     tc_normalize_ini_name(section, "Main", secNorm, (int)sizeof(secNorm));
     tc_normalize_ini_name(key, NULL, keyNorm, (int)sizeof(keyNorm));
     if (!keyNorm[0]) return 0;
     outVal[0] = '\0';
+
+    session=ini_match_session(iniPath);
+    if (session) {
+        const ini_index_entry_t* entry=ini_find_session(session,secNorm,keyNorm);
+        if (entry) {
+            int n=(int)entry->valLen;
+            if (n>=outSize) n=outSize-1;
+            if (n>0) CopyMemory(outVal,session->text+entry->valOff,(SIZE_T)n);
+            outVal[n]='\0';
+            return n;
+        }
+        if (defval && defval[0]) { tc_copy_str(outVal,outSize,defval); return lstrlen(outVal); }
+        return 0;
+    }
 
     hLock = tc_ini_lock_enter(iniPath);
     if (!hLock) {
@@ -861,6 +1171,7 @@ int tc_ini_utf8_read_section_multisz_ex(const char* iniPath, const char* section
     DWORD size = 0;
     BOOL hadBom = FALSE;
     BOOL isUtf8 = FALSE;
+    ini_read_session_t* session;
     char secNorm[128];
     const char* sec;
     tc_normalize_ini_name(section, "Main", secNorm, (int)sizeof(secNorm));
@@ -872,6 +1183,11 @@ int tc_ini_utf8_read_section_multisz_ex(const char* iniPath, const char* section
     outBuf[0] = '\0';
     outBuf[1] = '\0';
     if (!iniPath || !iniPath[0]) return 0;
+
+    session=ini_match_session(iniPath);
+    if (session) {
+        return tc_ini_utf8_parse_section_multisz(session->text,session->size,sec,outBuf,outBytes,truncated);
+    }
 
     hLock = tc_ini_lock_enter(iniPath);
     if (hLock && tc_ini_utf8_cache_get_locked(iniPath, &text, &size, &hadBom)) {
@@ -1183,6 +1499,10 @@ BOOL tc_ini_utf8_delete_key(const char* iniPath, const char* section, const char
 
     if (!tc_read_text_file_utf8(iniPath, &text, &size, &hadBom)) goto cleanup;
     if (!tc_ini_utf8_rewrite_delete(text, size, secNorm, keyNorm, FALSE, &outText, &outSize)) goto cleanup;
+    if (outSize == size && text && outText && tc_bytes_equal(text, outText, size)) {
+        ok = TRUE;
+        goto cleanup;
+    }
     if (!tc_write_text_file_utf8(iniPath, outText, outSize, hadBom ? TRUE : FALSE)) goto cleanup;
     ok = TRUE;
     tc_ini_utf8_clear_cache();
@@ -1211,6 +1531,10 @@ BOOL tc_ini_utf8_delete_section(const char* iniPath, const char* section)
 
     if (!tc_read_text_file_utf8(iniPath, &text, &size, &hadBom)) goto cleanup;
     if (!tc_ini_utf8_rewrite_delete(text, size, section, NULL, TRUE, &outText, &outSize)) goto cleanup;
+    if (outSize == size && text && outText && tc_bytes_equal(text, outText, size)) {
+        ok = TRUE;
+        goto cleanup;
+    }
     if (!tc_write_text_file_utf8(iniPath, outText, outSize, hadBom ? TRUE : FALSE)) goto cleanup;
     ok = TRUE;
     tc_ini_utf8_clear_cache();

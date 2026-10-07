@@ -1300,6 +1300,36 @@ static COLORREF w11_tint_desktop(COLORREF base, int amount)
   (GetBValue(base) * (100 - amount) + target * amount) / 100);
 }
 
+static COLORREF w11_capture_material(HDC screen, LONG x, LONG y)
+{
+ HDC memory = CreateCompatibleDC(screen);
+ HBITMAP bitmap = NULL;
+ HGDIOBJ previous = NULL;
+ RGBQUAD* pixels = NULL;
+ BITMAPINFO info = { 0 };
+ COLORREF color = CLR_INVALID;
+ if (!memory) return color;
+ info.bmiHeader.biSize = sizeof(info.bmiHeader);
+ info.bmiHeader.biWidth = 3;
+ info.bmiHeader.biHeight = -1;
+ info.bmiHeader.biPlanes = 1;
+ info.bmiHeader.biBitCount = 32;
+ info.bmiHeader.biCompression = BI_RGB;
+ bitmap = CreateDIBSection(screen, &info, DIB_RGB_COLORS, (void**)&pixels, NULL, 0);
+ if (bitmap && pixels) {
+  previous = SelectObject(memory, bitmap);
+  if (previous && previous != HGDI_ERROR && BitBlt(memory, 0, 0, 3, 1, screen, x - 2, y, SRCCOPY) && GdiFlush()) {
+   color = RGB((pixels[0].rgbRed + pixels[1].rgbRed + pixels[2].rgbRed) / 3,
+    (pixels[0].rgbGreen + pixels[1].rgbGreen + pixels[2].rgbGreen) / 3,
+    (pixels[0].rgbBlue + pixels[1].rgbBlue + pixels[2].rgbBlue) / 3);
+  }
+  if (previous && previous != HGDI_ERROR) SelectObject(memory, previous);
+ }
+ if (bitmap) DeleteObject(bitmap);
+ DeleteDC(memory);
+ return color;
+}
+
 static COLORREF w11_read_material(void)
 {
  static COLORREF cached = CLR_INVALID;
@@ -1323,14 +1353,7 @@ static COLORREF w11_read_material(void)
   if (x - 2 >= task.left && x < task.right && y >= task.top && y < task.bottom) {
    screen = GetDC(NULL);
    if (screen) {
-    COLORREF samples[3];
-    samples[0] = GetPixel(screen, x, y);
-    samples[1] = GetPixel(screen, x - 1, y);
-    samples[2] = GetPixel(screen, x - 2, y);
-    if (samples[0] != CLR_INVALID && samples[1] != CLR_INVALID && samples[2] != CLR_INVALID)
-     color = RGB((GetRValue(samples[0]) + GetRValue(samples[1]) + GetRValue(samples[2])) / 3,
-      (GetGValue(samples[0]) + GetGValue(samples[1]) + GetGValue(samples[2])) / 3,
-      (GetBValue(samples[0]) + GetBValue(samples[1]) + GetBValue(samples[2])) / 3);
+    color = w11_capture_material(screen, x, y);
     ReleaseDC(NULL, screen);
    }
   }
@@ -1341,7 +1364,7 @@ static COLORREF w11_read_material(void)
  return light ? RGB(243, 243, 243) : RGB(32, 32, 32);
 }
 
-static void w11_draw_desktop(HDC dc)
+static void w11_draw_desktop(HDC dc, COLORREF material)
 {
  RECT area = { posXShowDesktopArea, 0, widthWin11Notify, heightWin11Notify };
  int saved;
@@ -1351,7 +1374,7 @@ static void w11_draw_desktop(HDC dc)
  IntersectClipRect(dc, area.left, area.top, area.right, area.bottom);
  // Keep the desktop button consistent with the native taskbar material.
  {
-  HBRUSH brush = CreateSolidBrush(w11_read_material());
+  HBRUSH brush = CreateSolidBrush(material);
   if (brush) { FillRect(dc, &area, brush); DeleteObject(brush); }
  }
  if (g_w11DesktopHot) {
@@ -1438,6 +1461,7 @@ static LRESULT CALLBACK w11_surface_proc(HWND hwnd, UINT message, WPARAM wParam,
 static void w11_present_desktop(HDC dc)
 {
  RECT window, client;
+ COLORREF material;
  HDC screen = NULL, memory = NULL;
  HBITMAP bitmap = NULL;
  HGDIOBJ previous = NULL;
@@ -1461,7 +1485,9 @@ static void w11_present_desktop(HDC dc)
   if (GetCursorPos(&pointer))
    g_w11DesktopHot = PtInRect(&window, pointer) && pointer.x >= window.left + posXShowDesktopArea;
  }
- w11_draw_desktop(dc);
+ // Both drawing passes use the same native material sample for this presentation.
+ material = w11_read_material();
+ w11_draw_desktop(dc, material);
  if (!g_w11DesktopSurface) {
   g_w11DesktopSurface = CreateWindowExW(WS_EX_LAYERED | WS_EX_NOACTIVATE |
    WS_EX_TOOLWINDOW, L"STATIC", L"TClockDesktopSurface", WS_POPUP,
@@ -1483,7 +1509,7 @@ static void w11_present_desktop(HDC dc)
  if (bitmap && pixels) {
   previous = SelectObject(memory, bitmap);
   ZeroMemory(pixels, (SIZE_T)client.right * client.bottom * sizeof(*pixels));
-  w11_draw_desktop(memory);
+  w11_draw_desktop(memory, material);
   GdiFlush();
   for (LONG y = 0; y < client.bottom; ++y)
    for (LONG x = max(0, posXShowDesktopArea); x < client.right; ++x)

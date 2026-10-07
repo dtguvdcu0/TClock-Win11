@@ -1020,7 +1020,7 @@ extern "C" void WINAPI WuiDestroyHost(void)
 	}
 }
 
-extern "C" BOOL WINAPI WuiUpdateState(const TC_DISPLAY_BACKEND_RENDER_STATE* state)
+static BOOL wui_store_state(const TC_DISPLAY_BACKEND_RENDER_STATE* state)
 {
 	SIZE_T cb;
 
@@ -1036,9 +1036,23 @@ extern "C" BOOL WINAPI WuiUpdateState(const TC_DISPLAY_BACKEND_RENDER_STATE* sta
 	}
 	wui_copy_layer(g_wuiState);
 	g_wuiState.layerPixels = NULL;
-	if (g_wuiHost && IsWindow(g_wuiHost)) {
-		wui_present(g_wuiHost);
-	}
+	return TRUE;
+}
+
+extern "C" BOOL WINAPI WuiUpdateState(const TC_DISPLAY_BACKEND_RENDER_STATE* state)
+{
+	if (!wui_store_state(state)) return FALSE;
+	if (g_wuiHost && IsWindow(g_wuiHost)) wui_present(g_wuiHost);
+	return TRUE;
+}
+
+extern "C" BOOL WINAPI WuiApplyState(const TC_DISPLAY_BACKEND_RENDER_STATE* state)
+{
+	if (!wui_store_state(state)) return FALSE;
+	if (!g_wuiHost || !IsWindow(g_wuiHost)) return FALSE;
+	wui_place(g_wuiHost);
+	if (wui_sync_order(g_wuiHost)) wui_present(g_wuiHost);
+	else wui_hide_tip();
 	return TRUE;
 }
 

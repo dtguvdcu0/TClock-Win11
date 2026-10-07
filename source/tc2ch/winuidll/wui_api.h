@@ -89,6 +89,8 @@ extern "C" {
 WUI_API BOOL WINAPI WuiCreateHost(HWND hwndTargetClock);
 WUI_API void WINAPI WuiDestroyHost(void);
 WUI_API BOOL WINAPI WuiUpdateState(const TC_DISPLAY_BACKEND_RENDER_STATE* state);
+// Optional combined placement and presentation; legacy exports remain compatible.
+WUI_API BOOL WINAPI WuiApplyState(const TC_DISPLAY_BACKEND_RENDER_STATE* state);
 WUI_API BOOL WINAPI WuiRefresh(void);
 WUI_API BOOL WINAPI WuiSetTooltip(const WCHAR* text, BOOL visible, HFONT font, COLORREF backColor,
 	UINT initialDelay, UINT reshowDelay, UINT autoPopDelay);

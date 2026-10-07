@@ -9,6 +9,9 @@ extern "C" {
 
 BOOL tc_ini_utf8_detect_file(const char* iniPath, BOOL* isUtf8, BOOL* hasBom);
 void tc_ini_utf8_clear_cache(void);
+BOOL tc_ini_beginW(LPCWSTR path);
+void tc_ini_end(void);
+/* Reads in a scope refresh after successful writers linked in this module; external or other-module edits appear in a fresh scope. */
 int tc_ini_utf8_read_string(const char* iniPath, const char* section, const char* key,
                             const char* defval, char* outVal, int outSize);
 int tc_ini_utf8_read_section_multisz(const char* iniPath, const char* section,

@@ -454,6 +454,7 @@ static HMODULE g_wuiDll = NULL;
 static BOOL(WINAPI* g_wuiCreateHost)(HWND) = NULL;
 static void (WINAPI* g_wuiDestroyHost)(void) = NULL;
 static BOOL(WINAPI* g_wuiUpdateState)(const TC_DISPLAY_BACKEND_RENDER_STATE*) = NULL;
+static BOOL(WINAPI* g_wuiApplyState)(const TC_DISPLAY_BACKEND_RENDER_STATE*) = NULL;
 static BOOL(WINAPI* g_wuiRefreshHost)(void) = NULL;
 static BOOL(WINAPI* g_wuiSetTooltip)(const WCHAR*, BOOL, HFONT, COLORREF, UINT, UINT, UINT) = NULL;
 static BOOL(WINAPI* g_wuiRefreshTooltip)(const WUI_TOOLTIP_STATE*) = NULL;
@@ -1762,6 +1763,7 @@ static BOOL wui_load_dll(void)
 	g_wuiCreateHost = (BOOL(WINAPI*)(HWND))GetProcAddress(g_wuiDll, "WuiCreateHost");
 	g_wuiDestroyHost = (void (WINAPI*)(void))GetProcAddress(g_wuiDll, "WuiDestroyHost");
 	g_wuiUpdateState = (BOOL(WINAPI*)(const TC_DISPLAY_BACKEND_RENDER_STATE*))GetProcAddress(g_wuiDll, "WuiUpdateState");
+	g_wuiApplyState = (BOOL(WINAPI*)(const TC_DISPLAY_BACKEND_RENDER_STATE*))GetProcAddress(g_wuiDll, "WuiApplyState");
 	g_wuiRefreshHost = (BOOL(WINAPI*)(void))GetProcAddress(g_wuiDll, "WuiRefresh");
 	g_wuiSetTooltip = (BOOL(WINAPI*)(const WCHAR*, BOOL, HFONT, COLORREF, UINT, UINT, UINT))GetProcAddress(g_wuiDll, "WuiSetTooltip");
 	g_wuiRefreshTooltip = (BOOL(WINAPI*)(const WUI_TOOLTIP_STATE*))GetProcAddress(g_wuiDll, "WuiRefreshTooltip");
@@ -1911,6 +1913,7 @@ static void wui_unload_dll(void)
 	g_wuiCreateHost = NULL;
 	g_wuiDestroyHost = NULL;
 	g_wuiUpdateState = NULL;
+	g_wuiApplyState = NULL;
 	g_wuiRefreshHost = NULL;
 	g_wuiSetTooltip = NULL;
 	g_wuiRefreshTooltip = NULL;
@@ -2005,8 +2008,12 @@ static void wui_push_frame(TC_DISPLAY_BACKEND_RENDER_STATE* state)
 		state->layerHeight = bmi_MainClock.bmiHeader.biHeight;
 	}
 	if (g_wuiUpdateState && g_wuiDll) {
-		g_wuiUpdateState(state);
-		if (g_wuiDllLive && g_wuiRefreshHost) g_wuiRefreshHost();
+		if (g_wuiApplyState && g_wuiDllLive) {
+			g_wuiApplyState(state);
+		} else {
+			g_wuiUpdateState(state);
+			if (g_wuiDllLive && g_wuiRefreshHost) g_wuiRefreshHost();
+		}
 	}
 }
 
@@ -3257,7 +3264,31 @@ static void StartMinimalTimers(DWORD sysMask)
 	bTimerAdjust_NetStat = FALSE;
 }
 
+static BOOL tc_begin_settings(void)
+{
+	WCHAR path[MAX_PATH];
+	WCHAR* slash;
+	DWORD length;
+	const WCHAR name[] = L"tclock-win11.ini";
+	if (!g_bIniSetting) return FALSE;
+	length = GetModuleFileNameW((HMODULE)hmod, path, _countof(path));
+	if (!length || length >= _countof(path)) return FALSE;
+	slash = wcsrchr(path, L'\\');
+	if (!slash) slash = wcsrchr(path, L'/');
+	if (!slash || (size_t)(slash + 1 - path) + _countof(name) > _countof(path)) return FALSE;
+	CopyMemory(slash + 1, name, sizeof(name));
+	return tc_ini_beginW(path);
+}
+
+static void tc_read_minimal(void);
 static void ReadDataMinimal(void)
+{
+	BOOL scope = tc_begin_settings();
+	tc_read_minimal();
+	if (scope) tc_ini_end();
+}
+
+static void tc_read_minimal(void)
 {
 	char fontname[80];
 	char fmt_raw[1024];
@@ -3761,7 +3792,15 @@ fail:
 	if (section) HeapFree(GetProcessHeap(), 0, section);
 }
 
-void ReadData()
+static void tc_read_settings(void);
+void ReadData(void)
+{
+	BOOL scope = tc_begin_settings();
+	tc_read_settings();
+	if (scope) tc_ini_end();
+}
+
+static void tc_read_settings(void)
 {
 	int i;
 	char fontname[80];

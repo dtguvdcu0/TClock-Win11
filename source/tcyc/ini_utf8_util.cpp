@@ -275,12 +275,26 @@ static void UpdateIniLines(std::vector<std::wstring>& lines,
     lines = std::move(out);
 }
 
-bool WriteIniUtf8Values(const std::wstring& iniPath, const std::vector<IniUpdate>& updates) {
+bool WriteIniUtf8Values(const std::wstring& iniPath, const std::vector<IniUpdate>& updates,
+                       const std::vector<std::wstring>& removedSections) {
     static std::mutex writer;
     const std::lock_guard<std::mutex> guard(writer);
     std::vector<std::wstring> lines;
     if (!LoadIniLines(iniPath, lines)) return false;
     const auto original = lines;
+    for (const auto& section : removedSections) {
+        if (Trim(section).empty() || section.find_first_of(L"\r\n[]") != std::wstring::npos ||
+            section.find(L'\0') != std::wstring::npos) return false;
+        const std::wstring target = ToLower(Trim(section));
+        std::vector<std::wstring> kept;
+        bool removing = false;
+        for (const auto& line : lines) {
+            std::wstring current;
+            if (IsSectionLine(line, current)) removing = ToLower(current) == target;
+            if (!removing) kept.push_back(line);
+        }
+        lines = std::move(kept);
+    }
     for (const auto& update : updates) {
         if (Trim(update.section).empty() || Trim(update.key).empty() ||
             update.section.find_first_of(L"\r\n[]") != std::wstring::npos ||

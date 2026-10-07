@@ -1,3 +1,6 @@
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include "gui_main.h"
 #include "ini_utf8_util.h"
 #include "runner.h"
@@ -5,6 +8,10 @@
 
 #include <windows.h>
 #include <commctrl.h>
+#include <windowsx.h>
+#include <gdiplus.h>
+#pragma comment(lib, "gdiplus.lib")
+#pragma comment(linker, "/manifestdependency:\"type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 #pragma comment(lib, "comctl32.lib")
 
 #include <algorithm>
@@ -98,6 +105,16 @@ struct WindowState {
     std::string languageCode = "en";
     std::unordered_map<std::wstring, std::wstring> translations;
 
+    HWND panel = nullptr;
+    HFONT uiFont = nullptr, smallFont = nullptr, titleFont = nullptr;
+    UINT dpi = 96;
+    bool globalView = false, arranging = false, retryDirty = false;
+    int scrollOffset = 0, contentHeight = 0;
+    struct Placement { HWND control; int x, y, width, height; };
+    std::vector<Placement> placements;
+    std::vector<RECT> blocks;
+    std::vector<int> separators;
+    std::vector<std::wstring> deletedTaskSections;
     HWND pollSec = nullptr;
     HWND graceSec = nullptr;
 
@@ -154,6 +171,13 @@ struct WindowState {
     bool timeOfDayDirty = false;
     bool hotkeyDirty = false;
 };
+
+void tcyc_sync_controls(WindowState* st);
+void tcyc_layout_controls(WindowState* st);
+void tcyc_refresh_fonts(WindowState* st);
+bool tcyc_draw_item(WindowState* st, const DRAWITEMSTRUCT& item);
+void tcyc_paint_surface(WindowState* st, HWND window, HDC dc);
+bool tcyc_handle_command(WindowState* st, WPARAM wp, LPARAM lp);
 
 std::string ToLowerAscii(std::string s) {
     std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) {
@@ -614,7 +638,6 @@ int ReadTriggerMaskFromChecks(const WindowState* st) {
 void SetTriggerChecksFromMask(WindowState* st, int mask) {
     if (!st) return;
     mask &= ((1 << 0) | (1 << 2) | (1 << 3) | (1 << 4) | (1 << 5));
-    if (mask == 0) mask = (1 << 3);
     for (int i = 0; i < 6; ++i) {
         if (!st->triggerChecks[i]) continue;
         SendMessageW(st->triggerChecks[i], BM_SETCHECK, ((mask & (1 << i)) != 0) ? BST_CHECKED : BST_UNCHECKED, 0);
@@ -705,6 +728,7 @@ void ApplyTriggerUiState(WindowState* st) {
 
     SetEnabled(st->grpStartup, true);
     ApplyWeekdayUiState(st, isWeekly, isWeekdayCondition);
+    tcyc_sync_controls(st);
 }
 
 void SetStatus(WindowState* st, const std::wstring& msg) {
@@ -1004,7 +1028,7 @@ void LoadTaskControls(WindowState* st, int idx) {
     SetEditText(st->actionArgs, t.actionArgs);
     SetEditText(st->actionCwd, t.actionCwd);
     SetEditInt(st->watchdogRetrySec, t.watchdogRetrySec);
-    SetEditInt(st->repeatCount, (t.watchdogMaxRetry >= 0) ? t.watchdogMaxRetry : 5);
+    SetEditText(st->repeatCount, t.watchdogMaxRetry < 0 ? L"" : std::to_wstring(t.watchdogMaxRetry));
     SetChecked(st->dateEnabled, t.dateEnabled);
     SetEditText(st->dateValue, t.dateYmd.empty() ? CurrentDateYmd() : t.dateYmd);
     SetChecked(st->weekdayEnabled, t.weekdayEnabled && !t.dateEnabled);
@@ -1028,7 +1052,9 @@ void LoadTaskControls(WindowState* st, int idx) {
     st->timeEnabledDirty = false;
     st->timeOfDayDirty = false;
     st->hotkeyDirty = false;
+    st->retryDirty = false;
     UpdateMainWindowTitle(st);
+    tcyc_sync_controls(st);
 }
 
 bool SignalReloadEvent() {
@@ -1077,7 +1103,7 @@ bool SaveAllToIni(WindowState* st, std::wstring& err) {
         }
         const int uiTriggerMask = ReadTriggerMaskFromChecks(st);
         if (uiTriggerMask != 0) {
-            t.triggerMask = uiTriggerMask;
+            t.triggerMask = uiTriggerMask | (t.triggerMask & (1 << 1));
         } else if (t.triggerMask == 0) {
             t.triggerMask = TriggerTypeToBit(tcyc::TriggerType::Startup);
             SetTriggerChecksFromMask(st, t.triggerMask);
@@ -1101,9 +1127,8 @@ bool SaveAllToIni(WindowState* st, std::wstring& err) {
         t.watchdogRetrySec = ParseIntOrDefault(GetEditText(st->watchdogRetrySec), t.watchdogRetrySec, 10, 3600);
         const int prevWatchdogMaxRetry = t.watchdogMaxRetry;
         const std::wstring retryInput = TrimWide(GetEditText(st->repeatCount));
-        t.watchdogMaxRetry = ParseIntOrDefault(retryInput, (t.watchdogMaxRetry >= 0 ? t.watchdogMaxRetry : 5), 1, 1000000);
-        if (retryInput.empty() && prevWatchdogMaxRetry < 0) {
-            t.watchdogMaxRetry = prevWatchdogMaxRetry;
+        if (st->retryDirty) {
+            t.watchdogMaxRetry = ParseIntOrDefault(retryInput, (prevWatchdogMaxRetry >= 0 ? prevWatchdogMaxRetry : 5), 1, 1000000);
         }
         if (st->dateEnabledDirty) {
             t.dateEnabled = IsChecked(st->dateEnabled);
@@ -1201,7 +1226,7 @@ bool SaveAllToIni(WindowState* st, std::wstring& err) {
         if (!writeTaskStr(sec, L"TimeOfDay", TimeOfDayToString(t.timeOfDaySec))) return false;
         if (!writeTaskStr(sec, L"Hotkey", t.hotkey)) return false;
     }
-    if (!tcyc::WriteIniUtf8Values(iniPath, updates)) {
+    if (!tcyc::WriteIniUtf8Values(iniPath, updates, st->deletedTaskSections)) {
         err = Tr(st, L"err_save_global", L"Failed to save global settings to ini.");
         return false;
     }
@@ -1214,6 +1239,8 @@ bool SaveAllToIni(WindowState* st, std::wstring& err) {
     st->timeEnabledDirty = false;
     st->timeOfDayDirty = false;
     st->hotkeyDirty = false;
+    st->retryDirty = false;
+    st->deletedTaskSections.clear();
     return true;
 }
 
@@ -1373,7 +1400,8 @@ bool BeginInlineRenameTask(WindowState* st) {
     int y = rc.top;
     int w = (rc.right - rc.left);
     int h = (rc.bottom - rc.top);
-    if (h < 20) h = 20;
+    const int inset=MulDiv(10,st->dpi,96);
+    x+=inset;y+=inset;w-=inset*2;h=MulDiv(30,st->dpi,96);
     st->inlineEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"",
         WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
         x, y, w, h,
@@ -1398,6 +1426,24 @@ LRESULT CALLBACK TaskListSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
     auto* st = reinterpret_cast<WindowState*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
     if (st && msg == WM_KEYDOWN && wParam == VK_F2) {
         BeginInlineRenameTask(st);
+        return 0;
+    }
+    if (st && msg == WM_LBUTTONDOWN && st->globalView) {
+        st->globalView = false;
+        st->scrollOffset = 0;
+        tcyc_sync_controls(st);
+    }
+    if (st && msg == WM_CONTEXTMENU) {
+        POINT point{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
+        if (point.x == -1 && point.y == -1) {
+            RECT bounds{}; GetWindowRect(hwnd, &bounds);
+            point = {bounds.left + 16, bounds.top + 16};
+        }
+        HMENU menu = CreatePopupMenu();
+        AppendMenuW(menu, MF_STRING, kCtrlTaskRename, Tr(st, L"button_rename", L"Rename").c_str());
+        const UINT choice = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON, point.x, point.y, 0, st->mainWindow, nullptr);
+        DestroyMenu(menu);
+        if (choice == kCtrlTaskRename) BeginInlineRenameTask(st);
         return 0;
     }
     if (st && st->taskListOldProc) return CallWindowProcW(st->taskListOldProc, hwnd, msg, wParam, lParam);
@@ -1474,6 +1520,7 @@ void AddTask(WindowState* st) {
 void DeleteSelectedTask(WindowState* st) {
     if (st->selectedTask < 0 || st->selectedTask >= static_cast<int>(st->config.tasks.size())) return;
     if (st->config.tasks.size() <= 1) return;
+    st->deletedTaskSections.push_back(L"Task." + std::to_wstring(st->config.tasks[st->selectedTask].id));
     st->config.tasks.erase(st->config.tasks.begin() + st->selectedTask);
     if (st->selectedTask >= static_cast<int>(st->config.tasks.size())) st->selectedTask = static_cast<int>(st->config.tasks.size()) - 1;
 }
@@ -1502,6 +1549,8 @@ void RefreshAll(WindowState* st) {
     st->suppressEvents = false;
 }
 
+#include "settings_ui.h"
+
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     auto* st = reinterpret_cast<WindowState*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
     switch (msg) {
@@ -1514,134 +1563,15 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     case WM_CREATE: {
         if (!st) return -1;
         st->mainWindow = hwnd;
-        HFONT font = static_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
-        auto createStatic = [&](const wchar_t* text, int x, int y, int w, int h) -> HWND {
-            HWND hWnd = CreateWindowExW(0, L"STATIC", text, WS_CHILD | WS_VISIBLE | SS_LEFTNOWORDWRAP, x, y, w, h, hwnd, nullptr, nullptr, nullptr);
-            SendMessageW(hWnd, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
-            return hWnd;
-        };
-        auto createEdit = [&](int id, int x, int y, int w, int h, DWORD style) -> HWND {
-            HWND hWnd = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | style, x, y, w, h, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), nullptr, nullptr);
-            SendMessageW(hWnd, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
-            return hWnd;
-        };
-        auto createNumericEdit = [&](int id, int x, int y, int w, int h, int maxChars) -> HWND {
-            HWND hWnd = createEdit(id, x, y, w, h, ES_RIGHT | ES_AUTOHSCROLL | ES_NUMBER);
-            SendMessageW(hWnd, EM_LIMITTEXT, static_cast<WPARAM>(maxChars), 0);
-            return hWnd;
-        };
-        auto createBtn = [&](int id, const wchar_t* text, int x, int y, int w, int h, DWORD style) -> HWND {
-            HWND hWnd = CreateWindowExW(0, L"BUTTON", text, WS_CHILD | WS_VISIBLE | style, x, y, w, h, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), nullptr, nullptr);
-            SendMessageW(hWnd, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
-            return hWnd;
-        };
-        auto createSpin = [&](int id, int x, int y, int w, int h, int minV, int maxV) -> HWND {
-            HWND hWnd = CreateWindowExW(0, UPDOWN_CLASSW, L"", WS_CHILD | WS_VISIBLE | UDS_SETBUDDYINT | UDS_ALIGNRIGHT | UDS_AUTOBUDDY | UDS_ARROWKEYS,
-                x, y, w, h, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), nullptr, nullptr);
-            SendMessageW(hWnd, UDM_SETRANGE32, static_cast<WPARAM>(minV), static_cast<LPARAM>(maxV));
-            return hWnd;
-        };
-
-        const int m = 10;
-        const int globalX = m, globalY = m, globalW = 700, globalH = 56;
-        const int listX = m, listY = globalY + globalH + 8, listW = 176, listH = 500;
-        const int detailX = listX + listW + 8, detailY = listY, detailW = 516, detailH = 500;
-        const int colLabelX = detailX + 18;
-        const int colInputX = detailX + 90;
-        const int editH = 22;
-
-        createBtn(0, Tr(st, L"group_global", L"Global").c_str(), globalX, globalY, globalW, globalH, BS_GROUPBOX);
-        createStatic(Tr(st, L"label_pollsec", L"PollSec").c_str(), globalX + 12, globalY + 24, 70, 20);
-        st->pollSec = createNumericEdit(kCtrlPollSec, globalX + 84, globalY + 20, 50, editH, 2);
-        createSpin(kCtrlSpinPollSec, globalX + 124, globalY + 20, 10, editH, 1, 60);
-        createStatic(Tr(st, L"label_gracesec", L"GraceSec").c_str(), globalX + 152, globalY + 24, 174, 20);
-        st->graceSec = createNumericEdit(kCtrlGraceSec, globalX + 330, globalY + 20, 50, editH, 3);
-        createSpin(kCtrlSpinGraceSec, globalX + 370, globalY + 20, 10, editH, 0, 300);
-
-        createBtn(0, Tr(st, L"group_tasks", L"Tasks").c_str(), listX, listY, listW, listH, BS_GROUPBOX);
-        st->taskList = CreateWindowExW(WS_EX_CLIENTEDGE, L"LISTBOX", L"", WS_CHILD | WS_VISIBLE | WS_VSCROLL | LBS_NOTIFY | LBS_NOINTEGRALHEIGHT,
-            listX + 10, listY + 22, listW - 20, listH - 64, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kCtrlTaskList)), nullptr, nullptr);
-        SendMessageW(st->taskList, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
+        st->suppressEvents = true;
+        tcyc_build_controls(st);
         SetWindowLongPtrW(st->taskList, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(st));
         st->taskListOldProc = reinterpret_cast<WNDPROC>(
             SetWindowLongPtrW(st->taskList, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(TaskListSubclassProc)));
-        st->taskAdd = createBtn(kCtrlTaskAdd, L"+", listX + 10, listY + listH - 34, 32, 24, BS_PUSHBUTTON);
-        st->taskDelete = createBtn(kCtrlTaskDelete, Tr(st, L"button_delete", L"Delete").c_str(), listX + 46, listY + listH - 34, 48, 24, BS_PUSHBUTTON);
-        st->taskRename = createBtn(kCtrlTaskRename, Tr(st, L"button_rename", L"Rename").c_str(), listX + 98, listY + listH - 34, 68, 24, BS_PUSHBUTTON);
-
-        createBtn(0, Tr(st, L"group_schedule", L"Schedule").c_str(), detailX, detailY, detailW, detailH, BS_GROUPBOX);
-        st->taskEnabled = createBtn(kCtrlTaskEnabled, Tr(st, L"label_task_enabled", L"Task Enabled").c_str(), detailX + 12, detailY + 22, 118, 22, BS_AUTOCHECKBOX);
-        st->singleInstance = createBtn(kCtrlSingleInstance, Tr(st, L"label_single_instance", L"No duplicate launch").c_str(), detailX + 126, detailY + 22, 170, 22, BS_AUTOCHECKBOX);
-        st->taskTestRun = createBtn(kCtrlTaskTestRun, Tr(st, L"button_test_run", L"Test Run").c_str(), detailX + detailW - 102, detailY + detailH - 34, 90, 22, BS_PUSHBUTTON);
-        createStatic(Tr(st, L"label_trigger", L"Trigger").c_str(), colLabelX, detailY + 52, 64, 20);
-        st->triggerChecks[3] = createBtn(kCtrlTriggerStartup, Tr(st, L"trigger_startup", L"startup").c_str(), colInputX, detailY + 48, 94, 22, BS_AUTOCHECKBOX);
-        st->triggerChecks[0] = createBtn(kCtrlTriggerInterval, Tr(st, L"trigger_interval", L"interval").c_str(), colInputX + 100, detailY + 48, 78, 22, BS_AUTOCHECKBOX);
-        st->triggerChecks[1] = nullptr;
-        st->triggerChecks[2] = createBtn(kCtrlTriggerWeeklyTime, Tr(st, L"trigger_weekly_time", L"weekly").c_str(), colInputX + 184, detailY + 48, 78, 22, BS_AUTOCHECKBOX);
-        st->triggerChecks[4] = createBtn(kCtrlTriggerHotkeyOnly, Tr(st, L"trigger_hotkey_only", L"hotkey").c_str(), colInputX + 268, detailY + 48, 70, 22, BS_AUTOCHECKBOX);
-        st->triggerChecks[5] = createBtn(kCtrlTriggerNonRunning, Tr(st, L"trigger_non_running", L"non_running").c_str(), colInputX + 344, detailY + 48, 70, 22, BS_AUTOCHECKBOX);
-
-        createBtn(0, Tr(st, L"group_execution", L"Execution").c_str(), detailX + 8, detailY + 78, detailW - 16, 134, BS_GROUPBOX);
-        st->actionMode = CreateWindowExW(WS_EX_CLIENTEDGE, L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST,
-            colLabelX, detailY + 98, 120, 220, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kCtrlActionMode)), nullptr, nullptr);
-        SendMessageW(st->actionMode, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
-        st->actionPrimaryLabel = createStatic(Tr(st, L"label_action_path_only", L"Path").c_str(), colLabelX, detailY + 130, 72, 20);
-        st->actionPath = createEdit(kCtrlActionPath, colInputX, detailY + 126, 408, editH, ES_AUTOHSCROLL);
-        createStatic(Tr(st, L"label_action_args", L"Params").c_str(), colLabelX, detailY + 158, 72, 20);
-        st->actionArgs = createEdit(kCtrlActionArgs, colInputX, detailY + 154, 408, editH, ES_AUTOHSCROLL);
-        createStatic(Tr(st, L"label_action_cwd", L"Cwd").c_str(), colLabelX, detailY + 186, 72, 20);
-        st->actionCwd = createEdit(kCtrlActionCwd, colInputX, detailY + 182, 408, editH, ES_AUTOHSCROLL);
-
-        st->grpInterval = createBtn(0, Tr(st, L"trigger_interval", L"interval").c_str(), detailX + 8, detailY + 218, 150, 50, BS_GROUPBOX);
-        createStatic(Tr(st, L"label_intervalsec", L"IntervalSec").c_str(), colLabelX, detailY + 238, 72, 20);
-        st->intervalSec = createNumericEdit(kCtrlIntervalSec, colInputX, detailY + 234, 52, editH, 5);
-        createSpin(kCtrlSpinIntervalSec, colInputX + 42, detailY + 234, 10, editH, 0, 86400);
-
-        st->grpDateTime = nullptr;
-
-        st->grpWeekly = createBtn(0, Tr(st, L"trigger_weekly_time", L"weekly_time").c_str(), detailX + 8, detailY + 276, detailW - 16, 90, BS_GROUPBOX);
-        st->dateEnabled = createBtn(kCtrlDateEnabled, Tr(st, L"label_date", L"Date").c_str(), colLabelX, detailY + 294, 64, 22, BS_AUTOCHECKBOX);
-        st->dateValue = createEdit(kCtrlDateValue, colInputX, detailY + 294, 98, editH, ES_AUTOHSCROLL);
-        SendMessageW(st->dateValue, EM_LIMITTEXT, 10, 0);
-
-        st->timeEnabled = createBtn(kCtrlTimeEnabled, Tr(st, L"label_timeofday", L"Time").c_str(), detailX + 206, detailY + 294, 64, 22, BS_AUTOCHECKBOX);
-        st->timeOfDay = createEdit(kCtrlTimeOfDay, detailX + 278, detailY + 294, 72, editH, ES_AUTOHSCROLL);
-        SendMessageW(st->timeOfDay, EM_LIMITTEXT, 5, 0);
-
-        st->weekdayEnabled = createBtn(kCtrlWeekdayEnabled, Tr(st, L"label_weekday", L"Weekday").c_str(), colLabelX, detailY + 322, 64, 22, BS_AUTOCHECKBOX);
-        st->weekdayChecks[0] = createBtn(kCtrlWeekdaySun, Tr(st, L"weekday_sun", L"Sun").c_str(), colInputX, detailY + 320, 38, 22, BS_AUTOCHECKBOX);
-        st->weekdayChecks[1] = createBtn(kCtrlWeekdayMon, Tr(st, L"weekday_mon", L"Mon").c_str(), colInputX + 38, detailY + 320, 38, 22, BS_AUTOCHECKBOX);
-        st->weekdayChecks[2] = createBtn(kCtrlWeekdayTue, Tr(st, L"weekday_tue", L"Tue").c_str(), colInputX + 76, detailY + 320, 38, 22, BS_AUTOCHECKBOX);
-        st->weekdayChecks[3] = createBtn(kCtrlWeekdayWed, Tr(st, L"weekday_wed", L"Wed").c_str(), colInputX + 114, detailY + 320, 38, 22, BS_AUTOCHECKBOX);
-        st->weekdayChecks[4] = createBtn(kCtrlWeekdayThu, Tr(st, L"weekday_thu", L"Thu").c_str(), colInputX + 152, detailY + 320, 38, 22, BS_AUTOCHECKBOX);
-        st->weekdayChecks[5] = createBtn(kCtrlWeekdayFri, Tr(st, L"weekday_fri", L"Fri").c_str(), colInputX + 190, detailY + 320, 38, 22, BS_AUTOCHECKBOX);
-        st->weekdayChecks[6] = createBtn(kCtrlWeekdaySat, Tr(st, L"weekday_sat", L"Sat").c_str(), colInputX + 228, detailY + 320, 38, 22, BS_AUTOCHECKBOX);
-        st->weekdayEveryday = createBtn(kCtrlWeekdayEveryday, Tr(st, L"weekday_everyday", L"Everyday").c_str(), detailX + 360, detailY + 320, 74, 22, BS_AUTOCHECKBOX);
-
-        st->grpStartup = nullptr;
-
-        st->grpHotkey = createBtn(0, Tr(st, L"trigger_hotkey_only", L"hotkey_only").c_str(), detailX + 164, detailY + 218, 344, 50, BS_GROUPBOX);
-        createStatic(Tr(st, L"label_hotkey", L"Hotkey").c_str(), detailX + 174, detailY + 238, 50, 20);
-        st->hotkeyMod = CreateWindowExW(WS_EX_CLIENTEDGE, L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | WS_VSCROLL | CBS_DROPDOWNLIST,
-            detailX + 228, detailY + 234, 110, 220, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kCtrlHotkeyMod)), nullptr, nullptr);
-        st->hotkeyKey = CreateWindowExW(WS_EX_CLIENTEDGE, L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | WS_VSCROLL | CBS_DROPDOWNLIST,
-            detailX + 348, detailY + 234, 110, 220, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kCtrlHotkeyKey)), nullptr, nullptr);
-        SendMessageW(st->hotkeyMod, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
-        SendMessageW(st->hotkeyKey, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
-
-        st->grpNonRunning = createBtn(0, Tr(st, L"trigger_non_running", L"non_running").c_str(), detailX + 8, detailY + 372, detailW - 16, 70, BS_GROUPBOX);
-        createStatic(Tr(st, L"label_retrysec", L"RetrySec").c_str(), colLabelX, detailY + 396, 72, 20);
-        st->watchdogRetrySec = createNumericEdit(kCtrlWatchdogRetrySec, colInputX, detailY + 392, 52, editH, 4);
-        createSpin(kCtrlSpinWatchdogRetrySec, colInputX + 42, detailY + 392, 10, editH, 10, 3600);
-        createStatic(Tr(st, L"label_retrycount", L"RetryCount").c_str(), detailX + 174, detailY + 396, 72, 20);
-        st->repeatCount = createNumericEdit(kCtrlRepeatCount, detailX + 248, detailY + 392, 64, editH, 7);
-        createSpin(kCtrlSpinRepeatCount, detailX + 302, detailY + 392, 10, editH, 1, 1000000);
-
-        st->status = createStatic(Tr(st, L"status_ready", L"Ready.").c_str(), m, 594, globalW, 20);
-
         InitializeCombos(st);
         ApplyActionModeUi(st);
         RefreshAll(st);
+        tcyc_size_window(st);
         SetStatus(st, BuildStatusWithNextRun(st, Tr(st, L"status_ready", L"Ready."), st->selectedTask));
         SetTimer(hwnd, kTaskListTimerId, 1000, nullptr);
         native_edit::prepare(hwnd);
@@ -1650,16 +1580,47 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     case WM_TIMER:
         if (wParam == kTaskListTimerId && st && !st->suppressEvents) {
             if (st->inlineEdit) return 0;
-            const int prevSel = st->selectedTask;
-            st->suppressEvents = true;
-            PopulateTaskList(st);
-            if (prevSel >= 0 && prevSel < static_cast<int>(st->config.tasks.size())) {
-                st->selectedTask = prevSel;
-                SendMessageW(st->taskList, LB_SETCURSEL, st->selectedTask, 0);
-            }
-            st->suppressEvents = false;
+            // Redraw live countdowns without resetting selection or list scroll.
+            InvalidateRect(st->taskList, nullptr, FALSE);
         }
         return 0;
+    case WM_SIZE:
+        if(st && wParam!=SIZE_MINIMIZED)tcyc_layout_controls(st);
+        return 0;
+    case WM_DPICHANGED:
+        if(st){
+            tcyc_refresh_fonts(st);
+            const auto* r=reinterpret_cast<RECT*>(lParam);
+            SetWindowPos(hwnd,nullptr,r->left,r->top,r->right-r->left,r->bottom-r->top,SWP_NOZORDER|SWP_NOACTIVATE);
+            tcyc_layout_controls(st);
+        }
+        return 0;
+    case WM_GETMINMAXINFO:
+        if(st){
+            UINT dpi=GetDpiForWindow(hwnd);if(!dpi)dpi=96;
+            RECT r{0,0,MulDiv(760,dpi,96),MulDiv(430,dpi,96)};
+            AdjustWindowRectExForDpi(&r,static_cast<DWORD>(GetWindowLongPtrW(hwnd,GWL_STYLE)),FALSE,
+                                    static_cast<DWORD>(GetWindowLongPtrW(hwnd,GWL_EXSTYLE)),dpi);
+            reinterpret_cast<MINMAXINFO*>(lParam)->ptMinTrackSize={r.right-r.left,r.bottom-r.top};
+        }
+        return 0;
+    case WM_DRAWITEM:
+        if(st && tcyc_draw_item(st,*reinterpret_cast<DRAWITEMSTRUCT*>(lParam)))return TRUE;
+        return FALSE;
+    case WM_MEASUREITEM:
+        if(st)reinterpret_cast<MEASUREITEMSTRUCT*>(lParam)->itemHeight=MulDiv(70,st->dpi,96);
+        return TRUE;
+    case WM_PAINT:
+        if(st){PAINTSTRUCT ps{};BeginPaint(hwnd,&ps);tcyc_paint_surface(st,hwnd,ps.hdc);EndPaint(hwnd,&ps);}
+        return 0;
+    case WM_ERASEBKGND:
+        if(st)tcyc_paint_surface(st,hwnd,reinterpret_cast<HDC>(wParam));
+        return 1;
+    case WM_CTLCOLORSTATIC:
+    case WM_CTLCOLORBTN:
+    case WM_CTLCOLOREDIT:
+    case WM_CTLCOLORLISTBOX:
+        return tcyc_control_color(st,msg,wParam,lParam);
     case kMsgFocusInlineRename:
         if (st && st->inlineEdit && IsWindow(st->inlineEdit)) {
             SetFocus(st->inlineEdit);
@@ -1670,6 +1631,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         if (!st) return 0;
         const int id = LOWORD(wParam);
         const int code = HIWORD(wParam);
+        if(st->suppressEvents)return 0;
+        if(tcyc_handle_command(st,wParam,lParam))return 0;
 
         if (id == kCtrlTaskList && (code == LBN_SELCHANGE || code == LBN_DBLCLK)) {
             int idx = static_cast<int>(SendMessageW(st->taskList, LB_GETCURSEL, 0, 0));
@@ -1680,6 +1643,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 BeginInlineRenameTask(st);
                 return 0;
             }
+            st->globalView=false;
+            st->scrollOffset=0;
             st->suppressEvents = true;
             LoadTaskControls(st, idx);
             st->suppressEvents = false;
@@ -1688,6 +1653,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         }
         if (id == kCtrlTaskAdd && code == BN_CLICKED) {
             AddTask(st);
+            st->globalView=false;
+            RefreshAll(st);
             PersistRealtime(st, true);
             RefreshAll(st);
             return 0;
@@ -1698,6 +1665,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 return 0;
             }
             DeleteSelectedTask(st);
+            RefreshAll(st);
             PersistRealtime(st, true);
             RefreshAll(st);
             return 0;
@@ -1853,6 +1821,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             (id == kCtrlHotkeyKey && code == CBN_SELCHANGE);
 
         if (realtimeChange) {
+            if(id==kCtrlRepeatCount)st->retryDirty=true;
             if ((id >= kCtrlWeekdaySun && id <= kCtrlWeekdaySat) && code == BN_CLICKED) st->weekdayDirty = true;
             if (id == kCtrlDateValue && code == EN_KILLFOCUS) st->dateValueDirty = true;
             if (id == kCtrlTimeOfDay && code == EN_KILLFOCUS) st->timeOfDayDirty = true;
@@ -1885,6 +1854,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         DestroyWindow(hwnd);
         return 0;
     case WM_DESTROY:
+        if(st){for(HFONT font:{st->uiFont,st->smallFont,st->titleFont})if(font)DeleteObject(font);}
         PostQuitMessage(0);
         return 0;
     default:
@@ -1895,9 +1865,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 } // namespace
 
 int tcyc::RunReadOnlySettingsWindow(const RuntimeConfig& cfg, const std::wstring& iniPath, const std::wstring& exeDir, const std::string& preferredLanguage) {
+    SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     INITCOMMONCONTROLSEX icex{};
     icex.dwSize = sizeof(icex);
-    icex.dwICC = ICC_UPDOWN_CLASS;
+    icex.dwICC = ICC_UPDOWN_CLASS | ICC_STANDARD_CLASSES;
     InitCommonControlsEx(&icex);
 
     WindowState state{};
@@ -1928,7 +1899,7 @@ int tcyc::RunReadOnlySettingsWindow(const RuntimeConfig& cfg, const std::wstring
         WS_EX_DLGMODALFRAME,
         kWindowClassName,
         windowTitle.c_str(),
-        WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
+        WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_THICKFRAME | WS_CLIPCHILDREN,
         CW_USEDEFAULT, CW_USEDEFAULT, 742, 648,
         nullptr,
         nullptr,

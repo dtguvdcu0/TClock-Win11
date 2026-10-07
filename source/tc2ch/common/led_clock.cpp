@@ -370,3 +370,8 @@ void led_blend(const LED_CONTEXT* c,RGBQUAD* pixels,int width,int height,int x,i
     int right=std::min(width,std::min((int)clip->right,x+(int)c->size.cx)),bottom=std::min(height,std::min((int)clip->bottom,y+(int)c->size.cy));
     for(int dy=top;dy<bottom;++dy)for(int dx=left;dx<right;++dx){const BYTE* source=c->pixels.data()+((size_t)(dy-y)*c->size.cx+dx-x)*4;BYTE* target=(BYTE*)(pixels+(size_t)(height-1-dy)*width+dx);unsigned inverse=255-source[3];for(int k=0;k<4;++k)target[k]=(BYTE)(source[k]+(target[k]*inverse+127)/255);}
 }
+
+const BYTE* led_get_pixels(const LED_CONTEXT* context)
+{
+    return context && !context->pixels.empty() ? context->pixels.data() : nullptr;
+}

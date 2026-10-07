@@ -8,6 +8,7 @@
 #include <shellapi.h>
 #include "../common/text_codec.h"
 #include "../common/ini_io_utf8.h"
+#include "../common/ext_detach.h"
 
 #define AUTORESTART_WAIT_WIN11	5000	//Win11でのb_AutoRestart時のウェイト(ms)
 #define EX_CRASHLOOP_LIMIT 3
@@ -1503,6 +1504,8 @@ void CheckCommandLine(HWND hwnd)
 ---------------------------------------------*/
 LRESULT CALLBACK WndProc(HWND hwnd,	UINT message, WPARAM wParam, LPARAM lParam)	//messageループの中のDispatchMessage()からのメッセージを受けてる？
 {
+	LRESULT extendedResult;
+	if (ext_handle_message(hwnd,message,wParam,lParam,&extendedResult)) return extendedResult;
 	switch (message)
 	{
 		case WM_CREATE:
@@ -1510,6 +1513,7 @@ LRESULT CALLBACK WndProc(HWND hwnd,	UINT message, WPARAM wParam, LPARAM lParam)	
 			//if (b_DebugLog) WriteDebug_New2("[exemain.c][WndProc] WM_CREATE received");
 			int nDelay;
 			bDestroy = FALSE;
+			ext_init_host(hwnd,g_hInst);
 			InitFormat(); // initialize a Date/Time format
 			nDelay = GetMyRegLong(NULL, "DelayStart", 0);		//設定ファイルから遅延スタート秒数を読み込み
 			if(nDelay > 0)
@@ -1855,6 +1859,7 @@ void TerminateTClock(HWND hwnd)
 	if (bDestroy == TRUE) return;	//２重終了しないように
 
 	bDestroy = TRUE;
+	ext_close_hosts();
 	EndMouseFunction(hwnd);
 	KillTimer(hwnd, IDTIMER_MAIN);
 	KillTimer(hwnd, IDTIMER_CREATE);
@@ -1904,6 +1909,7 @@ void TerminateTClockFromDLL(HWND hwnd, BOOL restartRequested)
 	if (bDestroy == TRUE) return;	//２重終了しないように
 
 	bDestroy = TRUE;
+	ext_close_hosts();
 	EndMouseFunction(hwnd);
 	KillTimer(hwnd, IDTIMER_MAIN);
 	KillTimer(hwnd, IDTIMER_CREATE);

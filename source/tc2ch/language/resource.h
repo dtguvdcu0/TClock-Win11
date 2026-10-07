@@ -798,6 +798,7 @@
 #define IDC_EXT_SPEED_VALUE            10417
 #define IDC_EXT_MODE_LABEL             10418
 #define IDC_EXT_BASE                   10419
+#define IDC_EXT_DETACH                 10490
 #define IDC_EXT_LED_PANEL               10420
 #define IDC_LED_DETAILS                 10430
 #define IDC_LED_BRIGHTNESS              10431

@@ -9,7 +9,15 @@
 #include "../common/flip_clock.h"
 #include "../common/led_clock.h"
 #include "../common/led_surface.h"
+#include "../common/ext_detach.h"
 static ACS_OPTIONS g_extOptions;
+static BOOL g_extDetachWanted, g_extDetachActive;
+static BOOL ext_publish_hosts(const RECT* slot);
+static HWND g_extHomes[EXT_DETACH_MAX];
+static UINT g_extHomeCount,g_extFloatingMask;
+static BYTE* g_extPackedFrame;
+static SIZE_T g_extPackedCapacity;
+static const BYTE* ext_pack_frame(const RECT* source);
 static ACS_CONTEXT* g_extContext;
 static FLP_CONTEXT* g_flipContext;
 static LED_CONTEXT* g_ledContext;
@@ -35,6 +43,8 @@ static BOOL ext_update_surface(const SYSTEMTIME* time,const RECT* slot);
 #include "../common/ini_io_utf8.h"
 #include "../winuidll/wui_api.h"
 static LED_SURFACE* g_ledSurface;
+static LED_SURFACE* g_ledSubSurfaces[MAX_SUBSCREEN];
+static void ext_stop_surfaces(void);
 #include "../autoback_points.h"
 #include "../common/taskbar_edge.h"
 #include <math.h>
@@ -1835,6 +1845,7 @@ static BOOL wui_fill_state(TC_DISPLAY_BACKEND_RENDER_STATE* state, SYSTEMTIME* p
 	g_wuiFrameValid = TRUE;
     if (ext_is_active() && GetClientRect(hwndClockMain, &rcClient)) {
         RECT slot;
+        if(g_extDetachWanted)SetRect(&rcClient,0,0,widthMainClockFrame,heightMainClockFrame);
         ext_get_content(&rcClient, &slot);
         state->contentVersion = 1;
         state->contentRect = rcClient;
@@ -2006,6 +2017,12 @@ static void wui_push_frame(TC_DISPLAY_BACKEND_RENDER_STATE* state)
 		state->layerPixels = (const BYTE*)m_color_start;
 		state->layerWidth = bmi_MainClock.bmiHeader.biWidth;
 		state->layerHeight = bmi_MainClock.bmiHeader.biHeight;
+        RECT source;ext_get_source(hwndClockMain,&source);
+        if(source.left || source.top || source.right!=widthMainClockFrame || source.bottom!=heightMainClockFrame){
+            const BYTE* pixels=ext_pack_frame(&source);
+            if(pixels){state->layerPixels=pixels;state->layerWidth=source.right-source.left;
+                state->layerHeight=(bmi_MainClock.bmiHeader.biHeight>0?1:-1)*(source.bottom-source.top);}
+        }
 	}
 	if (g_wuiUpdateState && g_wuiDll) {
 		if (g_wuiApplyState && g_wuiDllLive) {
@@ -2468,7 +2485,7 @@ void EndClock(void)
 	if (b_DebugLog)writeDebugLog_Win10("[tclock.c] EndClock called.", 999);
 
 	ext_stop_timer();
-    led_stop_surface(g_ledSurface);g_ledSurface=NULL;
+    ext_stop_surfaces();
 	wui_stop_host();
 	w11_close_desktop();
 	acs_destroy(g_extContext);
@@ -2640,6 +2657,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 	switch(message)
 	{
+        case EXT_DETACH_LAYOUT:ext_refresh_layout();return 0;
 		case WM_NCDESTROY:
 			ZeroMemory(&g_tbeRegion, sizeof(g_tbeRegion));
 			if (oldWndProc && (WNDPROC)WndProc == (WNDPROC)GetWindowLongPtr(hwnd, GWLP_WNDPROC))
@@ -2915,7 +2933,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 		case CLOCKM_SLEEP_IN:
 			if (b_DebugLog) writeDebugLog_Win10("[tclock.c][WndProc()] CLOCKM_SLEEP_IN received", 999);
 			if (b_ModernStandbySupported) b_Sleeping = TRUE;
-            led_stop_surface(g_ledSurface);g_ledSurface=NULL;
+            ext_stop_surfaces();
             ext_stop_timer(); flp_reset(g_flipContext);
 			return 0;
 
@@ -6524,6 +6542,7 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
 	}
 
 	GetClientRect(hwndClockMain, &rcClock);
+    if(g_extDetachWanted)SetRect(&rcClock,0,0,widthMainClockFrame,heightMainClockFrame);
 
 
 	if (!hdcClock) return;
@@ -6995,6 +7014,7 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
 
 
 	//点滅処理は、フォントのみ反転として、TextColorFromInfoVal()の機能として実装
+	RECT present;ext_get_source(hwndClockMain,&present);
 	if (!g_wuiSubOnly) {
 		if (!fillbackcolor) {
 			BLENDFUNCTION blend;
@@ -7002,11 +7022,11 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
 			blend.BlendFlags = 0;
 			blend.SourceConstantAlpha = 255;
 			blend.AlphaFormat = AC_SRC_ALPHA;
-			MyAlphaBlend(hdc, 0, 0, widthMainClockFrame, heightMainClockFrame,
-				hdcClock, 0, 0, widthMainClockFrame, heightMainClockFrame, blend);
+			MyAlphaBlend(hdc, 0, 0, present.right-present.left, present.bottom-present.top,
+				hdcClock, present.left, present.top, present.right-present.left, present.bottom-present.top, blend);
 		}
 		else {
-			BitBlt(hdc, 0, 0, widthMainClockFrame, heightMainClockFrame, hdcClock, 0, 0, SRCCOPY);
+			BitBlt(hdc, 0, 0, present.right-present.left, present.bottom-present.top, hdcClock, present.left, present.top, SRCCOPY);
 		}
 	}
 
@@ -7022,6 +7042,9 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
 
 	for (int i = 0; i < MAX_SUBSCREEN; i++) {
 		if (bEnableSpecificSubClk[i]) {
+            RECT source;SIZE frame;
+            ext_get_source(hwndClockSubClk[i],&source);
+            ext_get_frame(hwndClockSubClk[i],widthSubClock[i],heightSubClock[i],&frame);
 			hdcSub = NULL;
 			hdcSub = GetDC(hwndClockSubClk[i]);		//サブディスプレイの時計が存在するとhdcSubが存在することになる。
 			if (hdcSub != NULL)
@@ -7068,19 +7091,19 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
 					SelectObject(hdcSubBuffer, hbm_tempDIBSection);
 					SetStretchBltMode(hdcSubBuffer, HALFTONE);
 					SetBrushOrgEx(hdcSubBuffer, 0, 0, NULL);
-					StretchBlt(hdcSubBuffer, 0, 0, widthSubClock[i], heightSubClock[i], hdcClock_work, 0, 0, widthMainClockFrame, heightMainClockFrame, SRCCOPY);
+					StretchBlt(hdcSubBuffer, 0, 0, frame.cx, frame.cy, hdcClock_work, source.left, source.top, source.right-source.left, source.bottom-source.top, SRCCOPY);
 
 					SelectObject(hdcSubBuffer, hbm_tempDIBSection2);
 					SetStretchBltMode(hdcSubBuffer, HALFTONE);
 					SetBrushOrgEx(hdcSubBuffer, 0, 0, NULL);
-					StretchBlt(hdcSubBuffer, 0, 0, widthSubClock[i], heightSubClock[i], hdcClock, 0, 0, widthMainClockFrame, heightMainClockFrame, SRCCOPY);
+					StretchBlt(hdcSubBuffer, 0, 0, frame.cx, frame.cy, hdcClock, source.left, source.top, source.right-source.left, source.bottom-source.top, SRCCOPY);
 
 					for (color = temp_m_color_start, color_work = temp_m_color_start2; color < temp_m_color_end; ++color, ++color_work)
 					{
 						color_work->rgbReserved = color->rgbRed;
 					}
 
-					BitBlt(hdcSub, 0, 0, widthSubClock[i], heightSubClock[i], hdcSubBuffer, 0, 0, SRCCOPY);
+					BitBlt(hdcSub, 0, 0, frame.cx, frame.cy, hdcSubBuffer, 0, 0, SRCCOPY);
 
 				}
 
@@ -8230,12 +8253,14 @@ LRESULT CALLBACK SubclassTrayProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM
 
 			if (g_bVertTaskbar)
 			{
+				SIZE frame;ext_get_frame(hwndClockMain,widthMainClockFrame,heightMainClockFrame,&frame);
 				ret = MAKELONG(LOWORD(ret),
-					HIWORD(ret) + heightMainClockFrame - prevHeightMainClock);
+					HIWORD(ret) + frame.cy - prevHeightMainClock);
 			}
 			else
 			{
-				ret = MAKELONG(LOWORD(ret) + widthMainClockFrame - prevWidthMainClock,
+				SIZE frame;ext_get_frame(hwndClockMain,widthMainClockFrame,heightMainClockFrame,&frame);
+				ret = MAKELONG(LOWORD(ret) + frame.cx - prevWidthMainClock,
 					HIWORD(ret));
 			}
 
@@ -8349,14 +8374,15 @@ void SetMainClockOnTasktray(void)
 	//確保すべき時計のサイズを取得
 	GetPrevMainClockSize();
 	CalcMainClockSize();
+	SIZE frame;ext_get_frame(hwndClockMain,widthMainClockFrame,heightMainClockFrame,&frame);
 
 	//通知ボタン、デスクトップ表示ボタンの移動すべき距離を計算
-	shift.x = widthMainClockFrame - prevWidthMainClock;
-	shift.y = heightMainClockFrame - prevHeightMainClock;
+	shift.x = frame.cx - prevWidthMainClock;
+	shift.y = frame.cy - prevHeightMainClock;
 
 
 	//サイズとしてClockFrameを使うと実際見えているサイズのビットマップを作ることになる。
-	SetWindowPos(hwndClockMain, NULL, 0, 0, widthMainClockFrame, heightMainClockFrame,
+	SetWindowPos(hwndClockMain, NULL, 0, 0, frame.cx, frame.cy,
 		SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOZORDER | SWP_NOSENDCHANGING);
 
 	//各種処理のためメインクロック位置を更新
@@ -8883,8 +8909,10 @@ static void ext_load_settings(void)
     LED_CONTEXT* led = NULL;
     LED_OPTIONS ledOptions = {0};
     next.enabled = GetMyRegLong("ExtendedDisplay", "Enabled", 0) != 0;
+    g_extDetachWanted = GetMyRegLong("ExtendedDisplay", "DetachEnabled", 0) != 0;
     if (!next.enabled) {
-        led_stop_surface(g_ledSurface);g_ledSurface=NULL;
+        if (g_extDetachActive) ext_publish_hosts(NULL);
+        ext_stop_surfaces();
         ext_stop_timer();
         acs_destroy(g_extContext); flp_destroy(g_flipContext);
         g_extContext = NULL; g_flipContext = NULL;
@@ -8948,7 +8976,7 @@ static void ext_load_settings(void)
         OutputDebugStringW(L"TClock: cannot load selected clock skin; retaining last successful image-clock state\n");
         return;
     }
-    led_stop_surface(g_ledSurface);g_ledSurface=NULL;
+    ext_stop_surfaces();
     ext_stop_timer();
     acs_destroy(g_extContext); flp_destroy(g_flipContext);
     led_destroy(g_ledContext); g_ledContext = led; g_ledOptions = ledOptions;
@@ -8981,6 +9009,27 @@ static int ext_get_slot(void)
     return (g_bVertTaskbar ? g_extSize.cy : g_extSize.cx)+margin*2;
 }
 
+void led_stop_subsurface(int index)
+{
+    if(index<0||index>=MAX_SUBSCREEN)return;
+    led_stop_surface(g_ledSubSurfaces[index]);g_ledSubSurfaces[index]=NULL;
+}
+
+static void ext_stop_surfaces(void)
+{
+    if(g_extPackedFrame)HeapFree(GetProcessHeap(),0,g_extPackedFrame);
+    g_extPackedFrame=NULL;g_extPackedCapacity=0;
+    for(int i=0;i<MAX_SUBSCREEN;++i)led_stop_subsurface(i);
+    led_stop_surface(g_ledSurface);g_ledSurface=NULL;
+}
+
+static BOOL led_update_surface(LED_SURFACE** surface,const LED_SURFACE_STATE* state)
+{
+    if(*surface&&led_publish_surface(*surface,state))return TRUE;
+    led_stop_surface(*surface);*surface=led_start_surface(hmod,state);
+    return *surface!=NULL;
+}
+
 static BOOL ext_update_surface(const SYSTEMTIME* time,const RECT* slot)
 {
     LED_SURFACE_STATE state={0};UINT dpi=acs_get_dpi(hwndClockMain);
@@ -8993,9 +9042,32 @@ static BOOL ext_update_surface(const SYSTEMTIME* time,const RECT* slot)
     state.size=g_extSize;state.clip=*slot;state.visible=!b_Sleeping;
     SetRect(&state.bounds,x,y,x+g_extSize.cx,y+g_extSize.cy);
     if(!led_take_snapshot(g_ledContext,time,&state.text))return FALSE;
-    if(g_ledSurface&&led_publish_surface(g_ledSurface,&state))return TRUE;
-    led_stop_surface(g_ledSurface);g_ledSurface=led_start_surface(hmod,&state);
-    return g_ledSurface!=NULL;
+    if(!led_update_surface(&g_ledSurface,&state)){
+        ext_stop_surfaces();return FALSE;
+    }
+    // Secondary clocks scale the main bitmap; scale the separate LED slot identically.
+    for(int i=0;i<MAX_SUBSCREEN;++i){
+        LED_SURFACE_STATE sub=state;
+        if(!bEnableSpecificSubClk[i]||bSuppressUpdateSubClk[i]||
+            !IsWindow(hwndClockSubClk[i])||!IsWindow(hwndTaskBarSubClk[i])||
+            widthMainClockFrame<=0||heightMainClockFrame<=0||widthSubClock[i]<=0||heightSubClock[i]<=0){
+            led_stop_subsurface(i);continue;
+        }
+        sub.target=hwndClockSubClk[i];sub.taskbar=hwndTaskBarSubClk[i];sub.host=NULL;
+        SetRect(&sub.bounds,
+            MulDiv(state.bounds.left,widthSubClock[i],widthMainClockFrame),
+            MulDiv(state.bounds.top,heightSubClock[i],heightMainClockFrame),
+            MulDiv(state.bounds.right,widthSubClock[i],widthMainClockFrame),
+            MulDiv(state.bounds.bottom,heightSubClock[i],heightMainClockFrame));
+        SetRect(&sub.clip,
+            MulDiv(slot->left,widthSubClock[i],widthMainClockFrame),
+            MulDiv(slot->top,heightSubClock[i],heightMainClockFrame),
+            MulDiv(slot->right,widthSubClock[i],widthMainClockFrame),
+            MulDiv(slot->bottom,heightSubClock[i],heightMainClockFrame));
+        sub.size.cx=sub.bounds.right-sub.bounds.left;sub.size.cy=sub.bounds.bottom-sub.bounds.top;
+        led_update_surface(&g_ledSubSurfaces[i],&sub);
+    }
+    return TRUE;
 }
 
 static void ext_get_content(RECT* content, RECT* slot)
@@ -9014,13 +9086,135 @@ static void ext_get_content(RECT* content, RECT* slot)
     }
 }
 
+
+
+static BOOL ext_is_detached(HWND target)
+{
+    if (!g_extDetachActive || !g_extDetachWanted) return FALSE;
+    for (UINT i=0;i<g_extHomeCount;++i) if(g_extHomes[i]==target) return (g_extFloatingMask&(1u<<i))!=0;
+    return FALSE;
+}
+
+void ext_get_source(HWND target, RECT* source)
+{
+    SetRect(source,0,0,widthMainClockFrame,heightMainClockFrame);
+    if(ext_is_detached(target)){RECT slot;ext_get_content(source,&slot);}
+}
+
+void ext_get_frame(HWND target, int width, int height, SIZE* frame)
+{
+    RECT source;
+    frame->cx=width;frame->cy=height;
+    if(!ext_is_detached(target) || widthMainClockFrame<=0 || heightMainClockFrame<=0)return;
+    ext_get_source(target,&source);
+    frame->cx=max(1,MulDiv(width,source.right-source.left,widthMainClockFrame));
+    frame->cy=max(1,MulDiv(height,source.bottom-source.top,heightMainClockFrame));
+}
+
+void ext_refresh_layout(void)
+{
+    RECT content={0,0,widthMainClockFrame,heightMainClockFrame},slot;
+    ext_get_content(&content,&slot);
+    if(g_extDetachWanted)ext_publish_hosts(&slot);
+    if(bWin11Main)SetMainClockOnTasktray_Win11();else SetMainClockOnTasktray();
+    if(bEnableSubClks)SetAllSubClocks();
+    RedrawTClock();
+}
+
+static const BYTE* ext_pack_frame(const RECT* source)
+{
+    SIZE_T width=source->right-source->left,height=source->bottom-source->top,bytes;
+    LONG bitmapHeight=bmi_MainClock.bmiHeader.biHeight;
+    if(!width || !height || width>SIZE_MAX/4 || height>SIZE_MAX/(width*4))return NULL;
+    bytes=width*height*4;
+    if(bytes>g_extPackedCapacity){
+        BYTE* pixels=(BYTE*)HeapAlloc(GetProcessHeap(),0,bytes);
+        if(!pixels)return NULL;
+        if(g_extPackedFrame)HeapFree(GetProcessHeap(),0,g_extPackedFrame);
+        g_extPackedFrame=pixels;g_extPackedCapacity=bytes;
+    }
+    GdiFlush();
+    for(SIZE_T y=0;y<height;++y){
+        SIZE_T row=bitmapHeight>0?(SIZE_T)bitmapHeight-source->bottom+y:(SIZE_T)source->top+y;
+        CopyMemory(g_extPackedFrame+y*width*4,(const BYTE*)m_color_start+(row*widthMainClockFrame+source->left)*4,width*4);
+    }
+    return g_extPackedFrame;
+}
+
+static BOOL ext_publish_hosts(const RECT* slot)
+{
+    EXT_DETACH_PACKET packet = {0};
+    COPYDATASTRUCT data;
+    DWORD_PTR result = 0;
+    BOOL enabled = slot && g_extOptions.enabled && g_extDetachWanted;
+    packet.version = EXT_DETACH_VERSION; packet.bytes = sizeof(packet); packet.enabled = enabled;
+    if (enabled) {
+        EXT_DETACH_HOME* home = &packet.homes[packet.count++];
+        UINT dpi = acs_get_dpi(hwndClockMain);
+        int x = slot->left + (slot->right-slot->left-g_extSize.cx)/2 + MulDiv(g_extOptions.offsetX,dpi,96);
+        int y = slot->top + (slot->bottom-slot->top-g_extSize.cy)/2 + MulDiv(g_extOptions.offsetY,dpi,96);
+        HWND anchor = NULL, root = GetAncestor(hwndClockMain,GA_ROOT), cursor = NULL;
+        packet.options = g_extOptions; packet.offsetMS = offsetClockMS;
+        packet.stacked = g_bVertTaskbar && g_extOptions.flipStacked;
+        packet.animate = !b_Sleeping; packet.baseSize = g_extSize;
+        if(g_extOptions.mode==EXT_MODE_LED){
+            SYSTEMTIME time;GetDisplayTime(&time,NULL);
+            if(!led_take_snapshot(g_ledContext,&time,&packet.text))return FALSE;
+        }
+        while ((cursor=FindWindowExW(NULL,cursor,L"TClockWinUIDllWindow",NULL))!=NULL) {
+            HWND owner=GetWindow(cursor,GW_OWNER);
+            if(owner==hwndClockMain || owner==root){anchor=cursor;break;}
+        }
+        home->target=(uint64_t)(UINT_PTR)hwndClockMain; home->taskbar=(uint64_t)(UINT_PTR)hwndTaskBarMain;
+        home->anchor=(uint64_t)(UINT_PTR)anchor;
+        SetRect(&home->bounds,x,y,x+g_extSize.cx,y+g_extSize.cy); home->slot=*slot;
+        for(int i=0;i<MAX_SUBSCREEN && packet.count<EXT_DETACH_MAX;++i){
+            RECT client; int cx,cy,left,top,width,height;
+            if(!bEnableSpecificSubClk[i] || bSuppressUpdateSubClk[i] || !IsWindow(hwndClockSubClk[i]) ||
+                !GetClientRect(hwndClockSubClk[i],&client) || client.right<=0 || client.bottom<=0)continue;
+            cx=widthSubClock[i];cy=heightSubClock[i];
+            if(widthMainClockFrame<=0 || heightMainClockFrame<=0)continue;
+            EXT_DETACH_HOME* sub=&packet.homes[packet.count++];
+            sub->target=(uint64_t)(UINT_PTR)hwndClockSubClk[i];sub->taskbar=(uint64_t)(UINT_PTR)hwndTaskBarSubClk[i];
+            left=MulDiv(x,cx,widthMainClockFrame);top=MulDiv(y,cy,heightMainClockFrame);
+            width=MulDiv(g_extSize.cx,cx,widthMainClockFrame);
+            height=MulDiv(g_extSize.cy,cy,heightMainClockFrame);
+            if(g_extOptions.mode!=EXT_MODE_LED && g_extOptions.mode!=EXT_MODE_FLIP && g_extOptions.mode!=EXT_MODE_NIXIE)
+                width=height=min(width,height);
+            SetRect(&sub->bounds,left,top,left+width,top+height);
+            SetRect(&sub->slot,MulDiv(slot->left,cx,widthMainClockFrame),MulDiv(slot->top,cy,heightMainClockFrame),
+                MulDiv(slot->right,cx,widthMainClockFrame),MulDiv(slot->bottom,cy,heightMainClockFrame));
+        }
+    }
+    data.dwData=EXT_DETACH_DATA;data.cbData=sizeof(packet);data.lpData=&packet;
+    if(SendMessageTimeoutW(hwndTClockExeMain,WM_COPYDATA,(WPARAM)hwndClockMain,(LPARAM)&data,
+        SMTO_ABORTIFHUNG|SMTO_BLOCK,250,&result) && (result&EXT_DETACH_ACK)){
+        UINT mask=enabled?((UINT)result&((1u<<packet.count)-1)):0;
+        BOOL changed=mask!=g_extFloatingMask;
+        if(mask || g_extFloatingMask){
+            if(packet.count!=g_extHomeCount)changed=TRUE;
+            else for(UINT i=0;i<packet.count;++i)if(g_extHomes[i]!=(HWND)(UINT_PTR)packet.homes[i].target)changed=TRUE;
+        }
+        g_extHomeCount=packet.count;g_extFloatingMask=mask;
+        for(UINT i=0;i<packet.count;++i)g_extHomes[i]=(HWND)(UINT_PTR)packet.homes[i].target;
+        g_extDetachActive=enabled;
+        if(changed)PostMessageW(hwndClockMain,EXT_DETACH_LAYOUT,0,0);
+        if(enabled)PostMessageW(hwndTClockExeMain,EXT_DETACH_COMMIT,0,0);
+    } else if(!IsWindow(hwndTClockExeMain))g_extDetachActive=FALSE;
+    return enabled && g_extDetachActive;
+}
+
+
 static void ext_draw_clock(const SYSTEMTIME* time)
 {
     RECT content = {0,0,widthMainClockFrame,heightMainClockFrame}, slot;
     UINT dpi;
     int x, y;
     ext_get_content(&content, &slot);
-    if (IsRectEmpty(&slot)) { led_stop_surface(g_ledSurface);g_ledSurface=NULL;ext_stop_timer();return; }
+    if (IsRectEmpty(&slot)) { ext_stop_surfaces();ext_stop_timer();return; }
+    if (g_extDetachWanted) {
+        if (ext_publish_hosts(&slot)) { ext_stop_surfaces(); ext_stop_timer(); return; }
+    } else if (g_extDetachActive) ext_publish_hosts(NULL);
     if (g_extOptions.mode == EXT_MODE_LED) {
         if(ext_update_surface(time,&slot)){ext_stop_timer();return;}
         if (!led_render(g_ledContext, g_extSize, time, GetTickCount64(), !b_Sleeping)) { ext_stop_timer(); return; }

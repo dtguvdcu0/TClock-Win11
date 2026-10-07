@@ -44,6 +44,7 @@ BOOL led_expand_clock(const LED_OPTIONS* options, const SYSTEMTIME* time, WCHAR*
 BOOL led_render_preview(LED_CONTEXT* context, SIZE size, const SYSTEMTIME* time, ULONGLONG tick, int target, BOOL animate);
 BOOL led_render(LED_CONTEXT* context, SIZE size, const SYSTEMTIME* time, ULONGLONG tick, BOOL animate);
 BOOL led_is_active(const LED_CONTEXT* context);
+const BYTE* led_get_pixels(const LED_CONTEXT* context);
 void led_draw(const LED_CONTEXT* context, HDC dc, int x, int y);
 void led_blend(const LED_CONTEXT* context, RGBQUAD* pixels, int width, int height, int x, int y, const RECT* clip);
 #ifdef __cplusplus

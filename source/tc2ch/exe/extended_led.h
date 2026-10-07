@@ -131,7 +131,7 @@ static void ext_init_led(HWND dialog,EXT_PAGE* page)
     }
     page->ledPanel=CreateWindowExW(WS_EX_CONTROLPARENT,L"Static",L"",WS_CHILD|WS_CLIPCHILDREN,
         0,0,1,1,dialog,(HMENU)IDC_EXT_LED_PANEL,GetModuleHandleW(NULL),NULL);
-    ext_move_led(dialog,page->ledPanel,7,60,222,102);
+    ext_move_led(dialog,page->ledPanel,7,76,222,102);
     SetWindowSubclass(page->ledPanel,ext_panel_proc,1,(DWORD_PTR)dialog);
     page->ledTabs=CreateWindowExW(0,WC_TABCONTROLW,L"",WS_CHILD|WS_TABSTOP|TCS_FIXEDWIDTH,
         0,0,1,1,dialog,(HMENU)IDC_LED_TABS,GetModuleHandleW(NULL),NULL);
@@ -140,12 +140,12 @@ static void ext_init_led(HWND dialog,EXT_PAGE* page)
     const WCHAR* tabsEn[]={L"Frame",L"Time",L"Messages"};
     const WCHAR* tabsJa[]={L"\u8868\u793a\u67a0",L"\u6642\u523b",L"\u8ffd\u52a0\u6587\u5b57\u5217"};
     for(i=0;i<3;++i){TCITEMW item={};item.mask=TCIF_TEXT;item.pszText=(WCHAR*)(b_EnglishMenu?tabsEn[i]:tabsJa[i]);SendMessageW(page->ledTabs,TCM_INSERTITEMW,i,(LPARAM)&item);}
-    ext_move_led(dialog,page->ledTabs,7,41,174,17);
+    ext_move_led(dialog,page->ledTabs,7,57,174,17);
     RECT tabSize={0,0,54,16};MapDialogRect(dialog,&tabSize);SendMessageW(page->ledTabs,TCM_SETITEMSIZE,0,MAKELPARAM(tabSize.right,tabSize.bottom));
     page->ledPlay=CreateWindowExW(0,L"Button",b_EnglishMenu?L"Play":L"\u518d\u751f",WS_CHILD|WS_TABSTOP|BS_PUSHBUTTON,
         0,0,1,1,dialog,(HMENU)IDC_LED_PLAY,GetModuleHandleW(NULL),NULL);
     SendMessageW(page->ledPlay,WM_SETFONT,SendMessageW(dialog,WM_GETFONT,0,0),TRUE);
-    ext_move_led(dialog,page->ledPlay,201,165,24,12);
+    ext_move_led(dialog,page->ledPlay,201,181,24,12);
     // Row / 10 selects the section; message minimum selects the retained editor.
     ext_label_led(page,L"Height (DIP)",L"\u9ad8\u3055 (DIP)",0,4,43,0,FALSE);
     ext_add_led(page,GetDlgItem(dialog,IDC_EXT_SIZE),0,49,28,0,FALSE);
@@ -215,8 +215,8 @@ static void ext_layout_led(HWND dialog,EXT_PAGE* page,BOOL show)
         BOOL common=id==IDC_EXT_SIZE||id==IDC_EXT_PLACE||id==IDC_EXT_X||id==IDC_EXT_Y;
         if(common)SetParent(original->window,show?page->ledPanel:dialog);
         if(!show)SetWindowPos(original->window,NULL,original->rect.left,original->rect.top,original->rect.right-original->rect.left,original->rect.bottom-original->rect.top,SWP_NOZORDER|SWP_NOACTIVATE);
-        RECT limit={0,0,0,150};MapDialogRect(dialog,&limit);
-        if(id!=IDC_EXT_ENABLE&&id!=IDC_EXT_MODE&&id!=IDC_EXT_MODE_LABEL&&original->rect.top<limit.bottom)
+        RECT limit={0,0,0,166};MapDialogRect(dialog,&limit);
+        if(id!=IDC_EXT_ENABLE&&id!=IDC_EXT_DETACH&&id!=IDC_EXT_MODE&&id!=IDC_EXT_MODE_LABEL&&original->rect.top<limit.bottom)
             ShowWindow(original->window,!show?SW_SHOW:SW_HIDE);
         WCHAR cls[24];GetClassNameW(original->window,cls,_countof(cls));
         if(!lstrcmpW(cls,L"Button")&&(GetWindowLongPtrW(original->window,GWL_STYLE)&BS_TYPEMASK)==BS_GROUPBOX){
@@ -224,12 +224,12 @@ static void ext_layout_led(HWND dialog,EXT_PAGE* page,BOOL show)
             if(show&&page->ledSection==2)swprintf_s(caption,_countof(caption),b_EnglishMenu?L"Preview: message %d":L"\u30d7\u30ec\u30d3\u30e5\u30fc: \u6587\u5b57\u5217 %d",page->ledMessage+1);
             else if(show&&page->ledSection==0)wcscpy_s(caption,_countof(caption),b_EnglishMenu?L"Preview: full display":L"\u30d7\u30ec\u30d3\u30e5\u30fc: \u5168\u4f53");
             else wcscpy_s(caption,_countof(caption),show?(b_EnglishMenu?L"Preview: time":L"\u30d7\u30ec\u30d3\u30e5\u30fc: \u6642\u523b"):(b_EnglishMenu?L"Preview":L"\u30d7\u30ec\u30d3\u30e5\u30fc"));
-            SetWindowTextW(original->window,caption);if(show)ext_move_led(dialog,original->window,7,167,222,59);
+            SetWindowTextW(original->window,caption);if(show)ext_move_led(dialog,original->window,7,183,222,43);
         }
     }
     ShowWindow(page->ledPanel,show?SW_SHOW:SW_HIDE);ShowWindow(page->ledTabs,show?SW_SHOW:SW_HIDE);ShowWindow(page->ledPlay,show&&page->ledSection==2?SW_SHOW:SW_HIDE);
     if(!show)return;
-    ext_move_led(dialog,ext_get_control(dialog,IDC_EXT_PREVIEW),13,176,209,37);
+    ext_move_led(dialog,ext_get_control(dialog,IDC_EXT_PREVIEW),13,192,209,21);
     ext_move_led(dialog,ext_get_control(dialog,IDC_EXT_EFFECTIVE),13,216,209,8);
     SetWindowTextW(page->ledPlay,page->ledPlaying?(b_EnglishMenu?L"Static":L"\u9759\u6b62"):(b_EnglishMenu?L"Play":L"\u518d\u751f"));
 

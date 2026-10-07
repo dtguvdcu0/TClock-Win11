@@ -18,6 +18,9 @@
     <ClCompile Include="exemain.c">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
+    <ClCompile Include="ext_host.cpp">
+      <Filter>ソース ファイル</Filter>
+    </ClCompile>
     <ClCompile Include="filelist.c">
       <Filter>ソース ファイル</Filter>
     </ClCompile>

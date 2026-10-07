@@ -2000,7 +2000,8 @@ static void w11_place_vert(void)
 {
 	RECT taskbarRect;
 	RECT trayRect;
-	int clockHeight = heightMainClockFrame;
+	SIZE frame;ext_get_frame(hwndClockMain,widthMainClockFrame,heightMainClockFrame,&frame);
+	int clockHeight = frame.cy;
 	int clockY;
 	int trayY;
 
@@ -2051,6 +2052,7 @@ void SetMainClockOnTasktray_Win11(void)
 	//Win11タスクトレイ切り落とし幅を決定
 	//確保すべき時計のサイズを取得
 	CalcMainClockSize();
+	SIZE frame;ext_get_frame(hwndClockMain,widthMainClockFrame,heightMainClockFrame,&frame);
 	if (w11_is_vert()) {
 		w11_place_vert();
 		CreateClockDC();
@@ -2077,14 +2079,14 @@ void SetMainClockOnTasktray_Win11(void)
 			WriteDebugDLL_New(strLog);
 			WriteNormalLog_DLL(strLog);
 		}
-		posXMainClock = widthTaskbar - widthMainClockFrame - widthWin11Notify;
+		posXMainClock = widthTaskbar - frame.cx - widthWin11Notify;
 		if (posXMainClock < 0) posXMainClock = 0;
 
-		SetWindowPos(hwndClockMain, HWND_TOP, posXMainClock, 0, widthMainClockFrame, heightMainClockFrame,
+		SetWindowPos(hwndClockMain, HWND_TOP, posXMainClock, 0, frame.cx, frame.cy,
 			SWP_NOACTIVATE | SWP_NOSENDCHANGING | SWP_SHOWWINDOW);
 
 		if (IsWindow(hwndWin11Notify)) {
-			SetWindowPos(hwndWin11Notify, HWND_TOP, posXMainClock + widthMainClockFrame, 0, widthWin11Notify, heightMainClockFrame,
+			SetWindowPos(hwndWin11Notify, HWND_TOP, posXMainClock + frame.cx, 0, widthWin11Notify, heightMainClockFrame,
 				SWP_NOACTIVATE | SWP_NOSENDCHANGING | SWP_SHOWWINDOW);
 		}
 
@@ -2105,7 +2107,7 @@ void SetMainClockOnTasktray_Win11(void)
 	}
 
 	{
-		int tempX = widthTaskbar - widthMainClockFrame - modifiedWidthWin11Tray - widthWin11Notify;
+		int tempX = widthTaskbar - frame.cx - modifiedWidthWin11Tray - widthWin11Notify;
 
 		//トレイを、TClockのウィンドウ分左に移動して、右側の時計領域が見えなくなるようにリサイズする。
 		SetWindowPos(hwndTrayMain, NULL, tempX, 0, modifiedWidthWin11Tray, heightMainClockFrame,
@@ -2118,16 +2120,16 @@ void SetMainClockOnTasktray_Win11(void)
 			SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOSENDCHANGING);
 
 		//TClockの左端のX座標を求める。
-		posXMainClock = widthTaskbar - widthMainClockFrame - widthWin11Notify;
+		posXMainClock = widthTaskbar - frame.cx - widthWin11Notify;
 		if (posXMainClock < 0) posXMainClock = 0;
 
 		//TClockのウィンドウを所定の場所に移動する。
-		SetWindowPos(hwndClockMain, HWND_TOP, posXMainClock, 0, widthMainClockFrame, heightMainClockFrame,
+		SetWindowPos(hwndClockMain, HWND_TOP, posXMainClock, 0, frame.cx, frame.cy,
 			SWP_NOACTIVATE | SWP_NOSENDCHANGING | SWP_SHOWWINDOW);
 
 		//自作通知ウィンドウの場所を再設定する。
 		if (IsWindow(hwndWin11Notify)) {
-			SetWindowPos(hwndWin11Notify, HWND_TOP, posXMainClock + widthMainClockFrame, 0, widthWin11Notify, heightMainClockFrame,
+			SetWindowPos(hwndWin11Notify, HWND_TOP, posXMainClock + frame.cx, 0, widthWin11Notify, heightMainClockFrame,
 				SWP_NOACTIVATE | SWP_NOSENDCHANGING | SWP_SHOWWINDOW);
 			ShowWindow(hwndWin11Notify, SW_SHOW);
 		}

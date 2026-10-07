@@ -418,6 +418,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="exemain.c" />
+    <ClCompile Include="ext_host.cpp" />
     <ClCompile Include="filelist.c" />
     <ClCompile Include="menu.c" />
     <ClCompile Include="mouse.c" />

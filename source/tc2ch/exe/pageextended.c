@@ -236,6 +236,8 @@ static void ext_enable_controls(HWND dialog)
 {
     BOOL enabled = ext_get_checked(dialog, IDC_EXT_ENABLE) == BST_CHECKED;
     int mode = ext_read_mode(dialog);
+    ShowWindow(ext_get_control(dialog,IDC_EXT_DETACH),SW_SHOW);
+    EnableWindow(ext_get_control(dialog,IDC_EXT_DETACH),enabled);
     const int ids[] = {IDC_EXT_MODE, IDC_EXT_SECONDS, IDC_EXT_SIZE, IDC_EXT_PLACE, IDC_EXT_X, IDC_EXT_Y};
     unsigned i;
     for (i = 0; i < _countof(ids); ++i) EnableWindow(ext_get_control(dialog, ids[i]), enabled);
@@ -419,6 +421,7 @@ INT_PTR CALLBACK PageExtendedProc(HWND dialog, UINT message, WPARAM wParam, LPAR
         GetMyRegStr("ExtendedDisplay", "Placement", skin, sizeof(skin), "Left");
         ext_send_control(dialog, IDC_EXT_PLACE, CB_SETCURSEL, !strcmp(skin, "Right"), 0);
         ext_check_control(dialog, IDC_EXT_ENABLE, GetMyRegLong("ExtendedDisplay", "Enabled", 0) ? BST_CHECKED : BST_UNCHECKED);
+        ext_check_control(dialog, IDC_EXT_DETACH, GetMyRegLong("ExtendedDisplay", "DetachEnabled", 0) ? BST_CHECKED : BST_UNCHECKED);
         ext_check_control(dialog, IDC_EXT_SECONDS, GetMyRegLong("ExtendedDisplay", "ShowSeconds", 1) ? BST_CHECKED : BST_UNCHECKED);
         ext_check_control(dialog, IDC_EXT_COLON, GetMyRegLong("ExtendedDisplay", "FlipShowColon", 1) ? BST_CHECKED : BST_UNCHECKED);
         ext_send_control(dialog, IDC_EXT_SIDE, CB_ADDSTRING, 0, (LPARAM)(b_EnglishMenu ? L"Stacked" : L"\u7e26\u4e26\u3073"));
@@ -556,6 +559,7 @@ INT_PTR CALLBACK PageExtendedProc(HWND dialog, UINT message, WPARAM wParam, LPAR
             // The independent analog path is retired; retain its other historical values.
             SetMyRegLong("AnalogClock", "UseAnalogClock", FALSE);
             SetMyRegLong("ExtendedDisplay", "Enabled", options.enabled);
+            SetMyRegLong("ExtendedDisplay", "DetachEnabled", ext_get_checked(dialog,IDC_EXT_DETACH)==BST_CHECKED);
             SetMyRegStr("ExtendedDisplay", "Kind", "ImageClock");
             SetMyRegStr("ExtendedDisplay", "Mode", modes[options.mode]);
             {

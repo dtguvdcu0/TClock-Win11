@@ -246,6 +246,10 @@ void CheckSubClocks(void);
 BOOL GetInkWorkspaceSetting(void);
 void CreateMyNotificationFont(int fontwidth, int fontheigt);
 void ClearSpecificSubClock(int i);
+void led_stop_subsurface(int index);
+void ext_get_source(HWND target, RECT* source);
+void ext_get_frame(HWND target, int width, int height, SIZE* frame);
+void ext_refresh_layout(void);
 
 
 // traynotifywnd.c

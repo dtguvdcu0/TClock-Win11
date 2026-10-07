@@ -202,6 +202,7 @@ LRESULT CALLBACK WndProcSubClk(HWND hwnd, UINT message, WPARAM wParam, LPARAM lP
 		int i = GetSubClkIndexFromHWND(hwnd);
 		WNDPROC oldProc = NULL;
 		if (i != 999) {
+			led_stop_subsurface(i);
 			oldProc = oldWndProcSub[i];
 			if (oldProc && (WNDPROC)GetWindowLongPtr(hwnd, GWLP_WNDPROC) == WndProcSubClk) {
 				SubclassWindow(hwnd, oldProc);
@@ -388,6 +389,7 @@ void SetSpecificSubClock(int i)
 	BOOL tempIsVert;
 
 	CalcSpecificSubClockSize(i);
+	SIZE frame;ext_get_frame(hwndClockSubClk[i],widthSubClock[i],heightSubClock[i],&frame);
 
 	//ツールチップ連携開始(width, heightが必要なのでここで実行する)
 	TooltipAddSubClock(i);
@@ -396,14 +398,14 @@ void SetSpecificSubClock(int i)
 
 	if (tempIsVert) {
 		nextcorner.x = widthSubTaskbar[i];
-		nextcorner.y = heightSubTaskbar[i] - heightSubClock[i];
-		SetWindowPos(hwndClockSubClk[i], NULL, 0, nextcorner.y, widthSubClock[i], heightSubClock[i],
+		nextcorner.y = heightSubTaskbar[i] - frame.cy;
+		SetWindowPos(hwndClockSubClk[i], NULL, 0, nextcorner.y, frame.cx, frame.cy,
 			SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOSENDCHANGING);
 	}
 	else {
-		nextcorner.x = widthSubTaskbar[i] - widthSubClock[i];
+		nextcorner.x = widthSubTaskbar[i] - frame.cx;
 		nextcorner.y = heightSubTaskbar[i];
-		SetWindowPos(hwndClockSubClk[i], NULL, nextcorner.x, 0, widthSubClock[i], heightSubClock[i],
+		SetWindowPos(hwndClockSubClk[i], NULL, nextcorner.x, 0, frame.cx, frame.cy,
 			SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOSENDCHANGING);
 	}
 
@@ -427,7 +429,7 @@ void SetSpecificSubClock(int i)
 				pos2.y = 0;
 				MapWindowPoints(tempHwnd, hwndTaskBarSubClk[i], &pos2, 1);
 				if (pos2.x == 0) {	//全体側のクラスの場合
-					SetWindowPos(tempHwnd, NULL, 0, 0, pos.x, heightSubClock[i],
+					SetWindowPos(tempHwnd, NULL, 0, 0, pos.x, frame.cy,
 						SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOZORDER | SWP_NOSENDCHANGING);
 				}
 				else {	//Win11のサブクロック時計クラスの場合
@@ -618,6 +620,7 @@ void FindAllSubClocks(void)
 
 void DisableSpecificSubClock(int i) {
 	HWND tempHwnd;
+	led_stop_subsurface(i);
 
 	POINT pos, pos2, nextcorner;
 	RECT tempRect;

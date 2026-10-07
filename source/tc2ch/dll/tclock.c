@@ -1073,49 +1073,18 @@ static BOOL IsLikelyValidThemeColor(COLORREF col)
 
 static BOOL SampleTaskbarColorsAtX(int posX, COLORREF* outMain, COLORREF* outEdge)
 {
-	RECT taskRect;
-	RECT desktopRect;
-	HDC tempDC;
-	int sampleMainY;
-	int sampleEdgeY;
-	int maxX;
-	int taskHeight;
-	int edge;
-
-	if (!outMain || !outEdge) return FALSE;
-	*outMain = CLR_INVALID;
-	*outEdge = CLR_INVALID;
-
-	if (!IsWindow(hwndTaskBarMain)) return FALSE;
-	GetWindowRect(hwndTaskBarMain, &taskRect);
-	maxX = taskRect.right - taskRect.left - 1;
-	if (maxX < 0) return FALSE;
-	posX = ClampInt(posX, 0, maxX);
-	taskHeight = taskRect.bottom - taskRect.top;
-	edge = ReadTaskbarEdgeFromRegistry();
-
-	if (bSuppressGetTaskbarColor_Win11Type2) {
-		bSuppressGetTaskbarColor_Win11Type2 = FALSE;
-		return FALSE;
-	}
-
-	GetWindowRect(GetDesktopWindow(), &desktopRect);
-	tempDC = GetDC(GetDesktopWindow());
-	if (!tempDC) return FALSE;
-
-	if (edge == TC_TASKBAR_EDGE_TOP && taskHeight > 0) {
-		sampleMainY = taskRect.top + ClampInt(taskHeight / 2, 0, taskHeight - 1);
-		sampleEdgeY = taskRect.bottom - 1;
-	}
-	else {
-		sampleMainY = desktopRect.bottom - 1;
-		sampleEdgeY = taskRect.top;
-	}
-	*outMain = GetPixel(tempDC, posX, sampleMainY);
-	*outEdge = GetPixel(tempDC, posX, sampleEdgeY);
-	ReleaseDC(GetDesktopWindow(), tempDC);
-
-	return ((*outMain != CLR_INVALID) && (*outEdge != CLR_INVALID));
+ COLORREF colors[2];
+ BOOL ok;
+ if (!outMain || !outEdge) return FALSE;
+ *outMain = *outEdge = CLR_INVALID;
+ if (bSuppressGetTaskbarColor_Win11Type2) {
+  bSuppressGetTaskbarColor_Win11Type2 = FALSE;
+  return FALSE;
+ }
+ ok = ab_sample_at(hwndTaskBarMain, hwndClockMain, posX,
+  ReadTaskbarEdgeFromRegistry() == TC_TASKBAR_EDGE_TOP, colors);
+ *outMain = colors[0]; *outEdge = colors[1];
+ return ok;
 }
 
 static int ReadTaskbarEdgeFromRegistry(void)
@@ -1241,24 +1210,41 @@ static BOOL ab_read_colors(void)
  return bAutoBackSnapshotExists;
 }
 
-static LRESULT ab_query_legacy(int component)
+static BOOL ab_get_positions(const AB_OFFSETS* offsets, int positions[2])
 {
  RECT task, clock;
- POINT point;
- int x[2], y, width;
- if (component < 0 || component >= 4 || !bWin11Main || IsVertTaskbar(hwndTaskBarMain)) return 0;
+ if (!bWin11Main || IsVertTaskbar(hwndTaskBarMain)) return FALSE;
  GetTaskbarSize();
- if (posXMainClock <= 0 || !GetWindowRect(hwndTaskBarMain, &task) || !GetWindowRect(hwndClockMain, &clock)) return 0;
- width = task.right - task.left;
- if (width <= 1 || task.bottom - task.top <= 1) return 0;
- if (widthWin11Notify > 0 && posXShowDesktopArea > 0)
-  x[0] = posXMainClock + widthMainClockFrame + ClampInt(posXShowDesktopArea + autoBackSampleShowDesktopOffset, 0, widthWin11Notify - 1);
- else x[0] = posXMainClock - (widthWin11Notify > 0 ? widthWin11Notify / 2 : 10);
- x[1] = posXMainClock + autoBackSampleClockOffset - (g_wuiCfg == TC_DISPLAY_BACKEND_WINUI ? 10 : 0);
- y = ReadTaskbarEdgeFromRegistry() == TC_TASKBAR_EDGE_TOP ? (task.bottom-task.top)/2 : task.bottom-task.top-1;
- point.x = task.left + x[component / 2]; point.y = task.top + y;
- if (!PtInRect(&task, point) || PtInRect(&clock, point) || ab_contains(FindWindowW(L"TClockWinUIDllWindow", NULL), point)) return 0;
- return 1 + (component % 2 ? MulDiv(y, 10000, task.bottom-task.top-1) : MulDiv(x[component / 2], 10000, width-1));
+ if (!GetWindowRect(hwndTaskBarMain, &task) || !GetWindowRect(hwndClockMain, &clock)) return FALSE;
+ return ab_place_offsets(&task, &clock, widthWin11Notify, posXShowDesktopArea,
+  g_wuiCfg == TC_DISPLAY_BACKEND_WINUI, offsets, positions);
+}
+
+static LRESULT ab_query_legacy(int component)
+{
+ RECT task;
+ POINT point;
+ int positions[2];
+ AB_OFFSETS offsets = { autoBackSampleClockOffset, autoBackSampleShowDesktopOffset, autoBackBlendRatio };
+ if (component < 0 || component >= 4 || !ab_get_positions(&offsets, positions) ||
+     !GetWindowRect(hwndTaskBarMain, &task) || task.right-task.left <= 1 || task.bottom-task.top <= 1) return 0;
+ point.x = positions[component / 2];
+ point.y = ReadTaskbarEdgeFromRegistry() == TC_TASKBAR_EDGE_TOP ? task.top+(task.bottom-task.top)/2 : task.bottom-1;
+ if (ab_contains(hwndClockMain, point) || ab_contains(FindWindowW(L"TClockWinUIDllWindow", NULL), point)) return 0;
+ return 1 + (component % 2 ? MulDiv(point.y-task.top, 10000, task.bottom-task.top-1) :
+  MulDiv(point.x-task.left, 10000, task.right-task.left-1));
+}
+
+static LRESULT ab_query_offsets(int component, LPARAM packed)
+{
+ AB_OFFSETS offsets = { (SHORT)LOWORD(packed), (SHORT)HIWORD(packed), 50 };
+ int positions[2];
+ COLORREF colors[2];
+ if (component < 0 || component >= 4 || offsets.clock < -200 || offsets.clock > 200 ||
+     offsets.desktop < -200 || offsets.desktop > 200 || !ab_get_positions(&offsets, positions) ||
+     !ab_sample_at(hwndTaskBarMain, hwndClockMain, positions[component / 2],
+      ReadTaskbarEdgeFromRegistry() == TC_TASKBAR_EDGE_TOP, colors)) return 0;
+ return (LRESULT)colors[component % 2] + 1;
 }
 
 static void RefreshAutoBackColors(BOOL force, const char* reason)
@@ -1279,7 +1265,7 @@ static void RefreshAutoBackColors(BOOL force, const char* reason)
 		if (b_DebugLog) writeDebugLog_Win10("[tclock.c][AutoBack] skip: taskbar handle not ready", 999);
 		return;
 	}
-	if (bWin11Main && !ab_uses_points(IsVertTaskbar(hwndTaskBarMain) ? AB_SIDE : AB_HORIZONTAL) && posXMainClock <= 0) {
+	if (bWin11Main && !IsWindow(hwndClockMain)) {
 		bAutoBackInitialized = FALSE;
 		if (b_DebugLog) writeDebugLog_Win10("[tclock.c][AutoBack] skip: posXMainClock not ready", posXMainClock);
 		return;
@@ -1320,23 +1306,11 @@ static void RefreshAutoBackColors(BOOL force, const char* reason)
 		int rightFromNotifyArea = 0;
 		int ratio = ClampInt(autoBackBlendRatio, 0, 100);
 
-		GetTaskbarSize();
-		if (posXMainClock > 0) {
-			if (widthWin11Notify > 0 && posXShowDesktopArea > 0) {
-				int localX = ClampInt(posXShowDesktopArea + autoBackSampleShowDesktopOffset, 0, widthWin11Notify - 1);
-				xLeft = posXMainClock + widthMainClockFrame + localX;
-			} else {
-				xLeft = posXMainClock - (widthWin11Notify > 0 ? (widthWin11Notify / 2) : 10);
-			}
-			if (g_wuiCfg == TC_DISPLAY_BACKEND_WINUI) {
-				xRight = posXMainClock - 10 + autoBackSampleClockOffset;
-			}
-			else {
-				xRight = posXMainClock + autoBackSampleClockOffset;
-			}
-		} else {
-			xLeft = widthTaskbar - 10;
-			xRight = 0;
+		{
+			AB_OFFSETS offsets = { autoBackSampleClockOffset, autoBackSampleShowDesktopOffset, autoBackBlendRatio };
+			int positions[2];
+			if (!ab_get_positions(&offsets, positions)) { bAutoBackInitialized = FALSE; return; }
+			xLeft = positions[0]; xRight = positions[1];
 		}
 		leftOk = SampleTaskbarColorsAtX(xLeft, &leftMain, &leftEdge);
 		rightOk = SampleTaskbarColorsAtX(xRight, &rightMain, &rightEdge);
@@ -1414,7 +1388,8 @@ static void RefreshAutoBackColors(BOOL force, const char* reason)
 
 static BOOL SaveCurrentAutoBackSnapshotToIni(void)
 {
-	if (!bAutoBackMatchTaskbar || fillbackcolor) return FALSE;
+	if (!bAutoBackMatchTaskbar || fillbackcolor ||
+		g_abModes[IsVertTaskbar(hwndTaskBarMain) ? AB_SIDE : AB_HORIZONTAL] == AB_FUTURE) return FALSE;
 
 	RefreshAutoBackColors(TRUE, "ManualSnapshotSave");
 	if (!bAutoBackInitialized) return FALSE;
@@ -2622,6 +2597,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 	if (message >= 0xC000 && message == RegisterWindowMessageW(AB_QUERY_MESSAGE))
 		return ab_query_legacy((int)wParam);
+	if (message >= 0xC000 && message == RegisterWindowMessageW(AB_OFFSET_QUERY_MESSAGE))
+		return ab_query_offsets((int)wParam, lParam);
 
 	switch(message) // ツールチップ対応
 	{

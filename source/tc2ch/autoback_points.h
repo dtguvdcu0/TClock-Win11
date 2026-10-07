@@ -1,4 +1,6 @@
 #pragma once
+#include <stdio.h>
+#include "common/ini_io_utf8.h"
 
 // Shared by the settings preview and clock renderer. Positions use 1/100 percent.
 typedef struct AB_POINTS {
@@ -15,6 +17,21 @@ static __inline int ab_clamp(int value, int high)
 enum { AB_HORIZONTAL, AB_SIDE, AB_PROFILE_COUNT };
 enum { AB_INVALID = -2, AB_FUTURE = -1, AB_LEGACY, AB_POINTS_SAVED, AB_DEFAULTS };
 #define AB_QUERY_MESSAGE L"TClock.AutoBack.LegacyPoint.v1"
+#define AB_OFFSET_QUERY_MESSAGE L"TClock.AutoBack.OffsetColor.v1"
+#define AB_MODE_KEY "AutoBackHorizontalSamplingMode"
+
+typedef struct AB_OFFSETS {
+ int clock;
+ int desktop;
+ int balance;
+} AB_OFFSETS;
+
+static __inline void ab_load_offsets(AB_OFFSETS* offsets)
+{
+ offsets->clock = max(-200, min(200, (int)GetMyRegLong("Color_Font", "AutoBackSampleClockOffset", 0)));
+ offsets->desktop = max(-200, min(200, (int)GetMyRegLong("Color_Font", "AutoBackSampleShowDesktopOffset", 0)));
+ offsets->balance = ab_clamp((int)GetMyRegLong("Color_Font", "AutoBackBlendRatio", 50), 100);
+}
 
 typedef struct AB_PROFILE {
  const char* keys[4];
@@ -56,6 +73,13 @@ static __inline int ab_load(int profile, AB_POINTS* points)
  points->balance = ab_clamp((int)GetMyRegLong("Color_Font", description->balance, 50), 100);
  if (profile == AB_SIDE) return AB_POINTS_SAVED;
  if (version != 0xFFFFFFFF && version > 1) return AB_FUTURE;
+ {
+  DWORD selection = GetMyRegLong("Color_Font", AB_MODE_KEY, 0xFFFFFFFF);
+  if (selection != 0xFFFFFFFF && selection > 1) return AB_FUTURE;
+  if (selection == 0) return AB_LEGACY;
+  if (selection == 1 && complete) return AB_POINTS_SAVED;
+  if (selection == 1) return AB_INVALID;
+ }
  if (version == 1 && complete) return AB_POINTS_SAVED;
  if (version != 0xFFFFFFFF || any) return AB_INVALID;
  return ab_has_legacy() ? AB_LEGACY : AB_DEFAULTS;
@@ -84,6 +108,58 @@ static __inline BOOL ab_save(int profile, const AB_POINTS* points)
  }
  return TRUE;
 }
+
+// Commit both parameter sets and the selected mode atomically; failed writes leave the INI intact.
+static __inline BOOL ab_save_settings(LPCWSTR path, int profile, const AB_POINTS* points, const AB_OFFSETS* offsets, int selection)
+{
+ DWORD mode = GetMyRegLong("Color_Font", AB_MODE_KEY, 0xFFFFFFFF);
+ DWORD version = GetMyRegLong("Color_Font", "AutoBackHorizontalPointsVersion", 0xFFFFFFFF);
+ const char* keys[11];
+ int values[11], count = 0, i, used = 0;
+ char entries[1024] = {0};
+ if (profile == AB_SIDE) return ab_save(profile, points);
+ if ((mode != 0xFFFFFFFF && mode > 1) || (version != 0xFFFFFFFF && version > 1)) return FALSE;
+ if (selection < 0 || selection > 1 || offsets->clock < -200 || offsets->clock > 200 ||
+     offsets->desktop < -200 || offsets->desktop > 200 || offsets->balance < 0 || offsets->balance > 100 ||
+     points->balance < 0 || points->balance > 100 || (points->count != 1 && points->count != 2)) return FALSE;
+ for (i = 0; i < 4; ++i) {
+  if (points->position[i] < 0 || points->position[i] > 10000) return FALSE;
+  keys[count] = ab_profiles[profile].keys[i]; values[count++] = points->position[i];
+ }
+ keys[count] = ab_profiles[profile].balance; values[count++] = points->balance;
+ keys[count] = ab_profiles[profile].count; values[count++] = points->count;
+ keys[count] = "AutoBackHorizontalPointsVersion"; values[count++] = 1;
+ keys[count] = "AutoBackSampleClockOffset"; values[count++] = offsets->clock;
+ keys[count] = "AutoBackSampleShowDesktopOffset"; values[count++] = offsets->desktop;
+ keys[count] = "AutoBackBlendRatio"; values[count++] = offsets->balance;
+ keys[count] = AB_MODE_KEY; values[count++] = selection;
+ for (i = 0; i < count; ++i) {
+  int length = sprintf_s(entries + used, sizeof(entries) - used, "%s=%d", keys[i], values[i]);
+  if (length < 0) return FALSE;
+  used += length + 1;
+ }
+ if (!tc_write_batchW(path, "Color_Font", entries, (DWORD)used + 1)) return FALSE;
+ for (i = 0; i < count; ++i)
+  if ((int)GetMyRegLong("Color_Font", keys[i], 0x7FFFFFFF) != values[i]) return FALSE;
+ return TRUE;
+}
+
+// Anchors and offsets use screen coordinates, including monitors left of the primary display.
+static __inline BOOL ab_place_offsets(const RECT* task, const RECT* clock, int notifyWidth,
+ int desktopPosition, BOOL winui, const AB_OFFSETS* offsets, int positions[2])
+{
+ RECT overlap;
+ if (task->right <= task->left || task->bottom <= task->top ||
+     clock->right <= clock->left || !IntersectRect(&overlap, task, clock)) return FALSE;
+ if (notifyWidth > 0 && desktopPosition > 0)
+  positions[0] = clock->right + max(0, min(notifyWidth - 1, desktopPosition + offsets->desktop));
+ else positions[0] = clock->left - (notifyWidth > 0 ? notifyWidth / 2 : 10);
+ positions[1] = clock->left + offsets->clock - (winui ? 10 : 0);
+ positions[0] = max(task->left, min(task->right - 1, positions[0]));
+ positions[1] = max(task->left, min(task->right - 1, positions[1]));
+ return TRUE;
+}
+
 
 static __inline HWND ab_find_taskbar(HWND clock)
 {
@@ -141,5 +217,36 @@ static __inline BOOL ab_sample(HWND taskbar, HWND clock, const AB_POINTS* points
  for (i = 0; i < points->count; ++i) colors[i] = GetPixel(dc, positions[i].x, positions[i].y);
  ReleaseDC(NULL, dc);
  if (points->count == 1) colors[1] = colors[0];
+ return colors[0] != CLR_INVALID && colors[1] != CLR_INVALID;
+}
+
+static __inline COLORREF ab_blend(COLORREF first, COLORREF second, int balance)
+{
+ int ratio = ab_clamp(balance, 100);
+ return RGB((GetRValue(first) * (100-ratio) + GetRValue(second) * ratio) / 100,
+            (GetGValue(first) * (100-ratio) + GetGValue(second) * ratio) / 100,
+            (GetBValue(first) * (100-ratio) + GetBValue(second) * ratio) / 100);
+}
+
+static __inline BOOL ab_sample_at(HWND taskbar, HWND clock, int screenX, BOOL top, COLORREF colors[2])
+{
+ RECT rect;
+ POINT point[2];
+ HDC dc;
+ HWND marker = NULL, overlay = FindWindowW(L"TClockWinUIDllWindow", NULL);
+ int i;
+ colors[0] = colors[1] = CLR_INVALID;
+ while ((marker = FindWindowExW(NULL, marker, L"TClockSamplePoint", NULL)) != NULL)
+  if (IsWindowVisible(marker)) return FALSE;
+ if (!GetWindowRect(taskbar, &rect) || rect.right <= rect.left || rect.bottom <= rect.top) return FALSE;
+ point[0].x = point[1].x = max(rect.left, min(rect.right - 1, screenX));
+ point[0].y = top ? rect.top + (rect.bottom - rect.top) / 2 : rect.bottom - 1;
+ point[1].y = top ? rect.bottom - 1 : rect.top;
+ for (i = 0; i < 2; ++i)
+  if (ab_contains(clock, point[i]) || ab_contains(overlay, point[i])) return FALSE;
+ dc = GetDC(NULL);
+ if (!dc) return FALSE;
+ for (i = 0; i < 2; ++i) colors[i] = GetPixel(dc, point[i].x, point[i].y);
+ ReleaseDC(NULL, dc);
  return colors[0] != CLR_INVALID && colors[1] != CLR_INVALID;
 }

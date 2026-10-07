@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "product": "TClock-Win11",
+  "channel": "test",
+  "architecture": "x64",
+  "version": "0.2.6.1",
+  "release_page_url": "https://github.com/dtguvdcu0/TClock-Win11/releases/tag/v0.2.6.1"
+}

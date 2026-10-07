@@ -1,6 +1,7 @@
 #pragma once
 
 #include <windows.h>
+#include <stddef.h>
 
 #ifdef TCARD_WUI_EXPORTS
 #define TCARD_WUI_API __declspec(dllexport)
@@ -32,9 +33,14 @@ typedef struct TCARD_WUI_TEXT_STATE {
     DWORD fontFamilyLength;
     FLOAT fontSize;
     BOOL markdown;
+    ULONGLONG reservedTail;
+    BOOL richHtml;
+    BOOL checkpoint;
+    BOOL inheritFontFamily;
+    BOOL inheritFontSize;
 } TCARD_WUI_TEXT_STATE;
 
-#define TCARD_WUI_TEXT_STATE_MIN_CB ((DWORD)sizeof(TCARD_WUI_TEXT_STATE))
+#define TCARD_WUI_TEXT_STATE_MIN_CB ((DWORD)offsetof(TCARD_WUI_TEXT_STATE, reservedTail))
 
 typedef struct TCARD_WUI_TEXT_STATE_BUFFER {
     DWORD cb;
@@ -56,9 +62,14 @@ typedef struct TCARD_WUI_TEXT_STATE_BUFFER {
     DWORD fontFamilyLength;
     FLOAT fontSize;
     BOOL markdown;
+    ULONGLONG reservedTail;
+    BOOL richHtml;
+    BOOL checkpoint;
+    BOOL inheritFontFamily;
+    BOOL inheritFontSize;
 } TCARD_WUI_TEXT_STATE_BUFFER;
 
-#define TCARD_WUI_TEXT_STATE_BUFFER_MIN_CB ((DWORD)sizeof(TCARD_WUI_TEXT_STATE_BUFFER))
+#define TCARD_WUI_TEXT_STATE_BUFFER_MIN_CB ((DWORD)offsetof(TCARD_WUI_TEXT_STATE_BUFFER, reservedTail))
 
 typedef struct TCARD_WUI_STATE {
     DWORD cb;

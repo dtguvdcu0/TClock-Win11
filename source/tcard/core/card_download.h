@@ -44,11 +44,12 @@ inline std::wstring raster(const std::vector<BYTE>& bytes)
     // Decode bounded pixels before persisting; MIME headers alone are not evidence of an image.
     return tcard_image::decode(uri).dib.empty() ? std::wstring{} : uri;
 }
-inline std::wstring fetch(std::wstring address, const std::atomic_bool& cancelled, ULONGLONG deadline)
+inline std::wstring request(std::wstring address, const std::atomic_bool& cancelled, ULONGLONG deadline, bool text = false)
 {
     Handle session(WinHttpOpen(L"TCard/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
         WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0));
     if (!session.value || !WinHttpSetTimeouts(session.value, 2000, 2000, 2000, 2000)) return {};
+    const size_t limit = text ? 2 * 1024 * 1024 : tcard_clip::max_image;
     for (unsigned redirect = 0; redirect <= 3; ++redirect) {
         if (cancelled || GetTickCount64() >= deadline) return {};
         URL_COMPONENTS parts{};
@@ -60,7 +61,7 @@ inline std::wstring fetch(std::wstring address, const std::atomic_bool& cancelle
         const auto fragment = path.find(L'#'); if (fragment != std::wstring::npos) path.resize(fragment);
         Handle connection(WinHttpConnect(session.value, host.c_str(), parts.nPort, 0));
         if (!connection.value) return {};
-        const wchar_t* accept[] = {L"image/png", L"image/jpeg", L"image/gif", L"image/bmp", nullptr};
+        const wchar_t* accept[] = {text ? L"text/html, text/css" : L"image/png, image/jpeg, image/gif, image/bmp", nullptr};
         Handle request(WinHttpOpenRequest(connection.value, L"GET", path.c_str(), nullptr,
             WINHTTP_NO_REFERER, accept, parts.nScheme == INTERNET_SCHEME_HTTPS ? WINHTTP_FLAG_SECURE : 0));
         if (!request.value) return {};
@@ -93,22 +94,53 @@ inline std::wstring fetch(std::wstring address, const std::atomic_bool& cancelle
         if (status != 200) return {};
         DWORD contentLength = 0; length = sizeof(contentLength);
         if (WinHttpQueryHeaders(request.value, WINHTTP_QUERY_CONTENT_LENGTH | WINHTTP_QUERY_FLAG_NUMBER,
-            WINHTTP_HEADER_NAME_BY_INDEX, &contentLength, &length, WINHTTP_NO_HEADER_INDEX) && contentLength > tcard_clip::max_image) return {};
-        std::vector<BYTE> bytes; bytes.reserve((std::min)(size_t(contentLength), tcard_clip::max_image));
+            WINHTTP_HEADER_NAME_BY_INDEX, &contentLength, &length, WINHTTP_NO_HEADER_INDEX) && contentLength > limit) return {};
+        std::vector<BYTE> bytes; bytes.reserve((std::min)(size_t(contentLength), limit));
         for (;;) {
             if (cancelled || GetTickCount64() >= deadline) return {};
             BYTE chunk[16384]; DWORD received = 0;
             if (!WinHttpReadData(request.value, chunk, sizeof(chunk), &received)) return {};
             if (!received) break;
-            if (bytes.size() + received > tcard_clip::max_image) return {};
+            if (bytes.size() + received > limit) return {};
             bytes.insert(bytes.end(), chunk, chunk + received);
         }
         if (cancelled || GetTickCount64() >= deadline) return {};
+        if (text) {
+            try { return tcard_clip::utf8(std::string(bytes.begin(), bytes.end())); }
+            catch (...) { return {}; }
+        }
         return raster(bytes);
     }
     return {};
 }
 // Injectable fetcher keeps conversion/failure/budget tests independent of the network.
+// Public GitHub attachment identities outlive their short-lived signed image URLs.
+inline std::wstring attachment(const std::wstring& address)
+{
+    URL_COMPONENTS parts{};if(!split(address,parts))return {};
+    const auto host=tcard_clip::lower(std::wstring(parts.lpszHostName,parts.dwHostNameLength));
+    if(host!=L"private-user-images.githubusercontent.com")return {};
+    const std::wstring path(parts.lpszUrlPath,parts.dwUrlPathLength);
+    const auto slash=path.find_last_of(L'/'),dash=path.find(L'-',slash==std::wstring::npos?0:slash+1);
+    if(dash==std::wstring::npos||path.size()<dash+38)return {};
+    const auto id=path.substr(dash+1,36);
+    for(size_t i=0;i<id.size();++i){
+        const bool hyphen=i==8||i==13||i==18||i==23;
+        if(hyphen?id[i]!=L'-':!iswxdigit(id[i]))return {};
+    }
+    if(path[dash+37]!=L'.')return {};
+    return L"https://github.com/user-attachments/assets/"+id;
+}
+inline std::wstring fetch(const std::wstring& address,const std::atomic_bool& cancelled,ULONGLONG deadline)
+{
+    const auto stable=attachment(address);
+    if(!stable.empty()){
+        auto image=request(stable,cancelled,deadline);
+        if(!image.empty())return image;
+    }
+    return request(address,cancelled,deadline);
+}
+
 inline tcard_clip::Clip embed(const tcard_clip::Clip& clip, const tcard_clip::ImageResolver& download,
     size_t sourceLimit = tcard_clip::max_source)
 {

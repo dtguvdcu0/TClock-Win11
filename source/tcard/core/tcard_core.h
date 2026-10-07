@@ -14,8 +14,11 @@ struct CardRecord {
     std::wstring color = L"#FFF5A8";
     std::wstring fontFamily = L"Segoe UI";
     double fontSize = 14.0;
+    bool inheritFontFamily = true;
+    bool inheritFontSize = true;
     bool live = true;
     bool markdown = false;
+    bool richHtml = false;
     int windowWidthDip = 0;
     int windowHeightDip = 0;
     FILETIME updatedUtc{};
@@ -37,10 +40,11 @@ private:
 
 std::wstring Render(const std::wstring& source, const SYSTEMTIME& localTime);
 std::wstring RenderMarkdown(const std::wstring& source);
+std::wstring RenderRich(const std::wstring& source, const SYSTEMTIME& localTime);
 bool ConfigureCustomVariables(const std::wstring& iniPath);
 void RefreshCustomVariables();
 bool LoadCards(const std::wstring& filePath, std::vector<CardRecord>& cards);
-bool SaveCards(const std::wstring& filePath, std::vector<CardRecord>& cards);
+bool SaveCards(const std::wstring& filePath, std::vector<CardRecord>& cards, bool checkpoint = true, unsigned historyLimit = 0);
 bool DeleteCard(const std::wstring& filePath, const std::wstring& id);
 std::wstring CardDirectory(const std::wstring& filePath, const std::wstring& id);
 

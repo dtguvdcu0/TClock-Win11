@@ -66,16 +66,16 @@ inline void attach(HWND window, bool rich, UINT save = 0)
     SetPropW(window, L"TCard.Editor.Active", reinterpret_cast<HANDLE>(1));
     if (save) SetPropW(window, L"TCard.Editor.Save", reinterpret_cast<HANDLE>(static_cast<UINT_PTR>(save)));
 }
-inline HWND create(HWND parent, int id, UINT save, const wchar_t* text, int x, int y, int width, int height, HINSTANCE instance)
+inline HWND create(HWND parent, int id, UINT save, const wchar_t* text, int x, int y, int width, int height, HINSTANCE instance, bool styled = false)
 {
     static HMODULE module = LoadLibraryExW(L"Msftedit.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
     HWND window = CreateWindowExW(0, module ? L"RICHEDIT50W" : L"EDIT", nullptr,
-        WS_CHILD | WS_VISIBLE | ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN | WS_VSCROLL | WS_TABSTOP |
+        WS_CHILD | WS_VISIBLE | ES_NOHIDESEL | ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN | WS_VSCROLL | WS_TABSTOP |
         (module ? 0 : ES_AUTOHSCROLL | WS_HSCROLL), x, y, width, height, parent,
         reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), instance, nullptr);
     if (!window) return nullptr;
     if (module) {
-        SendMessageW(window, EM_SETTEXTMODE, TM_PLAINTEXT | TM_MULTILEVELUNDO, 0);
+        SendMessageW(window, EM_SETTEXTMODE, (styled ? TM_RICHTEXT : TM_PLAINTEXT) | TM_MULTILEVELUNDO, 0);
         SendMessageW(window, EM_SETUNDOLIMIT, 32, 0);
         SendMessageW(window, EM_SETEVENTMASK, 0, ENM_CHANGE | ENM_SCROLL);
         SendMessageW(window, EM_EXLIMITTEXT, 0, 2 * 1024 * 1024);

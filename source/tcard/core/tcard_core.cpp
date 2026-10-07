@@ -3,6 +3,7 @@
 #endif
 
 #include "tcard_core.h"
+#include "card_rich.h"
 #include "card_assets.h"
 
 #include <algorithm>
@@ -1060,8 +1061,11 @@ static bool parse_card_metadata(const JsonObject& object, CardRecord& card)
     card.color = json_string(object, L"Color", L"");
     card.fontFamily = json_string(object, L"FontFamily", L"");
     card.fontSize = json_number(object, L"FontSize", 14.0);
+    card.inheritFontFamily = !object.HasKey(L"FontFamily");
+    card.inheritFontSize = !object.HasKey(L"FontSize");
     card.live = json_bool(object, L"Live", true);
     card.markdown = json_bool(object, L"Markdown", false);
+    card.richHtml = json_string(object, L"ContentFormat", L"") == L"RichHtml";
     if (object.HasKey(L"Display")) {
         auto value = object.GetNamedValue(L"Display", nullptr);
         if (value && value.ValueType() == winrt::Windows::Data::Json::JsonValueType::Object) {
@@ -1069,6 +1073,8 @@ static bool parse_card_metadata(const JsonObject& object, CardRecord& card)
             card.color = json_string(display, L"Color", card.color.empty() ? L"#FFF5A8" : card.color.c_str());
             card.fontFamily = json_string(display, L"FontFamily", card.fontFamily.empty() ? L"Segoe UI" : card.fontFamily.c_str());
             card.fontSize = json_number(display, L"FontSize", card.fontSize);
+            card.inheritFontFamily = json_bool(display, L"InheritFontFamily", card.inheritFontFamily && !display.HasKey(L"FontFamily"));
+            card.inheritFontSize = json_bool(display, L"InheritFontSize", card.inheritFontSize && !display.HasKey(L"FontSize"));
             card.live = json_bool(display, L"Live", card.live);
             card.markdown = json_bool(display, L"Markdown", card.markdown);
             const double width = json_number(display, L"WindowWidthDip", 0);
@@ -1079,6 +1085,7 @@ static bool parse_card_metadata(const JsonObject& object, CardRecord& card)
             }
         }
     }
+    if (card.richHtml) card.markdown = false;
     if (card.id.empty()) return false;
     if (card.title.empty()) card.title = L"Untitled card";
     if (card.color.empty()) card.color = L"#FFF5A8";
@@ -1225,12 +1232,21 @@ bool LoadCards(const std::wstring& filePath, std::vector<CardRecord>& cards)
     return loaded;
 }
 
-bool SaveCards(const std::wstring& filePath, std::vector<CardRecord>& cards)
+std::wstring RenderRich(const std::wstring& source, const SYSTEMTIME& localTime)
+{
+    auto document = tcard_rich::parse(source);
+    for (auto& paragraph : document.paragraphs)
+        for (auto& run : paragraph.runs) run.text = Render(run.text, localTime);
+    return tcard_rich::serialize(document);
+}
+
+bool SaveCards(const std::wstring& filePath, std::vector<CardRecord>& cards, bool checkpoint, unsigned historyLimit)
 {
     try {
     const std::wstring directory = storage_directory(filePath);
     tcard_asset::File storage(tcard_asset::open_dir(directory, true)); if (!storage) return false;
     for (CardRecord& card : cards) {
+        if(card.richHtml&&(card.source.size()>4*1024*1024||tcard_rich::parse(card.source).paragraphs.empty()))return false;
         const std::wstring stem = safe_card_stem(card.id);
         if (!tcard_asset::leaf(stem) || stem[0] == L'_') return false;
         const std::wstring bundle = directory + L"\\" + stem;
@@ -1240,7 +1256,7 @@ bool SaveCards(const std::wstring& filePath, std::vector<CardRecord>& cards)
         if (load_bundle(bundle, previous)) {
             if (previous.id != card.id) return false;
             unchanged = previous.title == card.title && previous.color == card.color && previous.fontFamily == card.fontFamily &&
-                previous.fontSize == card.fontSize && previous.live == card.live && previous.markdown == card.markdown && previous.source == card.source;
+                previous.fontSize == card.fontSize && previous.inheritFontFamily == card.inheritFontFamily && previous.inheritFontSize == card.inheritFontSize && previous.live == card.live && previous.markdown == card.markdown && previous.richHtml == card.richHtml && previous.source == card.source;
         } else {
             try {
                 const auto old = JsonObject::Parse(read_utf8(directory + L"\\" + stem + L".json"));
@@ -1248,7 +1264,7 @@ bool SaveCards(const std::wstring& filePath, std::vector<CardRecord>& cards)
                     if (previous.id != card.id) return false;
                     previous.source = read_utf8(directory + L"\\" + stem + L".txt");
                     unchanged = previous.title == card.title && previous.color == card.color && previous.fontFamily == card.fontFamily &&
-                        previous.fontSize == card.fontSize && previous.live == card.live && previous.markdown == card.markdown && previous.source == card.source;
+                        previous.fontSize == card.fontSize && previous.inheritFontFamily == card.inheritFontFamily && previous.inheritFontSize == card.inheritFontSize && previous.live == card.live && previous.markdown == card.markdown && previous.richHtml == card.richHtml && previous.source == card.source;
                 }
             } catch (...) { }
         }
@@ -1261,7 +1277,7 @@ bool SaveCards(const std::wstring& filePath, std::vector<CardRecord>& cards)
             }
         }
         std::wstring sourceFile;
-        if (!tcard_asset::version(bundle, next.source, next.markdown, sourceFile)) return false;
+        if (!tcard_asset::version(bundle, next.source, next.markdown, sourceFile, next.richHtml)) return false;
         FILETIME created = card.createdUtc, updated = card.updatedUtc;
         if (!created.dwLowDateTime && !created.dwHighDateTime) GetSystemTimeAsFileTime(&created);
         if (!unchanged || (!updated.dwLowDateTime && !updated.dwHighDateTime)) GetSystemTimeAsFileTime(&updated);
@@ -1269,14 +1285,66 @@ bool SaveCards(const std::wstring& filePath, std::vector<CardRecord>& cards)
         display.Insert(L"Color", JsonValue::CreateStringValue(card.color.empty() ? L"#FFF5A8" : card.color));
         display.Insert(L"FontFamily", JsonValue::CreateStringValue(card.fontFamily.empty() ? L"Segoe UI" : card.fontFamily));
         display.Insert(L"FontSize", JsonValue::CreateNumberValue(std::clamp(card.fontSize, 8.0, 48.0)));
+        display.Insert(L"InheritFontFamily", JsonValue::CreateBooleanValue(card.inheritFontFamily));
+        display.Insert(L"InheritFontSize", JsonValue::CreateBooleanValue(card.inheritFontSize));
         display.Insert(L"Live", JsonValue::CreateBooleanValue(card.live));
         display.Insert(L"Markdown", JsonValue::CreateBooleanValue(card.markdown));
         display.Insert(L"WindowWidthDip", JsonValue::CreateNumberValue(card.windowWidthDip));
         display.Insert(L"WindowHeightDip", JsonValue::CreateNumberValue(card.windowHeightDip));
         JsonArray history;
+        std::wstring previousFile;
+        std::set<std::wstring> expired;
+        try {
+            const auto oldManifest = JsonObject::Parse(read_utf8(bundle + L"\\card.json"));
+            if (oldManifest.HasKey(L"History")) history = oldManifest.GetNamedArray(L"History");
+            previousFile=json_string(oldManifest,L"SourceFile",L"");
+        } catch (...) {
+            if (GetFileAttributesW((bundle + L"\\card.json").c_str()) != INVALID_FILE_ATTRIBUTES) return false;
+        }
+        // Keep the pre-edit baseline when an older bundle has no indexed history.
+        if (!history.Size() && !previous.id.empty()) {
+            std::wstring baselineFile;
+            if (!tcard_asset::version(bundle,previous.source,previous.markdown,baselineFile,previous.richHtml))return false;
+            JsonObject baseline;
+            baseline.Insert(L"SourceFile",JsonValue::CreateStringValue(baselineFile));
+            baseline.Insert(L"Title",JsonValue::CreateStringValue(previous.title));
+            baseline.Insert(L"ContentFormat",JsonValue::CreateStringValue(previous.richHtml?L"RichHtml":previous.markdown?L"Markdown":L"Plain"));
+            baseline.Insert(L"UtcMs",JsonValue::CreateNumberValue(0));
+            history.Append(baseline);
+        }
+        if (checkpoint) {
+            bool duplicate = false;
+            if (history.Size()) {
+                const auto last = history.GetObjectAt(history.Size() - 1);
+                duplicate = json_string(last, L"SourceFile", L"") == sourceFile &&
+                    json_string(last, L"Title", L"") == card.title &&
+                    json_string(last, L"Display", L"") == display.Stringify().c_str();
+            }
+            if (!duplicate) {
+                JsonObject point;
+                point.Insert(L"SourceFile", JsonValue::CreateStringValue(sourceFile));
+                point.Insert(L"Title", JsonValue::CreateStringValue(card.title));
+                point.Insert(L"ContentFormat",JsonValue::CreateStringValue(card.richHtml?L"RichHtml":card.markdown?L"Markdown":L"Plain"));
+                point.Insert(L"Display", JsonValue::CreateStringValue(display.Stringify()));
+                FILETIME time{}; GetSystemTimeAsFileTime(&time);
+                ULARGE_INTEGER ticks{}; ticks.LowPart = time.dwLowDateTime; ticks.HighPart = time.dwHighDateTime;
+                point.Insert(L"UtcMs", JsonValue::CreateNumberValue(static_cast<double>(ticks.QuadPart / 10000ULL)));
+                history.Append(point);
+            }
+        }
+        if(historyLimit&&checkpoint&&history.Size()>historyLimit){
+            JsonArray retained;
+            const auto removeCount=history.Size()-historyLimit;
+            for(unsigned i=0;i<history.Size();++i){
+                if(i<removeCount)expired.insert(json_string(history.GetObjectAt(i),L"SourceFile",L""));
+                else retained.Append(history.GetAt(i));
+            }
+            history=retained;
+        }
         JsonObject object;
         object.Insert(L"StorageVersion", JsonValue::CreateNumberValue(1));
         object.Insert(L"SourceFile", JsonValue::CreateStringValue(sourceFile));
+        object.Insert(L"ContentFormat", JsonValue::CreateStringValue(card.richHtml ? L"RichHtml" : card.markdown ? L"Markdown" : L"Plain"));
         object.Insert(L"Id", JsonValue::CreateStringValue(card.id));
         object.Insert(L"Title", JsonValue::CreateStringValue(card.title.empty() ? L"Untitled card" : card.title));
         object.Insert(L"Display", display);
@@ -1289,6 +1357,12 @@ bool SaveCards(const std::wstring& filePath, std::vector<CardRecord>& cards)
         if (!load_bundle(bundle, verified) || verified.source != next.source || verified.id != card.id) return false;
         const auto marker = directory + L"\\" + stem + L".deleted";
         if (!DeleteFileW(marker.c_str()) && GetLastError() != ERROR_FILE_NOT_FOUND) return false;
+        if(historyLimit){
+            if(!previousFile.empty())expired.insert(previousFile);
+            std::set<std::wstring> retained{sourceFile};
+            for(unsigned i=0;i<history.Size();++i)retained.insert(json_string(history.GetObjectAt(i),L"SourceFile",L""));
+            for(const auto& name:expired)if(!retained.contains(name))tcard_asset::remove_version(bundle,name);
+        }
         next.createdUtc = created; next.updatedUtc = updated; card = std::move(next);
     }
     return true;

@@ -21,7 +21,7 @@ namespace tcard_clip {
 constexpr size_t max_source = 2 * 1024 * 1024;
 constexpr size_t max_image = 16 * 1024 * 1024;
 constexpr size_t max_import = 24 * 1024 * 1024;
-struct Clip { std::wstring source, url; bool externalImages = false; bool imageOnly = false; std::wstring imageAlt; std::wstring htmlSource; };
+struct Clip { std::wstring source, url; bool externalImages = false; bool imageOnly = false; std::wstring imageAlt; std::wstring htmlSource, htmlContext; bool richHtml = false; };
 using ImageResolver = std::function<std::wstring(const std::wstring&)>;
 
 inline std::wstring lower(std::wstring s) { for (auto& c : s) c = static_cast<wchar_t>(towlower(c)); return s; }
@@ -575,7 +575,11 @@ inline Clip cf_html(const std::string& bytes)
         throw std::runtime_error("Invalid HTML clipboard offsets");
     std::wstring origin;
     try { origin = utf8(field("SourceURL:")); } catch (const std::runtime_error&) {}
-    return html(utf8(bytes.substr(start, end - start)), origin);
+    auto result = html(utf8(bytes.substr(start, end - start)), origin);
+    result.htmlSource = utf8(bytes.substr(start, end - start));
+    if (htmlStart != std::string::npos && htmlEnd != std::string::npos && htmlEnd >= htmlStart)
+        result.htmlContext = utf8(bytes.substr(htmlStart, htmlEnd - htmlStart));
+    return result;
 }
 inline std::vector<BYTE> clipboard_data(UINT format, size_t limit)
 {
@@ -619,7 +623,7 @@ inline Clip from_clipboard(const ClipboardData& data)
                         clip.source = L"![" + escape(clip.imageAlt.empty() ? L"Image" : clip.imageAlt) + L"](" + image + L")";
                         if (!clip.url.empty()) clip.source += L"\n\n---\n[Source](" + markdown_url(clip.url) + L")";
                         clip.externalImages = false;
-                        clip.htmlSource.clear();
+                        clip.htmlSource = L"<img src=\"" + image + L"\" alt=\"Image\">";
                     }
                 }
                 return clip;

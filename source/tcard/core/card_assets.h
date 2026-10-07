@@ -100,7 +100,7 @@ inline bool relative(const std::wstring& name, bool image)
     if (name[dot] != L'.') return false;
     for (size_t i = prefix.size(); i < dot; ++i) if (!((name[i] >= L'0' && name[i] <= L'9') || (name[i] >= L'a' && name[i] <= L'f'))) return false;
     const auto extension = name.substr(dot);
-    return image ? extension == L".png" || extension == L".jpg" || extension == L".gif" || extension == L".bmp" : extension == L".md" || extension == L".txt";
+    return image ? extension == L".png" || extension == L".jpg" || extension == L".gif" || extension == L".bmp" : extension == L".md" || extension == L".txt" || extension == L".html";
 }
 // Roots are host-owned paths, never supplied by Markdown. Hold directories against rename while accessing children.
 inline bool read(const std::wstring& root, const std::wstring& name, std::vector<BYTE>& bytes, size_t limit = max_file)
@@ -155,10 +155,28 @@ inline bool publish(const std::wstring& root, const std::wstring& name, const st
     if (!ok) DeleteFileW(temporary.c_str());
     return ok;
 }
-inline bool version(const std::wstring& root, const std::wstring& text, bool markdown, std::wstring& name)
+// Remove only unreferenced immutable source versions after their replacement manifest is verified.
+inline bool remove_version(const std::wstring& root,const std::wstring& name)
+{
+    if(!relative(name,false)||!leaf(name))return false;
+    File directory(open_dir(root,false));if(!directory)return false;
+    File file(CreateFileW((root+L"\\"+name).c_str(),GENERIC_READ|DELETE,FILE_SHARE_READ,
+        nullptr,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,nullptr));
+    if(!file)return GetLastError()==ERROR_FILE_NOT_FOUND;
+    if(!regular(file.value,false))return false;
+    BY_HANDLE_FILE_INFORMATION info{};LARGE_INTEGER size{};
+    if(!GetFileInformationByHandle(file.value,&info)||info.nNumberOfLinks!=1||
+       !GetFileSizeEx(file.value,&size)||size.QuadPart<0||size.QuadPart>max_file)return false;
+    std::vector<BYTE> bytes(static_cast<size_t>(size.QuadPart));DWORD count=0;
+    if((!bytes.empty()&&(!ReadFile(file.value,bytes.data(),static_cast<DWORD>(bytes.size()),&count,nullptr)||count!=bytes.size()))||
+       hash(bytes)!=name.substr(5,64))return false;
+    FILE_DISPOSITION_INFO disposition{TRUE};
+    return SetFileInformationByHandle(file.value,FileDispositionInfo,&disposition,sizeof(disposition))!=FALSE;
+}
+inline bool version(const std::wstring& root, const std::wstring& text, bool markdown, std::wstring& name, bool richHtml = false)
 {
     const auto bytes = encode(text); const auto digest = hash(bytes); if (digest.empty()) return false;
-    name = L"note-" + digest + (markdown ? L".md" : L".txt");
+    name = L"note-" + digest + (richHtml ? L".html" : markdown ? L".md" : L".txt");
     std::vector<BYTE> verified;
     return publish(root, name, bytes, true) && read(root, name, verified) && verified == bytes;
 }

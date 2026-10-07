@@ -4,7 +4,10 @@
 #include "../ui/card_theme.h"
 #include "../ui/card_language.h"
 #include "../ui/card_editor.h"
+#include "../ui/card_rich_edit.h"
+#include "../ui/card_fonts.h"
 #include "../core/card_download.h"
+#include "../core/card_web.h"
 #include <thread>
 
 #include <windows.h>
@@ -82,7 +85,9 @@ HWND g_markdown = nullptr;
 HMODULE g_renderer = nullptr;
 HMODULE g_rich_edit = nullptr;
 bool g_editing = false;
+bool g_editor_markdown=false;
 bool g_appearance_open = false;
+decltype(&TCardWuiExecuteCommand) g_execute_card=nullptr;
 decltype(&TCardWuiCreateHost) g_create = nullptr;
 decltype(&TCardWuiDestroyHost) g_destroy = nullptr;
 decltype(&TCardWuiSetState) g_set_state = nullptr;
@@ -102,6 +107,11 @@ decltype(&TCardWuiSetCardCommandCallback) g_set_card_callback = nullptr;
 decltype(&TCardWuiSetCardSaveCallback) g_set_card_save_callback = nullptr;
 decltype(&TCardWuiIsCardEditing) g_is_card_editing = nullptr;
 std::wstring g_file_path;
+unsigned g_history_limit = 0;
+bool card_save_records(std::vector<tcard::CardRecord>& cards,bool checkpoint=true)
+{
+    return tcard::SaveCards(g_file_path,cards,checkpoint,g_history_limit);
+}
 COLORREF g_preview_color = RGB(255, 245, 168);
 HBRUSH g_preview_brush = nullptr;
 HFONT g_ui_font = nullptr;
@@ -219,20 +229,15 @@ void tcard_initialize_defaults()
 
 void tcard_apply_defaults(tcard::CardRecord& card)
 {
-    card.fontFamily = L"Yu Gothic UI";
-    card.fontSize = 10.0;
-    const std::wstring ini = module_dir() + L"\\TCard.ini";
-    wchar_t family[256]{}, size[64]{};
-    GetPrivateProfileStringW(L"TCard", L"DefaultFontFamily", L"", family, ARRAYSIZE(family), ini.c_str());
-    GetPrivateProfileStringW(L"TCard", L"DefaultFontSize", L"", size, ARRAYSIZE(size), ini.c_str());
-    const std::wstring name(family);
-    const auto first = name.find_first_not_of(L" \t");
-    if (first != std::wstring::npos) {
-        const std::wstring trimmed = name.substr(first, name.find_last_not_of(L" \t") - first + 1);
-        if (trimmed.size() < LF_FACESIZE) card.fontFamily = trimmed;
-    }
-    double points = 0;
-    if (tcard_ui::valid_size(size, points)) card.fontSize = points;
+    const auto& defaults=tcard_fonts::defaults();
+    card.fontFamily=defaults.family;card.fontSize=defaults.size;
+    card.inheritFontFamily=true;card.inheritFontSize=true;
+}
+
+tcard_fonts::Defaults tcard_resolve_font(const tcard::CardRecord& card)
+{
+    const auto& defaults=tcard_fonts::defaults();
+    return {card.inheritFontFamily?defaults.family:card.fontFamily,card.inheritFontSize?defaults.size:card.fontSize};
 }
 
 std::wstring resolve_tclock_ini()
@@ -267,6 +272,7 @@ bool load_renderer()
         if (g_renderer) break;
     }
     if (!g_renderer) return false;
+    g_execute_card=reinterpret_cast<decltype(g_execute_card)>(GetProcAddress(g_renderer,"TCardWuiExecuteCommand"));
     g_create = reinterpret_cast<decltype(g_create)>(GetProcAddress(g_renderer, "TCardWuiCreateHost"));
     g_destroy = reinterpret_cast<decltype(g_destroy)>(GetProcAddress(g_renderer, "TCardWuiDestroyHost"));
     g_set_state = reinterpret_cast<decltype(g_set_state)>(GetProcAddress(g_renderer, "TCardWuiSetState"));
@@ -285,7 +291,7 @@ bool load_renderer()
     g_set_card_callback = reinterpret_cast<decltype(g_set_card_callback)>(GetProcAddress(g_renderer, "TCardWuiSetCardCommandCallback"));
     g_set_card_save_callback = reinterpret_cast<decltype(g_set_card_save_callback)>(GetProcAddress(g_renderer, "TCardWuiSetCardSaveCallback"));
     g_is_card_editing = reinterpret_cast<decltype(g_is_card_editing)>(GetProcAddress(g_renderer, "TCardWuiIsCardEditing"));
-    if (!g_create || !g_destroy || !g_set_state || !g_show || !g_get_window || !g_set_callback || !g_create_card || !g_destroy_card || !g_set_card_state || !g_set_card_text_state || !g_set_card_asset_root || !g_show_card || !g_get_card_window || !g_get_card_state || !g_get_card_text_state || !g_set_card_callback || !g_set_card_save_callback || !g_is_card_editing) {
+    if (!g_execute_card || !g_create || !g_destroy || !g_set_state || !g_show || !g_get_window || !g_set_callback || !g_create_card || !g_destroy_card || !g_set_card_state || !g_set_card_text_state || !g_set_card_asset_root || !g_show_card || !g_get_card_window || !g_get_card_state || !g_get_card_text_state || !g_set_card_callback || !g_set_card_save_callback || !g_is_card_editing) {
         FreeLibrary(g_renderer);
         g_renderer = nullptr;
         return false;
@@ -317,7 +323,7 @@ void seed_cards_if_empty()
     fixture.source = L"[Clock] <%yyyy/mm/dd hh:nn:ss%>\r\n[Weekday] <%ddd%>\r\n[Locale] <%DATE%> <%TIME%> <%AMPM%> <%AM/PM%>\r\n[Offset] <%w+01hh:nn%> | <%td-01:30hh:nn%>\r\n[System] CPU <%CU%> | Memory <%MAPM%> | Uptime <%ST%>\r\n[Power] Battery <%BL%> | Cores <%PCORE%>\r\n[Custom] <%CUSTOM1%>\r\n[Escaped] literal <%\"yyyy\"%> | line <%yyyy\\nmm%>\r\n[Fallback] <%UNSUPPORTED%>";
     fixture.color = L"#E9DDF7";
     g_cards.push_back(fixture);
-    tcard::SaveCards(g_file_path, g_cards);
+    card_save_records(g_cards);
 }
 
 std::wstring window_text(HWND window);
@@ -415,15 +421,16 @@ COLORREF color_shade(COLORREF color, float factor)
 
 void update_detail_title_font(const tcard::CardRecord& card)
 {
-    const std::wstring family = card.fontFamily.empty() ? L"Segoe UI" : card.fontFamily;
-    if (g_detail_title_font && g_detail_title_family == family && g_detail_title_size == card.fontSize) return;
+    const auto font=tcard_resolve_font(card);
+    const std::wstring family = font.family.empty() ? L"Segoe UI" : font.family;
+    if (g_detail_title_font && g_detail_title_family == family && g_detail_title_size == font.size) return;
     if (g_detail_title_font) DeleteObject(g_detail_title_font);
     const UINT dpi = GetDpiForWindow(g_main);
-    const int points = static_cast<int>(card.fontSize * 1.6 + 0.5);
+    const int points = static_cast<int>(font.size * 1.6 + 0.5);
     const int height = -MulDiv(max(8, points), static_cast<int>(dpi ? dpi : USER_DEFAULT_SCREEN_DPI), USER_DEFAULT_SCREEN_DPI);
     g_detail_title_font = CreateFontW(height, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, family.c_str());
     g_detail_title_family = family;
-    g_detail_title_size = card.fontSize;
+    g_detail_title_size = font.size;
     if (g_detail_title_font && g_detail_title) SendMessageW(g_detail_title, WM_SETFONT, reinterpret_cast<WPARAM>(g_detail_title_font), TRUE);
 }
 
@@ -456,7 +463,7 @@ void draw_list_item(const DRAWITEMSTRUCT& item)
     SelectObject(item.hDC, g_tile_excerpt_font ? g_tile_excerpt_font : g_ui_font);
     RECT excerpt = tile;
     excerpt.left += 12; excerpt.top += 36; excerpt.right -= 12; excerpt.bottom -= 10;
-    const std::wstring summary = note_excerpt(card.source);
+    const std::wstring summary = note_excerpt(card.richHtml?tcard_rich::text(tcard_rich::parse(card.source)):card.source);
     DrawTextW(item.hDC, summary.c_str(), -1, &excerpt, DT_WORDBREAK | DT_END_ELLIPSIS | DT_NOPREFIX);
     SelectObject(item.hDC, previous);
     if (item.itemState & ODS_SELECTED) {
@@ -512,28 +519,9 @@ void refresh_preview();
 
 LRESULT selected_index();
 
-int CALLBACK collect_font_family(const LOGFONTW* font, const TEXTMETRICW*, DWORD, LPARAM parameter)
-{
-    HWND combo = reinterpret_cast<HWND>(parameter);
-    if (SendMessageW(combo, CB_FINDSTRINGEXACT, 0, reinterpret_cast<LPARAM>(font->lfFaceName)) == CB_ERR)
-        SendMessageW(combo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(font->lfFaceName));
-    return 1;
-}
-
 void populate_font_families(HWND combo)
 {
-    LOGFONTW logFont{};
-    logFont.lfCharSet = DEFAULT_CHARSET;
-    HDC dc = GetDC(g_main);
-    if (dc) {
-        EnumFontFamiliesExW(dc, &logFont, collect_font_family, reinterpret_cast<LPARAM>(combo), 0);
-        ReleaseDC(g_main, dc);
-    }
-    const wchar_t* fallbackFonts[] = { L"Segoe UI", L"Arial", L"Consolas" };
-    for (const wchar_t* fallback : fallbackFonts) {
-        if (SendMessageW(combo, CB_FINDSTRINGEXACT, 0, reinterpret_cast<LPARAM>(fallback)) == CB_ERR)
-            SendMessageW(combo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(fallback));
-    }
+    tcard_fonts::populate(combo,g_main);
 }
 
 void select_text_format(HWND combo, bool markdown)
@@ -543,8 +531,7 @@ void select_text_format(HWND combo, bool markdown)
 
 void select_font_family(HWND combo, const std::wstring& family)
 {
-    const LRESULT found = SendMessageW(combo, CB_SELECTSTRING, static_cast<WPARAM>(-1), reinterpret_cast<LPARAM>(family.c_str()));
-    if (found == CB_ERR) SendMessageW(combo, CB_SETCURSEL, 0, 0);
+    tcard_fonts::select(combo,family);
 }
 
 std::wstring window_text(HWND window)
@@ -577,11 +564,21 @@ void set_editing(bool editing)
             }
         }
         const auto& card = g_cards[static_cast<size_t>(selected)];
+        const auto font=tcard_resolve_font(card);
         SetWindowTextW(g_title_editor, card.title.c_str());
-        SetWindowTextW(g_source_editor, card.source.c_str());
+        g_editor_markdown=card.markdown;
+        tcard_rich_edit::detach(g_source_editor);
+        SetWindowTextW(g_source_editor,L"");
+        SendMessageW(g_source_editor,EM_SETTEXTMODE,(card.markdown?TM_PLAINTEXT:TM_RICHTEXT)|TM_MULTILEVELUNDO,0);
+        if(card.markdown)SetWindowTextW(g_source_editor,card.source.c_str());
+        else if(!tcard_rich_edit::load(g_source_editor,card.richHtml?tcard_rich::parse(card.source):tcard_rich::plain(card.source),
+          font.size,font.family,parse_color(card.color),RGB(37,37,37),true)){
+            MessageBoxW(g_main,tcard_text(L"status.load_failed",L"Could not load; the stored note was kept."),L"TCard",MB_OK|MB_ICONERROR);return;
+        }
         SendMessageW(g_source_editor, EM_SETBKGNDCOLOR, 0, parse_color(card.color));
-        select_font_family(g_font_family_editor, card.fontFamily.empty() ? L"Segoe UI" : card.fontFamily);
-        SetWindowTextW(g_font_size_editor, format_font_size(card.fontSize).c_str());
+        select_font_family(g_font_family_editor, font.family.empty() ? L"Segoe UI" : font.family);
+        tcard_fonts::inheritance(g_font_family_editor,false,card.inheritFontFamily);
+        tcard_fonts::select_size(g_font_size_editor,font.size,card.inheritFontSize);
         select_text_format(g_markdown, card.markdown);
         update_vertical_scroll(g_source_editor);
     }
@@ -606,7 +603,7 @@ void set_editing(bool editing)
     ShowWindow(g_font_size_editor, SW_HIDE);
     ShowWindow(g_markdown, SW_HIDE);
     for (const auto& choice : kColorChoices) ShowWindow(GetDlgItem(g_main, choice.id), SW_HIDE);
-    ShowWindow(g_title_line, editing ? SW_SHOW : SW_HIDE);
+    ShowWindow(g_title_line, SW_SHOW);
     if (editing) SetFocus(g_source_editor);
     RECT client{};
     GetClientRect(g_main, &client);
@@ -619,7 +616,7 @@ void save_edit()
     const LRESULT selected = selected_index();
     if (!g_editing || selected < 0) return;
     double validatedSize = 0;
-    if (!tcard_ui::valid_size(window_text(g_font_size_editor), validatedSize)) {
+    if (!tcard_fonts::read_size(g_font_size_editor, validatedSize)) {
         if (!g_appearance_open) SendMessageW(g_main, WM_COMMAND, kAppearance, 0);
         MessageBoxW(g_main, tcard_text(L"message.font_size", L"Enter a font size from 8 to 48."), tcard_lang::text(L"app.title", L"TCard").c_str(), MB_OK | MB_ICONWARNING);
         SetFocus(g_font_size_editor);
@@ -631,16 +628,29 @@ void save_edit()
     card.color = color_hex(g_preview_color);
     const std::wstring title = window_text(g_title_editor);
     card.title = title.empty() ? tcard_text(L"status.untitled_card", L"Untitled card") : title;
-    card.source = window_text(g_source_editor);
-    const std::wstring family = window_text(g_font_family_editor);
+    bool readable=true;
+    const auto document=g_editor_markdown?tcard_rich::Document{}:tcard_rich_edit::document(g_source_editor,false,&readable);
+    if(!readable){card=previous;MessageBoxW(g_main,tcard_text(L"message.save_failed",L"Could not read the draft; it remains open."),L"TCard",MB_OK|MB_ICONERROR);return;}
+    const bool requestedMarkdown=SendMessageW(g_markdown,CB_GETCURSEL,0,0)==1;
+    if(requestedMarkdown&&!g_editor_markdown&&MessageBoxW(g_main,tcard_text(L"message.convert_markdown",L"Switch to Markdown? Text formatting will become plain text."),L"TCard",MB_OKCANCEL|MB_ICONQUESTION)!=IDOK){
+        card=previous;select_text_format(g_markdown,g_editor_markdown);return;
+    }
+    if(requestedMarkdown)card.source=g_editor_markdown?window_text(g_source_editor):tcard_rich::text(document);
+    else card.source=tcard_rich::serialize(g_editor_markdown?tcard_rich::plain(window_text(g_source_editor)):document);
+    const std::wstring family = tcard_fonts::resolved_family(g_font_family_editor);
     card.fontFamily = family.empty() ? L"Segoe UI" : family;
-    card.fontSize = parse_font_size(window_text(g_font_size_editor), previous.fontSize);
-    card.markdown = SendMessageW(g_markdown, CB_GETCURSEL, 0, 0) == 1;
-    if (!tcard::SaveCards(g_file_path, g_cards)) {
+    card.fontSize = validatedSize;
+    card.inheritFontFamily=tcard_fonts::inherited(g_font_family_editor);
+    card.inheritFontSize=tcard_fonts::inherited(g_font_size_editor);
+    card.markdown = requestedMarkdown;
+    card.richHtml = !requestedMarkdown;
+    std::vector<tcard::CardRecord> changed{card};
+    if (!card_save_records(changed)) {
         card = previous;
         MessageBoxW(g_main, tcard_text(L"message.save_failed", L"Save failed; the draft remains open."), tcard_lang::text(L"app.title", L"TCard").c_str(), MB_OK | MB_ICONERROR);
         return;
     }
+    card=changed[0];
     fill_list();
     for (size_t row = 0; row < g_visible_indices.size(); ++row) {
         if (g_visible_indices[row] == static_cast<size_t>(selected)) {
@@ -664,17 +674,18 @@ void refresh_preview()
     }
     for (int id : {kEdit, kOpen, kDelete}) EnableWindow(GetDlgItem(g_main, id), TRUE);
     const auto& card = g_cards[static_cast<size_t>(selected)];
+    const auto font=tcard_resolve_font(card);
     SYSTEMTIME now{};
     GetLocalTime(&now);
-    std::wstring rendered = card.live ? tcard::Render(card.source, now) : card.source;
+    std::wstring rendered = card.live ? (card.richHtml?tcard::RenderRich(card.source,now):tcard::Render(card.source, now)) : card.source;
     static std::wstring previousText, previousTitle, previousFamily, previousAssetRoot;
     static double previousSize = -1.0;
-    static bool previousMarkdown = false;
+    static bool previousMarkdown = false,previousRich=false;
     const COLORREF previewColor = parse_color(card.color);
     const bool colorChanged = previewColor != g_preview_color || !g_preview_brush;
-    const bool fontChanged = previousSize != card.fontSize || previousFamily != card.fontFamily;
+    const bool fontChanged = previousSize != font.size || previousFamily != font.family;
     const auto assetRoot = tcard::CardDirectory(g_file_path, card.id);
-    const bool textChanged = previousText != rendered || previousAssetRoot != assetRoot || !tcard_md::matches(g_preview, rendered);
+    const bool textChanged = previousText != rendered || previousAssetRoot != assetRoot || (!card.richHtml&&!tcard_md::matches(g_preview, rendered))||previousRich!=card.richHtml;
     const bool titleChanged = previousTitle != card.title;
     if (!colorChanged && !fontChanged && !textChanged && !titleChanged && previousMarkdown == card.markdown) return;
     if (previewColor != g_preview_color || !g_preview_brush) {
@@ -682,19 +693,32 @@ void refresh_preview()
         g_preview_color = previewColor;
         g_preview_brush = CreateSolidBrush(g_preview_color);
     }
+    CHARRANGE selection{};POINT scroll{};
+    SendMessageW(g_preview,EM_EXGETSEL,0,reinterpret_cast<LPARAM>(&selection));
+    SendMessageW(g_preview,EM_GETSCROLLPOS,0,reinterpret_cast<LPARAM>(&scroll));
+    const bool redraw=(GetWindowLongPtrW(g_preview,GWL_STYLE)&WS_VISIBLE)!=0;
+    if(redraw)SendMessageW(g_preview,WM_SETREDRAW,FALSE,0);
     if (g_rich_edit && g_preview) SendMessageW(g_preview, EM_SETBKGNDCOLOR, 0, static_cast<LPARAM>(g_preview_color));
     update_detail_title_font(card);
     RECT client{};
     if (fontChanged && GetClientRect(g_main, &client)) SendMessageW(g_main, WM_SIZE, SIZE_RESTORED, MAKELPARAM(client.right, client.bottom));
     SetWindowTextW(g_detail_title, card.title.c_str());
-    tcard_md::render(g_preview, rendered, card.markdown, static_cast<float>(card.fontSize), card.fontFamily, tcard::CardDirectory(g_file_path, card.id), previewColor);
+    if(card.richHtml)tcard_rich_edit::load(g_preview,tcard_rich::parse(rendered),font.size,font.family,previewColor,RGB(37,37,37),false);
+    else{
+        tcard_rich_edit::detach(g_preview);
+        tcard_md::render(g_preview, rendered, card.markdown, static_cast<float>(font.size), font.family, tcard::CardDirectory(g_file_path, card.id), previewColor);
+        tcard_rich_edit::configure(g_preview,false,font.size,font.family,previewColor,RGB(37,37,37),false);
+    }
+    SendMessageW(g_preview,EM_EXSETSEL,0,reinterpret_cast<LPARAM>(&selection));
+    SendMessageW(g_preview,EM_SETSCROLLPOS,0,reinterpret_cast<LPARAM>(&scroll));
     update_vertical_scroll(g_preview);
+    if(redraw){SendMessageW(g_preview,WM_SETREDRAW,TRUE,0);RedrawWindow(g_preview,nullptr,nullptr,RDW_INVALIDATE|RDW_FRAME);}
     if (colorChanged) RedrawWindow(g_main, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
     previousText = rendered; previousAssetRoot = assetRoot;
     previousTitle = card.title;
-    previousFamily = card.fontFamily;
-    previousSize = card.fontSize;
-    previousMarkdown = card.markdown;
+    previousFamily = font.family;
+    previousSize = font.size;
+    previousMarkdown = card.markdown;previousRich=card.richHtml;
 }
 
 
@@ -733,10 +757,11 @@ void delete_selected()
 
 void apply_card_state(CardWindow* entry, const tcard::CardRecord& card)
 {
+    const auto font=tcard_resolve_font(card);
     if (!entry || !entry->handle) return;
     SYSTEMTIME now{};
     GetLocalTime(&now);
-    std::wstring rendered = card.live ? tcard::Render(card.source, now) : card.source;
+    std::wstring rendered = card.live ? (card.richHtml?tcard::RenderRich(card.source,now):tcard::Render(card.source, now)) : card.source;
     TCARD_WUI_TEXT_STATE state{};
     state.cb = sizeof(state);
     state.version = TCARD_WUI_STATE_ABI_VERSION;
@@ -749,10 +774,12 @@ void apply_card_state(CardWindow* entry, const tcard::CardRecord& card)
     state.textLength = static_cast<DWORD>(rendered.size());
     state.source = card.source.c_str();
     state.sourceLength = static_cast<DWORD>(card.source.size());
-    state.fontFamily = card.fontFamily.empty() ? L"Segoe UI" : card.fontFamily.c_str();
-    state.fontFamilyLength = static_cast<DWORD>(card.fontFamily.empty() ? wcslen(L"Segoe UI") : card.fontFamily.size());
-    state.fontSize = static_cast<FLOAT>(card.fontSize);
+    state.fontFamily = font.family.empty() ? L"Segoe UI" : font.family.c_str();
+    state.fontFamilyLength = static_cast<DWORD>(font.family.empty() ? wcslen(L"Segoe UI") : font.family.size());
+    state.fontSize = static_cast<FLOAT>(font.size);
+    state.inheritFontFamily=card.inheritFontFamily;state.inheritFontSize=card.inheritFontSize;
     state.markdown = card.markdown ? TRUE : FALSE;
+    state.richHtml=card.richHtml;
     const auto assetRoot = tcard::CardDirectory(g_file_path, card.id);
     if (g_set_card_asset_root) g_set_card_asset_root(entry->handle, assetRoot.c_str(), static_cast<DWORD>(assetRoot.size()));
     g_set_card_text_state(entry->handle, &state);
@@ -774,7 +801,7 @@ LRESULT CALLBACK card_size_proc(HWND hwnd, UINT message, WPARAM w, LPARAM l, UIN
                 std::vector<tcard::CardRecord> changed{*card};
                 changed[0].windowWidthDip = width;
                 changed[0].windowHeightDip = height;
-                if (tcard::SaveCards(g_file_path, changed)) {
+                if (card_save_records(changed)) {
                     card->windowWidthDip = width;
                     card->windowHeightDip = height;
                 } else {
@@ -819,6 +846,9 @@ void open_selected()
         const int height = min(MulDiv(card.windowHeightDip, dpi ? dpi : 96, 96), monitor.rcWork.bottom - monitor.rcWork.top);
         SetWindowPos(window, nullptr, 0, 0, width, height, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
     }
+    // Live variable cards retain their rendered widget view until clicked to edit.
+    const auto visibleSource=card.richHtml?tcard_rich::text(tcard_rich::parse(card.source)):card.source;
+    if(!card.live||visibleSource.find(L"<%")==std::wstring::npos)g_execute_card(entry->handle,1);
     g_show_card(entry->handle, TRUE);
 }
 
@@ -837,7 +867,7 @@ void update_open_card()
             it = g_card_windows.erase(it);
             continue;
         }
-        apply_card_state(entry.get(), *card);
+        if(!g_is_card_editing(entry->handle))apply_card_state(entry.get(), *card);
         ++it;
     }
     if (g_main && !IsWindowVisible(g_main) && g_card_windows.empty()) DestroyWindow(g_main);
@@ -858,7 +888,7 @@ void choose_color(COLORREF color)
     auto& card = g_cards[static_cast<size_t>(selected)];
     const std::wstring previous = card.color;
     card.color = color_hex(color);
-    if (!tcard::SaveCards(g_file_path, g_cards)) {
+    if (!card_save_records(g_cards)) {
         card.color = previous;
         MessageBoxW(g_main, tcard_text(L"message.color_failed", L"The color change could not be saved."), tcard_lang::text(L"app.title", L"TCard").c_str(), MB_OK | MB_ICONERROR);
         return;
@@ -884,6 +914,7 @@ struct ClipJob {
     std::wstring target;
     UINT command = 0;
     std::atomic_bool done{false}, cancelled{false};
+    std::thread worker;
 };
 std::shared_ptr<ClipJob> g_clip_job;
 
@@ -915,7 +946,7 @@ void import_clip(UINT command, const std::wstring& targetId, const tcard_clip::C
     }
     auto target = std::find_if(g_cards.begin(), g_cards.end(), [&](const auto& card) { return card.id == targetId; });
     if (ready && command != 6 && (target == g_cards.end() || !previous || target->source != previous->source ||
-        target->title != previous->title || target->markdown != previous->markdown || target->live != previous->live)) {
+        target->title != previous->title || target->markdown != previous->markdown || target->richHtml != previous->richHtml || target->live != previous->live)) {
         MessageBoxW(g_main, tcard_text(L"clip.changed", L"The note changed while images were downloading. Import was cancelled; please paste again."), L"TCard", MB_OK | MB_ICONWARNING); return;
     }
     if (command != 6 && target == g_cards.end()) return;
@@ -933,22 +964,23 @@ void import_clip(UINT command, const std::wstring& targetId, const tcard_clip::C
             restored.source = undo->second.previous.source;
             restored.live = undo->second.previous.live;
             restored.markdown = undo->second.previous.markdown;
+            restored.richHtml = undo->second.previous.richHtml;
             std::vector<tcard::CardRecord> batch{restored};
-            ok = tcard::SaveCards(g_file_path, batch);
+            ok = card_save_records(batch);
             if (ok) *target = batch[0];
         }
         if (!ok) { MessageBoxW(g_main, tcard_text(L"clip.failed", L"Import could not be saved. The existing note has been kept."), L"TCard", MB_OK | MB_ICONERROR); return; }
         g_clip_undo.erase(undo); fill_list(); refresh_preview(); update_open_card(); return;
     }
     if (!ready && command == 8 && MessageBoxW(g_main, tcard_text(L"clip.confirm", L"Replace this note with the clipboard content?"), L"TCard", MB_YESNO | MB_DEFBUTTON2 | MB_ICONQUESTION) != IDYES) return;
-    if (!ready && command == 7 && (!target->markdown || target->live) && MessageBoxW(g_main, tcard_text(L"clip.format", L"Convert this note to static Markdown and append the clipboard content?"), L"TCard", MB_YESNO | MB_DEFBUTTON2 | MB_ICONQUESTION) != IDYES) return;
+    if (!ready && command == 7 && target->live && MessageBoxW(g_main, tcard_text(L"clip.format", L"Convert this note to static content and append the clipboard content?"), L"TCard", MB_YESNO | MB_DEFBUTTON2 | MB_ICONQUESTION) != IDYES) return;
     tcard_clip::Clip clip;
     try { clip = ready ? *ready : tcard_clip::read(g_main); }
     catch (...) { MessageBoxW(g_main, tcard_text(L"clip.invalid", L"The clipboard is unavailable, unsupported, or exceeds the size limit."), L"TCard", MB_OK | MB_ICONWARNING); return; }
     if (clip.source.empty()) { MessageBoxW(g_main, tcard_text(L"clip.invalid", L"The clipboard is unavailable, unsupported, or exceeds the size limit."), L"TCard", MB_OK); return; }
-    if (!ready && ((clip.externalImages && !clip.htmlSource.empty()) || clip.source.find(L"data:image/") != std::wstring::npos)) {
+    if (!ready && (!clip.htmlSource.empty() || clip.source.find(L"data:image/") != std::wstring::npos)) {
         const size_t existing = command == 7 && !target->source.empty() ? target->source.size() + 12 : 0;
-        if (existing > tcard_clip::max_source || clip.source.size() > tcard_clip::max_import) {
+        if (existing > (clip.htmlSource.empty() ? tcard_clip::max_source : 4 * 1024 * 1024) || clip.source.size() > tcard_clip::max_import) {
             MessageBoxW(g_main, tcard_text(L"clip.invalid", L"The clipboard is unavailable, unsupported, or exceeds the size limit."), L"TCard", MB_OK); return;
         }
         auto job = std::make_shared<ClipJob>();
@@ -965,14 +997,17 @@ void import_clip(UINT command, const std::wstring& targetId, const tcard_clip::C
         }
         g_clip_job = job;
         try {
-            std::thread([job, existing, assetRoot]() {
+            job->worker = std::thread([job, existing, assetRoot]() {
                 try {
-                    job->clip = tcard_download::materialize(job->clip, assetRoot, job->cancelled, tcard_clip::max_source - existing);
-                    if (!job->cancelled) job->clip.source = tcard_asset::externalize(assetRoot, job->clip.source);
+                    if (!job->clip.htmlSource.empty()) job->clip = tcard_web::import(job->clip, job->cancelled);
+                    else {
+                        job->clip = tcard_download::materialize(job->clip, assetRoot, job->cancelled, tcard_clip::max_source - existing);
+                        if (!job->cancelled) job->clip.source = tcard_asset::externalize(assetRoot, job->clip.source);
+                    }
                 }
-                catch (...) { /* Keep the original URL-only clip on worker failure. */ }
+                catch (...) { job->clip.source.clear(); /* Never silently commit an incomplete web conversion. */ }
                 job->done.store(true);
-            }).detach();
+            });
         } catch (...) {
             KillTimer(g_main, kClipTimer); g_clip_job.reset();
             MessageBoxW(g_main, tcard_text(L"clip.failed", L"Import could not be saved. The existing note has been kept."), L"TCard", MB_OK | MB_ICONERROR); return;
@@ -989,18 +1024,32 @@ void import_clip(UINT command, const std::wstring& targetId, const tcard_clip::C
         tcard_apply_defaults(next);
         next.title = tcard_text(L"clip.title", L"Web clip"); undo.created = true;
     } else { next = *target; undo.previous = *target; }
-    next.source = command == 7 && !next.source.empty() ? next.source + L"\r\n\r\n---\r\n\r\n" + clip.source : clip.source;
-    if (next.source.size() > tcard_clip::max_source) { MessageBoxW(g_main, tcard_text(L"clip.invalid", L"The clipboard is unavailable, unsupported, or exceeds the size limit."), L"TCard", MB_OK); return; }
-    next.markdown = true; next.live = false;
+    if (clip.richHtml || (command == 7 && next.richHtml)) {
+        auto incoming = clip.richHtml ? tcard_rich::parse(clip.source) : tcard_rich::plain(clip.source);
+        if (command == 7 && !next.source.empty()) {
+            auto combined = next.richHtml ? tcard_rich::parse(next.source) : tcard_rich::plain(next.source);
+            combined.paragraphs.emplace_back();
+            combined.paragraphs.insert(combined.paragraphs.end(), incoming.paragraphs.begin(), incoming.paragraphs.end());
+            incoming = std::move(combined);
+        }
+        next.source = tcard_rich::serialize(incoming);next.richHtml = true;next.markdown = false;
+    } else {
+        next.source = command == 7 && !next.source.empty() ? next.source + L"\r\n\r\n---\r\n\r\n" + clip.source : clip.source;
+        next.markdown = true;next.richHtml = false;
+    }
+    if (next.source.size() > (next.richHtml ? 4 * 1024 * 1024 : tcard_clip::max_source)) { MessageBoxW(g_main, tcard_text(L"clip.invalid", L"The clipboard is unavailable, unsupported, or exceeds the size limit."), L"TCard", MB_OK); return; }
+    next.live = false;
     std::vector<tcard::CardRecord> batch{next};
-    if (!tcard::SaveCards(g_file_path, batch)) { MessageBoxW(g_main, tcard_text(L"clip.failed", L"Import could not be saved. The existing note has been kept."), L"TCard", MB_OK | MB_ICONERROR); return; }
+    if (!card_save_records(batch)) { MessageBoxW(g_main, tcard_text(L"clip.failed", L"Import could not be saved. The existing note has been kept."), L"TCard", MB_OK | MB_ICONERROR); return; }
     g_clip_undo[next.id] = undo;
     if (command == 6) g_cards.insert(g_cards.begin(), batch[0]); else *target = batch[0];
     SetWindowTextW(g_search, L""); fill_list();
     for (size_t i = 0; i < g_visible_indices.size(); ++i) if (g_cards[g_visible_indices[i]].id == next.id) { SendMessageW(g_list, LB_SETCURSEL, i, 0); break; }
     refresh_preview(); update_open_card();
     if (command == 6) { ShowWindow(g_main, SW_SHOW); SetForegroundWindow(g_main); }
-    if (clip.externalImages) MessageBoxW(g_main, tcard_text(L"clip.external", L"Some images could not be embedded (download, format or size limit). Their original URLs were kept as links."), L"TCard", MB_OK | MB_ICONINFORMATION);
+    if (clip.externalImages) MessageBoxW(g_main, clip.richHtml ?
+        tcard_text(L"clip.offline_images", L"Some images could not be saved. Placeholders were kept; reopening the note will not retry downloads.") :
+        tcard_text(L"clip.external", L"Some images could not be embedded (download, format or size limit). Their original URLs were kept as links."), L"TCard", MB_OK | MB_ICONINFORMATION);
 }
 
 void refresh_language_ui(HWND hwnd)
@@ -1012,6 +1061,7 @@ void refresh_language_ui(HWND hwnd)
     SetWindowTextW(g_empty_state, g_cards.empty() ? tcard_text(L"empty.no_notes", L"No notes yet") : tcard_text(L"empty.no_match", L"No matching notes"));
     SetWindowTextW(g_clear_search, tcard_text(L"button.clear_search", L"Clear search"));
     SetWindowTextW(GetDlgItem(hwnd, kSortField), tcard_text(L"button.sort", L"Sort"));
+    SetWindowTextW(GetDlgItem(hwnd,kGlobalSettings),tcard_text(L"settings.global",L"Global settings"));
     SetWindowTextW(GetDlgItem(hwnd, kNew), tcard_text(L"button.new", L"+  New"));
     SetWindowTextW(GetDlgItem(hwnd, kDelete), tcard_text(L"button.delete", L"Delete"));
     SetWindowTextW(GetDlgItem(hwnd, kOpen), tcard_text(L"button.open", L"Pop out"));
@@ -1069,22 +1119,17 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
                     card->source = state.sourceLength ? std::wstring(state.source, state.sourceLength) : std::wstring();
                     card->fontFamily = state.fontFamilyLength ? std::wstring(state.fontFamily, state.fontFamilyLength) : L"Segoe UI";
                     card->fontSize = parse_font_size(format_font_size(state.fontSize), card->fontSize);
+                    card->inheritFontFamily=state.inheritFontFamily!=FALSE;card->inheritFontSize=state.inheritFontSize!=FALSE;
                     card->markdown = state.markdown != FALSE;
+                    card->richHtml = state.richHtml != FALSE;
                     card->color = color_hex(state.backColor);
-                    if (!tcard::SaveCards(g_file_path, g_cards)) {
-                        *card = previous;
-                        apply_card_state(entry, *card);
-                        MessageBoxW(g_main, tcard_text(L"message.save_failed", L"Save failed; the standalone draft remains open."), tcard_lang::text(L"app.title", L"TCard").c_str(), MB_OK | MB_ICONERROR);
-                        return FALSE;
+                    std::vector<tcard::CardRecord> batch{*card};
+                    if (!card_save_records(batch,state.checkpoint!=FALSE)) {
+                        *card=previous;return FALSE;
                     }
-                    apply_card_state(entry, *card);
+                    *card=batch[0];
+                    apply_card_state(entry,*card);
                     fill_list();
-                    for (size_t i = 0; i < g_visible_indices.size(); ++i) {
-                        if (g_cards[g_visible_indices[i]].id == entry->id) {
-                            SendMessageW(g_list, LB_SETCURSEL, static_cast<WPARAM>(i), 0);
-                            break;
-                        }
-                    }
                     refresh_preview();
                     return TRUE;
                 }
@@ -1149,10 +1194,8 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
             if (command == kContextOpen) open_selected();
             else if (command == kContextEdit) set_editing(true);
             else if (command == kContextDelete) delete_selected();
-            else if (command >= 1306 && command <= 1309) {
-                const LRESULT index = selected_index();
-                import_clip(command - 1300, index >= 0 ? g_cards[static_cast<size_t>(index)].id : L"");
-            }
+            else if (command >= 1306 && command <= 1309)
+                SendMessageW(hwnd,WM_COMMAND,command,0);
             return 0;
         }
         break;
@@ -1251,22 +1294,21 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
             WS_CHILD | ES_AUTOHSCROLL | WS_TABSTOP, 245, 0, 400, 28, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kTitleEditor)), GetModuleHandleW(nullptr), nullptr);
         SendMessageW(g_title_editor, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELONG(16, 16));
         SendMessageW(g_title_editor, WM_SETFONT, reinterpret_cast<WPARAM>(g_heading_font), TRUE);
-        g_title_line = CreateWindowExW(0, L"STATIC", nullptr, WS_CHILD | SS_ETCHEDHORZ,
+        g_title_line = CreateWindowExW(0, L"STATIC", nullptr, WS_CHILD | SS_OWNERDRAW,
             245, 30, 400, 2, hwnd, nullptr, GetModuleHandleW(nullptr), nullptr);
         g_source_editor = tcard_edit::create(hwnd, kSourceEditor, kSave, L"", 245, 34, 400, 266, GetModuleHandleW(nullptr));
         ShowWindow(g_source_editor, SW_HIDE);
         tcard_edit::attach(g_title_editor, false, kSave);
         tcard_edit::attach(g_search, false);
-        g_font_family_editor = CreateWindowExW(WS_EX_CLIENTEDGE, L"COMBOBOX", nullptr, WS_CHILD | CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 0, 0, 180, 240, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kFontFamily)), GetModuleHandleW(nullptr), nullptr);
+        g_font_family_editor = CreateWindowExW(WS_EX_CLIENTEDGE, L"COMBOBOX", nullptr, WS_CHILD | CBS_DROPDOWNLIST | CBS_SORT | WS_VSCROLL | WS_TABSTOP, 0, 0, 180, 240, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kFontFamily)), GetModuleHandleW(nullptr), nullptr);
         populate_font_families(g_font_family_editor);
         for (HWND control : {g_font_family_editor}) SendMessageW(control, WM_SETFONT, reinterpret_cast<WPARAM>(g_ui_font), TRUE);
-        g_font_size_editor = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", nullptr, WS_CHILD | ES_AUTOHSCROLL | WS_TABSTOP, 0, 0, 68, 24, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kFontSize)), GetModuleHandleW(nullptr), nullptr);
+        g_font_size_editor = CreateWindowExW(WS_EX_CLIENTEDGE, L"COMBOBOX", nullptr, WS_CHILD | CBS_DROPDOWN | WS_VSCROLL | WS_TABSTOP, 0, 0, 200, 240, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kFontSize)), GetModuleHandleW(nullptr), nullptr);
         tcard_ui::create_label(hwnd, 1030, tcard_text(L"label.font", L"Font"), g_ui_font);
         tcard_ui::create_label(hwnd, 1031, tcard_text(L"label.size", L"Size"), g_ui_font);
         tcard_ui::create_label(hwnd, 1032, tcard_text(L"label.text_format", L"Text format"), g_ui_font);
         tcard_ui::create_label(hwnd, 1033, tcard_text(L"label.paper_color", L"Paper color"), g_ui_font);
-        SendMessageW(g_font_size_editor, EM_SETLIMITTEXT, 16, 0);
-        tcard_edit::attach(g_font_size_editor, false, kSave);
+        SendMessageW(g_font_size_editor, CB_LIMITTEXT, 64, 0);
         SendMessageW(g_title_editor, EM_SETCUEBANNER, TRUE, reinterpret_cast<LPARAM>(tcard_text(L"title.placeholder", L"Title")));
         g_markdown = CreateWindowExW(0, L"COMBOBOX", nullptr, WS_CHILD | WS_VSCROLL | CBS_DROPDOWNLIST | WS_TABSTOP, 0, 0, 140, 180, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kMarkdown)), GetModuleHandleW(nullptr), nullptr);
         SendMessageW(g_markdown, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(tcard_text(L"format.plain", L"Plain text")));
@@ -1310,7 +1352,7 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
         ShowWindow(g_font_family_editor, SW_HIDE);
         ShowWindow(g_font_size_editor, SW_HIDE);
     ShowWindow(g_markdown, SW_HIDE);
-        ShowWindow(g_title_line, SW_HIDE);
+        ShowWindow(g_title_line, SW_SHOW);
         for (const auto& choice : kColorChoices) ShowWindow(GetDlgItem(hwnd, choice.id), SW_HIDE);
         SendMessageW(g_preview, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, 0);
         SendMessageW(g_source_editor, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, 0);
@@ -1344,6 +1386,7 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
             MoveWindow(g_list, 16, 104, (std::max)(120, listWidth - 32), (std::max)(80, height - 164), TRUE);
             const int footerY = height - 48;
             MoveWindow(GetDlgItem(hwnd, kSortField), 16, footerY, 96, 32, TRUE);
+            MoveWindow(GetDlgItem(hwnd,kGlobalSettings),124,footerY,148,32,TRUE);
             MoveWindow(g_empty_state, 16, 160, (std::max)(120, listWidth - 32), 24, TRUE);
             MoveWindow(g_clear_search, 16, 196, (std::max)(120, listWidth - 32), 32, TRUE);
             const int titleHeight = title_height();
@@ -1354,7 +1397,7 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
             }
             const int settingsWidth = min(360, contentWidth);
             tcard_ui::layout_setting(GetDlgItem(hwnd, 1030), g_font_family_editor, contentX, 64, settingsWidth, true);
-            tcard_ui::layout_setting(GetDlgItem(hwnd, 1031), g_font_size_editor, contentX, 104, 176, false);
+            tcard_ui::layout_setting(GetDlgItem(hwnd, 1031), g_font_size_editor, contentX, 104, settingsWidth, true);
             tcard_ui::layout_setting(GetDlgItem(hwnd, 1032), g_markdown, contentX, 144, settingsWidth, true);
             MoveWindow(GetDlgItem(hwnd, 1033), contentX, 191, 84, 22, TRUE);
             const int editTop = 64;
@@ -1362,7 +1405,7 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
             const int previewTop = 64 + titleHeight + 8;
             MoveWindow(g_preview, contentX, previewTop, contentWidth, max(1, height - previewTop - 16), TRUE);
             MoveWindow(g_title_editor, contentX, editTop, contentWidth, 30, TRUE);
-            MoveWindow(g_title_line, contentX, editTop + 30, contentWidth, 2, TRUE);
+            MoveWindow(g_title_line, contentX, g_editing ? editTop + 31 : 64 + titleHeight + 3, contentWidth, 1, TRUE);
             MoveWindow(g_source_editor, contentX, sourceTop, contentWidth, (std::max)(1, height - sourceTop - 16), TRUE);
             update_vertical_scroll(g_preview);
             update_vertical_scroll(g_source_editor);
@@ -1384,6 +1427,12 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
         }
         break;
     case WM_DRAWITEM:
+        if (reinterpret_cast<DRAWITEMSTRUCT*>(lParam)->hwndItem == g_title_line) {
+            const auto& item = *reinterpret_cast<DRAWITEMSTRUCT*>(lParam);
+            SetDCBrushColor(item.hDC,tcard_ui::shade_color(g_preview_color,0.88f));
+            FillRect(item.hDC,&item.rcItem,static_cast<HBRUSH>(GetStockObject(DC_BRUSH)));
+            return TRUE;
+        }
         if (reinterpret_cast<DRAWITEMSTRUCT*>(lParam)->CtlType == ODT_BUTTON) {
             const auto& item = *reinterpret_cast<DRAWITEMSTRUCT*>(lParam);
             if (const auto* choice = color_choice(item.CtlID)) {
@@ -1393,7 +1442,7 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
                 tcard_ui::paint_swatch(item, choice->color, active, tile_ink(choice->color));
                 return TRUE;
             }
-            const COLORREF paper = item.CtlID == kNew || item.CtlID == kDelete || item.CtlID == kClearSearch || item.CtlID == kSortField ? RGB(246, 245, 242) : g_preview_color;
+            const COLORREF paper = item.CtlID == kNew || item.CtlID == kDelete || item.CtlID == kClearSearch || item.CtlID == kSortField || item.CtlID == kGlobalSettings ? RGB(246, 245, 242) : g_preview_color;
             tcard_ui::paint_button(item, paper, tile_ink(paper), g_button_font ? g_button_font : g_ui_font, item.CtlID == kSave || item.CtlID == kNew);
             return TRUE;
         }
@@ -1403,8 +1452,26 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
         }
         break;
     case WM_COMMAND:
+        if(!lParam&&HIWORD(wParam)==0&&LOWORD(wParam)>=1306&&LOWORD(wParam)<=1309){
+            const LRESULT index=selected_index();
+            import_clip(LOWORD(wParam)-1300,index>=0?g_cards[static_cast<size_t>(index)].id:L"");
+            return 0;
+        }
         if (LOWORD(wParam) == kSourceEditor && HIWORD(wParam) == EN_CHANGE) {
             update_vertical_scroll(g_source_editor);
+        }
+        if(LOWORD(wParam)==kGlobalSettings&&HIWORD(wParam)==BN_CLICKED){
+            card_show_settings();tcard_fonts::defaults(true);
+            for(const auto& entry:g_card_windows)if(entry->handle)
+                SendMessageW(g_get_card_window(entry->handle),tcard_fonts::refreshMessage,0,0);
+            if(g_editing){
+                const bool family=tcard_fonts::inherited(g_font_family_editor),size=tcard_fonts::inherited(g_font_size_editor);
+                tcard_fonts::inheritance(g_font_family_editor,false,family);
+                tcard_fonts::inheritance(g_font_size_editor,true,size);
+                double points=0;if(!g_editor_markdown&&tcard_fonts::read_size(g_font_size_editor,points))
+                    tcard_rich_edit::configure(g_source_editor,true,points,tcard_fonts::resolved_family(g_font_family_editor),g_preview_color,RGB(37,37,37),true);
+            }
+            refresh_preview();update_open_card();return 0;
         }
         if (LOWORD(wParam) == kSortField && HIWORD(wParam) == BN_CLICKED) {
             show_sort();
@@ -1444,14 +1511,15 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
             tcard_apply_defaults(card);
             card.id = std::to_wstring(GetTickCount64());
             card.title = L"New";
-            card.source = L"";
+            card.richHtml=!card.markdown;
+            card.source=card.richHtml?tcard_rich::serialize(tcard_rich::plain(L"")):L"";
             card.color = L"#FFF5A8";
-            g_cards.insert(g_cards.begin(), card);
-            if (!tcard::SaveCards(g_file_path, g_cards)) {
-                g_cards.erase(g_cards.begin());
+            std::vector<tcard::CardRecord> created{card};
+            if (!card_save_records(created)) {
                 MessageBoxW(g_main, tcard_text(L"message.create_failed", L"Could not create a note. Check the storage location."), tcard_lang::text(L"app.title", L"TCard").c_str(), MB_OK | MB_ICONERROR);
                 return 0;
             }
+            g_cards.insert(g_cards.begin(),created[0]);
             SetWindowTextW(g_search, L"");
             fill_list();
             for (size_t row = 0; row < g_visible_indices.size(); ++row) {
@@ -1461,7 +1529,7 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
                 }
             }
             refresh_preview();
-            SetFocus(g_list);
+            open_selected();
         }
         else if (HIWORD(wParam) == BN_CLICKED) {
             if (const auto* choice = color_choice(LOWORD(wParam))) choose_color(choice->color);
@@ -1475,6 +1543,7 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
                 if (card && !IsWindowEnabled(card)) return 0;
             }
             auto job = std::move(g_clip_job);
+            if (job->worker.joinable()) job->worker.join();
             KillTimer(hwnd, kClipTimer);
             SetWindowTextW(hwnd, tcard_text(L"app.title", L"TCard"));
             import_clip(job->command, job->target, &job->clip, &job->previous);
@@ -1490,7 +1559,7 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
         return 0;
     case WM_DESTROY:
         KillTimer(hwnd, kClipTimer);
-        if (g_clip_job) { g_clip_job->cancelled.store(true); g_clip_job.reset(); }
+        if (g_clip_job) { g_clip_job->cancelled.store(true); if (g_clip_job->worker.joinable()) g_clip_job->worker.join(); g_clip_job.reset(); }
         KillTimer(hwnd, kTimer);
         for (auto& entry : g_card_windows) if (entry->handle) g_destroy_card(entry->handle);
         g_card_windows.clear();

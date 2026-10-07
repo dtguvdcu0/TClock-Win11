@@ -82,7 +82,7 @@ public:
     HRESULT STDMETHODCALLTYPE DUnadvise(DWORD) override { return OLE_E_ADVISENOTSUPPORTED; }
     HRESULT STDMETHODCALLTYPE EnumDAdvise(IEnumSTATDATA**) override { return OLE_E_ADVISENOTSUPPORTED; }
 };
-inline bool place(HWND control, size_t at, const Picture& picture, LONG available = 0)
+inline bool place(HWND control, size_t at, const Picture& picture, LONG available = 0, DWORD identity = 0, bool undo = false)
 {
     ComPtr<IRichEditOle> rich;
     if (!SendMessageW(control, EM_GETOLEINTERFACE, 0, reinterpret_cast<LPARAM>(rich.GetAddressOf()))) return false;
@@ -96,7 +96,7 @@ inline bool place(HWND control, size_t at, const Picture& picture, LONG availabl
     if (FAILED(OleCreateStaticFromData(data.Get(), IID_IOleObject, OLERENDER_FORMAT, &format, site.Get(), storage.Get(), reinterpret_cast<void**>(object.GetAddressOf())))) return false;
     REOBJECT item{}; item.cbStruct = sizeof(item); item.cp = static_cast<LONG>(at);
     item.poleobj = object.Get(); item.polesite = site.Get(); item.pstg = storage.Get();
-    item.dvaspect = DVASPECT_CONTENT; item.dwFlags = REO_BELOWBASELINE;
+    item.dvaspect = DVASPECT_CONTENT; item.dwFlags = REO_BELOWBASELINE; item.dwUser = identity;
     item.sizel = {picture.width, picture.height};
     if (available > 0 && item.sizel.cx > available) {
         item.sizel.cy = (std::max)(1, MulDiv(item.sizel.cy, available, item.sizel.cx));
@@ -107,7 +107,7 @@ inline bool place(HWND control, size_t at, const Picture& picture, LONG availabl
     const bool readonly = (GetWindowLongPtrW(control, GWL_STYLE) & ES_READONLY) != 0;
     SendMessageW(control, EM_SETREADONLY, FALSE, 0);
     SendMessageW(control, EM_SETSEL, at, at + 1);
-    SendMessageW(control, EM_REPLACESEL, FALSE, reinterpret_cast<LPARAM>(L""));
+    SendMessageW(control, EM_REPLACESEL, undo, reinterpret_cast<LPARAM>(L""));
     const bool ok = SUCCEEDED(rich->InsertObject(&item));
     if (!ok) { SendMessageW(control, EM_SETSEL, at, at); SendMessageW(control, EM_REPLACESEL, FALSE, reinterpret_cast<LPARAM>(L"!")); }
     SendMessageW(control, EM_SETREADONLY, readonly, 0);

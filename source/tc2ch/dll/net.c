@@ -594,20 +594,21 @@ void Net_get(void)
 		send_old = send;
 
 
-		net[6] = net[2] / 1024;
-		net[7] = net[3] / 1024;
+		// Traffic totals and rates use decimal SI units; raw counters remain bytes.
+		net[6] = net[2] / 1000.0;
+		net[7] = net[3] / 1000.0;
 
-		net[10] = net[2] / 1048576;
-		net[11] = net[3] / 1048576;
+		net[10] = net[2] / 1000000.0;
+		net[11] = net[3] / 1000000.0;
 
 		net[0] += (net[2] * sec);
 		net[1] += (net[3] * sec);
 
-		net[4] = net[0] / 1024;
-		net[5] = net[1] / 1024;
+		net[4] = net[0] / 1000.0;
+		net[5] = net[1] / 1000.0;
 
-		net[8] = net[0] / 1048576;
-		net[9] = net[1] / 1048576;
+		net[8] = net[0] / 1000000.0;
+		net[9] = net[1] / 1000000.0;
 
 
 

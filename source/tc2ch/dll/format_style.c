@@ -478,7 +478,7 @@ BOOL TcFormatStyleSelectorSupported(const WCHAR* selector)
 		L"MUPK", L"MUPM", L"MUPP", L"MUPG", L"MUFK", L"MUFM", L"MUFP", L"MUFG",
 		L"MUVK", L"MUVM", L"MUVP", L"MUVG",
 		L"SSID", L"WiFi", L"EthS", L"EthL", L"EWLL", L"EWLS", L"ICP", L"LTE",
-		L"VPNS", L"WANP", L"APN", L"NMX1", L"NMX2", L"NRAA", L"NSAA",
+		L"VPNS", L"WANP", L"APN", L"NMX1", L"NMX2", L"NRAA", L"NSAA", L"NRSA", L"NSSA",
 		L"NRAB", L"NRAK", L"NRAM", L"NRAG", L"NRSB", L"NRSK", L"NRSM",
 		L"NSAB", L"NSAK", L"NSAM", L"NSAG", L"NSSB", L"NSSK", L"NSSM",
 		L"GIP", L"GIPA", L"GU", L"GI", L"IPA", L"IPE", L"IPW", L"IPL", L"IPV",

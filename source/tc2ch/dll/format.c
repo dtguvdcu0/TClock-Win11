@@ -2291,7 +2291,7 @@ static void tc_span_add_network(TC_FORMAT_SPANS* spans, const WCHAR* outputBase,
 {
 	static const WCHAR* const fixed[] = {
 		L"SSID", L"WiFi", L"EthS", L"EthL", L"EWLL", L"EWLS", L"ICP", L"LTE",
-		L"VPNS", L"WANP", L"APN", L"NMX1", L"NMX2", L"NRAA", L"NSAA"
+		L"VPNS", L"WANP", L"APN", L"NMX1", L"NMX2", L"NRAA", L"NSAA", L"NRSA", L"NSSA"
 	};
 	int i;
 	if (!tokenStart) return;
@@ -2784,8 +2784,8 @@ static BOOL tc_emit_memory_token_w(WCHAR** dp, int* remain, const WCHAR** psp)
 static void tc_net_auto_label_w(WCHAR* out, int outcch, double netk, double netm)
 {
 	if (!out || outcch <= 0) return;
-	if ((netk < 1024.0) && (netk >= 0.0)) {
-		swprintf(out, outcch, L"%4.0fKB", netk);
+	if ((netk < 1000.0) && (netk >= 0.0)) {
+		swprintf(out, outcch, L"%4.0fkB", netk);
 	}
 	else if (netm < 10.0) {
 		swprintf(out, outcch, L"%1.2fMB", netm);
@@ -2793,24 +2793,24 @@ static void tc_net_auto_label_w(WCHAR* out, int outcch, double netk, double netm
 	else if (netm < 100.0) {
 		swprintf(out, outcch, L"%2.1fMB", netm);
 	}
-	else if (netm < (double)kMegabytesPerGigabyte) {
+	else if (netm < 1000.0) {
 		swprintf(out, outcch, L"%4.0fMB", netm);
 	}
-	else if (netm < (10.0 * (double)kMegabytesPerGigabyte)) {
-		swprintf(out, outcch, L"%1.2fGB", (netm / (double)kMegabytesPerGigabyte));
+	else if (netm < (10.0 * 1000.0)) {
+		swprintf(out, outcch, L"%1.2fGB", (netm / 1000.0));
 	}
-	else if (netm < (100.0 * (double)kMegabytesPerGigabyte)) {
-		swprintf(out, outcch, L"%2.1fGB", (netm / (double)kMegabytesPerGigabyte));
+	else if (netm < (100.0 * 1000.0)) {
+		swprintf(out, outcch, L"%2.1fGB", (netm / 1000.0));
 	}
-	else if (netm < (10000.0 * (double)kMegabytesPerGigabyte)) {
-		swprintf(out, outcch, L"%4.0fGB", (netm / (double)kMegabytesPerGigabyte));
+	else if (netm < (10000.0 * 1000.0)) {
+		swprintf(out, outcch, L"%4.0fGB", (netm / 1000.0));
 	}
 	else {
-		swprintf(out, outcch, L"%dGB", (int)(netm / (double)kMegabytesPerGigabyte));
+		swprintf(out, outcch, L"%dGB", (int)(netm / 1000.0));
 	}
 }
 
-static void tc_diskrate_auto_label_w(WCHAR* out, int outcch, double bytesPerSec)
+static void tc_format_rate(WCHAR* out, int outcch, double bytesPerSec)
 {
 	double kbytesPerSec;
 	double mbytesPerSec;
@@ -2819,21 +2819,21 @@ static void tc_diskrate_auto_label_w(WCHAR* out, int outcch, double bytesPerSec)
 	if (!out || outcch <= 0) return;
 	if (bytesPerSec < 0.0) bytesPerSec = 0.0;
 
-	kbytesPerSec = bytesPerSec / 1024.0;
-	mbytesPerSec = kbytesPerSec / 1024.0;
-	gbytesPerSec = mbytesPerSec / 1024.0;
+	kbytesPerSec = bytesPerSec / 1000.0;
+	mbytesPerSec = kbytesPerSec / 1000.0;
+	gbytesPerSec = mbytesPerSec / 1000.0;
 
-	if (bytesPerSec < 1024.0) {
+	if (bytesPerSec < 1000.0) {
 		swprintf(out, outcch, L"%4.0fB/s", bytesPerSec);
 	}
 	else if (kbytesPerSec < 10.0) {
-		swprintf(out, outcch, L"%1.2fKB/s", kbytesPerSec);
+		swprintf(out, outcch, L"%1.2fkB/s", kbytesPerSec);
 	}
 	else if (kbytesPerSec < 100.0) {
-		swprintf(out, outcch, L"%2.1fKB/s", kbytesPerSec);
+		swprintf(out, outcch, L"%2.1fkB/s", kbytesPerSec);
 	}
-	else if (kbytesPerSec < 1024.0) {
-		swprintf(out, outcch, L"%4.0fKB/s", kbytesPerSec);
+	else if (kbytesPerSec < 1000.0) {
+		swprintf(out, outcch, L"%4.0fkB/s", kbytesPerSec);
 	}
 	else if (mbytesPerSec < 10.0) {
 		swprintf(out, outcch, L"%1.2fMB/s", mbytesPerSec);
@@ -2841,7 +2841,7 @@ static void tc_diskrate_auto_label_w(WCHAR* out, int outcch, double bytesPerSec)
 	else if (mbytesPerSec < 100.0) {
 		swprintf(out, outcch, L"%2.1fMB/s", mbytesPerSec);
 	}
-	else if (mbytesPerSec < 1024.0) {
+	else if (mbytesPerSec < 1000.0) {
 		swprintf(out, outcch, L"%4.0fMB/s", mbytesPerSec);
 	}
 	else if (gbytesPerSec < 10.0) {
@@ -2908,7 +2908,8 @@ static BOOL tc_scan_network_token_w(const WCHAR** psp)
 	}
 
 
-	if (_wcsnicmp(p, L"NRAA", 4) == 0 || _wcsnicmp(p, L"NSAA", 4) == 0) {
+	if (_wcsnicmp(p, L"NRAA", 4) == 0 || _wcsnicmp(p, L"NSAA", 4) == 0 ||
+		_wcsnicmp(p, L"NRSA", 4) == 0 || _wcsnicmp(p, L"NSSA", 4) == 0) {
 		*psp = p + 4;
 		return TRUE;
 	}
@@ -3068,6 +3069,15 @@ static BOOL tc_emit_network_token_w(WCHAR** dp, int* remain, const WCHAR** psp)
 	}
 
 
+	if (_wcsnicmp(p, L"NRSA", 4) == 0 || _wcsnicmp(p, L"NSSA", 4) == 0) {
+		WCHAR buf[32];
+		double rate = (_wcsnicmp(p, L"NRSA", 4) == 0) ? net[2] : net[3];
+		tc_format_rate(buf, (int)ARRAYSIZE(buf), rate);
+		tc_wappend_text(dp, remain, buf);
+		*psp = p + 4;
+		return TRUE;
+	}
+
 	if (_wcsnicmp(p, L"NRAA", 4) == 0) {
 		WCHAR buf[32];
 		tc_net_auto_label_w(buf, (int)(sizeof(buf)/sizeof(buf[0])), net[4], net[8]);
@@ -3098,7 +3108,7 @@ static BOOL tc_emit_network_token_w(WCHAR** dp, int* remain, const WCHAR** psp)
 				if (u == L'B') ntd = net[0];
 				else if (u == L'K') ntd = net[4];
 				else if (u == L'M') ntd = net[8];
-				else if (u == L'G') ntd = (int)(net[8] / kMegabytesPerGigabyte);
+				else if (u == L'G') ntd = (int)(net[8] / 1000.0);
 			}
 			else {
 				if (u == L'B') ntd = net[2];
@@ -3111,7 +3121,7 @@ static BOOL tc_emit_network_token_w(WCHAR** dp, int* remain, const WCHAR** psp)
 				if (u == L'B') ntd = net[1];
 				else if (u == L'K') ntd = net[5];
 				else if (u == L'M') ntd = net[9];
-				else if (u == L'G') ntd = (int)(net[9] / kMegabytesPerGigabyte);
+				else if (u == L'G') ntd = (int)(net[9] / 1000.0);
 			}
 			else {
 				if (u == L'B') ntd = net[3];
@@ -3320,14 +3330,14 @@ static BOOL tc_emit_diskrate_token_w(WCHAR** dp, int* remain, const WCHAR** psp)
 
 	if (unit == L'A') {
 		WCHAR buf[32];
-		tc_diskrate_auto_label_w(buf, (int)(sizeof(buf) / sizeof(buf[0])), rate);
+		tc_format_rate(buf, (int)(sizeof(buf) / sizeof(buf[0])), rate);
 		tc_wappend_text(dp, remain, buf);
 		*psp = p + 4;
 		return TRUE;
 	}
 
-	if (unit == L'K') rate /= 1024.0;
-	else if (unit == L'M') rate /= (1024.0 * 1024.0);
+	if (unit == L'K') rate /= 1000.0;
+	else if (unit == L'M') rate /= (1000.0 * 1000.0);
 
 	p += 4;
 	{

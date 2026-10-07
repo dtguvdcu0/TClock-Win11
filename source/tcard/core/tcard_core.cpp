@@ -347,20 +347,23 @@ static NetworkTraffic query_network_traffic()
     });
 }
 
-static std::wstring network_auto_label(ULONGLONG bytes)
+static std::wstring network_auto_label(ULONGLONG bytes, bool rate = false)
 {
-    const double kb = static_cast<double>(bytes) / 1024.0;
-    const double mb = kb / 1024.0;
-    const double gb = mb / 1024.0;
+    const double kb = static_cast<double>(bytes) / 1000.0;
+    const double mb = kb / 1000.0;
+    const double gb = mb / 1000.0;
     wchar_t value[32]{};
-    if (kb < 1024.0) swprintf_s(value, L"%4.0fKB", kb);
+    if (rate && bytes < 1000ULL) swprintf_s(value, L"%4.0fB", static_cast<double>(bytes));
+    else if (rate && kb < 10.0) swprintf_s(value, L"%1.2fkB", kb);
+    else if (rate && kb < 100.0) swprintf_s(value, L"%2.1fkB", kb);
+    else if (kb < 1000.0) swprintf_s(value, L"%4.0fkB", kb);
     else if (mb < 10.0) swprintf_s(value, L"%1.2fMB", mb);
     else if (mb < 100.0) swprintf_s(value, L"%2.1fMB", mb);
-    else if (mb < 1024.0) swprintf_s(value, L"%4.0fMB", mb);
+    else if (mb < 1000.0) swprintf_s(value, L"%4.0fMB", mb);
     else if (gb < 10.0) swprintf_s(value, L"%1.2fGB", gb);
     else if (gb < 100.0) swprintf_s(value, L"%2.1fGB", gb);
     else swprintf_s(value, L"%4.0fGB", gb);
-    return value;
+    return rate ? std::wstring(value) + L"/s" : std::wstring(value);
 }
 
 static bool network_token(const std::wstring& body, size_t& index, std::wstring& result)
@@ -403,6 +406,13 @@ static bool network_token(const std::wstring& body, size_t& index, std::wstring&
         result = state.wifiConnected ? network_fixed_ssid(state.ssid) : state.ethernetConnected ? L"Ethernet" : state.lteConnected ? L"APN: N/A" : L"";
         return true;
     }
+    if (body.compare(index, 4, L"NRSA") == 0 || body.compare(index, 4, L"NSSA") == 0) {
+        const bool sent = body[index + 1] == L'S';
+        index += 4;
+        const NetworkTraffic traffic = query_network_traffic();
+        result = network_auto_label(sent ? traffic.sentRate : traffic.receivedRate, true);
+        return true;
+    }
     if (body.compare(index, 4, L"NRAA") == 0 || body.compare(index, 4, L"NSAA") == 0) {
         const bool sent = body[index + 1] == L'S';
         index += 4;
@@ -418,7 +428,7 @@ static bool network_token(const std::wstring& body, size_t& index, std::wstring&
         index += 4;
         const NetworkTraffic traffic = query_network_traffic();
         const ULONGLONG bytes = rate ? (sent ? traffic.sentRate : traffic.receivedRate) : (sent ? traffic.sent : traffic.received);
-        const ULONGLONG value = unit == L'B' ? bytes : unit == L'K' ? bytes / 1024ULL : unit == L'M' ? bytes / (1024ULL * 1024ULL) : bytes / (1024ULL * 1024ULL * 1024ULL);
+        const ULONGLONG value = unit == L'B' ? bytes : unit == L'K' ? bytes / 1000ULL : unit == L'M' ? bytes / (1000ULL * 1000ULL) : bytes / (1000ULL * 1000ULL * 1000ULL);
         result = provider_number(value, body, index);
         return true;
     }

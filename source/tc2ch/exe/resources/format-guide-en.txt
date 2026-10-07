@@ -4,8 +4,8 @@ TClock Available Format Guide
   yyyy/mm/dd(ddd) hh:nn:ss        Show date and time on one line.
   yyyy/mm/dd\nhh:nn:ss            Show date and time on two lines.
   Japan <%tu+00:00%> <%hh:nn%>    Example of a shifted world-clock display.
-  CPU CU__x%  MEM MAPG_x.xxGB     Show CPU usage and available memory.
-  C: HACP_x% free / HTCG___xGB    Show disk free percentage and total size.
+  CPU CU__x%  MEM MAPG_x.xxGiB     Show CPU usage and available memory.
+  C: HACP_x% free / HTCG___xGiB    Show disk free percentage and total size.
 
 ■ Basic rules:
   \n                              Insert a line break.
@@ -59,16 +59,18 @@ CPU:
   PCORE / LPROC                   Physical core count / logical processor count.
 
 Memory:
-  MK / MM / MG                    Available physical memory in KB / MB / GB.
-  MTPK / MTPM / MTPG              Total physical memory in KB / MB / GB.
-  MAPK / MAPM / MAPG              Available physical memory in KB / MB / GB.
-  MUPK / MUPM / MUPG              Used physical memory in KB / MB / GB.
-  MTFK / MTFM / MTFG              Total page file in KB / MB / GB.
-  MAFK / MAFM / MAFG              Available page file in KB / MB / GB.
-  MUFK / MUFM / MUFG              Used page file in KB / MB / GB.
-  MTVK / MTVM / MTVG              **Total virtual memory in KB / MB / GB. Not a practical reading.
-  MAVK / MAVM / MAVG              **Available virtual memory in KB / MB / GB. Not a practical reading.
-  MUVK / MUVM / MUVG              **Used virtual memory in KB / MB / GB. Not a practical reading.
+  MK / MM / MG                    Available physical memory in KiB / MiB / GiB.
+  MTPK / MTPM / MTPG              Total physical memory in KiB / MiB / GiB.
+  MAPK / MAPM / MAPG              Available physical memory in KiB / MiB / GiB.
+  MUPK / MUPM / MUPG              Used physical memory in KiB / MiB / GiB.
+  MTFK / MTFM / MTFG              Total page file in KiB / MiB / GiB.
+  MAFK / MAFM / MAFG              Available page file in KiB / MiB / GiB.
+  MUFK / MUFM / MUFG              Used page file in KiB / MiB / GiB.
+  MTVK / MTVM / MTVG              **Total virtual memory in KiB / MiB / GiB. Not a practical reading.
+  MAVK / MAVM / MAVG              **Available virtual memory in KiB / MiB / GiB. Not a practical reading.
+  MUVK / MUVM / MUVG              **Used virtual memory in KiB / MiB / GiB. Not a practical reading.
+  Capacity units                  KiB = 1024 B, MiB = 1024 KiB, GiB = 1024 MiB; TiB = 1024 GiB.
+  Fixed-unit numeric formats      Append your own unit; use IEC labels for memory and disk capacity.
 
 Battery and volume:
   BL                              Battery level.
@@ -78,22 +80,27 @@ Battery and volume:
   VL / VM                         Volume level / mute text.
 
 Disk:
-  HAxM / HAxG / HAxT / HAxP       Available disk space for drive x in MB / GB / TB / percent.
-  HUxM / HUxG / HUxT / HUxP       Used disk space for drive x in MB / GB / TB / percent.
-  HTxM / HTxG / HTxT              Total disk size for drive x in MB / GB / TB.
-  HRxB / HRxK / HRxM              Read speed for drive x in B/s / KB/s / MB/s.
-  HWxB / HWxK / HWxM              Write speed for drive x in B/s / KB/s / MB/s.
-  HDxB / HDxK / HDxM              Total transfer speed for drive x in B/s / KB/s / MB/s.
+  HAxM / HAxG / HAxT / HAxP       Available disk space for drive x in MiB / GiB / TiB / percent.
+  HUxM / HUxG / HUxT / HUxP       Used disk space for drive x in MiB / GiB / TiB / percent.
+  HTxM / HTxG / HTxT              Total disk size for drive x in MiB / GiB / TiB.
+  HRxB / HRxK / HRxM              Read speed for drive x in B/s / kB/s / MB/s.
+  HWxB / HWxK / HWxM              Write speed for drive x in B/s / kB/s / MB/s.
+  HDxB / HDxK / HDxM              Total transfer speed for drive x in B/s / kB/s / MB/s.
   HRxA / HWxA / HDxA              Auto-unit read / write / total transfer speed for drive x.
+  Disk speed units                kB = 1000 B, MB = 1000 kB, GB = 1000 MB (per second).
   x = A..Z                        *Note: use a drive letter directly.
   x = 0..9                        *Note: refer to AdditionalMountPath0..9.
 
 Network traffic:
-  NRAK / NRAM / NRAG              Total received in KB / MB / GB.
-  NSAK / NSAM / NSAG              Total sent in KB / MB / GB.
-  NRSB / NRSK / NRSM              Receive speed in B / KB / MB.
-  NSSB / NSSK / NSSM              Send speed in B / KB / MB.
+  NRAK / NRAM / NRAG              Total received in kB / MB / GB.
+  NSAK / NSAM / NSAG              Total sent in kB / MB / GB.
+  NRSB / NRSK / NRSM              Receive speed in B / kB / MB.
+  NSSB / NSSK / NSSM              Send speed in B / kB / MB.
   NRAA / NSAA                     Auto-unit total receive / send.
+  NRSA / NSSA                     Auto-unit receive / send speed (B/s, kB/s, MB/s, GB/s).
+  <%NRSA%> / <%NSSA%>             Embed auto speed; includes the unit and /s.
+  Auto-unit traffic formats       Choose decimals automatically; no width/decimal suffix.
+  Traffic units                   kB = 1000 B, MB = 1000 kB, GB = 1000 MB.
 
 Connection and route display:
   LTE / WiFi / EthS / EthL        Connection-state strings by connection type (EthS: 4 chars / EthL: 9 chars).

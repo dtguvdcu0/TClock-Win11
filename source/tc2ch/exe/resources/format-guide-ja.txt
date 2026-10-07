@@ -4,8 +4,8 @@ TClock 使える書式ガイド
   yyyy/mm/dd(ddd) hh:nn:ss        日付と時刻を 1 行で表示します。
   yyyy/mm/dd\nhh:nn:ss            日付と時刻を 2 行で表示します。
   Japan <%tu+00:00%> <%hh:nn%>    時差を使った時刻表示の例です。
-  CPU CU__x%  MEM MAPG_x.xxGB     CPU 使用率と空きメモリを表示します。
-  C: HACP_x% free / HTCG___xGB    ディスク空き率と総容量を表示します。
+  CPU CU__x%  MEM MAPG_x.xxGiB     CPU 使用率と空きメモリを表示します。
+  C: HACP_x% free / HTCG___xGiB    ディスク空き率と総容量を表示します。
 
 ■ 基本ルール:
   \n                              改行します。
@@ -59,16 +59,18 @@ CPU:
   PCORE / LPROC                   物理コア数 / 論理プロセッサ数
 
 メモリ:
-  MK / MM / MG                    空き物理メモリを KB / MB / GB で表示します。
-  MTPK / MTPM / MTPG              総物理メモリを KB / MB / GB で表示します。
-  MAPK / MAPM / MAPG              空き物理メモリを KB / MB / GB で表示します。
-  MUPK / MUPM / MUPG              使用中の物理メモリを KB / MB / GB で表示します。
-  MTFK / MTFM / MTFG              総ページファイルを KB / MB / GB で表示します。
-  MAFK / MAFM / MAFG              空きページファイルを KB / MB / GB で表示します。
-  MUFK / MUFM / MUFG              使用中のページファイルを KB / MB / GB で表示します。
-  MTVK / MTVM / MTVG              **総仮想メモリを KB / MB / GB で表示します。実用的表示と異なります。
-  MAVK / MAVM / MAVG              **空き仮想メモリを KB / MB / GB で表示します。実用的表示と異なります。
-  MUVK / MUVM / MUVG              **使用中の仮想メモリを KB / MB / GB で表示します。実用的表示と異なります。
+  MK / MM / MG                    空き物理メモリを KiB / MiB / GiB で表示します。
+  MTPK / MTPM / MTPG              総物理メモリを KiB / MiB / GiB で表示します。
+  MAPK / MAPM / MAPG              空き物理メモリを KiB / MiB / GiB で表示します。
+  MUPK / MUPM / MUPG              使用中の物理メモリを KiB / MiB / GiB で表示します。
+  MTFK / MTFM / MTFG              総ページファイルを KiB / MiB / GiB で表示します。
+  MAFK / MAFM / MAFG              空きページファイルを KiB / MiB / GiB で表示します。
+  MUFK / MUFM / MUFG              使用中のページファイルを KiB / MiB / GiB で表示します。
+  MTVK / MTVM / MTVG              **総仮想メモリを KiB / MiB / GiB で表示します。実用的表示と異なります。
+  MAVK / MAVM / MAVG              **空き仮想メモリを KiB / MiB / GiB で表示します。実用的表示と異なります。
+  MUVK / MUVM / MUVG              **使用中の仮想メモリを KiB / MiB / GiB で表示します。実用的表示と異なります。
+  容量の単位                  KiB = 1024 B、MiB = 1024 KiB、GiB = 1024 MiB、TiB = 1024 GiB。
+  固定単位の数値書式          単位は自分で付けます。メモリ・ディスク容量は IEC 表記にします。
 
 バッテリと音量:
   BL                              バッテリ残量
@@ -78,22 +80,27 @@ CPU:
   VL / VM                         音量 / ミュート表示
 
 ディスク:
-  HAxM / HAxG / HAxT / HAxP       ドライブ x の空き容量を MB / GB / TB / % で表示します。
-  HUxM / HUxG / HUxT / HUxP       ドライブ x の使用量を MB / GB / TB / % で表示します。
-  HTxM / HTxG / HTxT              ドライブ x の総容量を MB / GB / TB で表示します。
-  HRxB / HRxK / HRxM              ドライブ x の読み込み速度を B/s / KB/s / MB/s で表示します。
-  HWxB / HWxK / HWxM              ドライブ x の書き込み速度を B/s / KB/s / MB/s で表示します。
-  HDxB / HDxK / HDxM              ドライブ x の合計転送速度を B/s / KB/s / MB/s で表示します。
+  HAxM / HAxG / HAxT / HAxP       ドライブ x の空き容量を MiB / GiB / TiB / % で表示します。
+  HUxM / HUxG / HUxT / HUxP       ドライブ x の使用量を MiB / GiB / TiB / % で表示します。
+  HTxM / HTxG / HTxT              ドライブ x の総容量を MiB / GiB / TiB で表示します。
+  HRxB / HRxK / HRxM              ドライブ x の読み込み速度を B/s / kB/s / MB/s で表示します。
+  HWxB / HWxK / HWxM              ドライブ x の書き込み速度を B/s / kB/s / MB/s で表示します。
+  HDxB / HDxK / HDxM              ドライブ x の合計転送速度を B/s / kB/s / MB/s で表示します。
   HRxA / HWxA / HDxA              ドライブ x の転送速度を自動単位で表示します。
+  ディスク速度の単位        kB = 1000 B、MB = 1000 kB、GB = 1000 MB（毎秒）。
   x = A..Z                        *補足:ドライブレターを直接指定します。
   x = 0..9                        *補足: AdditionalMountPath0..9 を参照します。
 
 ネットワーク:
-  NRAK / NRAM / NRAG              総受信量を KB / MB / GB で表示します。
-  NSAK / NSAM / NSAG              総送信量を KB / MB / GB で表示します。
-  NRSB / NRSK / NRSM              受信速度を B / KB / MB で表示します。
-  NSSB / NSSK / NSSM              送信速度を B / KB / MB で表示します。
+  NRAK / NRAM / NRAG              総受信量を kB / MB / GB で表示します。
+  NSAK / NSAM / NSAG              総送信量を kB / MB / GB で表示します。
+  NRSB / NRSK / NRSM              受信速度を B / kB / MB で表示します。
+  NSSB / NSSK / NSSM              送信速度を B / kB / MB で表示します。
   NRAA / NSAA                     自動単位で総受信量 / 総送信量を表示します。
+  NRSA / NSSA                     自動単位の受信速度 / 送信速度（B/s、kB/s、MB/s、GB/s）。
+  <%NRSA%> / <%NSSA%>             単位と /s を含む自動単位の速度を埋め込みます。
+  自動単位の通信書式            小数桁も自動調整します。幅・小数桁の指定は付けません。
+  通信量・速度の単位            kB = 1000 B、MB = 1000 kB、GB = 1000 MB。
 
 接続状態・回線表示:
   LTE / WiFi / EthS / EthL        各接続種別の状態文字列 (EthS: 4文字 / EthL: 9文字)

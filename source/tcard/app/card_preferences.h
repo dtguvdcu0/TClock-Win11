@@ -85,8 +85,9 @@ bool card_save_settings(const std::wstring& family,const std::wstring& size,unsi
     return WritePrivateProfileSectionW(L"TCard",values.c_str(),path.c_str())!=FALSE;
 }
 
-INT_PTR CALLBACK card_settings_proc(HWND hwnd,UINT message,WPARAM wp,LPARAM)
+INT_PTR CALLBACK card_settings_proc(HWND hwnd,UINT message,WPARAM wp,LPARAM lp)
 {
+    if(const INT_PTR painted=tcard_ui::paint_settings(hwnd,message,wp,lp))return painted;
     if(message==WM_INITDIALOG){
         SetWindowTextW(hwnd,tcard_text(L"settings.global",L"Global settings"));
         const auto font=SendMessageW(hwnd,WM_GETFONT,0,0);
@@ -129,14 +130,19 @@ INT_PTR CALLBACK card_settings_proc(HWND hwnd,UINT message,WPARAM wp,LPARAM)
         RECT owner{},rect{};GetWindowRect(g_main,&owner);GetWindowRect(hwnd,&rect);
         SetWindowPos(hwnd,nullptr,owner.left+(owner.right-owner.left-(rect.right-rect.left))/2,
             owner.top+(owner.bottom-owner.top-(rect.bottom-rect.top))/2,0,0,SWP_NOSIZE|SWP_NOZORDER|SWP_NOACTIVATE);
+        tcard_ui::prepare_settings(hwnd);
         return TRUE;
     }
     if(message==WM_COMMAND){
+        if((LOWORD(wp)==1604&&HIWORD(wp)==EN_CHANGE)||
+            ((LOWORD(wp)==1602||LOWORD(wp)==1606)&&HIWORD(wp)==CBN_SELCHANGE))
+            SetDlgItemTextW(hwnd,1607,tcard_text(L"settings.next_checkpoint",L"Applies at the next history save"));
         if(LOWORD(wp)==IDCANCEL){EndDialog(hwnd,IDCANCEL);return TRUE;}
         if(LOWORD(wp)==IDOK){
             wchar_t text[32]{};GetDlgItemTextW(hwnd,1604,text,ARRAYSIZE(text));double points=0;
             if(!tcard_ui::valid_size(text,points)){
-                MessageBoxW(hwnd,tcard_text(L"message.font_size",L"Enter a font size from 8 to 48."),L"TCard",MB_OK|MB_ICONWARNING);
+                SetDlgItemTextW(hwnd,1607,tcard_text(L"message.font_size",L"Enter a font size from 8 to 48."));
+                MessageBeep(MB_ICONWARNING);
                 SetFocus(GetDlgItem(hwnd,1604));return TRUE;
             }
             const auto family=tcard_fonts::read(GetDlgItem(hwnd,1602));
@@ -148,7 +154,8 @@ INT_PTR CALLBACK card_settings_proc(HWND hwnd,UINT message,WPARAM wp,LPARAM)
             const auto limit=SendMessageW(history,CB_GETITEMDATA,selected,0);
             if(limit<0||limit>10000)return TRUE;
             if(!card_save_settings(family,text,static_cast<unsigned>(limit))){
-                MessageBoxW(hwnd,tcard_text(L"settings.save_failed",L"Could not save settings."),L"TCard",MB_OK|MB_ICONERROR);return TRUE;
+                SetDlgItemTextW(hwnd,1607,tcard_text(L"settings.save_failed",L"Could not save settings."));
+                MessageBeep(MB_ICONERROR);return TRUE;
             }
             g_history_limit=static_cast<unsigned>(limit);
             EndDialog(hwnd,IDOK);return TRUE;

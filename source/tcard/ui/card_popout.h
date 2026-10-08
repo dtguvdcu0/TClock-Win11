@@ -100,6 +100,7 @@ static void card_layout_tools(TCARD_WUI_HOST host,int width,int height)
 }
 static INT_PTR CALLBACK card_scale_proc(HWND dialog,UINT message,WPARAM wParam,LPARAM lParam)
 {
+ if(const INT_PTR painted=tcard_ui::paint_settings(dialog,message,wParam,lParam))return painted;
  if(message==WM_INITDIALOG){
   SetWindowTextW(dialog,tcard_text(L"scale.custom",L"Text scale (%)"));
   const UINT dpi=GetDpiForWindow(dialog);const int d=dpi?dpi:96;
@@ -108,6 +109,7 @@ static INT_PTR CALLBACK card_scale_proc(HWND dialog,UINT message,WPARAM wParam,L
    dialog,reinterpret_cast<HMENU>(100),g_instance,nullptr);
   CreateWindowExW(0,L"BUTTON",tcard_text(L"button.apply",L"Apply"),WS_CHILD|WS_VISIBLE|WS_TABSTOP|BS_DEFPUSHBUTTON,
    MulDiv(110,d,96),MulDiv(12,d,96),MulDiv(70,d,96),MulDiv(26,d,96),dialog,reinterpret_cast<HMENU>(IDOK),g_instance,nullptr);
+  tcard_ui::prepare_settings(dialog);
   SendDlgItemMessageW(dialog,100,EM_SETLIMITTEXT,3,0);SendDlgItemMessageW(dialog,100,EM_SETSEL,0,-1);SetFocus(GetDlgItem(dialog,100));return FALSE;
  }
  if(message==WM_COMMAND&&LOWORD(wParam)==IDOK){

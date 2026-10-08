@@ -1237,6 +1237,7 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
             return 1;
         }
     case WM_CTLCOLORLISTBOX:
+        SetTextColor(reinterpret_cast<HDC>(wParam), RGB(37, 37, 37));
         SetBkColor(reinterpret_cast<HDC>(wParam), RGB(246, 245, 242));
         SetDCBrushColor(reinterpret_cast<HDC>(wParam), RGB(246, 245, 242));
         return reinterpret_cast<LRESULT>(GetStockObject(DC_BRUSH));
@@ -1258,6 +1259,7 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
             SetTextColor(reinterpret_cast<HDC>(wParam), RGB(37, 37, 37));
             return reinterpret_cast<LRESULT>(g_preview_brush);
         }
+        SetTextColor(reinterpret_cast<HDC>(wParam), RGB(37, 37, 37));
         SetBkColor(reinterpret_cast<HDC>(wParam), RGB(246, 245, 242));
         SetDCBrushColor(reinterpret_cast<HDC>(wParam), RGB(246, 245, 242));
         return reinterpret_cast<LRESULT>(GetStockObject(DC_BRUSH));

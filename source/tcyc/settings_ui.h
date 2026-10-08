@@ -59,11 +59,11 @@ static LRESULT CALLBACK tcyc_panel_proc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp)
         case SB_BOTTOM:next=si.nMax;break;
         default:return 0;
         }
-        st->scrollOffset=std::clamp(next,0,std::max(0,si.nMax-static_cast<int>(si.nPage)+1));tcyc_layout_controls(st);return 0;
+        st->scrollOffset=std::clamp(next,0,std::max(0,si.nMax-static_cast<int>(si.nPage)+1));tcyc_layout_controls(st,true);return 0;
     }
     case WM_MOUSEWHEEL:
         st->scrollOffset=std::max(0,st->scrollOffset-MulDiv(GET_WHEEL_DELTA_WPARAM(wp),tcyc_scale(st,60),WHEEL_DELTA));
-        tcyc_layout_controls(st);return 0;
+        tcyc_layout_controls(st,true);return 0;
     case WM_PAINT:{PAINTSTRUCT ps{};BeginPaint(hwnd,&ps);tcyc_paint_surface(st,hwnd,ps.hdc);EndPaint(hwnd,&ps);return 0;}
     case WM_ERASEBKGND:return 1;
     }
@@ -82,7 +82,7 @@ void tcyc_refresh_fonts(WindowState* st)
         HFONT font=id==2002?state->titleFont:(id==kCtrlStatus||id==2003||id==2005||id==2011||id==2043||id==2062||id==2064||id==2073||id==2090)?state->smallFont:state->uiFont;
         SendMessageW(control,WM_SETFONT,reinterpret_cast<WPARAM>(font),TRUE);return TRUE;
     },reinterpret_cast<LPARAM>(st));
-    SendMessageW(st->taskList,LB_SETITEMHEIGHT,0,tcyc_scale(st,70));
+    SendMessageW(st->taskList,LB_SETITEMHEIGHT,0,tcyc_scale(st,54));
     SendMessageW(st->hotkeyMod,CB_SETDROPPEDWIDTH,tcyc_scale(st,260),0);
     for(HFONT font:previous)if(font)DeleteObject(font);
 }
@@ -90,82 +90,82 @@ static void tcyc_place(WindowState* st,int id,int x,int y,int width,int height)
 {
     if(HWND control=tcyc_get_control(st,id))st->placements.push_back({control,x,y,width,height});
 }
-void tcyc_layout_controls(WindowState* st)
+void tcyc_layout_controls(WindowState* st,bool scrolling)
 {
     if(!st||!st->panel||st->arranging)return;st->arranging=true;
     RECT client{};GetClientRect(st->mainWindow,&client);
-    const int width=MulDiv(client.right,96,st->dpi),height=MulDiv(client.bottom,96,st->dpi),side=200,footer=70;
-    const int body=std::max(100,height-footer),pad=24;
+    const int width=MulDiv(client.right,96,st->dpi),height=MulDiv(client.bottom,96,st->dpi),side=164,footer=54;
+    const int body=std::max(100,height-footer),pad=16;
     SetWindowPos(st->panel,nullptr,tcyc_scale(st,side),0,tcyc_scale(st,width-side),tcyc_scale(st,body),SWP_NOZORDER|SWP_NOACTIVATE);
     // Reserve scrollbar width consistently so conditional sections never move horizontally.
     const int right=width-side-pad-MulDiv(GetSystemMetricsForDpi(SM_CXVSCROLL,st->dpi),96,st->dpi),field=right-pad;
     st->placements.clear();st->blocks.clear();st->separators.clear();
-    tcyc_place(st,2005,18,15,132,24);tcyc_place(st,kCtrlTaskAdd,158,13,28,28);
-    tcyc_place(st,kCtrlTaskList,10,55,180,body-124);
-    tcyc_place(st,2000,16,body-53,168,34);
-    tcyc_place(st,kCtrlStatus,18,height-56,width-210,48);
-    if(!st->globalView)tcyc_place(st,kCtrlTaskTestRun,width-168,height-52,148,34);
-    tcyc_place(st,2003,pad,20,field,17);
-    tcyc_place(st,2002,pad,39,st->globalView?field:field-166,36);
+    tcyc_place(st,2005,12,12,112,24);tcyc_place(st,kCtrlTaskAdd,128,10,28,28);
+    tcyc_place(st,kCtrlTaskList,8,46,148,body-92);
+    tcyc_place(st,2000,8,body-38,148,28);
+    tcyc_place(st,kCtrlStatus,14,height-43,width-194,34);
+    if(!st->globalView)tcyc_place(st,kCtrlTaskTestRun,width-160,height-43,146,32);
+    tcyc_place(st,2003,pad,14,field,17);
+    tcyc_place(st,2002,pad,32,st->globalView?field:field-166,32);
     int content=0;
     if(st->globalView){
-        tcyc_place(st,2060,pad,96,field,32);st->separators.push_back(146);
-        tcyc_place(st,2061,pad,173,field-140,24);tcyc_place(st,2062,pad,203,field-140,40);
-        tcyc_place(st,kCtrlPollSec,right-120,180,80,30);tcyc_place(st,kCtrlSpinPollSec,right-58,180,18,30);tcyc_place(st,2065,right-32,181,32,28);
-        st->separators.push_back(265);
-        tcyc_place(st,2063,pad,292,field-140,24);tcyc_place(st,2064,pad,322,field-140,48);
-        tcyc_place(st,kCtrlGraceSec,right-120,301,80,30);tcyc_place(st,kCtrlSpinGraceSec,right-58,301,18,30);tcyc_place(st,2066,right-32,302,32,28);
-        content=400;
+        tcyc_place(st,2060,pad,80,field,32);st->separators.push_back(122);
+        tcyc_place(st,2061,pad,140,field-140,24);tcyc_place(st,2062,pad,170,field-140,40);
+        tcyc_place(st,kCtrlPollSec,right-120,144,80,30);tcyc_place(st,kCtrlSpinPollSec,right-58,144,18,30);tcyc_place(st,2065,right-32,145,32,28);
+        st->separators.push_back(226);
+        tcyc_place(st,2063,pad,244,field-140,24);tcyc_place(st,2064,pad,274,field-140,48);
+        tcyc_place(st,kCtrlGraceSec,right-120,248,80,30);tcyc_place(st,kCtrlSpinGraceSec,right-58,248,18,30);tcyc_place(st,2066,right-32,249,32,28);
+        content=340;
     }else{
-        tcyc_place(st,kCtrlTaskRename,right-158,40,102,30);tcyc_place(st,kCtrlTaskDelete,right-50,40,50,30);
-        tcyc_place(st,kCtrlTaskEnabled,pad,91,field-120,26);tcyc_place(st,2004,right-110,92,110,24);
-        st->separators.push_back(131);
-        tcyc_place(st,2010,pad,149,field-155,24);tcyc_place(st,2011,right-150,151,150,24);
-        const int card=(field-6*4)/5;
+        tcyc_place(st,kCtrlTaskRename,right-158,33,102,30);tcyc_place(st,kCtrlTaskDelete,right-50,33,50,30);
+        tcyc_place(st,kCtrlTaskEnabled,pad,74,field-120,26);tcyc_place(st,2004,right-110,75,110,24);
+        st->separators.push_back(110);
+        tcyc_place(st,2010,pad,122,field-155,24);tcyc_place(st,2011,right-150,124,150,24);
+        const int card=(field-5*4)/5;
         const int ids[]={kCtrlTriggerStartup,kCtrlTriggerInterval,kCtrlTriggerWeeklyTime,kCtrlTriggerHotkeyOnly,kCtrlTriggerNonRunning};
-        for(int i=0;i<5;++i)tcyc_place(st,ids[i],pad+i*(card+6),183,card,76);
-        int y=272;
+        for(int i=0;i<5;++i)tcyc_place(st,ids[i],pad+i*(card+5),154,card,62);
+        int y=224;
         auto block=[&](int top,int tall){st->blocks.push_back({pad,top,right,top+tall});};
         if(IsChecked(st->triggerChecks[3])){
-            block(y,48);tcyc_place(st,2050,pad+12,y+10,field-24,28);y+=58;
+            block(y,38);tcyc_place(st,2050,pad+12,y+5,field-24,28);y+=44;
         }
         if(IsChecked(st->triggerChecks[0])){
-            block(y,56);tcyc_place(st,2030,pad+12,y+14,94,26);
-            tcyc_place(st,kCtrlIntervalSec,pad+116,y+12,84,30);tcyc_place(st,kCtrlSpinIntervalSec,pad+200,y+12,18,30);
-            tcyc_place(st,2031,pad+230,y+14,field-242,26);y+=66;
+            block(y,48);tcyc_place(st,2030,pad+12,y+10,94,26);
+            tcyc_place(st,kCtrlIntervalSec,pad+116,y+8,84,30);tcyc_place(st,kCtrlSpinIntervalSec,pad+200,y+8,18,30);
+            tcyc_place(st,2031,pad+230,y+10,field-242,26);y+=54;
         }
         if(IsChecked(st->triggerChecks[2])){
             const bool date=IsChecked(st->dateEnabled),week=IsChecked(st->weekdayEnabled)&&!IsChecked(st->weekdayEveryday);
-            const int tall=date||week?108:58;block(y,tall);
-            tcyc_place(st,2020,pad+12,y+14,80,26);tcyc_place(st,2021,pad+96,y+12,150,30);
-            tcyc_place(st,2022,pad+260,y+14,48,26);tcyc_place(st,kCtrlTimeOfDay,pad+318,y+12,104,30);
-            if(date){tcyc_place(st,2023,pad+12,y+62,80,26);tcyc_place(st,kCtrlDateValue,pad+96,y+59,150,30);}
-            if(week){for(int i=0;i<7;++i)tcyc_place(st,kCtrlWeekdaySun+i,pad+12+i*44,y+60,36,30);}
-            y+=tall+10;
+            const int tall=date||week?92:48;block(y,tall);
+            tcyc_place(st,2020,pad+12,y+10,80,26);tcyc_place(st,2021,pad+96,y+8,150,30);
+            tcyc_place(st,2022,pad+260,y+10,48,26);tcyc_place(st,kCtrlTimeOfDay,pad+318,y+8,104,30);
+            if(date){tcyc_place(st,2023,pad+12,y+54,80,26);tcyc_place(st,kCtrlDateValue,pad+96,y+52,150,30);}
+            if(week){for(int i=0;i<7;++i)tcyc_place(st,kCtrlWeekdaySun+i,pad+12+i*44,y+52,36,30);}
+            y+=tall+6;
         }
         if(IsChecked(st->triggerChecks[4])){
-            block(y,90);tcyc_place(st,2080,pad+12,y+8,field-24,24);
+            block(y,78);tcyc_place(st,2080,pad+12,y+8,field-24,24);
             const int modWidth=std::min(252,field-182);
-            tcyc_place(st,kCtrlHotkeyMod,pad+12,y+42,modWidth,30);
-            tcyc_place(st,kCtrlHotkeyKey,pad+modWidth+30,y+42,128,30);y+=100;
+            tcyc_place(st,kCtrlHotkeyMod,pad+12,y+38,modWidth,30);
+            tcyc_place(st,kCtrlHotkeyKey,pad+modWidth+30,y+38,128,30);y+=84;
         }
         if(IsChecked(st->triggerChecks[5])){
-            block(y,148);tcyc_place(st,2070,pad+12,y+8,field-24,28);
-            tcyc_place(st,2071,pad+12,y+43,116,26);tcyc_place(st,kCtrlWatchdogRetrySec,pad+140,y+41,84,30);tcyc_place(st,kCtrlSpinWatchdogRetrySec,pad+224,y+41,18,30);
-            tcyc_place(st,2072,pad+12,y+82,116,26);tcyc_place(st,kCtrlRepeatCount,pad+140,y+80,100,30);tcyc_place(st,kCtrlSpinRepeatCount,pad+240,y+80,18,30);
-            tcyc_place(st,2073,pad+12,y+119,field-24,24);y+=158;
+            block(y,132);tcyc_place(st,2070,pad+12,y+8,field-24,28);
+            tcyc_place(st,2071,pad+12,y+41,116,26);tcyc_place(st,kCtrlWatchdogRetrySec,pad+140,y+39,84,30);tcyc_place(st,kCtrlSpinWatchdogRetrySec,pad+224,y+39,18,30);
+            tcyc_place(st,2072,pad+12,y+76,116,26);tcyc_place(st,kCtrlRepeatCount,pad+140,y+74,100,30);tcyc_place(st,kCtrlSpinRepeatCount,pad+240,y+74,18,30);
+            tcyc_place(st,2073,pad+12,y+108,field-24,24);y+=138;
         }
         if(st->selectedTask>=0&&st->selectedTask<static_cast<int>(st->config.tasks.size())&&(st->config.tasks[st->selectedTask].triggerMask&(1<<1))){
             tcyc_place(st,2090,pad,y,field,38);y+=48;
         }
-        st->separators.push_back(y+4);y+=20;
+        st->separators.push_back(y+2);y+=14;
         tcyc_place(st,2040,pad,y,field-225,30);tcyc_place(st,kCtrlActionMode,right-210,y,210,30);
-        tcyc_place(st,2044,pad,y+43,field,23);tcyc_place(st,kCtrlActionPath,pad,y+70,field,32);
+        tcyc_place(st,2044,pad,y+36,field,23);tcyc_place(st,kCtrlActionPath,pad,y+58,field,32);
         const int half=(field-14)/2;
-        tcyc_place(st,2041,pad,y+117,half,23);tcyc_place(st,2042,pad+half+14,y+117,half,23);
-        tcyc_place(st,kCtrlActionArgs,pad,y+144,half,32);tcyc_place(st,kCtrlActionCwd,pad+half+14,y+144,half,32);
-        tcyc_place(st,kCtrlSingleInstance,pad,y+191,field,26);tcyc_place(st,2043,pad,y+223,field,40);
-        content=y+283;
+        tcyc_place(st,2041,pad,y+100,half,23);tcyc_place(st,2042,pad+half+14,y+100,half,23);
+        tcyc_place(st,kCtrlActionArgs,pad,y+122,half,32);tcyc_place(st,kCtrlActionCwd,pad+half+14,y+122,half,32);
+        tcyc_place(st,kCtrlSingleInstance,pad,y+164,field,26);tcyc_place(st,2043,pad,y+196,field,40);
+        content=y+246;
     }
     st->contentHeight=tcyc_scale(st,content);
     SCROLLINFO si{sizeof(si),SIF_RANGE|SIF_PAGE|SIF_POS};
@@ -183,10 +183,13 @@ void tcyc_layout_controls(WindowState* st)
         const int top=tcyc_scale(st,p.y)-(GetParent(p.control)==st->panel?st->scrollOffset:0);
         wchar_t cls[32]{};GetClassNameW(p.control,cls,32);
         const int tall=tcyc_scale(st,wcscmp(cls,L"ComboBox")==0?240:p.height);
-        SetWindowPos(p.control,nullptr,tcyc_scale(st,p.x),top,tcyc_scale(st,p.width),tall,SWP_NOZORDER|SWP_NOACTIVATE|SWP_SHOWWINDOW);
+        SetWindowPos(p.control,nullptr,tcyc_scale(st,p.x),top,tcyc_scale(st,p.width),tall,SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOCOPYBITS|(GetParent(p.control)==st->panel?SWP_NOREDRAW:0)|(GetParent(p.control)==st->panel&&scrolling?SWP_NOSIZE:0)|SWP_SHOWWINDOW);
     }
     st->arranging=false;
-    InvalidateRect(st->mainWindow,nullptr,FALSE);InvalidateRect(st->panel,nullptr,FALSE);
+    InvalidateRect(st->mainWindow,nullptr,FALSE);
+    // Repaint every child after placement; clipped glyph pixels must not survive scrolling.
+    // Buffer the panel and present one complete frame after all child moves.
+    RedrawWindow(st->panel,nullptr,nullptr,RDW_INVALIDATE|RDW_ERASE|RDW_ALLCHILDREN|RDW_FRAME|RDW_UPDATENOW);
 }
 
 static LRESULT tcyc_control_color(WindowState* st,UINT,WPARAM wp,LPARAM lp)
@@ -208,9 +211,9 @@ void tcyc_paint_surface(WindowState* st,HWND hwnd,HDC dc)
     RECT r{};GetClientRect(hwnd,&r);tcyc_fill(dc,r,RGB(255,255,255));
     if(hwnd==st->panel){
         for(auto b:st->blocks){b={tcyc_scale(st,b.left),tcyc_scale(st,b.top)-st->scrollOffset,tcyc_scale(st,b.right),tcyc_scale(st,b.bottom)-st->scrollOffset};tcyc_fill(dc,b,RGB(246,248,251));}
-        for(int y:st->separators){RECT line{tcyc_scale(st,24),tcyc_scale(st,y)-st->scrollOffset,r.right-tcyc_scale(st,24),tcyc_scale(st,y)-st->scrollOffset+1};tcyc_fill(dc,line,RGB(229,233,239));}
+        for(int y:st->separators){RECT line{tcyc_scale(st,16),tcyc_scale(st,y)-st->scrollOffset,r.right-tcyc_scale(st,16),tcyc_scale(st,y)-st->scrollOffset+1};tcyc_fill(dc,line,RGB(229,233,239));}
     }else{
-        RECT side{0,0,tcyc_scale(st,200),r.bottom-tcyc_scale(st,70)};tcyc_fill(dc,side,RGB(247,249,252));
+        RECT side{0,0,tcyc_scale(st,164),r.bottom-tcyc_scale(st,54)};tcyc_fill(dc,side,RGB(247,249,252));
         RECT line{0,side.bottom,r.right,side.bottom+1};tcyc_fill(dc,line,RGB(225,230,237));
     }
 }
@@ -243,18 +246,18 @@ bool tcyc_draw_item(WindowState* st,const DRAWITEMSTRUCT& value)
     if(list&&item->itemID<st->config.tasks.size()){
         const auto& task=st->config.tasks[item->itemID];
         if(selected){RECT bar=r;bar.right=bar.left+tcyc_scale(st,3);tcyc_fill(dc,bar,RGB(48,104,217));}
-        RECT name=r;name.left+=tcyc_scale(st,12);name.right-=tcyc_scale(st,8);name.top+=tcyc_scale(st,10);name.bottom=name.top+tcyc_scale(st,25);
+        RECT name=r;name.left+=tcyc_scale(st,12);name.right-=tcyc_scale(st,8);name.top+=tcyc_scale(st,5);name.bottom=name.top+tcyc_scale(st,25);
         DrawTextW(dc,task.name.c_str(),-1,&name,DT_SINGLELINE|DT_VCENTER|DT_END_ELLIPSIS|DT_NOPREFIX);
         std::wstring detail=task.enabled?tcyc_get_text(st,L"ui_active",L"Enabled",L"\u6709\u52b9"):tcyc_get_text(st,L"ui_inactive",L"Disabled",L"\u7121\u52b9");
         if(task.watchdogEnabled)detail+=L" / "+tcyc_get_text(st,L"ui_monitor",L"Monitoring",L"\u76e3\u8996")+L" "+std::to_wstring(ReadWatchdogCountdownSec(st->config.stateFile,task.id,task.watchdogRetrySec))+L"s";
         else if(task.triggerMask&(1<<2))detail+=L" / "+tcyc_get_text(st,L"ui_schedule",L"Schedule",L"\u65e5\u6642");
         else if(task.triggerMask&1)detail+=L" / "+std::to_wstring(task.intervalSec)+L"s";
         else if(task.triggerMask&(1<<3))detail+=L" / "+tcyc_get_text(st,L"ui_startup",L"Startup",L"\u8d77\u52d5\u6642");
-        SelectObject(dc,st->smallFont);SetTextColor(dc,RGB(111,122,140));name.top+=tcyc_scale(st,27);name.bottom+=tcyc_scale(st,27);
+        SelectObject(dc,st->smallFont);SetTextColor(dc,RGB(111,122,140));name.top+=tcyc_scale(st,24);name.bottom+=tcyc_scale(st,24);
         DrawTextW(dc,detail.c_str(),-1,&name,DT_SINGLELINE|DT_END_ELLIPSIS|DT_NOPREFIX);
     }else{
         RECT textRect=r;textRect.left+=tcyc_scale(st,5);textRect.right-=tcyc_scale(st,5);
-        if(trigger){tcyc_draw_icon(st,dc,item->CtlID,(r.left+r.right)/2,r.top+tcyc_scale(st,23),fg);textRect.top+=tcyc_scale(st,43);}
+        if(trigger){tcyc_draw_icon(st,dc,item->CtlID,(r.left+r.right)/2,r.top+tcyc_scale(st,18),fg);textRect.top+=tcyc_scale(st,34);}
         std::wstring label=GetEditText(item->hwndItem);
         DrawTextW(dc,label.c_str(),-1,&textRect,DT_CENTER|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX);
     }
@@ -292,7 +295,7 @@ static void tcyc_build_controls(WindowState* st)
 {
     HINSTANCE instance=GetModuleHandleW(nullptr);
     WNDCLASSW wc{};wc.lpfnWndProc=tcyc_panel_proc;wc.hInstance=instance;wc.lpszClassName=L"TCycleSettingsPanel";wc.hCursor=LoadCursorW(nullptr,IDC_ARROW);RegisterClassW(&wc);
-    st->panel=CreateWindowExW(WS_EX_CONTROLPARENT,wc.lpszClassName,L"",WS_CHILD|WS_VISIBLE|WS_CLIPCHILDREN|WS_VSCROLL,0,0,0,0,st->mainWindow,nullptr,instance,st);
+    st->panel=CreateWindowExW(WS_EX_CONTROLPARENT|WS_EX_COMPOSITED,wc.lpszClassName,L"",WS_CHILD|WS_VISIBLE|WS_CLIPCHILDREN|WS_VSCROLL,0,0,0,0,st->mainWindow,nullptr,instance,st);
     auto make=[&](int id,const wchar_t* cls,DWORD style,const wchar_t* text,bool root=false)->HWND{
         return CreateWindowExW(wcscmp(cls,L"Edit")==0?WS_EX_CLIENTEDGE:0,cls,text,WS_CHILD|style,0,0,0,0,root?st->mainWindow:st->panel,reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),instance,nullptr);
     };
@@ -369,7 +372,7 @@ static void tcyc_build_controls(WindowState* st)
 static void tcyc_size_window(WindowState* st)
 {
     MONITORINFO info{sizeof(info)};GetMonitorInfoW(MonitorFromWindow(st->mainWindow,MONITOR_DEFAULTTONEAREST),&info);
-    RECT r{0,0,tcyc_scale(st,960),tcyc_scale(st,700)};
+    RECT r{0,0,tcyc_scale(st,800),tcyc_scale(st,524)};
     AdjustWindowRectExForDpi(&r,static_cast<DWORD>(GetWindowLongPtrW(st->mainWindow,GWL_STYLE)),FALSE,0,st->dpi);
     int width=std::min(r.right-r.left,info.rcWork.right-info.rcWork.left),height=std::min(r.bottom-r.top,info.rcWork.bottom-info.rcWork.top);
     SetWindowPos(st->mainWindow,nullptr,info.rcWork.left+(info.rcWork.right-info.rcWork.left-width)/2,info.rcWork.top+(info.rcWork.bottom-info.rcWork.top-height)/2,width,height,SWP_NOZORDER|SWP_NOACTIVATE);

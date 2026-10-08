@@ -66,11 +66,11 @@ static LRESULT CALLBACK tcap_panel_proc(HWND hwnd,UINT message,WPARAM wp,LPARAM 
         default:return 0;
         }
         dlg->scrollOffset=std::clamp(next,0,std::max(0,info.nMax-static_cast<int>(info.nPage)+1));
-        tcap_layout_controls(dlg);return 0;
+        tcap_layout_controls(dlg,true);return 0;
     }
     case WM_MOUSEWHEEL:
         dlg->scrollOffset=std::max(0,dlg->scrollOffset-MulDiv(GET_WHEEL_DELTA_WPARAM(wp),tcap_scale(dlg,60),WHEEL_DELTA));
-        tcap_layout_controls(dlg);return 0;
+        tcap_layout_controls(dlg,true);return 0;
     case WM_PAINT:{
         PAINTSTRUCT ps{};BeginPaint(hwnd,&ps);tcap_paint_surface(dlg,hwnd,ps.hdc);EndPaint(hwnd,&ps);return 0;
     }
@@ -94,7 +94,7 @@ void tcap_refresh_fonts(SettingsDialog* dlg)
         HFONT font=id==160?d->titleFont:(id>=170&&id<=179)?d->smallFont:d->uiFont;
         SendMessageW(child,WM_SETFONT,reinterpret_cast<WPARAM>(font),TRUE);return TRUE;
     },reinterpret_cast<LPARAM>(dlg));
-    if(dlg->tab)SendMessageW(dlg->tab,LB_SETITEMHEIGHT,0,tcap_scale(dlg,58));
+    if(dlg->tab)SendMessageW(dlg->tab,LB_SETITEMHEIGHT,0,tcap_scale(dlg,50));
     for(HFONT font:previous)if(font)DeleteObject(font);
 }
 static void tcap_place(SettingsDialog* dlg,int id,int x,int y,int width,int height,bool visible=true)
@@ -127,18 +127,18 @@ void tcap_fill_apps(SettingsDialog* dlg, const std::wstring& selected, const std
     dlg->suppressSave=suppressed;
 }
 
-void tcap_layout_controls(SettingsDialog* dlg)
+void tcap_layout_controls(SettingsDialog* dlg,bool scrolling)
 {
     if(!dlg||!dlg->panel||dlg->arranging)return;
     dlg->arranging=true;
     RECT area{};GetClientRect(dlg->hwnd,&area);
     const int width=MulDiv(area.right,96,dlg->uiDpi),height=MulDiv(area.bottom,96,dlg->uiDpi);
-    const int side=176,footer=62,pad=22,bodyHeight=std::max(80,height-footer);
+    const int side=160,footer=54,pad=16,bodyHeight=std::max(80,height-footer);
     SetWindowPos(dlg->panel,nullptr,tcap_scale(dlg,side),0,tcap_scale(dlg,width-side),tcap_scale(dlg,bodyHeight),SWP_NOZORDER|SWP_NOACTIVATE);
     const int custom=dlg->targetMode==3?40:0;
     const auto action=SendMessageW(dlg->actionCombo,CB_GETCURSEL,0,0);
-    const int appRow=action==2?64:0;
-    dlg->contentHeight=tcap_scale(dlg,526+custom+appRow+(dlg->detailsOpen?164:0));
+    const int appRow=action==2?56:0;
+    dlg->contentHeight=tcap_scale(dlg,450+custom+appRow+(dlg->detailsOpen?144:0));
     SCROLLINFO scroll{sizeof(scroll),SIF_RANGE|SIF_PAGE|SIF_POS};
     scroll.nMax=dlg->contentHeight-1;scroll.nPage=tcap_scale(dlg,bodyHeight);
     dlg->scrollOffset=std::clamp(dlg->scrollOffset,0,std::max(0,dlg->contentHeight-static_cast<int>(scroll.nPage)));
@@ -146,73 +146,76 @@ void tcap_layout_controls(SettingsDialog* dlg)
     RECT panel{};GetClientRect(dlg->panel,&panel);
     const int right=MulDiv(panel.right,96,dlg->uiDpi)-pad,field=right-pad;
     dlg->placements.clear();dlg->separators.clear();
-    tcap_place(dlg,170,14,16,112,24);
-    tcap_place(dlg,130,138,12,28,30);
-    tcap_place(dlg,120,8,54,160,std::max(70,bodyHeight-108));
-    tcap_place(dlg,131,12,bodyHeight-43,72,28);
-    tcap_place(dlg,132,92,bodyHeight-43,72,28);
-    tcap_place(dlg,171,16,height-44,std::max(100,width-350),26);
-    tcap_place(dlg,153,width-312,height-47,132,32);
-    tcap_place(dlg,142,width-168,height-47,148,32);
-    tcap_place(dlg,160,pad,18,field,35);
-    tcap_place(dlg,161,pad,72,field,23);
-    const int gap=6,cardWidth=(field-gap*3)/4;
-    for(int i=0;i<4;++i)tcap_place(dlg,150+i+(i==3?1:0),pad+i*(cardWidth+gap),101,cardWidth,72);
-    tcap_place(dlg,104,pad,185,field-88,28,custom!=0);
-    tcap_place(dlg,141,right-80,185,80,28,custom!=0);
-    dlg->separators.push_back(192+custom);
-    const int save=208+custom;
+    tcap_place(dlg,170,12,12,108,24);
+    tcap_place(dlg,130,124,10,28,28);
+    tcap_place(dlg,120,8,46,144,std::max(70,bodyHeight-92));
+    tcap_place(dlg,131,8,bodyHeight-38,68,28);
+    tcap_place(dlg,132,84,bodyHeight-38,68,28);
+    tcap_place(dlg,171,14,height-40,std::max(100,width-350),26);
+    tcap_place(dlg,153,width-300,height-43,132,32);
+    tcap_place(dlg,142,width-160,height-43,146,32);
+    tcap_place(dlg,160,pad,14,field,32);
+    tcap_place(dlg,161,pad,56,field,22);
+    const int gap=5,cardWidth=(field-gap*3)/4;
+    for(int i=0;i<4;++i)tcap_place(dlg,150+i+(i==3?1:0),pad+i*(cardWidth+gap),84,cardWidth,64);
+    tcap_place(dlg,104,pad,156,field-88,28,custom!=0);
+    tcap_place(dlg,141,right-80,156,80,28,custom!=0);
+    dlg->separators.push_back(156+custom);
+    const int save=168+custom;
     tcap_place(dlg,162,pad,save,field,22);
     const bool opening=action>0;
     const bool saving=action!=1;
-    tcap_place(dlg,180,pad,save+30,std::min(280,field),30);
-    tcap_place(dlg,172,pad,save+70,field,20);
-    tcap_place(dlg,101,pad,save+94,field-84,30,saving);
-    tcap_place(dlg,140,right-76,save+94,76,30,saving);
-    tcap_place(dlg,182,pad,save+138,field,20,appRow!=0);
-    tcap_place(dlg,181,pad,save+94+appRow,field,30,opening);
+    tcap_place(dlg,180,pad,save+28,std::min(280,field),30);
+    tcap_place(dlg,172,pad,save+64,field,20);
+    tcap_place(dlg,101,pad,save+88,field-84,30,saving);
+    tcap_place(dlg,140,right-76,save+88,76,30,saving);
+    tcap_place(dlg,182,pad,save+126,field,20,appRow!=0);
+    tcap_place(dlg,181,pad,save+88+appRow,field,30,opening);
     const int image=save+appRow;
-    tcap_place(dlg,173,pad,image+138,126,20);
-    tcap_place(dlg,102,pad,image+162,126,30);
+    tcap_place(dlg,173,pad,image+126,126,20);
+    tcap_place(dlg,102,pad,image+148,126,30);
     const bool png=SendMessageW(dlg->formatCombo,CB_GETCURSEL,0,0)!=1;
-    tcap_place(dlg,174,pad+144,image+138,110,20,png);
-    tcap_place(dlg,175,pad+144,image+138,110,20,!png);
-    tcap_place(dlg,103,pad+144,image+162,74,30,png);
-    tcap_place(dlg,113,pad+144,image+162,74,30,!png);
-    tcap_place(dlg,176,pad+236,image+140,std::max(50,field-236),54);
-    dlg->separators.push_back(image+210);
-    const int hotkey=image+226;
+    tcap_place(dlg,174,pad+144,image+126,110,20,png);
+    tcap_place(dlg,175,pad+144,image+126,110,20,!png);
+    tcap_place(dlg,103,pad+144,image+148,74,30,png);
+    tcap_place(dlg,113,pad+144,image+148,74,30,!png);
+    tcap_place(dlg,176,pad+236,image+126,std::max(50,field-236),54);
+    dlg->separators.push_back(image+186);
+    const int hotkey=image+198;
     tcap_place(dlg,163,pad,hotkey,116,26);
     tcap_place(dlg,105,right-270,hotkey,130,28);
     tcap_place(dlg,106,right-130,hotkey,130,28);
-    dlg->separators.push_back(hotkey+43);
-    const int detail=hotkey+56;
-    tcap_place(dlg,155,pad,detail,field,32);
-    tcap_place(dlg,156,pad,detail+47,field,25,dlg->detailsOpen);
-    tcap_place(dlg,177,pad,detail+79,72,24,dlg->detailsOpen);
-    tcap_place(dlg,107,pad+78,detail+77,106,28,dlg->detailsOpen);
-    tcap_place(dlg,178,pad+202,detail+79,90,24,dlg->detailsOpen);
-    tcap_place(dlg,108,pad+296,detail+77,74,28,dlg->detailsOpen);
-    tcap_place(dlg,109,pad,detail+123,field,25,dlg->detailsOpen);
-    tcap_place(dlg,179,pad,detail+155,72,24,dlg->detailsOpen);
-    tcap_place(dlg,110,pad+78,detail+153,106,28,dlg->detailsOpen);
-    tcap_place(dlg,111,pad+202,detail+155,std::max(70,field-202),24,dlg->detailsOpen);
+    dlg->separators.push_back(hotkey+36);
+    const int detail=hotkey+44;
+    tcap_place(dlg,155,pad,detail,field,30);
+    tcap_place(dlg,156,pad,detail+38,field,25,dlg->detailsOpen);
+    tcap_place(dlg,177,pad,detail+68,72,24,dlg->detailsOpen);
+    tcap_place(dlg,107,pad+78,detail+66,106,28,dlg->detailsOpen);
+    tcap_place(dlg,178,pad+202,detail+68,90,24,dlg->detailsOpen);
+    tcap_place(dlg,108,pad+296,detail+66,74,28,dlg->detailsOpen);
+    tcap_place(dlg,109,pad,detail+104,field,25,dlg->detailsOpen);
+    tcap_place(dlg,179,pad,detail+136,72,24,dlg->detailsOpen);
+    tcap_place(dlg,110,pad+78,detail+134,106,28,dlg->detailsOpen);
+    tcap_place(dlg,111,pad+202,detail+136,std::max(70,field-202),24,dlg->detailsOpen);
     for(const auto& p:dlg->placements){
         const bool inPanel=GetParent(p.window)==dlg->panel;
         const int y=tcap_scale(dlg,p.y)-(inPanel?dlg->scrollOffset:0);
         wchar_t name[32]{};GetClassNameW(p.window,name,32);
         const int h=tcap_scale(dlg,wcscmp(name,L"ComboBox")==0?220:p.height);
         SetWindowPos(p.window,nullptr,tcap_scale(dlg,p.x),y,tcap_scale(dlg,p.width),h,
-            SWP_NOZORDER|SWP_NOACTIVATE|(p.visible?SWP_SHOWWINDOW:SWP_HIDEWINDOW));
+            SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOCOPYBITS|(inPanel?SWP_NOREDRAW:0)|(inPanel&&scrolling?SWP_NOSIZE:0)|(p.visible?SWP_SHOWWINDOW:SWP_HIDEWINDOW));
     }
     dlg->arranging=false;
-    InvalidateRect(dlg->hwnd,nullptr,FALSE);InvalidateRect(dlg->panel,nullptr,FALSE);
+    InvalidateRect(dlg->hwnd,nullptr,FALSE);
+    // Repaint every child after placement; clipped glyph pixels must not survive scrolling.
+    // Buffer the panel and present one complete frame after all child moves.
+    RedrawWindow(dlg->panel,nullptr,nullptr,RDW_INVALIDATE|RDW_ERASE|RDW_ALLCHILDREN|RDW_FRAME|RDW_UPDATENOW);
 }
 void tcap_paint_surface(SettingsDialog* dlg,HWND window,HDC dc)
 {
     RECT area{};GetClientRect(window,&area);tcap_fill(dc,area,RGB(255,255,255));
     if(window==dlg->hwnd){
-        RECT side{0,0,tcap_scale(dlg,176),area.bottom-tcap_scale(dlg,62)};
+        RECT side{0,0,tcap_scale(dlg,160),area.bottom-tcap_scale(dlg,54)};
         tcap_fill(dc,side,RGB(246,248,251));
         RECT footer{0,side.bottom,area.right,area.bottom};tcap_fill(dc,footer,RGB(250,251,253));
         RECT line{side.right-1,0,side.right,side.bottom};tcap_fill(dc,line,RGB(226,232,239));
@@ -220,7 +223,7 @@ void tcap_paint_surface(SettingsDialog* dlg,HWND window,HDC dc)
     }else{
         for(int y:dlg->separators){
             const int top=tcap_scale(dlg,y)-dlg->scrollOffset;
-            RECT line{tcap_scale(dlg,22),top,area.right-tcap_scale(dlg,22),top+1};tcap_fill(dc,line,RGB(229,234,240));
+            RECT line{tcap_scale(dlg,16),top,area.right-tcap_scale(dlg,16),top+1};tcap_fill(dc,line,RGB(229,234,240));
         }
     }
 }
@@ -243,7 +246,7 @@ static void tcap_draw_icon(SettingsDialog* dlg,HDC dc,int target,RECT rect,bool 
     Gdiplus::Graphics graphics(dc);
     graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
     graphics.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHighQuality);
-    const float size=static_cast<float>(tcap_scale(dlg,32));
+    const float size=static_cast<float>(tcap_scale(dlg,27));
     graphics.TranslateTransform((rect.left+rect.right-size)/2.0f,static_cast<float>(rect.top+tcap_scale(dlg,7)));
     graphics.ScaleTransform(size/32.0f,size/32.0f);
     const Gdiplus::Color ink=selected?Gdiplus::Color(255,35,102,184):Gdiplus::Color(255,114,139,167);
@@ -300,9 +303,9 @@ bool tcap_draw_item(SettingsDialog* dlg,const DRAWITEMSTRUCT& item)
         tcap_fill(dc,rect,selected?RGB(230,239,251):RGB(246,248,251));
         if(selected){RECT mark=rect;mark.right=mark.left+tcap_scale(dlg,3);mark.top+=tcap_scale(dlg,10);mark.bottom-=tcap_scale(dlg,10);tcap_fill(dc,mark,RGB(35,102,184));}
         const auto& profile=dlg->app->profiles[item.itemID];
-        RECT label=rect;label.left+=tcap_scale(dlg,12);label.right-=tcap_scale(dlg,6);label.top+=tcap_scale(dlg,7);label.bottom=label.top+tcap_scale(dlg,22);
+        RECT label=rect;label.left+=tcap_scale(dlg,12);label.right-=tcap_scale(dlg,6);label.top+=tcap_scale(dlg,4);label.bottom=label.top+tcap_scale(dlg,22);
         tcap_draw_text(dlg,dc,utf8ToWide(profile.name),label,selected?RGB(35,93,159):RGB(37,49,63),dlg->uiFont,DT_SINGLELINE|DT_VCENTER|DT_END_ELLIPSIS);
-        label.top+=tcap_scale(dlg,23);label.bottom=rect.bottom;
+        label.top+=tcap_scale(dlg,21);label.bottom=rect.bottom;
         const auto target=displaysToString(profile.settings);
         std::wstring detail=target=="all"||target=="0"?tcap_get_text(dlg,L"ui_all",L"All displays",L"\u3059\u3079\u3066\u306e\u753b\u9762"):
             target=="active_window"?tcap_get_text(dlg,L"ui_active_window",L"Active window",L"\u64cd\u4f5c\u4e2d\u306e\u30a6\u30a3\u30f3\u30c9\u30a6"):
@@ -326,7 +329,7 @@ bool tcap_draw_item(SettingsDialog* dlg,const DRAWITEMSTRUCT& item)
     RECT textRect=rect;InflateRect(&textRect,-tcap_scale(dlg,5),0);
     if(target>=0){
         tcap_draw_icon(dlg,dc,target,rect,selected);
-        textRect.top+=tcap_scale(dlg,35);
+        textRect.top+=tcap_scale(dlg,32);
     }
     UINT textFlags=DT_CENTER|DT_VCENTER|DT_SINGLELINE|DT_END_ELLIPSIS;
     if(target>=0){
@@ -435,11 +438,6 @@ bool tcap_handle_command(SettingsDialog* dlg,WPARAM wp,LPARAM)
     if(id==141){tcap_select_monitors(dlg);return true;}
     if(id==155){
         dlg->detailsOpen=!dlg->detailsOpen;
-        RECT rect{},area{};GetWindowRect(dlg->hwnd,&rect);GetClientRect(dlg->hwnd,&area);
-        MONITORINFO monitor{sizeof(monitor)};GetMonitorInfoW(MonitorFromWindow(dlg->hwnd,MONITOR_DEFAULTTONEAREST),&monitor);
-        const int desired=tcap_scale(dlg,608+(dlg->detailsOpen?164:0))+(rect.bottom-rect.top)-area.bottom;
-        const int height=std::min(desired,static_cast<int>(monitor.rcWork.bottom-monitor.rcWork.top));
-        SetWindowPos(dlg->hwnd,nullptr,rect.left,std::clamp(rect.top,monitor.rcWork.top,monitor.rcWork.bottom-height),rect.right-rect.left,height,SWP_NOZORDER|SWP_NOACTIVATE);
         tcap_sync_controls(dlg);return true;
     }
     if(id==156){
@@ -458,7 +456,7 @@ void buildSettingsLayout(SettingsDialog* dlg)
 {
     WNDCLASSW panelClass{};panelClass.lpfnWndProc=tcap_panel_proc;panelClass.hInstance=dlg->app->hInstance;
     panelClass.lpszClassName=L"TCaptureSettingsPanel";panelClass.hCursor=LoadCursorW(nullptr,IDC_ARROW);RegisterClassW(&panelClass);
-    dlg->panel=CreateWindowExW(WS_EX_CONTROLPARENT,panelClass.lpszClassName,L"",WS_CHILD|WS_VISIBLE|WS_CLIPCHILDREN|WS_VSCROLL,
+    dlg->panel=CreateWindowExW(WS_EX_CONTROLPARENT|WS_EX_COMPOSITED,panelClass.lpszClassName,L"",WS_CHILD|WS_VISIBLE|WS_CLIPCHILDREN|WS_VSCROLL,
         0,0,1,1,dlg->hwnd,reinterpret_cast<HMENU>(159),dlg->app->hInstance,dlg);
     auto create=[&](int id,const wchar_t* type,const std::wstring& text,DWORD style,bool outer=false)->HWND{
         HWND control=CreateWindowExW(wcscmp(type,L"EDIT")==0?WS_EX_CLIENTEDGE:0,type,text.c_str(),WS_CHILD|WS_VISIBLE|style,

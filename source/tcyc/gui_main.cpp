@@ -173,7 +173,7 @@ struct WindowState {
 };
 
 void tcyc_sync_controls(WindowState* st);
-void tcyc_layout_controls(WindowState* st);
+void tcyc_layout_controls(WindowState* st,bool scrolling = false);
 void tcyc_refresh_fonts(WindowState* st);
 bool tcyc_draw_item(WindowState* st, const DRAWITEMSTRUCT& item);
 void tcyc_paint_surface(WindowState* st, HWND window, HDC dc);
@@ -1598,7 +1598,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     case WM_GETMINMAXINFO:
         if(st){
             UINT dpi=GetDpiForWindow(hwnd);if(!dpi)dpi=96;
-            RECT r{0,0,MulDiv(760,dpi,96),MulDiv(430,dpi,96)};
+            RECT r{0,0,MulDiv(720,dpi,96),MulDiv(430,dpi,96)};
             AdjustWindowRectExForDpi(&r,static_cast<DWORD>(GetWindowLongPtrW(hwnd,GWL_STYLE)),FALSE,
                                     static_cast<DWORD>(GetWindowLongPtrW(hwnd,GWL_EXSTYLE)),dpi);
             reinterpret_cast<MINMAXINFO*>(lParam)->ptMinTrackSize={r.right-r.left,r.bottom-r.top};

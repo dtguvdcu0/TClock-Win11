@@ -249,7 +249,7 @@ void applyControlTheme(SettingsDialog* dlg, HWND hwnd, bool setEditBackground) {
 
 void tcap_sync_controls(SettingsDialog* dlg);
 void tcap_fill_apps(SettingsDialog* dlg, const std::wstring& selected, const std::wstring& executable);
-void tcap_layout_controls(SettingsDialog* dlg);
+void tcap_layout_controls(SettingsDialog* dlg,bool scrolling = false);
 void tcap_refresh_fonts(SettingsDialog* dlg);
 bool tcap_draw_item(SettingsDialog* dlg, const DRAWITEMSTRUCT& item);
 void tcap_paint_surface(SettingsDialog* dlg, HWND window, HDC dc);
@@ -258,7 +258,7 @@ bool tcap_handle_command(SettingsDialog* dlg, WPARAM wp, LPARAM lp);
 void adjustSettingsWindowSize(SettingsDialog* dlg) {
     if(!dlg||!dlg->hwnd)return;
     const UINT dpi=GetDpiForWindow(dlg->hwnd);
-    RECT rect{0,0,MulDiv(800,dpi,96),MulDiv(608,dpi,96)};
+    RECT rect{0,0,MulDiv(760,dpi,96),MulDiv(504,dpi,96)};
     AdjustWindowRectExForDpi(&rect,static_cast<DWORD>(GetWindowLongPtrW(dlg->hwnd,GWL_STYLE)),FALSE,0,dpi);
     MONITORINFO monitor{sizeof(monitor)};GetMonitorInfoW(MonitorFromWindow(dlg->hwnd,MONITOR_DEFAULTTONEAREST),&monitor);
     RECT current{};GetWindowRect(dlg->hwnd,&current);

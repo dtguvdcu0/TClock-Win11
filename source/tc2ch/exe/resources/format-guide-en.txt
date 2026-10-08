@@ -87,7 +87,6 @@ Disk:
   HWxB / HWxK / HWxM              Write speed for drive x in B/s / kB/s / MB/s.
   HDxB / HDxK / HDxM              Total transfer speed for drive x in B/s / kB/s / MB/s.
   HRxA / HWxA / HDxA              Auto-unit read / write / total transfer speed for drive x.
-  Disk speed units                kB = 1000 B, MB = 1000 kB, GB = 1000 MB (per second).
   x = A..Z                        *Note: use a drive letter directly.
   x = 0..9                        *Note: refer to AdditionalMountPath0..9.
 
@@ -98,8 +97,6 @@ Network traffic:
   NSSB / NSSK / NSSM              Send speed in B / kB / MB.
   NRAA / NSAA                     Auto-unit total receive / send.
   NRSA / NSSA                     Auto-unit receive / send speed (B/s, kB/s, MB/s, GB/s).
-  <%NRSA%> / <%NSSA%>             Embed auto speed; includes the unit and /s.
-  Auto-unit traffic formats       Choose decimals automatically; no width/decimal suffix.
   Traffic units                   kB = 1000 B, MB = 1000 kB, GB = 1000 MB.
 
 Connection and route display:

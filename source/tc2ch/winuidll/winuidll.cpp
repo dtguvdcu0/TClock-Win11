@@ -5,6 +5,7 @@
 #include <gdiplus.h>
 #include "wui_api.h"
 #include "wui_text.h"
+#include "wui_taskbar.h"
 #include "../common/taskbar_edge.h"
 #include "../common/taskbar_surface.h"
 
@@ -487,6 +488,22 @@ cleanup:
 
 static void wui_hide_tip(void);
 
+static BOOL wui_keep_order(HWND hwnd, HWND owner)
+{
+    HWND next;
+    RECT surface, taskbar, sibling, overlap;
+    WCHAR className[32];
+    if (!IsWindowVisible(hwnd) || !GetWindowRect(hwnd, &surface)) return FALSE;
+    next = GetWindow(hwnd, GW_HWNDNEXT);
+    if (next == owner) return TRUE;
+    // Horizontal taskbars place their nonoverlapping desktop button before Shell.
+    if (!next || GetWindow(next, GW_HWNDNEXT) != owner || GetWindow(next, GW_OWNER) != owner
+     || !GetWindowRect(owner, &taskbar) || taskbar.right - taskbar.left <= taskbar.bottom - taskbar.top
+     || !GetClassNameW(next, className, _countof(className)) || lstrcmpW(className, L"Static") != 0
+     || !GetWindowRect(next, &sibling) || IntersectRect(&overlap, &surface, &sibling)) return FALSE;
+    return TRUE;
+}
+
 static BOOL wui_sync_order(HWND hwnd)
 {
 	HWND owner = GetAncestor(g_wuiTarget, GA_ROOT);
@@ -499,6 +516,7 @@ static BOOL wui_sync_order(HWND hwnd)
 		wui_hide_tip();
 		return FALSE;
 	}
+	if (wui_keep_order(hwnd, owner)) return TRUE;
 	return tbs_sync_order(hwnd, owner);
 }
 
@@ -512,6 +530,7 @@ static void wui_place(HWND hwnd)
 	if (!hwnd || !IsWindow(hwnd)) return;
 	if (!g_wuiState.text[0] && !g_wuiLayerPixels) return;
 	if (!g_wuiTarget || !IsWindow(g_wuiTarget)) return;
+	wui_reserve_taskbar(GetAncestor(g_wuiTarget, GA_ROOT), g_wuiTarget);
 	if (!IsWindowVisible(g_wuiTarget)) {
 		if (!g_wuiHasTarget) return;
 		rcTarget = g_wuiLastTarget;
@@ -921,6 +940,7 @@ static LRESULT CALLBACK wui_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 		tbe_reset_color();
 		break;
 	case WM_DESTROY:
+		wui_release_taskbar();
 		tbe_release_frame(&g_wuiFrame);
 		tbe_reset_color();
 		ZeroMemory(&g_wuiEdge, sizeof(g_wuiEdge));
@@ -974,6 +994,7 @@ extern "C" BOOL WINAPI WuiCreateHost(HWND hwndTargetClock)
 
 extern "C" void WINAPI WuiDestroyHost(void)
 {
+	wui_release_taskbar();
 	wui_clear_layer();
 	wui_reset_text();
 	wui_hide_tip();

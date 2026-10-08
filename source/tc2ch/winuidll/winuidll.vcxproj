@@ -58,10 +58,14 @@
   <ItemGroup>
     <ClCompile Include="winuidll.cpp" />
     <ClCompile Include="wui_text.cpp" />
+    <ClCompile Include="wui_taskbar.cpp">
+      <LanguageStandard>stdcpp17</LanguageStandard>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="wui_api.h" />
     <ClInclude Include="wui_text.h" />
+    <ClInclude Include="wui_taskbar.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets" />

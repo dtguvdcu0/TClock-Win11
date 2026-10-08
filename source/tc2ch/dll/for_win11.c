@@ -2,6 +2,7 @@
 #include "resource.h"
 #include "../common/taskbar_edge.h"
 #include "../common/taskbar_surface.h"
+#include "../winuidll/wui_taskbar.h"
 
 
 
@@ -2031,6 +2032,11 @@ static void w11_place_vert(void)
 		&& GetWindowRect(hwndTaskBarMain, &taskbarRect)
 		&& GetWindowRect(hwndTrayMain, &trayRect)) {
 		trayY = trayRect.top - taskbarRect.top;
+		{
+			INT_PTR anchor = (INT_PTR)GetPropW(hwndClockMain, WUI_TASKBAR_ANCHOR_PROPERTY);
+			// A notification reservation publishes its content anchor in taskbar pixels.
+			if (anchor > 0 && anchor - 1 <= heightTaskbar) trayY = (int)(anchor - 1);
+		}
 		if (trayY >= clockHeight) clockY = trayY - clockHeight;
 	}
 

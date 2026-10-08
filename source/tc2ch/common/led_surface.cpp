@@ -56,8 +56,12 @@ static DWORD WINAPI led_run_surface(void* parameter)
             if(!IsWindow(state.target)||!IsWindow(state.taskbar))break;
             led_apply_snapshot(context,&state.text);
             RECT viewport={};POINT origin={0,0};
-            BOOL visible=state.visible&&tbs_can_present(state.target,state.taskbar)&&
-                IntersectRect(&viewport,&state.bounds,&state.clip)&&ClientToScreen(state.target,&origin);
+            BOOL visible=state.visible&&IntersectRect(&viewport,&state.bounds,&state.clip)&&
+                ClientToScreen(state.target,&origin);
+            if(visible){
+                RECT display=viewport;OffsetRect(&display,origin.x,origin.y);
+                visible=tbs_can_present_rect(state.target,state.taskbar,&display);
+            }
             if(!visible){if(IsWindowVisible(window))ShowWindow(window,SW_HIDE);paused=TRUE;continue;}
             SIZE size={viewport.right-viewport.left,viewport.bottom-viewport.top};
             if(size.cx<1||size.cy<1||size.cx>4096||size.cy>2048){if(IsWindowVisible(window))ShowWindow(window,SW_HIDE);paused=TRUE;continue;}

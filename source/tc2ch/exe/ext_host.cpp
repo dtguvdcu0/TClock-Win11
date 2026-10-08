@@ -66,6 +66,8 @@ struct HostState {
     int offset = 0;
     bool ready = false, loaded = false, armed = false;
     HHOOK keyboard = nullptr;
+    HWINEVENTHOOK foregroundHook = nullptr, locationHook = nullptr, focusHook = nullptr;
+    bool ordering = false;
     std::vector<std::unique_ptr<Clock>> clocks;
     std::vector<Pose> saved;
     std::vector<Display> displays;
@@ -226,11 +228,12 @@ void ext_restore_pose(Clock& clock) {
 }
 bool ext_get_home(Clock& clock,RECT& frame,RECT& slot) {
     HWND target=ext_get_window(clock.binding.target),taskbar=ext_get_window(clock.binding.taskbar);
-    if(!IsWindow(target) || !tbs_can_present(target,taskbar))return false;
+    if(!IsWindow(target))return false;
     POINT origin={};if(!ClientToScreen(target,&origin))return false;
     frame=clock.binding.bounds;slot=clock.binding.slot;
     OffsetRect(&frame,origin.x,origin.y);OffsetRect(&slot,origin.x,origin.y);
-    return !IsRectEmpty(&frame) && !IsRectEmpty(&slot);
+    RECT visible;
+    return IntersectRect(&visible,&frame,&slot) && tbs_can_present_rect(target,taskbar,&visible);
 }
 bool ext_get_area(Clock& clock,RECT& area) {
     RECT frame,slot;if(!ext_get_home(clock,frame,slot))return false;
@@ -314,6 +317,46 @@ void ext_draw_handles(const Clock& clock,std::vector<BYTE>& pixels) {
         pixel[3]=static_cast<BYTE>(alpha+(pixel[3]*(255-alpha)+127)/255);
     }
 }
+void ext_sync_order(Clock& clock) {
+    HWND anchor=ext_get_window(clock.binding.anchor);
+    if(!IsWindow(anchor))anchor=ext_get_window(clock.binding.taskbar);
+    if(GetWindow(anchor,GW_HWNDPREV)!=clock.window || !IsWindowVisible(clock.window))
+        tbs_sync_order(clock.window,anchor);
+}
+void CALLBACK ext_observe_order(HWINEVENTHOOK hook,DWORD event,HWND window,LONG object,LONG child,DWORD,DWORD) {
+    if(!ext_state || !ext_ready || ext_state->ordering ||
+        (hook!=ext_state->foregroundHook && hook!=ext_state->locationHook && hook!=ext_state->focusHook))return;
+    if(event==EVENT_OBJECT_FOCUS){if(object!=OBJID_CLIENT || child!=CHILDID_SELF)return;}
+    else if(event!=EVENT_SYSTEM_FOREGROUND && (object!=OBJID_WINDOW || child!=CHILDID_SELF))return;
+    DpiScope dpi;
+    // Shell activation raises its owned layer before the next clock timer tick.
+    ext_state->ordering=true;
+    for(auto& clock:ext_clocks){
+        if(clock->floating || clock->drag || !IsWindowVisible(clock->window))continue;
+        HWND taskbar=ext_get_window(clock->binding.taskbar);
+        if(event!=EVENT_SYSTEM_FOREGROUND && window!=taskbar && window!=ext_get_window(clock->binding.anchor))continue;
+        RECT frame,slot;if(ext_get_home(*clock,frame,slot))ext_sync_order(*clock);
+    }
+    ext_state->ordering=false;
+}
+void ext_unwatch_order() {
+    if(ext_state->foregroundHook){UnhookWinEvent(ext_state->foregroundHook);ext_state->foregroundHook=nullptr;}
+    if(ext_state->locationHook){UnhookWinEvent(ext_state->locationHook);ext_state->locationHook=nullptr;}
+    if(ext_state->focusHook){UnhookWinEvent(ext_state->focusHook);ext_state->focusHook=nullptr;}
+}
+void ext_watch_order() {
+    if(ext_state->foregroundHook && ext_state->locationHook && ext_state->focusHook)return;
+    ext_unwatch_order();
+    ext_state->foregroundHook=SetWinEventHook(EVENT_SYSTEM_FOREGROUND,EVENT_SYSTEM_FOREGROUND,
+        nullptr,ext_observe_order,0,0,WINEVENT_OUTOFCONTEXT|WINEVENT_SKIPOWNPROCESS);
+    ext_state->locationHook=SetWinEventHook(EVENT_OBJECT_LOCATIONCHANGE,EVENT_OBJECT_LOCATIONCHANGE,
+        nullptr,ext_observe_order,0,0,WINEVENT_OUTOFCONTEXT|WINEVENT_SKIPOWNPROCESS);
+    ext_state->focusHook=SetWinEventHook(EVENT_OBJECT_FOCUS,EVENT_OBJECT_FOCUS,
+        nullptr,ext_observe_order,0,0,WINEVENT_OUTOFCONTEXT|WINEVENT_SKIPOWNPROCESS);
+    if(!ext_state->foregroundHook || !ext_state->locationHook || !ext_state->focusHook){
+        ext_unwatch_order();OutputDebugStringW(L"TClock: extended-clock order hook unavailable\n");
+    }
+}
 void ext_update_clock(Clock& clock,bool force=false) {
     RECT frame,slot;bool attached=!clock.floating;
     if(attached){
@@ -351,10 +394,8 @@ void ext_update_clock(Clock& clock,bool force=false) {
         if(!ext_present_pixels(clock.window,clock.frame,pixels))return;
         clock.second=time.wSecond;clock.diameter=size;clock.lastFrame=clock.frame;clock.dirty=false;
     }
-    if(attached && !clock.drag){
-        HWND anchor=ext_get_window(clock.binding.anchor);if(!IsWindow(anchor))anchor=ext_get_window(clock.binding.taskbar);
-        if(GetWindow(anchor,GW_HWNDPREV)!=clock.window || !IsWindowVisible(clock.window))tbs_sync_order(clock.window,anchor);
-    }else if(!IsWindowVisible(clock.window))ShowWindow(clock.window,SW_SHOWNOACTIVATE);
+    if(attached && !clock.drag)ext_sync_order(clock);
+    else if(!IsWindowVisible(clock.window))ShowWindow(clock.window,SW_SHOWNOACTIVATE);
 }
 void ext_set_floating(Clock& clock,bool floating) {
     bool changed=clock.floating!=floating;
@@ -492,6 +533,7 @@ std::unique_ptr<Clock> ext_create_clock(const std::wstring& identity) {
     return clock;
 }
 void ext_destroy_clocks(bool reset) {
+    ext_ready=false;ext_unwatch_order();
     for(auto& clock:ext_clocks){
         if(clock->drag)ext_finish_drag(*clock,true);
         if(reset){clock->floating=false;ext_remember_pose(*clock);}
@@ -579,6 +621,7 @@ bool ext_receive_packet(const EXT_DETACH_PACKET& packet,HWND sender) {
         if(!ext_keyboard)return false;
     }
     ext_state->mainTarget=ext_get_window(packet.homes[0].target);
+    ext_watch_order();
     ext_ready=true;SetTimer(ext_owner,ext_timer,ext_options.mode==EXT_MODE_LED?LED_FRAME_MS:
         (ext_options.mode==EXT_MODE_FLIP || ext_options.mode==EXT_MODE_NIXIE)?33:100,nullptr);return true;
 }

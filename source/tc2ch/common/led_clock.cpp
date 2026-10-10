@@ -33,7 +33,7 @@ void led_load(LED_OPTIONS* o, LED_READ_LONG number, LED_READ_STRING text)
     ZeroMemory(o, sizeof(*o));
     const char* section = "ExtendedDisplay";
     o->clock = number(section,"LedShowClock",1)!=0;
-    o->date = number(section,"LedShowDate",1)!=0;
+    o->date = number(section,"LedShowDate",0)!=0;
     // Raw UTF-8 format boundary shared with message formats; no ACP conversion.
     char dateValue[LED_FORMAT_MAX*4+1];
     text(section,"LedDateFormat",dateValue,sizeof(dateValue),"<%yyyy%>/<%mm%>/<%dd%>");
@@ -43,10 +43,10 @@ void led_load(LED_OPTIONS* o, LED_READ_LONG number, LED_READ_STRING text)
     o->colon = number(section,"LedShowColon",1)!=0;
     o->frame = number(section,"LedFrame",1)!=0;
     o->count = led_bound(number(section,"LedMessageCount",1),0,3,1);
-    o->columns = led_bound(number(section,"LedMaxChars",number(section,"LedColumns",17)),0,LED_TEXT_MAX,0);
-    o->speed = led_bound(number(section,"LedSpeed",30),5,50,30);
+    o->columns = led_bound(number(section,"LedMaxChars",number(section,"LedColumns",6)),0,LED_TEXT_MAX,0);
+    o->speed = led_bound(number(section,"LedSpeed",40),5,50,40);
     o->brightness = led_bound(number(section,"LedBrightness",100),20,100,100);
-    o->clockSeconds = led_bound(number(section,"LedClockSeconds",4),1,60,4);
+    o->clockSeconds = led_bound(number(section,"LedClockSeconds",8),1,60,8);
     o->clockColor = led_bound(number(section,"LedClockColor",2),1,7,2);
     const WCHAR* defaults[3]={L"\"HELLO TCLOCK \"<%yyyy%>",L"",L""};
     for (int i=0;i<3;++i) {

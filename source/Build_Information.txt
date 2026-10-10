@@ -1,5 +1,5 @@
 Build Information
-2026/02/12 updated for current local build environment
+2026/10/10 updated for the TClock-only source tree
 
 Environment:
 Microsoft Visual Studio 2026 Community (v18.2.1)
@@ -17,13 +17,7 @@ source/build.bat
 
 Build scripts (product-specific):
 source/build_tclock.bat
-source/build_tcalendar.bat
 
 
 Router script:
 source/build.bat tclock
-source/build.bat tcalendar
-
-WebView2 SDK policy:
-- TCalendar uses bundled WebView2 SDK files under source/tcal/third_party/webview2.
-- Do not depend on machine-global WebView2 SDK include/lib paths for TCalendar builds.

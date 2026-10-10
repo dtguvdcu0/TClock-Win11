@@ -1,6 +1,7 @@
 # TCalendar User Guide
 
-Last updated: 2026-03-08  
+Last updated: 2026-10-10
+
 TCalendar is a desktop calendar and task app for Windows that keeps your schedule and task data locally.
 
 ## What You Can Do With TCalendar
@@ -44,7 +45,3 @@ That means:
 - If you move the app, move its `data/` folder with it.
 - If you use a custom template or customized files, keep those with the same application folder.
 - Keep the application folder writable so settings and window state can be saved.
-
-## Related Docs
-
-- Core implementation docs live under `source/tcal/docs/`

@@ -1,6 +1,7 @@
 # TCycle User Guide
 
-Last updated: 2026-03-08  
+Last updated: 2026-10-10
+
 TCycle is a Windows task launcher that runs in the background and starts apps, scripts, or commands for you.
 
 ## What You Can Do With TCycle
@@ -83,7 +84,3 @@ Use `TriggerTypes=non_running` together with watchdog settings.
 - Put command arguments in `ActionArgs`, not inside `ActionPath`.
 - If a task should not run twice, set `SingleInstance=1`.
 - Start with one simple task first, then add more after it works.
-
-## Related Docs
-
-- Core implementation docs live under `source/tcyc/docs/`

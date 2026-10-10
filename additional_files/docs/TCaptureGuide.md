@@ -1,6 +1,7 @@
 # TCapture User Guide
 
-Last updated: 2026-03-08  
+Last updated: 2026-10-10
+
 TCapture is a Windows screenshot tool for one-click capture, hotkey capture, and automatic repeated capture.
 
 ## What You Can Do With TCapture
@@ -104,7 +105,3 @@ Set `auto_capture=true` and choose `auto_seconds`.
 - Use PNG unless you specifically need smaller JPEG files.
 - Use the background mode when you want hotkey or timer capture without reopening the app each time.
 - Keep output folders on a writable local path.
-
-## Related Docs
-
-- Core implementation docs live under `source/tcap/docs/`

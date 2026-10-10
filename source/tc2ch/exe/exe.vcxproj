@@ -419,6 +419,10 @@
   <ItemGroup>
     <ClCompile Include="exemain.c" />
     <ClCompile Include="ext_host.cpp" />
+    <ClCompile Include="update_notice.cpp">
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <ExceptionHandling>Sync</ExceptionHandling>
+    </ClCompile>
     <ClCompile Include="filelist.c" />
     <ClCompile Include="menu.c" />
     <ClCompile Include="mouse.c" />
@@ -459,6 +463,7 @@
   <ItemGroup>
     <ClInclude Include="resource.h" />
     <ClInclude Include="tclock.h" />
+    <ClInclude Include="update_notice.h" />
     <ClInclude Include="..\common\text_codec.h" />
     <ClInclude Include="..\common\text_file_utf8.h" />
     <ClInclude Include="..\common\ini_io_utf8.h" />

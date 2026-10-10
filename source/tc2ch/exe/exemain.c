@@ -4,6 +4,7 @@
 ---------------------------------------------------------------*/
 
 #include "tclock.h"
+#include "update_notice.h"
 #include <winver.h>
 #include <shellapi.h>
 #include "../common/text_codec.h"
@@ -1345,6 +1346,8 @@ static UINT WINAPI TclockExeMain(void)
 
 	g_hwndMain = hwnd;	//メイン隠しウィンドウのハンドルをグローバル変数のg_hwndMainにコピー
 
+	update_Start(hwnd, b_EnglishMenu);
+
 	CreateTClockTrayIcon(GetMyRegLong(NULL, "ShowTrayIcon", TRUE));
 	SetMyRegLong(NULL, "ShowTrayIcon", b_ShowTrayIcon);
 
@@ -1378,6 +1381,7 @@ static UINT WINAPI TclockExeMain(void)
 
 	if (b_DebugLog) WriteDebug_New2("[exemain.c][TclockExeMain] Got out from the main message loop");
 
+	update_Drain();
 	if(g_hMenu) DestroyMenu(g_hMenu);				//右クリックメニュ表示中なら、メニューを消す
 
 	if(g_hInstResource) FreeLibrary(g_hInstResource);		//langja.dllをアンロード
@@ -1529,6 +1533,7 @@ LRESULT CALLBACK WndProc(HWND hwnd,	UINT message, WPARAM wParam, LPARAM lParam)	
 			return 0;
 		}
 		case WM_TIMER:		//WM_TIMERに対する処理
+			if(wParam == UPDATE_NOTICE_TIMER) { update_Tick(); return 0; }
 			if(wParam == IDTIMER_START)		//起動用タイマーのタイムアウトの処理
 			{
 				if (b_DebugLog) WriteDebug_New2("[exemain.c][WndProc] WM_TIMER(IDTIMER_START) received");
@@ -1759,9 +1764,11 @@ LRESULT CALLBACK WndProc(HWND hwnd,	UINT message, WPARAM wParam, LPARAM lParam)	
 			OnHotkey(hwnd, (int)wParam);
 			break;
 		case WM_MEASUREITEM:	//ファイルリスト関係
+			if (update_MeasureMenu((MEASUREITEMSTRUCT*)lParam)) return TRUE;
 			OnMeasureItem(hwnd, wParam, lParam); // filelist.c
 			break;
 		case WM_DRAWITEM:	//ファイルリスト関係
+			if (update_DrawItem((DRAWITEMSTRUCT*)lParam)) return TRUE;
 			OnDrawItem(hwnd, wParam, lParam); // filelist.c
 			break;
 		case WM_INITMENUPOPUP:	//ファイルリスト関係
@@ -1861,6 +1868,7 @@ void TerminateTClock(HWND hwnd)
 	bDestroy = TRUE;
 	ext_close_hosts();
 	EndMouseFunction(hwnd);
+	update_Stop();
 	KillTimer(hwnd, IDTIMER_MAIN);
 	KillTimer(hwnd, IDTIMER_CREATE);
 	KillTimer(hwnd, IDTIMER_ZOMBIECHECK);
@@ -1911,6 +1919,7 @@ void TerminateTClockFromDLL(HWND hwnd, BOOL restartRequested)
 	bDestroy = TRUE;
 	ext_close_hosts();
 	EndMouseFunction(hwnd);
+	update_Stop();
 	KillTimer(hwnd, IDTIMER_MAIN);
 	KillTimer(hwnd, IDTIMER_CREATE);
 	KillTimer(hwnd, IDTIMER_ZOMBIECHECK);

@@ -586,6 +586,7 @@ BEGIN
     LTEXT           "を参考にしWindows11 25H2動作のための修正を行っています。",IDC_STATIC,10,126,182,12
     PUSHBUTTON      "Windowsが起動するたびにTClockを起動",IDC_STARTUP,6,181,136,15
     PUSHBUTTON      "レジストリ削除",IDC_DELREG,146,181,50,15
+    CONTROL         "",IDC_UPDATE_NOTICE,"Button",BS_OWNERDRAW | WS_TABSTOP,6,213,198,12
 END
 
 IDD_PAGEMISC_ENG DIALOGEX 0, 0, 210, 230
@@ -604,6 +605,7 @@ BEGIN
     LTEXT           "was revised with reference to those versions for Windows 11 25H2 compatibility.",IDC_STATIC,10,126,190,16
     PUSHBUTTON      "Create a Shortcut in Startup",IDC_STARTUP,6,181,136,15
     PUSHBUTTON      "Clean Registry",IDC_DELREG,146,181,50,15
+    CONTROL         "",IDC_UPDATE_NOTICE,"Button",BS_OWNERDRAW | WS_TABSTOP,6,213,198,12
 END
 
 IDD_PAGEABOUT DIALOGEX 0, 0, 210, 230

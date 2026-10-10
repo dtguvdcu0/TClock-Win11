@@ -4,6 +4,7 @@
 ---------------------------------------------------------------*/
 
 #include "tclock.h"
+#include "update_notice.h"
 #include <stdio.h>
 #include "..\\dll\\minmode.h"
 #include "..\common\ini_io_utf8.h"
@@ -231,12 +232,14 @@ static const char* tc_menu_safemode_label(void)
 
 static void tc_menu_show_minimal(HWND hwnd, int xPos, int yPos)
 {
+	extern BOOL b_EnglishMenu;
 	tc_menu_reset_popup_state();
 	g_hMenu = CreatePopupMenu();
 	if (!g_hMenu) return;
 	hPopupMenu = g_hMenu;
 	tc_menu_insert_string_utf8(hPopupMenu, 0, MF_BYPOSITION | MF_STRING, IDC_EXIT, MyStringUTF8(IDS_EXITTCLOCK));
 	SetMenuDefaultItem(hPopupMenu, IDC_EXIT, FALSE);
+	update_InsertMenu(hPopupMenu, b_EnglishMenu);
 	SetForegroundWindow98(hwnd);
 	g_menuPopupActive = TRUE;
 	TrackPopupMenu(hPopupMenu, TPM_LEFTALIGN | TPM_RIGHTBUTTON, xPos, yPos, 0, hwnd, NULL);
@@ -245,6 +248,7 @@ static void tc_menu_show_minimal(HWND hwnd, int xPos, int yPos)
 
 static void tc_menu_show_safe(HWND hwnd, int xPos, int yPos)
 {
+	extern BOOL b_EnglishMenu;
 	tc_menu_reset_popup_state();
 	g_hMenu = CreatePopupMenu();
 	if (!g_hMenu) return;
@@ -253,6 +257,7 @@ static void tc_menu_show_safe(HWND hwnd, int xPos, int yPos)
 	tc_menu_insert_string_utf8(hPopupMenu, 1, MF_BYPOSITION | MF_STRING, IDC_RESTART_SAFESESSION, MyStringUTF8(IDS_RESTART));
 	tc_menu_insert_string_utf8(hPopupMenu, 2, MF_BYPOSITION | MF_STRING, IDC_EXIT_SAFEMODE, MyStringUTF8(IDS_EXITTCLOCK));
 	SetMenuDefaultItem(hPopupMenu, IDC_INI_RECOVERY, FALSE);
+	update_InsertMenu(hPopupMenu, b_EnglishMenu);
 	SetForegroundWindow98(hwnd);
 	g_menuPopupActive = TRUE;
 	TrackPopupMenu(hPopupMenu, TPM_LEFTALIGN | TPM_RIGHTBUTTON, xPos, yPos, 0, hwnd, NULL);
@@ -2454,6 +2459,7 @@ void OnContextMenu(HWND hwnd, HWND hwndClicked, int xPos, int yPos)
 
 	tc_menu_ensure_prop_showdir_order(hPopupMenu);
 
+	update_InsertMenu(hPopupMenu, b_EnglishMenu);
 	SetForegroundWindow98(hwnd);
 	g_menuPopupActive = TRUE;
 	TrackPopupMenu(hPopupMenu, TPM_LEFTALIGN | TPM_RIGHTBUTTON,
@@ -2469,6 +2475,7 @@ void OnTClockCommand(HWND hwnd, WORD wID, WORD wCode)
 {
 	extern BOOL b_EnglishMenu;
 	extern int Language_Offset;
+	if (wID == UPDATE_NOTICE_COMMAND) { update_OpenRelease(hwnd); return; }
 	{
 		TC_MENU_ALARM_ENTRY* alarm = tc_menu_alarm_find((UINT)wID);
 		if (alarm != NULL) {

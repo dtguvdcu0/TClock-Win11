@@ -4,6 +4,7 @@
 　　KAZUBON 1997-1998
 ---------------------------------------------*/
 #include "tclock.h"
+#include "update_notice.h"
 #include "../common/text_codec.h"
 #include "../version.h"
 
@@ -30,13 +31,22 @@ BOOL CALLBACK PageMiscProc(HWND hDlg, UINT message,
 	{
 		case WM_INITDIALOG:
 			OnInit(hDlg);
+			update_AttachPage(hDlg, b_EnglishMenu);
 			return TRUE;
+		case WM_DESTROY:
+			update_DetachPage(hDlg);
+			break;
+		case WM_DRAWITEM:
+			return update_DrawItem((DRAWITEMSTRUCT*)lParam);
 		case WM_COMMAND:
 		{
 			WORD id, code;
 			id = LOWORD(wParam); code = HIWORD(wParam);
 			switch(id)
 			{
+			case UPDATE_NOTICE_COMMAND:
+				update_OpenRelease(hDlg);
+				break;
 			// 「スタートアップ」にショートカットをつくる
 			case IDC_STARTUP:
 				OnStartup(hDlg);

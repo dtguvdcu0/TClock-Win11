@@ -69,8 +69,6 @@ Memory:
   MTVK / MTVM / MTVG              **Total virtual memory in KiB / MiB / GiB. Not a practical reading.
   MAVK / MAVM / MAVG              **Available virtual memory in KiB / MiB / GiB. Not a practical reading.
   MUVK / MUVM / MUVG              **Used virtual memory in KiB / MiB / GiB. Not a practical reading.
-  Capacity units                  KiB = 1024 B, MiB = 1024 KiB, GiB = 1024 MiB; TiB = 1024 GiB.
-  Fixed-unit numeric formats      Append your own unit; use IEC labels for memory and disk capacity.
 
 Battery and volume:
   BL                              Battery level.
@@ -97,7 +95,6 @@ Network traffic:
   NSSB / NSSK / NSSM              Send speed in B / kB / MB.
   NRAA / NSAA                     Auto-unit total receive / send.
   NRSA / NSSA                     Auto-unit receive / send speed (B/s, kB/s, MB/s, GB/s).
-  Traffic units                   kB = 1000 B, MB = 1000 kB, GB = 1000 MB.
 
 Connection and route display:
   LTE / WiFi / EthS / EthL        Connection-state strings by connection type (EthS: 4 chars / EthL: 9 chars).

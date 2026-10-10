@@ -69,8 +69,6 @@ CPU:
   MTVK / MTVM / MTVG              **総仮想メモリを KiB / MiB / GiB で表示します。実用的表示と異なります。
   MAVK / MAVM / MAVG              **空き仮想メモリを KiB / MiB / GiB で表示します。実用的表示と異なります。
   MUVK / MUVM / MUVG              **使用中の仮想メモリを KiB / MiB / GiB で表示します。実用的表示と異なります。
-  容量の単位                  KiB = 1024 B、MiB = 1024 KiB、GiB = 1024 MiB、TiB = 1024 GiB。
-  固定単位の数値書式          単位は自分で付けます。メモリ・ディスク容量は IEC 表記にします。
 
 バッテリと音量:
   BL                              バッテリ残量
@@ -97,7 +95,6 @@ CPU:
   NSSB / NSSK / NSSM              送信速度を B / kB / MB で表示します。
   NRAA / NSAA                     自動単位で総受信量 / 総送信量を表示します。
   NRSA / NSSA                     自動単位の受信速度 / 送信速度（B/s、kB/s、MB/s、GB/s）。
-  通信量・速度の単位            kB = 1000 B、MB = 1000 kB、GB = 1000 MB。
 
 接続状態・回線表示:
   LTE / WiFi / EthS / EthL        各接続種別の状態文字列 (EthS: 4文字 / EthL: 9文字)

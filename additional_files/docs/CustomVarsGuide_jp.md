@@ -1,18 +1,18 @@
 # CustomVars ユーザーガイド
 
-最終更新: 2026-08-30
+最終更新: 2026-10-10
 
 CustomVarsは外部ファイルのテキストまたはJSONを読み込み、TClockの書式で`CUSTOM1`から`CUSTOM32`として利用できるようにします。
 
 ## まず試す
 
-1. `tclock-win11.ini`と同じフォルダーを基準に、たとえば`custom\status.txt`を作成します。
+1. `tclock-win11.ini`と同じ場所に`customvars`フォルダーを作り、`custom1_test.txt`と`custom2_static_sample.json`を置きます。どちらも静的サンプルで、スクリプトは不要です。
 2. `[CustomVars]`に項目を追加します。
 
 ```ini
 [CustomVars]
 Custom1Mode=line
-Custom1Path=custom\status.txt
+Custom1Path=customvars\custom1_test.txt
 Custom1FailValue=N/A
 Custom1RefreshSec=10
 Custom1MaxChars=20
@@ -26,7 +26,7 @@ Custom=1
 CustomFormat=yyyy/mm/dd(ddd) hh:nn:ss CUSTOM1
 ```
 
-ファイルの1行目が`Online`なら、時計には`CUSTOM1`の代わりに`Online`と表示されます。
+時計には`CUSTOM1`の代わりに、`custom1_test.txt`の1行目（`カスタム書式用テキスト`）が表示されます。
 
 ## 設定の基本
 
@@ -41,7 +41,7 @@ CustomNPath=...
 
 相対パスは`tclock-win11.ini`があるフォルダーを基準に解決されます。絶対パスも使用できます。
 
-入力ファイルは空でない必要があり、サイズは64 KiB以下でなければなりません。UTF-8、UTF-16、従来のShift-JIS形式を読み込めます。
+入力ファイルは空でない必要があり、サイズは64 KiB（65,536バイト）以下でなければなりません。UTF-8、UTF-16、従来のShift-JIS形式を読み込めます。
 
 ## 読み込みモード
 
@@ -52,7 +52,7 @@ CustomNPath=...
 ```ini
 [CustomVars]
 Custom1Mode=line
-Custom1Path=custom\status.txt
+Custom1Path=customvars\custom1_test.txt
 Custom1RefreshSec=10
 Custom1MaxChars=20
 Custom1FailValue=offline
@@ -66,14 +66,14 @@ Custom1Whitespace=trim_edges
 ```ini
 [CustomVars]
 Custom2Mode=json
-Custom2Path=custom\weather.json
-Custom2JsonValue=東京 {$.weather.desc} {$.weather.temp_c}C
+Custom2Path=customvars\custom2_static_sample.json
+Custom2JsonValue={$.display.headline} {$.status.value} {$.status.count}
 Custom2RefreshSec=60
 Custom2MaxChars=48
 Custom2FailValue=N/A
 ```
 
-JSONパスはドット区切りのオブジェクト名と、0始まりの配列番号を使用します。例: `$.weather.temp_c`、`$.items.0.name`
+JSONパスはドット区切りのオブジェクト名と、0始まりの配列番号を使用します。例: `$.display.headline`、`$.items.0.name`
 
 JSON用の追加設定:
 
@@ -124,23 +124,12 @@ PreloadOnStartup=1
 
 CustomVarsは、入力ファイルを更新するコマンドを実行できます。天気、為替、その他の外部データの取得に利用できます。
 
-```ini
-[CustomVars]
-Custom3Mode=json
-Custom3Path=custom\rates.json
-Custom3JsonValue=USD {$.usd_jpy}
-Custom3ExecEnable=1
-Custom3ExecType=shell
-Custom3ExecStart=both
-Custom3ExecIntervalSec=600
-Custom3ExecCommand=custom\fetch_rates.bat
-Custom3ExecCwd=custom
-```
+更新用スクリプトは同梱していません。データを自動取得する場合は、別途スクリプトを用意してください。
 
 スクリプト関連キー:
 
 - `CustomNExecEnable=0|1`: スクリプト実行を有効／無効にする
-- `CustomNExecType=command|shell`: `cmd.exe`またはPowerShell経由で実行する
+- `CustomNExecType=command|shell`: `command`は`cmd.exe`、`shell`はPowerShell経由で実行する
 - `CustomNExecStart=startup|interval|both|time`: 実行タイミング
 - `CustomNExecIntervalSec`: `interval`または`both`での間隔。1～86400秒
 - `CustomNExecTime=HH:MM`: `time`で使用する毎日の実行時刻
@@ -159,19 +148,15 @@ MaxChars=48
 FailValue=N/A
 Whitespace=trim_edges
 
-Custom4Mode=json
-Custom4Path=custom\weather_tokyo.json
-Custom4JsonValue=東京 {$.weather.desc} {$.weather.temp_c}C 湿度 {$.weather.humidity_pct}%
-Custom4RefreshSec=60
-Custom4MaxChars=48
-Custom4FailValue=N/A
-Custom4JsonStringify=0
-Custom4JsonNullAsEmpty=0
-Custom4ExecEnable=1
-Custom4ExecType=shell
-Custom4ExecStart=both
-Custom4ExecIntervalSec=600
-Custom4ExecCommand=custom\fetch_weather.bat
+Custom2Mode=json
+Custom2Path=customvars\custom2_static_sample.json
+Custom2JsonValue={$.display.headline} {$.status.value} {$.status.count}
+Custom2RefreshSec=60
+Custom2MaxChars=48
+Custom2FailValue=N/A
+Custom2JsonStringify=0
+Custom2JsonNullAsEmpty=0
+Custom2ExecEnable=0
 ```
 
 ## トラブルシューティング

@@ -1,18 +1,18 @@
 # CustomVars User Guide
 
-Last updated: 2026-08-30
+Last updated: 2026-10-10
 
 CustomVars reads text or JSON from external files and makes the result available as `CUSTOM1` through `CUSTOM32` in a TClock format.
 
 ## Quick start
 
-1. Create a text file next to `tclock-win11.ini`, for example `custom\status.txt`.
+1. Place `custom1_test.txt` and `custom2_static_sample.json` in a `customvars` folder next to `tclock-win11.ini`. Both are static samples; no scripts are required.
 2. Add one CustomVars entry:
 
 ```ini
 [CustomVars]
 Custom1Mode=line
-Custom1Path=custom\status.txt
+Custom1Path=customvars\custom1_test.txt
 Custom1FailValue=N/A
 Custom1RefreshSec=10
 Custom1MaxChars=20
@@ -26,7 +26,7 @@ Custom=1
 CustomFormat=yyyy/mm/dd(ddd) hh:nn:ss CUSTOM1
 ```
 
-If the file contains `Online` on its first line, the clock displays `Online` in place of `CUSTOM1`.
+The clock displays the first line of `custom1_test.txt` in place of `CUSTOM1`.
 
 ## How the settings work
 
@@ -41,7 +41,7 @@ Replace `N` with the variable number, such as `Custom4Mode`.
 
 Relative paths are resolved relative to the directory containing `tclock-win11.ini`. Absolute Windows paths are also accepted.
 
-The source file must be non-empty and no larger than 64 KiB. UTF-8, UTF-16, and legacy Shift-JIS text input are supported.
+The source file must be non-empty and no larger than 64 KiB (65,536 bytes). UTF-8, UTF-16, and legacy Shift-JIS text input are supported.
 
 ## Read modes
 
@@ -52,7 +52,7 @@ Use `CustomNMode=line` to read only the first line of a text file. This is the s
 ```ini
 [CustomVars]
 Custom1Mode=line
-Custom1Path=custom\status.txt
+Custom1Path=customvars\custom1_test.txt
 Custom1RefreshSec=10
 Custom1MaxChars=20
 Custom1FailValue=offline
@@ -66,14 +66,14 @@ Use `CustomNMode=json` to read values from a JSON file. The output is a template
 ```ini
 [CustomVars]
 Custom2Mode=json
-Custom2Path=custom\weather.json
-Custom2JsonValue=Tokyo {$.weather.desc} {$.weather.temp_c}C
+Custom2Path=customvars\custom2_static_sample.json
+Custom2JsonValue={$.display.headline} {$.status.value} {$.status.count}
 Custom2RefreshSec=60
 Custom2MaxChars=48
 Custom2FailValue=N/A
 ```
 
-JSON paths use dot-separated object names and zero-based array indexes, for example `$.weather.temp_c` or `$.items.0.name`.
+JSON paths use dot-separated object names and zero-based array indexes, for example `$.display.headline` or `$.items.0.name`.
 
 The following JSON options are available:
 
@@ -124,23 +124,12 @@ Per-item values override the global defaults.
 
 CustomVars can run a command to update a source file. This is useful for weather, exchange-rate, or other externally generated data.
 
-```ini
-[CustomVars]
-Custom3Mode=json
-Custom3Path=custom\rates.json
-Custom3JsonValue=USD {$.usd_jpy}
-Custom3ExecEnable=1
-Custom3ExecType=shell
-Custom3ExecStart=both
-Custom3ExecIntervalSec=600
-Custom3ExecCommand=custom\fetch_rates.bat
-Custom3ExecCwd=custom
-```
+Update scripts are not included with these samples. Prepare your own script if automatic data retrieval is needed.
 
 Script keys:
 
 - `CustomNExecEnable=0|1`: enable or disable script execution.
-- `CustomNExecType=command|shell`: run through `cmd.exe` or PowerShell.
+- `CustomNExecType=command|shell`: `command` runs through `cmd.exe`; `shell` runs through PowerShell.
 - `CustomNExecStart=startup|interval|both|time`: when to run the command.
 - `CustomNExecIntervalSec`: interval for `interval` or `both`, from 1 to 86400 seconds.
 - `CustomNExecTime=HH:MM`: daily run time for `time`.
@@ -159,19 +148,15 @@ MaxChars=48
 FailValue=N/A
 Whitespace=trim_edges
 
-Custom4Mode=json
-Custom4Path=custom\weather_tokyo.json
-Custom4JsonValue=Tokyo {$.weather.desc} {$.weather.temp_c}C humidity {$.weather.humidity_pct}%
-Custom4RefreshSec=60
-Custom4MaxChars=48
-Custom4FailValue=N/A
-Custom4JsonStringify=0
-Custom4JsonNullAsEmpty=0
-Custom4ExecEnable=1
-Custom4ExecType=shell
-Custom4ExecStart=both
-Custom4ExecIntervalSec=600
-Custom4ExecCommand=custom\fetch_weather.bat
+Custom2Mode=json
+Custom2Path=customvars\custom2_static_sample.json
+Custom2JsonValue={$.display.headline} {$.status.value} {$.status.count}
+Custom2RefreshSec=60
+Custom2MaxChars=48
+Custom2FailValue=N/A
+Custom2JsonStringify=0
+Custom2JsonNullAsEmpty=0
+Custom2ExecEnable=0
 ```
 
 ## Troubleshooting

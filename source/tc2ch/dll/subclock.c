@@ -142,6 +142,7 @@ LRESULT CALLBACK WndProcSubClk(HWND hwnd, UINT message, WPARAM wParam, LPARAM lP
 	}
 	case WM_CONTEXTMENU:
 	{	// 右クリックメニュー。なおWin11では今一つうまく消えないが、それはOSのせいだと考えられる。
+		if (bWin11Main && bEnableTooltip) TooltipOnMouseEvent(hwnd, message, wParam, lParam, BASE_UID_SUBSCREEN + GetSubClkIndexFromHWND(hwnd));
 		PostMessage(hwndTClockExeMain, message, wParam, lParam);
 		return 0;
 	}
@@ -154,6 +155,18 @@ LRESULT CALLBACK WndProcSubClk(HWND hwnd, UINT message, WPARAM wParam, LPARAM lP
 			TooltipOnMouseEvent(hwnd, message, wParam, lParam, BASE_UID_SUBSCREEN + GetSubClkIndexFromHWND(hwnd));
 		}
 		return 0;
+	case WM_TIMER:
+		if (bWin11Main && TooltipOnNativeTimer(hwnd, (UINT_PTR)wParam)) return 0;
+		break;
+	case WM_MOUSELEAVE:
+	case WM_LBUTTONDOWN:
+	case WM_RBUTTONDOWN:
+	case WM_MBUTTONDOWN:
+	case WM_XBUTTONDOWN:
+		if (bWin11Main && bEnableTooltip) {
+			TooltipOnMouseEvent(hwnd, message, wParam, lParam, BASE_UID_SUBSCREEN + GetSubClkIndexFromHWND(hwnd));
+		}
+		break;
 	case WM_NOTIFY:
 		//if (b_DebugLog) {
 		//	writeDebugLog_Win10("[subclock.c][WndProcSubClk] WM_NOTIFY Received", 999);
@@ -201,6 +214,7 @@ LRESULT CALLBACK WndProcSubClk(HWND hwnd, UINT message, WPARAM wParam, LPARAM lP
 	{
 		int i = GetSubClkIndexFromHWND(hwnd);
 		WNDPROC oldProc = NULL;
+		if (bWin11Main) TooltipOnMouseEvent(hwnd, WM_NCDESTROY, 0, 0, BASE_UID_SUBSCREEN + i);
 		if (i != 999) {
 			led_stop_subsurface(i);
 			oldProc = oldWndProcSub[i];

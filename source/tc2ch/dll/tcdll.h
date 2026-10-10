@@ -344,6 +344,7 @@ void TooltipOnTimer(HWND hwnd, BOOL bForce);
 void TooltipOnRefresh(HWND hwnd);
 BOOL TooltipOnNotify(LRESULT *plRes, LPARAM lParam);
 void TooltipOnMouseEvent(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam, int uid);
+BOOL TooltipOnNativeTimer(HWND hwnd, UINT_PTR timer);
 BOOL WuiShowTip(const WCHAR* text, BOOL visible, HFONT font, COLORREF backColor,
 	UINT initialDelay, UINT reshowDelay, UINT autoPopDelay);
 struct WUI_TOOLTIP_STATE;

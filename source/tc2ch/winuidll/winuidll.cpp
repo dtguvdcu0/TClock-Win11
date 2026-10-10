@@ -8,6 +8,8 @@
 #include "wui_taskbar.h"
 #include "../common/taskbar_edge.h"
 #include "../common/taskbar_surface.h"
+#include "../common/tooltip_hover.h"
+#include "../common/tooltip_fade.h"
 
 #pragma comment(lib, "gdiplus.lib")
 #pragma comment(lib, "comctl32.lib")
@@ -15,10 +17,7 @@
 #define WUI_TIMER_ID 1
 #define WUI_TIMER_MS 100
 #define WUI_TIP_TIMER_ID 2
-#define WUI_TIP_LEAVE_TIMER_ID 4
-#define WUI_TIP_LEAVE_MS 320
-#define WUI_TIP_MOVE_TIMER_ID 5
-#define WUI_TIP_MOVE_MS 300
+#define WUI_TIP_FADE_TIMER_ID 6
 
 static HINSTANCE g_wuiInst = NULL;
 static HWND g_wuiTarget = NULL;
@@ -39,19 +38,8 @@ static int g_wuiContentLeft = 0;
 static int g_wuiContentWidth = 0;
 static BOOL g_wuiHasTarget = FALSE;
 static BOOL g_wuiHasPlace = FALSE;
-static BOOL g_wuiHoverInside = FALSE;
-static BOOL g_wuiTipSuppressed = FALSE;
-static BOOL g_wuiTipPending = FALSE;
-static BOOL g_wuiTipVisible = FALSE;
-static POINT g_wuiTipPoint = {};
-static BOOL g_wuiTipHasPoint = FALSE;
-static BOOL g_wuiTipMoving = FALSE;
-static POINT g_wuiTipStill = {};
-static ULONGLONG g_wuiTipMoveTick = 0;
-static UINT g_wuiTipMoveDelay = WUI_TIP_MOVE_MS;
-static int g_wuiTipSlot = 0;
-static BOOL g_wuiTipShownOnce = FALSE;
-static UINT g_wuiTipAutoPopDelay = 0;
+static TIP_HOVER_STATE g_wuiHover = {};
+static TIP_FADE_STATE g_wuiFade = {};
 static HFONT g_wuiTipFont = NULL;
 static COLORREF g_wuiTipBackColor = RGB(255, 255, 225);
 static WCHAR g_wuiTipTitle[300];
@@ -607,18 +595,9 @@ static void wui_forward_mouse(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	SendMessageW(g_wuiTarget, msg, wParam, MAKELPARAM(point.x, point.y));
 }
 
-static void wui_hide_tip(void)
+static void wui_conceal_tip(void)
 {
 	TOOLINFOW ti;
-
-	if (g_wuiHost) KillTimer(g_wuiHost, WUI_TIP_TIMER_ID);
-	if (g_wuiHost) KillTimer(g_wuiHost, WUI_TIP_LEAVE_TIMER_ID);
-	if (g_wuiHost) KillTimer(g_wuiHost, WUI_TIP_MOVE_TIMER_ID);
-	g_wuiTipMoving = FALSE;
-	g_wuiTipPending = FALSE;
-	g_wuiTipVisible = FALSE;
-	g_wuiTipHasPoint = FALSE;
-	g_wuiTipShownOnce = FALSE;
 	if (!g_wuiTooltip || !g_wuiTarget) return;
 	ZeroMemory(&ti, sizeof(ti));
 	ti.cbSize = sizeof(ti);
@@ -627,6 +606,21 @@ static void wui_hide_tip(void)
 	ti.uId = 1;
 	SendMessageW(g_wuiTooltip, TTM_TRACKACTIVATE, FALSE, (LPARAM)&ti);
 	ShowWindow(g_wuiTooltip, SW_HIDE);
+	tip_stop_fade(&g_wuiFade, g_wuiTooltip, g_wuiHost, WUI_TIP_FADE_TIMER_ID);
+}
+
+static void wui_hide_tip(void)
+{
+	if (g_wuiHost) KillTimer(g_wuiHost, WUI_TIP_TIMER_ID);
+	g_wuiHover.armed = 0;
+	tip_hide_hover(&g_wuiHover);
+	wui_conceal_tip();
+}
+
+static void wui_schedule_tip(void)
+{
+	if (!tip_schedule_hover(&g_wuiHover, g_wuiHost, WUI_TIP_TIMER_ID, GetTickCount64()))
+		wui_hide_tip();
 }
 
 static BOOL wui_make_tip(void)
@@ -638,7 +632,7 @@ static BOOL wui_make_tip(void)
 	if (!g_wuiTarget || !IsWindow(g_wuiTarget)) return FALSE;
 	InitCommonControlsEx(&icc);
 	g_wuiTooltip = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
-		TOOLTIPS_CLASSW, NULL, WS_POPUP | TTS_ALWAYSTIP | TTS_NOPREFIX,
+		TOOLTIPS_CLASSW, NULL, WS_POPUP | TTS_ALWAYSTIP | TTS_NOPREFIX | TTS_NOANIMATE | TTS_NOFADE,
 		0, 0, 0, 0, g_wuiTarget, NULL, g_wuiInst, NULL);
 	if (!g_wuiTooltip) return FALSE;
 	ZeroMemory(&ti, sizeof(ti));
@@ -689,22 +683,23 @@ static void wui_fit_tip(void)
 	MONITORINFO monitor = { sizeof(monitor) };
 	int x = rcTip.left, y = rcTip.top;
 	if (GetWindowRect(g_wuiTarget, &target)
-	 && GetMonitorInfoW(MonitorFromPoint(g_wuiTipPoint, MONITOR_DEFAULTTONEAREST), &monitor)) {
+	 && GetMonitorInfoW(MonitorFromPoint(g_wuiHover.point, MONITOR_DEFAULTTONEAREST), &monitor)) {
 		// Keep the hover anchor while the text or title changes size.
-		if (target.top <= monitor.rcMonitor.top) { x = g_wuiTipPoint.x - width / 2; y = target.bottom + 8; }
-		else if (target.bottom >= monitor.rcMonitor.bottom) { x = g_wuiTipPoint.x - width / 2; y = target.top - height - 8; }
-		else { x = target.right + 8; y = g_wuiTipPoint.y - height / 2;
+		if (target.top <= monitor.rcMonitor.top) { x = g_wuiHover.point.x - width / 2; y = target.bottom + 8; }
+		else if (target.bottom >= monitor.rcMonitor.bottom) { x = g_wuiHover.point.x - width / 2; y = target.top - height - 8; }
+		else { x = target.right + 8; y = g_wuiHover.point.y - height / 2;
 			if (x + width > monitor.rcWork.right) x = target.left - width - 8; }
 		x = max(monitor.rcWork.left, min(x, monitor.rcWork.right - width));
 		y = max(monitor.rcWork.top, min(y, monitor.rcWork.bottom - height));
 	}
-	if (rcTip.left == x && rcTip.top == y
-	 && rcTip.right - rcTip.left == width && rcTip.bottom - rcTip.top == height) return;
-	SetWindowPos(g_wuiTooltip, NULL, x, y, width, height,
-		SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOZORDER);
-	// The native tooltip region retains its old size after manual resizing.
-	if (rcTip.right - rcTip.left != width || rcTip.bottom - rcTip.top != height)
-		SetWindowRgn(g_wuiTooltip, NULL, TRUE);
+	if (rcTip.left != x || rcTip.top != y
+	 || rcTip.right - rcTip.left != width || rcTip.bottom - rcTip.top != height) {
+		SetWindowPos(g_wuiTooltip, NULL, x, y, width, height,
+			SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOZORDER);
+	}
+	// Native placement can leave a stale region even when the outer size is correct.
+	// Clear it after every fit, including position-only and already-sized refreshes.
+	SetWindowRgn(g_wuiTooltip, NULL, TRUE);
 }
 
 static void wui_activate_tip(void)
@@ -714,12 +709,12 @@ static void wui_activate_tip(void)
 
 	if (!g_wuiTooltip || !g_wuiTarget || !g_wuiTooltipText[0]) return;
 	if (!GetWindowRect(g_wuiTarget, &target)) return;
-	if (!g_wuiTipHasPoint) {
-		if (!GetCursorPos(&g_wuiTipPoint)) {
-			g_wuiTipPoint.x = target.left + (target.right - target.left) / 2;
-			g_wuiTipPoint.y = target.top + (target.bottom - target.top) / 2;
+	if (!g_wuiHover.hasPoint) {
+		if (!GetCursorPos(&g_wuiHover.point)) {
+			g_wuiHover.point.x = target.left + (target.right - target.left) / 2;
+			g_wuiHover.point.y = target.top + (target.bottom - target.top) / 2;
 		}
-		g_wuiTipHasPoint = TRUE;
+		g_wuiHover.hasPoint = TRUE;
 	}
 	ZeroMemory(&ti, sizeof(ti));
 	ti.cbSize = sizeof(ti);
@@ -727,7 +722,7 @@ static void wui_activate_tip(void)
 	ti.hwnd = g_wuiTarget;
 	ti.uId = 1;
 	ti.lpszText = LPSTR_TEXTCALLBACKW;
-	SendMessageW(g_wuiTooltip, TTM_TRACKPOSITION, 0, MAKELPARAM(g_wuiTipPoint.x, g_wuiTipPoint.y));
+	SendMessageW(g_wuiTooltip, TTM_TRACKPOSITION, 0, MAKELPARAM(g_wuiHover.point.x, g_wuiHover.point.y));
 	SendMessageW(g_wuiTooltip, TTM_TRACKACTIVATE, TRUE, (LPARAM)&ti);
 	wui_fit_tip();
 }
@@ -738,88 +733,62 @@ static int wui_scale_tip(int value)
 	return max(1, MulDiv(value, dpi ? dpi : 96, 96));
 }
 
-static BOOL wui_test_move(POINT point, POINT origin, int distance)
-{
-	LONGLONG dx = (LONGLONG)point.x - origin.x;
-	LONGLONG dy = (LONGLONG)point.y - origin.y;
-	return dx * dx + dy * dy > (LONGLONG)distance * distance;
-}
-
 static int wui_pick_tip(POINT point, int previous)
 {
 	RECT target;
 	int slots = (int)(INT_PTR)GetPropW(g_wuiTarget, WUI_TIP_SLOTS_PROP);
 	BOOL vertical = GetPropW(g_wuiTarget, WUI_TIP_AXIS_PROP) != NULL;
-	if (slots < 2 || slots > 3 || !GetWindowRect(g_wuiTarget, &target)) return 0;
-	int length = vertical ? target.bottom - target.top : target.right - target.left;
-	int position = vertical ? point.y - target.top : point.x - target.left;
-	if (length <= 0) return 0;
-	int slot;
-	if (slots == 3) slot = position < length / 3 ? 0 : position <= 2 * length / 3 ? 1 : 2;
-	else slot = position <= length / 2 ? 0 : 1;
-	if (previous >= 0 && previous < slots && slot != previous) {
-		int margin = min(wui_scale_tip(4), max(1, length / slots / 4));
-		int boundary = slot > previous ? (previous + 1) * length / slots : previous * length / slots;
-		if (slot > previous ? position <= boundary + margin : position >= boundary - margin) return previous;
-	}
-	return slot;
+	if (!GetWindowRect(g_wuiTarget, &target)) return 0;
+	return tip_pick_slot(&target, point, vertical, slots, previous, wui_scale_tip(TIP_HOVER_MARGIN));
 }
 
 static BOOL wui_move_tip(POINT point)
 {
-	if (g_wuiTipVisible) {
-		if (!wui_test_move(point, g_wuiTipPoint, wui_scale_tip(28))
-		 && wui_pick_tip(point, g_wuiTipSlot) == g_wuiTipSlot) return TRUE;
-		wui_hide_tip();
-		g_wuiTipMoving = TRUE;
-		g_wuiTipPending = TRUE;
-		g_wuiTipStill = point;
-		g_wuiTipMoveTick = GetTickCount64();
-		SetTimer(g_wuiHost, WUI_TIP_MOVE_TIMER_ID, g_wuiTipMoveDelay, NULL);
-	} else if (g_wuiTipMoving && wui_test_move(point, g_wuiTipStill, wui_scale_tip(6))) {
-		g_wuiTipStill = point;
-		g_wuiTipMoveTick = GetTickCount64();
-		SetTimer(g_wuiHost, WUI_TIP_MOVE_TIMER_ID, g_wuiTipMoveDelay, NULL);
-	}
-	g_wuiTipPoint = point;
-	g_wuiTipHasPoint = TRUE;
+	BOOL wasVisible = g_wuiHover.visible;
+	if (tip_move_hover(&g_wuiHover, point, wui_pick_tip(point, g_wuiHover.slot),
+		wui_scale_tip(TIP_HOVER_DISTANCE), wui_scale_tip(TIP_HOVER_STILL), GetTickCount64())) return TRUE;
+	if (wasVisible) wui_conceal_tip();
+	wui_schedule_tip();
 	return FALSE;
 }
 
 static void wui_show_tip(void)
 {
-	if (!g_wuiTipPending) return;
+	if (!g_wuiHover.pending) return;
+	tip_begin_fade(&g_wuiFade, g_wuiTooltip, g_wuiHost, WUI_TIP_FADE_TIMER_ID,
+		!GetPropW(g_wuiTarget, WUI_TIP_FADE_PROP), GetTickCount64());
 	wui_activate_tip();
-	g_wuiTipPending = FALSE;
-	g_wuiTipVisible = TRUE;
-	g_wuiTipMoving = FALSE;
-	g_wuiTipSlot = wui_pick_tip(g_wuiTipPoint, -1);
-	g_wuiTipShownOnce = TRUE;
-	if (g_wuiTipAutoPopDelay) SetTimer(g_wuiHost, WUI_TIP_TIMER_ID, g_wuiTipAutoPopDelay, NULL);
+	tip_step_fade(&g_wuiFade, g_wuiTooltip, g_wuiHost, WUI_TIP_FADE_TIMER_ID, GetTickCount64());
+	tip_show_hover(&g_wuiHover, wui_pick_tip(g_wuiHover.point, -1), GetTickCount64());
+	wui_schedule_tip();
 }
 
 static void wui_track_leave(HWND hwnd)
 {
 	TRACKMOUSEEVENT tme = { sizeof(tme), TME_LEAVE, hwnd, 0 };
 
-	if (g_wuiHoverInside) return;
+	if (g_wuiHover.inside) return;
 	TrackMouseEvent(&tme);
-	g_wuiHoverInside = TRUE;
+	tip_enter_hover(&g_wuiHover);
 }
 
-static BOOL wui_post_tip_move(void)
+static void wui_wait_tip(void)
 {
-	POINT point;
-	RECT rcHost;
-
-	if (!g_wuiHost || !IsWindow(g_wuiHost)) return FALSE;
-	if (!g_wuiTarget || !IsWindow(g_wuiTarget)) return FALSE;
-	if (!GetCursorPos(&point)) return FALSE;
-	if (!GetWindowRect(g_wuiHost, &rcHost)) return FALSE;
-	if (!PtInRect(&rcHost, point)) return FALSE;
-	ScreenToClient(g_wuiTarget, &point);
-	SendMessageW(g_wuiTarget, WM_MOUSEMOVE, 0, MAKELPARAM(point.x, point.y));
-	return TRUE;
+	POINT point = {};
+	RECT target;
+	BOOL valid = g_wuiTarget && IsWindow(g_wuiTarget)
+		&& GetCursorPos(&point) && GetWindowRect(g_wuiTarget, &target) && PtInRect(&target, point);
+	KillTimer(g_wuiHost, WUI_TIP_TIMER_ID);
+	g_wuiHover.armed = 0;
+	TIP_HOVER_ACTION action = tip_poll_hover(&g_wuiHover, point, valid,
+		wui_scale_tip(TIP_HOVER_STILL), GetTickCount64());
+	if (action == TIP_HOVER_HIDE) wui_hide_tip();
+	else if (action == TIP_HOVER_SHOW) {
+		ScreenToClient(g_wuiTarget, &point);
+		SendMessageW(g_wuiTarget, WM_MOUSEMOVE, 0, MAKELPARAM(point.x, point.y));
+		if (g_wuiHover.pending && g_wuiHover.inside && !g_wuiHover.suppressed) wui_show_tip();
+	}
+	wui_schedule_tip();
 }
 
 static LRESULT CALLBACK wui_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
@@ -830,9 +799,10 @@ static LRESULT CALLBACK wui_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 	case WM_MOUSEACTIVATE:
 		return MA_NOACTIVATE;
 	case WM_MOUSEMOVE:
-		KillTimer(hwnd, WUI_TIP_LEAVE_TIMER_ID);
 		wui_track_leave(hwnd);
-		if (g_wuiTipSuppressed) return 0;
+		tip_enter_hover(&g_wuiHover);
+		wui_schedule_tip();
+		if (g_wuiHover.suppressed) return 0;
 		{
 			POINT point = { (short)LOWORD(lParam), (short)HIWORD(lParam) };
 			if (ClientToScreen(hwnd, &point)) {
@@ -844,17 +814,16 @@ static LRESULT CALLBACK wui_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 		wui_forward_mouse(hwnd, msg, wParam, lParam);
 		return 0;
 	case WM_MOUSELEAVE:
-		g_wuiHoverInside = FALSE;
-		g_wuiTipSuppressed = FALSE;
-		if (g_wuiTipVisible) SetTimer(hwnd, WUI_TIP_LEAVE_TIMER_ID, WUI_TIP_LEAVE_MS, NULL);
-		else wui_hide_tip();
+		tip_leave_hover(&g_wuiHover, GetTickCount64());
+		if (!g_wuiHover.visible) wui_conceal_tip();
+		wui_schedule_tip();
 		return 0;
 	case WM_LBUTTONDOWN:
 	case WM_RBUTTONDOWN:
 	case WM_MBUTTONDOWN:
 	case WM_XBUTTONDOWN:
 		if (msg == WM_RBUTTONDOWN) {
-			g_wuiTipSuppressed = TRUE;
+			g_wuiHover.suppressed = TRUE;
 			wui_hide_tip();
 		}
 		SetCapture(hwnd);
@@ -868,53 +837,12 @@ static LRESULT CALLBACK wui_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 		if (GetCapture() == hwnd) ReleaseCapture();
 		return 0;
 	case WM_TIMER:
-		if (wParam == WUI_TIP_LEAVE_TIMER_ID) {
-			KillTimer(hwnd, WUI_TIP_LEAVE_TIMER_ID);
-			if (!g_wuiHoverInside) wui_hide_tip();
-			return 0;
-		}
-		if (wParam == WUI_TIP_MOVE_TIMER_ID) {
-			KillTimer(hwnd, WUI_TIP_MOVE_TIMER_ID);
-			if (!g_wuiTipMoving) return 0;
-			ULONGLONG elapsed = GetTickCount64() - g_wuiTipMoveTick;
-			if (elapsed < g_wuiTipMoveDelay) {
-				SetTimer(hwnd, WUI_TIP_MOVE_TIMER_ID, (UINT)(g_wuiTipMoveDelay - elapsed), NULL);
-				return 0;
-			}
-			POINT point;
-			if (!g_wuiHoverInside || g_wuiTipSuppressed || !GetCursorPos(&point)
-			 || !g_wuiTarget || !IsWindow(g_wuiTarget)) {
-				wui_hide_tip();
-				return 0;
-			}
-			RECT target;
-			if (!GetWindowRect(g_wuiTarget, &target) || !PtInRect(&target, point)) {
-				wui_hide_tip();
-				return 0;
-			}
-			if (wui_test_move(point, g_wuiTipStill, wui_scale_tip(6))) {
-				wui_move_tip(point);
-				return 0;
-			}
-			g_wuiTipPoint = point;
-			g_wuiTipHasPoint = TRUE;
-			ScreenToClient(g_wuiTarget, &point);
-			SendMessageW(g_wuiTarget, WM_MOUSEMOVE, 0, MAKELPARAM(point.x, point.y));
-			if (g_wuiTipMoving && g_wuiTipPending && g_wuiHoverInside && !g_wuiTipSuppressed)
-				wui_show_tip();
+		if (wParam == WUI_TIP_FADE_TIMER_ID) {
+			tip_step_fade(&g_wuiFade, g_wuiTooltip, g_wuiHost, WUI_TIP_FADE_TIMER_ID, GetTickCount64());
 			return 0;
 		}
 		if (wParam == WUI_TIP_TIMER_ID) {
-			KillTimer(hwnd, WUI_TIP_TIMER_ID);
-			if (g_wuiTipMoving) return 0;
-			if (g_wuiTipPending && g_wuiHoverInside) {
-				if (wui_post_tip_move()) wui_show_tip();
-				else wui_hide_tip();
-			}
-			else if (g_wuiTipVisible) {
-				wui_hide_tip();
-				g_wuiTipSuppressed = TRUE;
-			}
+			wui_wait_tip();
 			return 0;
 		}
 		if (wParam == WUI_TIMER_ID) {
@@ -1088,9 +1016,9 @@ extern "C" BOOL WINAPI WuiSetTooltip(const WCHAR* text, BOOL visible, HFONT font
 		return TRUE;
 	}
 	if (!text || !text[0]) return FALSE;
-	if (g_wuiTipSuppressed) return TRUE;
-	g_wuiTipMoveDelay = max((UINT)WUI_TIP_MOVE_MS, max(initialDelay, reshowDelay));
-	if (g_wuiTipVisible || g_wuiTipPending) {
+	if (g_wuiHover.suppressed) return TRUE;
+	tip_config_hover(&g_wuiHover, initialDelay, reshowDelay, autoPopDelay);
+	if (g_wuiHover.visible || g_wuiHover.pending) {
 		// Preserve the previous snapshot until refresh has compared and fitted it.
 		WUI_TOOLTIP_STATE state = { sizeof(state) };
 		state.text = text;
@@ -1100,7 +1028,7 @@ extern "C" BOOL WINAPI WuiSetTooltip(const WCHAR* text, BOOL visible, HFONT font
 		state.backColor = backColor;
 		state.textColor = g_wuiTipTextColor;
 		state.titleColor = g_wuiTipTitleColor;
-		g_wuiTipAutoPopDelay = autoPopDelay;
+		g_wuiHover.autoDelay = autoPopDelay;
 		return WuiRefreshTooltip(&state);
 	}
 	BOOL textChanged = lstrcmpW(g_wuiTooltipText, text) != 0;
@@ -1114,17 +1042,14 @@ extern "C" BOOL WINAPI WuiSetTooltip(const WCHAR* text, BOOL visible, HFONT font
 	}
 	g_wuiTipFont = font;
 	g_wuiTipBackColor = backColor;
-	if (!g_wuiTipVisible)
+	if (!g_wuiHover.visible)
 		SendMessageW(g_wuiTooltip, TTM_SETMAXTIPWIDTH, 0, wui_tip_width(g_wuiTooltipText, font));
 	ti.lpszText = LPSTR_TEXTCALLBACKW;
 	if (textChanged) SendMessageW(g_wuiTooltip, TTM_UPDATETIPTEXTW, 0, (LPARAM)&ti);
-	g_wuiTipAutoPopDelay = autoPopDelay;
-	if (!g_wuiTipPending && !g_wuiTipVisible) {
-		UINT delay = g_wuiTipShownOnce ? reshowDelay : initialDelay;
-		g_wuiTipPending = TRUE;
-		if (delay) SetTimer(g_wuiHost, WUI_TIP_TIMER_ID, delay, NULL);
-		else wui_show_tip();
-	}
+	g_wuiHover.autoDelay = autoPopDelay;
+	tip_begin_hover(&g_wuiHover, GetTickCount64(), initialDelay);
+	if (!initialDelay) wui_show_tip();
+	else wui_schedule_tip();
 	return TRUE;
 }
 
@@ -1134,7 +1059,7 @@ extern "C" BOOL WINAPI WuiRefreshTooltip(const WUI_TOOLTIP_STATE* state)
 	UINT dpi;
 	BOOL textChanged, titleChanged, fontChanged, styleChanged;
 	if (!state || state->cb != sizeof(*state) || !state->text || !state->title) return FALSE;
-	if (!g_wuiTooltip || (!g_wuiTipVisible && !g_wuiTipPending)) return FALSE;
+	if (!g_wuiTooltip || (!g_wuiHover.visible && !g_wuiHover.pending)) return FALSE;
 	if (state->font) GetObjectW(state->font, sizeof(fontInfo), &fontInfo);
 	if (state->titleFont) GetObjectW(state->titleFont, sizeof(titleInfo), &titleInfo);
 	dpi = GetDpiForWindow(g_wuiTooltip);
@@ -1148,7 +1073,8 @@ extern "C" BOOL WINAPI WuiRefreshTooltip(const WUI_TOOLTIP_STATE* state)
 		|| g_wuiTipBackColor != state->backColor
 		|| g_wuiTipTextColor != state->textColor || g_wuiTipTitleColor != state->titleColor;
 	// Enabled live updates retain the classic tooltip's extended display duration.
-	if (g_wuiTipVisible && g_wuiTipAutoPopDelay) SetTimer(g_wuiHost, WUI_TIP_TIMER_ID, g_wuiTipAutoPopDelay, NULL);
+	tip_refresh_hover(&g_wuiHover, GetTickCount64());
+	wui_schedule_tip();
 	if (!textChanged && !titleChanged && !styleChanged) return TRUE;
 	lstrcpynW(g_wuiTooltipText, state->text, _countof(g_wuiTooltipText));
 	lstrcpynW(g_wuiTipTitle, state->title, _countof(g_wuiTipTitle));
@@ -1168,7 +1094,7 @@ extern "C" BOOL WINAPI WuiRefreshTooltip(const WUI_TOOLTIP_STATE* state)
 	g_wuiTipTitleColor = state->titleColor;
 	g_wuiTipDpi = dpi;
 	g_wuiTipHasStyle = TRUE;
-	if (!g_wuiTipVisible) return TRUE;
+	if (!g_wuiHover.visible) return TRUE;
 	wui_fit_tip();
 	// Repaint content without restarting tracking or erasing the entire popup.
 	InvalidateRect(g_wuiTooltip, NULL, FALSE);

@@ -2,6 +2,7 @@
 // Microsoft Visual C++ で生成されたインクルード ファイル。
 // langja.rc で使用
 //
+#define IDC_TIPFADE                     49011
 #define IDS_CAUTION                     1
 #define IDS_DLLVER                      2
 #define IDS_PROPERTY                    3

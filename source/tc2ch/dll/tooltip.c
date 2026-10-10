@@ -8,6 +8,8 @@
 #include "../winuidll/wui_api.h"
 #include "../common/text_codec.h"
 #include "../common/text_file_utf8.h"
+#include "../common/tooltip_hover.h"
+#include "../common/tooltip_fade.h"
 #include <stdio.h>
 
 extern HANDLE hmod;
@@ -205,6 +207,189 @@ static void tip_read_delays(UINT* initialDelay, UINT* reshowDelay, UINT* autoPop
 	}
 }
 
+// Native secondary tooltips retain their placement; timing belongs to tooltip_hover.h.
+#define TIP_NATIVE_TIMER 0x54435401u
+#define TIP_NATIVE_FADE_TIMER 0x54435403u
+
+static HWND tip_native_owner = NULL;
+static TIP_HOVER_STATE tip_native_hover = {0};
+static TIP_FADE_STATE tip_native_fade = {0};
+static BOOL tip_fade_enabled = TRUE;
+static BOOL tip_native_internal = FALSE;
+
+static int tip_scale_native(int value)
+{
+	typedef UINT (WINAPI *TIP_DPI_FN)(HWND);
+	static TIP_DPI_FN getDpi = NULL;
+	static BOOL resolved = FALSE;
+	UINT dpi;
+	if (!resolved) {
+		HMODULE user32 = GetModuleHandleW(L"user32.dll");
+		if (user32) getDpi = (TIP_DPI_FN)GetProcAddress(user32, "GetDpiForWindow");
+		resolved = TRUE;
+	}
+	dpi = tip_native_owner && getDpi ? getDpi(tip_native_owner) : 96;
+	return max(1, MulDiv(value, dpi ? dpi : 96, 96));
+}
+
+static int tip_pick_native(POINT point, int previous)
+{
+	RECT target;
+	if (!GetWindowRect(tip_native_owner, &target)) return 0;
+	return tip_pick_slot(&target, point, bTooltipTate,
+		bTooltip2 ? (bTooltip3 ? 3 : 2) : 1, previous, tip_scale_native(TIP_HOVER_MARGIN));
+}
+
+static void tip_conceal_native(void)
+{
+	if (!hwndTooltip) return;
+	tip_native_internal = TRUE;
+	SendMessageW(hwndTooltip, TTM_POP, 0, 0);
+	SendMessageW(hwndTooltip, TTM_ACTIVATE, FALSE, 0);
+	tip_stop_fade(&tip_native_fade, hwndTooltip, tip_native_owner, TIP_NATIVE_FADE_TIMER);
+	tip_native_internal = FALSE;
+}
+
+static void tip_reset_native(void)
+{
+	if (tip_native_owner) {
+		KillTimer(tip_native_owner, TIP_NATIVE_TIMER);
+		tip_conceal_native();
+		if (hwndTooltip) SendMessageW(hwndTooltip, TTM_ACTIVATE, TRUE, 0);
+	}
+	tip_native_owner = NULL;
+	ZeroMemory(&tip_native_hover, sizeof(tip_native_hover));
+}
+
+static void tip_schedule_native(void)
+{
+	if (!tip_schedule_hover(&tip_native_hover, tip_native_owner, TIP_NATIVE_TIMER, GetTickCount64()))
+		tip_reset_native();
+}
+
+static void tip_wait_native(void)
+{
+	POINT point = {0};
+	RECT target;
+	MSG relay = {0};
+	BOOL valid = hwndTooltip && tip_native_owner && IsWindow(tip_native_owner)
+		&& IsWindowVisible(tip_native_owner) && GetCursorPos(&point)
+		&& GetWindowRect(tip_native_owner, &target) && PtInRect(&target, point);
+	TIP_HOVER_ACTION action;
+	KillTimer(tip_native_owner, TIP_NATIVE_TIMER);
+	tip_native_hover.armed = 0;
+	action = tip_poll_hover(&tip_native_hover, point, valid,
+		tip_scale_native(TIP_HOVER_STILL), GetTickCount64());
+	if (action == TIP_HOVER_HIDE) tip_conceal_native();
+	else if (action == TIP_HOVER_SHOW) {
+		tip_hover_point = point;
+		tip_has_point = TRUE;
+		bTooltipUpdated = FALSE;
+		TooltipUpdateText();
+		relay.hwnd = tip_native_owner;
+		relay.message = WM_MOUSEMOVE;
+		relay.time = GetTickCount();
+		relay.pt = point;
+		ScreenToClient(tip_native_owner, &point);
+		relay.lParam = MAKELPARAM(point.x, point.y);
+		// Supply hit-testing/placement once, after our shared deadline has elapsed.
+		tip_begin_fade(&tip_native_fade, hwndTooltip, tip_native_owner, TIP_NATIVE_FADE_TIMER,
+			tip_fade_enabled, GetTickCount64());
+		tip_native_internal = TRUE;
+		SendMessageW(hwndTooltip, TTM_ACTIVATE, TRUE, 0);
+		SendMessageW(hwndTooltip, TTM_RELAYEVENT, 0, (LPARAM)&relay);
+		SendMessageW(hwndTooltip, TTM_POPUP, 0, 0);
+		// Comctl32 may reset alpha during activation; reapply the first fade frame.
+		tip_step_fade(&tip_native_fade, hwndTooltip, tip_native_owner, TIP_NATIVE_FADE_TIMER, GetTickCount64());
+		tip_native_internal = FALSE;
+		if (tip_native_hover.pending) {
+			tip_hide_hover(&tip_native_hover);
+			tip_conceal_native();
+		}
+	}
+	tip_schedule_native();
+}
+
+static void tip_notify_native(UINT code)
+{
+	if (!tip_native_owner) return;
+	if (code == TTN_SHOW && tip_native_internal && tip_native_hover.pending) {
+		tip_show_hover(&tip_native_hover, tip_pick_native(tip_hover_point, -1), GetTickCount64());
+	} else if (code == TTN_POP && !tip_native_internal) {
+		tip_stop_fade(&tip_native_fade, hwndTooltip, tip_native_owner, TIP_NATIVE_FADE_TIMER);
+		tip_hide_hover(&tip_native_hover);
+		tip_native_hover.suppressed = tip_native_hover.inside;
+		tip_schedule_native();
+	}
+}
+
+static BOOL tip_handle_native(MSG* msg, int uid)
+{
+	POINT point;
+	UINT initial, reshow, autoPop;
+	BOOL wasVisible;
+	if (msg->message != WM_MOUSEMOVE) {
+		if (msg->hwnd != tip_native_owner) return TRUE;
+		if (msg->message == WM_MOUSELEAVE) {
+			tip_leave_hover(&tip_native_hover, GetTickCount64());
+			if (!tip_native_hover.visible) tip_conceal_native();
+			tip_schedule_native();
+		} else {
+			tip_reset_native();
+			if (msg->message == WM_RBUTTONDOWN || msg->message == WM_CONTEXTMENU) {
+				tip_native_owner = msg->hwnd;
+				tip_native_hover.suppressed = TRUE;
+			}
+		}
+		return TRUE;
+	}
+	if (!hwndTooltip) return FALSE;
+	point.x = GET_X_LPARAM(msg->lParam);
+	point.y = GET_Y_LPARAM(msg->lParam);
+	if (!ClientToScreen(msg->hwnd, &point)) return TRUE;
+	if (tip_native_owner != msg->hwnd) {
+		tip_reset_native();
+		tip_wui_hide();
+		bWin11VerticalTipActive = FALSE;
+		bTooltipShow = bTooltipUpdated = FALSE;
+		tip_native_owner = msg->hwnd;
+		tip_conceal_native();
+	}
+	if (!tip_native_hover.inside) {
+		TRACKMOUSEEVENT track = {sizeof(track), TME_LEAVE, msg->hwnd, 0};
+		TrackMouseEvent(&track);
+	}
+	tip_enter_hover(&tip_native_hover);
+	if (tip_native_hover.suppressed) return TRUE;
+	hwndCurrentTooltipOwner = msg->hwnd;
+	uIdCurrentTooltipOwner = uid;
+	tip_read_delays(&initial, &reshow, &autoPop);
+	tip_config_hover(&tip_native_hover, initial, reshow, autoPop);
+	wasVisible = tip_native_hover.visible;
+	if (!tip_move_hover(&tip_native_hover, point, tip_pick_native(point, tip_native_hover.slot),
+		tip_scale_native(TIP_HOVER_DISTANCE), tip_scale_native(TIP_HOVER_STILL), GetTickCount64())) {
+		if (wasVisible) tip_conceal_native();
+		tip_hover_point = point;
+		tip_has_point = TRUE;
+		tip_begin_hover(&tip_native_hover, GetTickCount64(), initial);
+	}
+	if (tip_native_hover.pending && tip_native_hover.due <= GetTickCount64()) tip_wait_native();
+	else tip_schedule_native();
+	return TRUE;
+}
+
+BOOL TooltipOnNativeTimer(HWND hwnd, UINT_PTR timer)
+{
+	if (hwnd != tip_native_owner) return FALSE;
+	if (timer == TIP_NATIVE_FADE_TIMER) {
+		tip_step_fade(&tip_native_fade, hwndTooltip, tip_native_owner, timer, GetTickCount64());
+		return TRUE;
+	}
+	if (timer != TIP_NATIVE_TIMER || !tip_native_hover.armed) return FALSE;
+	tip_wait_native();
+	return TRUE;
+}
+
 static void TooltipNormalizePhysicalNewlines(const char* src, char* dst, int dstLen)
 {
 	int i = 0;
@@ -327,6 +512,7 @@ static void tip_publish_area(void)
 	if (hwndClockMain) {
 		SetPropW(hwndClockMain, WUI_TIP_SLOTS_PROP, (HANDLE)(INT_PTR)(bTooltip2 ? (bTooltip3 ? 3 : 2) : 1));
 		SetPropW(hwndClockMain, WUI_TIP_AXIS_PROP, (HANDLE)(INT_PTR)(bTooltipTate ? 1 : 0));
+		SetPropW(hwndClockMain, WUI_TIP_FADE_PROP, (HANDLE)(INT_PTR)(tip_fade_enabled ? 0 : 1));
 	}
 }
 
@@ -341,7 +527,8 @@ void TooltipInit(HWND hwnd)
 	dwTooltipTypeCur = dwTooltipType;
 
 	hwndTooltip = CreateWindowEx(0, TOOLTIPS_CLASS, (LPSTR)NULL,
-		WS_POPUP | TTS_ALWAYSTIP | TTS_NOPREFIX | ((dwTooltipTypeCur == TOOLTIPTYPE_BALLOON) ? TTS_BALLOON : 0),
+		WS_POPUP | TTS_ALWAYSTIP | TTS_NOPREFIX | ((dwTooltipTypeCur == TOOLTIPTYPE_BALLOON) ? TTS_BALLOON : 0)
+		| ((bWin11Main || !tip_fade_enabled) ? TTS_NOANIMATE | TTS_NOFADE : 0),
 		CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
 		hwnd, NULL, hmod, NULL);
 
@@ -427,6 +614,7 @@ void TooltipRemoveSubClock(int index)
 	extern HWND hwndClockSubClk[];
 	TOOLINFO tempTooltipInfo;
 
+	if (tip_native_owner == hwndClockSubClk[index]) tip_reset_native();
 	if (!hwndTooltip || !hwndClockSubClk[index])return;
 
 	tempTooltipInfo.cbSize = sizeof(TOOLINFO);
@@ -448,6 +636,7 @@ void TooltipDeleteRes(void)
 
 void TooltipEnd(HWND hwnd)
 {
+	tip_reset_native();
 	if (b_DebugLog)writeDebugLog_Win10("[tooltip.c] TooltipEnd called.", 999);
 
 	if (hwndTooltip)
@@ -465,6 +654,7 @@ void TooltipEnd(HWND hwnd)
 	tip_has_point = FALSE;
 	RemovePropW(hwnd, WUI_TIP_SLOTS_PROP);
 	RemovePropW(hwnd, WUI_TIP_AXIS_PROP);
+	RemovePropW(hwnd, WUI_TIP_FADE_PROP);
 
 }
 
@@ -488,6 +678,16 @@ void TooltipOnRefresh(HWND hwnd)
 		bTooltipShow = FALSE;
 		bTooltipUpdated = FALSE;
 		bWin11VerticalTipActive = FALSE;
+		return;
+	}
+	if (bWin11Main && owner && owner != hwndClockMain && wasShowing) {
+		POINT point;
+		RECT target;
+		if (IsWindow(owner) && GetCursorPos(&point) && GetWindowRect(owner, &target)
+		 && PtInRect(&target, point)) {
+			ScreenToClient(owner, &point);
+			TooltipOnMouseEvent(owner, WM_MOUSEMOVE, 0, MAKELPARAM(point.x, point.y), ownerId);
+		}
 		return;
 	}
 	if (wasShowing || wasVerticalActive) {
@@ -802,7 +1002,8 @@ static void TooltipUpdateText(void)
 
 		GetWindowRect(hwndCurrentTooltipOwner, &rcClock);
 		dw = GetMessagePos();
-		if (bWin11Main && tip_has_point && hwndCurrentTooltipOwner == hwndClockMain)
+		if (bWin11Main && tip_has_point
+		 && (hwndCurrentTooltipOwner == hwndClockMain || hwndCurrentTooltipOwner == tip_native_owner))
 			dw = MAKELONG(tip_hover_point.x, tip_hover_point.y);
 		if (bTooltipTate)
 		{
@@ -909,6 +1110,7 @@ static void TooltipUpdateText(void)
 void TooltipOnTimer(HWND hwnd, BOOL bForce)
 {
 	UNREFERENCED_PARAMETER(hwnd);
+	if (tip_native_hover.pending) return;
 	//Ver 4.1以降はOnTimer_Win10から行うこととする。
 	//そのための元の200msごとのカウントは無効化
 	//if (++iTooltipDispIntervalCount < iTooltipDispInterval * 5) return;		//200ms単位なので5回に1回しか通過しない。
@@ -935,6 +1137,10 @@ void TooltipOnTimer(HWND hwnd, BOOL bForce)
 		ti.uId = uIdCurrentTooltipOwner;
 		SendMessage(hwndTooltip, TTM_GETTOOLINFO, 0, (LPARAM)(LPTOOLINFO)&ti);
 		SendMessage(hwndTooltip, TTM_UPDATETIPTEXT, 0, (LPARAM)(LPTOOLINFO)&ti);
+		if (tip_native_owner && tip_native_hover.visible) {
+			tip_refresh_hover(&tip_native_hover, GetTickCount64());
+			tip_schedule_native();
+		}
 
 	}
 
@@ -984,6 +1190,7 @@ void TooltipReadData(void)
 	bTooltip2 = GetMyRegLong("Tooltip", "Tip2Use", FALSE);
 	bTooltip3 = GetMyRegLong("Tooltip", "Tip3Use", FALSE);
 	bTooltipTate = GetMyRegLong("Tooltip", "TipTateFlg", FALSE);
+	tip_fade_enabled = GetMyRegLong("Tooltip", "FadeIn", TRUE) != FALSE;
 	tip_publish_area();
 
 	bEnableTooltip = GetMyRegLong("Tooltip", "EnableTooltip", TRUE);
@@ -1029,6 +1236,8 @@ BOOL TooltipOnNotify(LRESULT *plRes, LPARAM lParam)
 
 	if ((!hwndTooltip || hwndTooltip != ((LPNMHDR)lParam)->hwndFrom)
 	 && !WuiIsTip(((LPNMHDR)lParam)->hwndFrom)) return FALSE;
+	if (((LPNMHDR)lParam)->hwndFrom == hwndTooltip)
+		tip_notify_native(((LPNMHDR)lParam)->code);
 	switch (((LPNMHDR)lParam)->code)
 	{
 		case NM_CUSTOMDRAW:
@@ -1303,6 +1512,13 @@ void TooltipOnMouseEvent(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam, 
 	//結局は、ツール登録の際にti.uFlagsにTTF_SUBCLASSを入れたら解決した。
 
 
+	if (bWin11Main) {
+		if (hwnd != hwndClockMain) {
+			if (tip_handle_native(&msg, uid)) return;
+		} else if (message == WM_MOUSEMOVE && tip_native_owner) {
+			tip_reset_native();
+		}
+	}
 	if (hwnd == hwndClockMain) {
 		if (message == WM_MOUSEMOVE) {
 			UINT initialDelay = 0;

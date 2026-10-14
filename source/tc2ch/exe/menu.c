@@ -6,6 +6,7 @@
 #include "tclock.h"
 #include "update_notice.h"
 #include <stdio.h>
+#include <commctrl.h>
 #include "..\\dll\\minmode.h"
 #include "..\common\ini_io_utf8.h"
 #include "..\common\text_codec.h"
@@ -1152,6 +1153,101 @@ static void menu_start_sync(HWND window)
     g_menuSyncProcess = execute.hProcess;
 }
 
+typedef struct MENU_POPUP_LOOKUP {
+    HMENU menu;
+    HWND window;
+} MENU_POPUP_LOOKUP;
+
+static BOOL CALLBACK menu_match_popup(HWND window, LPARAM data)
+{
+    MENU_POPUP_LOOKUP* lookup = (MENU_POPUP_LOOKUP*)data;
+    MENUBARINFO info = { sizeof(info) };
+    if (GetMenuBarInfo(window, OBJID_CLIENT, 0, &info) && info.hMenu == lookup->menu) {
+        lookup->window = window;
+        return FALSE;
+    }
+    return TRUE;
+}
+
+static LRESULT CALLBACK menu_draw_popup(HWND window, UINT message, WPARAM wParam, LPARAM lParam,
+    UINT_PTR id, DWORD_PTR data)
+{
+    UNREFERENCED_PARAMETER(data);
+    if (message == WM_NCDESTROY) RemoveWindowSubclass(window, menu_draw_popup, id);
+    if (message == WM_ERASEBKGND) return 1;
+    if (message == WM_PAINT && !wParam) {
+        RECT client;
+        HDC screen, memory;
+        HBITMAP bitmap, previous;
+        PAINTSTRUCT paint;
+        if (!GetClientRect(window, &client) || client.right <= 0 || client.bottom <= 0)
+            return DefSubclassProc(window, message, wParam, lParam);
+        screen = GetDC(window);
+        if (!screen) return DefSubclassProc(window, message, wParam, lParam);
+        memory = CreateCompatibleDC(screen);
+        bitmap = memory ? CreateCompatibleBitmap(screen, client.right, client.bottom) : NULL;
+        previous = bitmap ? (HBITMAP)SelectObject(memory, bitmap) : NULL;
+        ReleaseDC(window, screen);
+        if (!previous || previous == (HBITMAP)HGDI_ERROR) {
+            if (bitmap) DeleteObject(bitmap);
+            if (memory) DeleteDC(memory);
+            return DefSubclassProc(window, message, wParam, lParam);
+        }
+        // Keep native theme/selection drawing, but present the finished update in one transfer.
+        screen = BeginPaint(window, &paint);
+        DefSubclassProc(window, WM_PRINTCLIENT, (WPARAM)memory, PRF_CLIENT | PRF_ERASEBKGND);
+        if (screen) BitBlt(screen, paint.rcPaint.left, paint.rcPaint.top,
+            paint.rcPaint.right - paint.rcPaint.left, paint.rcPaint.bottom - paint.rcPaint.top,
+            memory, paint.rcPaint.left, paint.rcPaint.top, SRCCOPY);
+        EndPaint(window, &paint);
+        SelectObject(memory, previous);
+        DeleteObject(bitmap);
+        DeleteDC(memory);
+        return 0;
+    }
+    return DefSubclassProc(window, message, wParam, lParam);
+}
+
+static void menu_update_label(HMENU menu, UINT command, const char* text)
+{
+    WCHAR next[1024], current[1024];
+    MENUITEMINFOW info = { sizeof(info) };
+    MENU_POPUP_LOOKUP lookup = { menu, NULL };
+    RECT before, after, row;
+    HRGN pending = NULL, changed = NULL;
+    int position;
+    BOOL clipped = FALSE;
+    if (!tc_menu_utf8_to_wide_strict(text, next, _countof(next))) return;
+    info.fMask = MIIM_STRING;
+    info.dwTypeData = current;
+    info.cch = _countof(current);
+    if (!GetMenuItemInfoW(menu, command, FALSE, &info) || lstrcmpW(current, next) == 0) return;
+    // Match only this thread's native popup; submenu/Explorer windows remain untouched.
+    EnumThreadWindows(GetCurrentThreadId(), menu_match_popup, (LPARAM)&lookup);
+    if (lookup.window && SetWindowSubclass(lookup.window, menu_draw_popup, (UINT_PTR)menu_draw_popup, 0)) {
+        position = tc_menu_find_position_by_id(menu, command);
+        if (position >= 0 && GetWindowRect(lookup.window, &before) && GetMenuItemRect(NULL, menu, position, &row)) {
+            MapWindowPoints(NULL, lookup.window, (POINT*)&row, 2);
+            pending = CreateRectRgn(0, 0, 0, 0);
+            changed = CreateRectRgnIndirect(&row);
+            clipped = pending && changed && GetUpdateRgn(lookup.window, pending, FALSE) != ERROR;
+        }
+    }
+    // Change only text: retain checks, disabled/default/highlight state, IDs and item data.
+    info.dwTypeData = next;
+    info.cch = lstrlenW(next);
+    if (SetMenuItemInfoW(menu, command, FALSE, &info) && clipped &&
+        GetWindowRect(lookup.window, &after) && EqualRect(&before, &after)) {
+        // Preserve pending hover paints; unchanged geometry needs only the changed row.
+        if (CombineRgn(pending, pending, changed, RGN_OR) != ERROR) {
+            ValidateRect(lookup.window, NULL);
+            InvalidateRgn(lookup.window, pending, FALSE);
+        }
+    }
+    if (changed) DeleteObject(changed);
+    if (pending) DeleteObject(pending);
+}
+
 void MenuOnTimerTick(HWND hwnd)
 {
 	int i;
@@ -1165,7 +1261,7 @@ void MenuOnTimerTick(HWND hwnd)
 		text[0] = '\0';
 		tc_menu_resolve_label_text(e->itemIndex, e->plainLabel, e->format, e->intervalSec, text, (int)sizeof(text));
 		if (text[0]) {
-			tc_menu_modify_string_utf8(hPopupMenu, e->cmdId, MF_BYCOMMAND, e->cmdId, text);
+			menu_update_label(hPopupMenu, e->cmdId, text);
 		}
 	}
 	for (i = 0; i < g_menuAlarmCount; ++i) {
@@ -1174,7 +1270,7 @@ void MenuOnTimerTick(HWND hwnd)
 		alarmText[0] = '\0';
 		tc_menu_alarm_format_label(e2, alarmText, (int)sizeof(alarmText));
 		if (alarmText[0]) {
-			tc_menu_modify_string_utf8(hPopupMenu, e2->id, MF_BYCOMMAND, e2->id, alarmText);
+			menu_update_label(hPopupMenu, e2->id, alarmText);
 		}
 	}
 }

@@ -103,6 +103,21 @@ static void EnsureExitExtensionsOnExitControl(HWND hDlg)
 　「バージョン情報」ページ用ダイアログプロシージャ
 --------------------------------------------------*/
 
+static void etc_refresh_plugins(HWND hDlg)
+{
+    static const int functions[] = { MOUSEFUNC_TCARD_OPEN, MOUSEFUNC_TCYCLE_OPEN,
+        MOUSEFUNC_TCALENDAR_OPEN, MOUSEFUNC_TCAPTURE_SETTINGS };
+    static const int controls[] = { IDC_ETC_TCARD_INTEGRATION, IDC_ETC_TCYCLE_INTEGRATION,
+        IDC_ETC_TCALENDAR_INTEGRATION, IDC_ETC_TCAPTURE_INTEGRATION };
+    int i;
+    for (i = 0; i < (int)_countof(functions); ++i) {
+        HWND checkbox = GetDlgItem(hDlg, controls[i]);
+        BOOL installed = act_is_installed(functions[i]);
+        ShowWindow(checkbox, installed ? SW_SHOW : SW_HIDE);
+        EnableWindow(checkbox, installed);
+    }
+}
+
 INT_PTR CALLBACK PageEtcProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 {
 	switch(message)
@@ -110,6 +125,9 @@ INT_PTR CALLBACK PageEtcProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPar
 
 		case WM_INITDIALOG:
 			OnInit(hDlg);
+			return TRUE;
+		case WM_SHOWWINDOW:
+			if (wParam) etc_refresh_plugins(hDlg);
 			return TRUE;
 		case WM_TIMER:		//WM_TIMERに対する処理
 			if (wParam == IDTIMER_UPDATE_TEMP)
@@ -159,7 +177,8 @@ static void LaunchTCycleRuntimeFromEtcIfEnabled(HWND hDlg)
 	char tcycPathCfg[MAX_PATH];
 	char exePath[MAX_PATH];
 
-	if (!IsDlgButtonChecked(hDlg, IDC_ETC_TCYCLE_INTEGRATION)) return;
+	if (!IsDlgButtonChecked(hDlg, IDC_ETC_TCYCLE_INTEGRATION) ||
+		!act_is_installed(MOUSEFUNC_TCYCLE_OPEN)) return;
 
 	GetMyRegStr("TCycle", "Path", tcycPathCfg, MAX_PATH, "");
 	if (tcycPathCfg[0] == '\0') strcpy(tcycPathCfg, "plugins\\TCycle.exe");
@@ -188,12 +207,12 @@ static void OnInit(HWND hDlg)
 	CheckDlgButton(hDlg, IDC_USE_SUBCLKS, GetMyRegLong(NULL, "EnableOnSubDisplay", TRUE));
 
 	CheckDlgButton(hDlg, IDC_ETC_SHOWTRAYICON, GetMyRegLong(NULL, "ShowTrayIcon", TRUE));
-	tc_card_seed();
 	CheckDlgButton(hDlg, IDC_ETC_TCARD_INTEGRATION, GetMyRegLong("TCard", "Enable", 0));
 	CheckDlgButton(hDlg, IDC_ETC_TCYCLE_INTEGRATION, GetMyRegLong("TCycle", "Enable", 0));
 	CheckDlgButton(hDlg, IDC_ETC_TCALENDAR_INTEGRATION, GetMyRegLong("TCalendar", "Enable", 0));
-	CheckDlgButton(hDlg, IDC_ETC_TCAPTURE_INTEGRATION, GetMyRegLong("TCapture", "Enable", 0));
+	CheckDlgButton(hDlg, IDC_ETC_TCAPTURE_INTEGRATION, GetMyRegLong("TCapture", "Enable", GetMyRegLong("ETC", "TCaptureEnable", 0)));
 	EnsureExitExtensionsOnExitControl(hDlg);
+	etc_refresh_plugins(hDlg);
 	CheckDlgButton(hDlg, IDC_ETC_EXIT_EXTENSIONS_ON_EXIT, GetMyRegLong("ETC", "ExitExtensionsOnTClockExit", 0));
 	//CheckDlgButton(hDlg, IDC_ETC_SHOWTRAYICON, TRUE);
 	//EnableDlgItem(hDlg, IDC_ETC_SHOWTRAYICON, FALSE);
@@ -304,12 +323,17 @@ static void OnApply(HWND hDlg)
 	SetMyRegLong(NULL, "ShowTrayIcon", bTemp);
 	CreateTClockTrayIcon(bTemp);
 
-	SetMyRegLong("TCard", "Enable", IsDlgButtonChecked(hDlg, IDC_ETC_TCARD_INTEGRATION));
-	SetMyRegLong("TCycle", "Enable", IsDlgButtonChecked(hDlg, IDC_ETC_TCYCLE_INTEGRATION));
+	// Preserve saved preferences while optional executables are absent.
+	if (act_is_installed(MOUSEFUNC_TCARD_OPEN))
+		SetMyRegLong("TCard", "Enable", IsDlgButtonChecked(hDlg, IDC_ETC_TCARD_INTEGRATION));
+	if (act_is_installed(MOUSEFUNC_TCYCLE_OPEN))
+		SetMyRegLong("TCycle", "Enable", IsDlgButtonChecked(hDlg, IDC_ETC_TCYCLE_INTEGRATION));
 	LaunchTCycleRuntimeFromEtcIfEnabled(hDlg);
 
-	SetMyRegLong("TCalendar", "Enable", IsDlgButtonChecked(hDlg, IDC_ETC_TCALENDAR_INTEGRATION));
-	SetMyRegLong("TCapture", "Enable", IsDlgButtonChecked(hDlg, IDC_ETC_TCAPTURE_INTEGRATION));
+	if (act_is_installed(MOUSEFUNC_TCALENDAR_OPEN))
+		SetMyRegLong("TCalendar", "Enable", IsDlgButtonChecked(hDlg, IDC_ETC_TCALENDAR_INTEGRATION));
+	if (act_is_installed(MOUSEFUNC_TCAPTURE_SETTINGS))
+		SetMyRegLong("TCapture", "Enable", IsDlgButtonChecked(hDlg, IDC_ETC_TCAPTURE_INTEGRATION));
 	SetMyRegLong("ETC", "ExitExtensionsOnTClockExit", IsDlgButtonChecked(hDlg, IDC_ETC_EXIT_EXTENSIONS_ON_EXIT));
 
 	SetMyRegLongDef("ETC", "SelectedThermalZone", selectedThermalZone);

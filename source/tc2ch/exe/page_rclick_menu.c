@@ -226,6 +226,7 @@ static const char* rm_default_label_for_action(const char* action)
     if (lstrcmpi(action, "tcard_open") == 0) return MyStringUTF8(IDS_TCARD_OPEN);
     if (lstrcmpi(action, "tcalendar_open") == 0) return MyStringUTF8(IDS_TCAL_OPEN);
     if (lstrcmpi(action, "tcapture_settings") == 0) return MyStringUTF8(IDS_TCAP_SETTING);
+    if (lstrcmpi(action, "tcapture_capture") == 0) return MyStringUTF8(IDS_TCAP_CAPTURE);
     if (lstrcmpi(action, "tcycle_open") == 0) return MyStringUTF8(IDS_TCYC_OPEN);
     if (lstrcmpi(action, "control_datetime") == 0) return MyStringUTF8(IDS_CONTROLDATE);
     if (lstrcmpi(action, "remove_drive_dynamic") == 0) return MyStringUTF8(IDS_ABOUTRMVDRV);
@@ -253,6 +254,7 @@ static const char* rm_action_key_from_index(int idx)
     case 15: return "tcapture_settings";
     case 16: return "tcycle_open";
     case 17: return "remove_drive_dynamic";
+    case 18: return "tcapture_capture";
     default: return "taskmgr";
     }
 }
@@ -261,7 +263,7 @@ static int rm_action_index_from_key(const char* key)
 {
     int i;
     if (!key || !key[0]) return -1;
-    for (i = 0; i < 18; ++i) {
+    for (i = 0; i < 19; ++i) {
         if (lstrcmpi(key, rm_action_key_from_index(i)) == 0) return i;
     }
     return -1;
@@ -271,9 +273,9 @@ static void rm_fill_builtin_action_combo(HWND hDlg)
 {
     int i;
     CBResetContent(hDlg, IDC_RM_ITEM_ACTION);
-    for (i = 0; i < 18; ++i) {
+    for (i = 0; i < 19; ++i) {
         int function = i == 13 ? MOUSEFUNC_TCARD_OPEN : i == 14 ? MOUSEFUNC_TCALENDAR_OPEN :
-            i == 15 ? MOUSEFUNC_TCAPTURE_SETTINGS : i == 16 ? MOUSEFUNC_TCYCLE_OPEN : MOUSEFUNC_NONE;
+            (i == 15 || i == 18) ? MOUSEFUNC_TCAPTURE_SETTINGS : i == 16 ? MOUSEFUNC_TCYCLE_OPEN : MOUSEFUNC_NONE;
         int row;
         if (!act_is_available(hDlg, function)) continue;
         row = CBAddStringUTF8Compat(hDlg, IDC_RM_ITEM_ACTION, rm_default_label_for_action(rm_action_key_from_index(i)));

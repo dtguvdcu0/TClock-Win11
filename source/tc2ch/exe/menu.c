@@ -682,39 +682,6 @@ static int tc_menu_dynamic_execute(UINT id)
 	return 0;
 }
 
-static LONG tc_menu_get_tcapture_enable(void)
-{
-	LONG v = GetMyRegLong("TCapture", "Enable", -1);
-	if (v != -1) return (v != 0) ? 1 : 0;
-	v = GetMyRegLong("ETC", "TCaptureEnable", 0);
-	if (tc_menu_is_minimal()) return (v != 0) ? 1 : 0;
-	SetMyRegLong("TCapture", "Enable", (v != 0) ? 1 : 0);
-	DelMyReg("ETC", "TCaptureEnable");
-	return (v != 0) ? 1 : 0;
-}
-
-static LONG tc_menu_get_tcalendar_enable(void)
-{
-	LONG v = GetMyRegLong("TCalendar", "Enable", -1);
-	if (v == -1) {
-		if (tc_menu_is_minimal()) return 0;
-		SetMyRegLong("TCalendar", "Enable", 0);
-		return 0;
-	}
-	return (v != 0) ? 1 : 0;
-}
-
-static LONG tc_menu_get_tcycle_enable(void)
-{
-	LONG v = GetMyRegLong("TCycle", "Enable", -1);
-	if (v == -1) {
-		if (tc_menu_is_minimal()) return 0;
-		SetMyRegLong("TCycle", "Enable", 0);
-		return 0;
-	}
-	return (v != 0) ? 1 : 0;
-}
-
 static void tc_menu_normalize_setting_utf8_in_place(char* value, int valueBytes)
 {
 	WCHAR wbuf[MAX_PATH];
@@ -861,7 +828,7 @@ static void tc_menu_launch_with_delay(const char* file, const char* args, const 
 
 static BOOL tc_menu_is_fixed_id(UINT id)
 {
-	return id == IDC_SHOWPROP || id == IDC_SHOWDIR || id == IDC_RESTART || id == IDC_EXIT || id == IDC_REMOVE_DRIVE0 || id == IDC_TCAP_SETTINGS || id == IDC_TCAP_CAPTURE || id == IDC_TCAL_OPEN || id == IDC_TCYC_OPEN || id == IDC_TCARD_OPEN;
+	return id == IDC_SHOWPROP || id == IDC_SHOWDIR || id == IDC_RESTART || id == IDC_EXIT || id == IDC_REMOVE_DRIVE0;
 }
 
 static int tc_menu_find_position_by_id(HMENU hMenu, UINT id)
@@ -1307,6 +1274,7 @@ static const char* tc_menu_default_label_for_action(const char* action)
 	if (_stricmp(action, "tcard_open") == 0) return MyStringUTF8(IDS_TCARD_OPEN);
 	if (_stricmp(action, "tcalendar_open") == 0) return MyStringUTF8(IDS_TCAL_OPEN);
 	if (_stricmp(action, "tcapture_settings") == 0) return MyStringUTF8(IDS_TCAP_SETTING);
+	if (_stricmp(action, "tcapture_capture") == 0) return MyStringUTF8(IDS_TCAP_CAPTURE);
 	if (_stricmp(action, "tcycle_open") == 0) return MyStringUTF8(IDS_TCYC_OPEN);
 	if (_stricmp(action, "control_datetime") == 0) return MyStringUTF8(IDS_CONTROLDATE);
 	if (_stricmp(action, "remove_drive_dynamic") == 0) return MyStringUTF8(IDS_ABOUTRMVDRV);
@@ -1331,6 +1299,7 @@ static BOOL tc_menu_action_to_command(const char* action, UINT* outId)
 	if (_stricmp(action, "tcard_open") == 0) { *outId = IDC_TCARD_OPEN; return TRUE; }
 	if (_stricmp(action, "tcalendar_open") == 0) { *outId = IDC_TCAL_OPEN; return TRUE; }
 	if (_stricmp(action, "tcapture_settings") == 0) { *outId = IDC_TCAP_SETTINGS; return TRUE; }
+	if (_stricmp(action, "tcapture_capture") == 0) { *outId = IDC_TCAP_CAPTURE; return TRUE; }
 	if (_stricmp(action, "tcycle_open") == 0) { *outId = IDC_TCYC_OPEN; return TRUE; }
 	if (_stricmp(action, "control_datetime") == 0) { *outId = IDC_CONTROLDATE; return TRUE; }
 	if (_stricmp(action, "remove_drive_dynamic") == 0) { *outId = IDC_REMOVE_DRIVE0; return TRUE; }
@@ -1983,7 +1952,7 @@ static void tc_menu_apply_custom_from_ini(HMENU hMenu)
             {
                 int function = cmdId == IDC_TCARD_OPEN ? MOUSEFUNC_TCARD_OPEN :
                     cmdId == IDC_TCAL_OPEN ? MOUSEFUNC_TCALENDAR_OPEN :
-                    cmdId == IDC_TCAP_SETTINGS ? MOUSEFUNC_TCAPTURE_SETTINGS :
+                    (cmdId == IDC_TCAP_SETTINGS || cmdId == IDC_TCAP_CAPTURE) ? MOUSEFUNC_TCAPTURE_SETTINGS :
                     cmdId == IDC_TCYC_OPEN ? MOUSEFUNC_TCYCLE_OPEN : MOUSEFUNC_NONE;
                 if (!act_is_available(NULL, function)) continue;
             }
@@ -2169,60 +2138,6 @@ void OnContextMenu(HWND hwnd, HWND hwndClicked, int xPos, int yPos)
 		b_MenuItems_Initialized = TRUE;
 	}
 	tc_menu_dynamic_reset();
-	{
-		LONG tcardEnabled;
-		tc_card_seed();
-		tcardEnabled = GetMyRegLong("TCard", "Enable", 0);
-		LONG tcycleEnabled = tc_menu_get_tcycle_enable();
-		LONG tcalendarEnabled = tc_menu_get_tcalendar_enable();
-		LONG tcaptureEnabled = tc_menu_get_tcapture_enable();
-		if (tcycleEnabled || tcalendarEnabled || tcaptureEnabled || tcardEnabled) {
-			int anchorPos = tc_menu_find_position_by_id(hPopupMenu, IDC_REMOVE_DRIVE0);
-			if (anchorPos < 0) {
-				anchorPos = tc_menu_find_position_by_id(hPopupMenu, IDC_SHOWPROP);
-			}
-			if (anchorPos >= 0) {
-				int insertPos = anchorPos;
-				int itemPos;
-				MENUITEMINFO prevMii;
-				if (anchorPos > 0) {
-					ZeroMemory(&prevMii, sizeof(prevMii));
-					prevMii.cbSize = sizeof(prevMii);
-					prevMii.fMask = MIIM_FTYPE;
-					if (GetMenuItemInfo(hPopupMenu, anchorPos - 1, TRUE, &prevMii) && (prevMii.fType & MFT_SEPARATOR)) {
-						insertPos = anchorPos - 1;
-					}
-				}
-				/* Insert launcher block before removable-drive slot to keep Property block stable. */
-				InsertMenu(hPopupMenu, insertPos, MF_BYPOSITION | MF_SEPARATOR, 0, NULL);
-				itemPos = insertPos + 1;
-				if (tcardEnabled) {
-					tc_menu_insert_string_utf8(hPopupMenu, itemPos++, MF_BYPOSITION | MF_STRING, IDC_TCARD_OPEN, MyStringUTF8(IDS_TCARD_OPEN));
-				}
-				if (tcycleEnabled) {
-					char tcycleLabel[128];
-					lstrcpyn(tcycleLabel, MyStringUTF8(IDS_TCYC_OPEN), (int)sizeof(tcycleLabel));
-					tc_menu_insert_string_utf8(hPopupMenu, itemPos, MF_BYPOSITION | MF_STRING, IDC_TCYC_OPEN, tcycleLabel);
-					itemPos++;
-				}
-				if (tcalendarEnabled) {
-					char tcalendarLabel[128];
-					lstrcpyn(tcalendarLabel, MyStringUTF8(IDS_TCAL_OPEN), (int)sizeof(tcalendarLabel));
-					tc_menu_insert_string_utf8(hPopupMenu, itemPos, MF_BYPOSITION | MF_STRING, IDC_TCAL_OPEN, tcalendarLabel);
-					itemPos++;
-				}
-				if (tcaptureEnabled) {
-					char tcapCaptureLabel[128];
-					char tcapSettingsLabel[128];
-					lstrcpyn(tcapCaptureLabel, MyStringUTF8(IDS_TCAP_CAPTURE), (int)sizeof(tcapCaptureLabel));
-					lstrcpyn(tcapSettingsLabel, MyStringUTF8(IDS_TCAP_SETTING), (int)sizeof(tcapSettingsLabel));
-					tc_menu_insert_string_utf8(hPopupMenu, itemPos, MF_BYPOSITION | MF_STRING, IDC_TCAP_CAPTURE, tcapCaptureLabel);
-					itemPos++;
-					tc_menu_insert_string_utf8(hPopupMenu, itemPos, MF_BYPOSITION | MF_STRING, IDC_TCAP_SETTINGS, tcapSettingsLabel);
-				}
-			}
-		}
-	}
 	if (tc_menu_is_custom_enabled()) {
 		/* Re-seed default [MenuCustom] only when the section is absent. */
 		tc_menu_ensure_ini_defaults();
@@ -2554,6 +2469,7 @@ void OnTClockCommand(HWND hwnd, WORD wID, WORD wCode)
 		}
 		case IDC_TCAP_CAPTURE: // TCapture capture default profile
 		{
+			if (!act_is_available(NULL, MOUSEFUNC_TCAPTURE_SETTINGS)) return;
 			char tcapPathCfg[MAX_PATH];
 			char tcapPath[MAX_PATH];
 			if (b_DebugLog) WriteDebug_New2("[menu.c][OnTClockCommand] IDC_TCAP_CAPTURE received");

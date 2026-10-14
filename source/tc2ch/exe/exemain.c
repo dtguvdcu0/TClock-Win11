@@ -519,25 +519,64 @@ static MOUSE_FUNC_INFO mouse_func_list[] = {
 	{ MOUSEFUNC_FILELIST,		IDS_FILELIST}
 };
 
+typedef struct ACT_PLUGIN {
+    int function;
+    int control;
+    const char* section;
+    const WCHAR* file;
+} ACT_PLUGIN;
+
+static const ACT_PLUGIN* act_find_plugin(int function)
+{
+    // Fixed integration identities remain stable across separately released plugins.
+    static const ACT_PLUGIN plugins[] = {
+        { MOUSEFUNC_TCARD_OPEN, IDC_ETC_TCARD_INTEGRATION, "TCard", L"plugins\\TCard.exe" },
+        { MOUSEFUNC_TCALENDAR_OPEN, IDC_ETC_TCALENDAR_INTEGRATION, "TCalendar", L"plugins\\TCalendar.exe" },
+        { MOUSEFUNC_TCAPTURE_SETTINGS, IDC_ETC_TCAPTURE_INTEGRATION, "TCapture", L"plugins\\TCapture.exe" },
+        { MOUSEFUNC_TCYCLE_OPEN, IDC_ETC_TCYCLE_INTEGRATION, "TCycle", L"plugins\\TCycle.exe" }
+    };
+    int i;
+    for (i = 0; i < (int)_countof(plugins); ++i)
+        if (plugins[i].function == function) return &plugins[i];
+    return NULL;
+}
+
+BOOL act_is_installed(int function)
+{
+    const ACT_PLUGIN* plugin = act_find_plugin(function);
+    WCHAR directory[MAX_PATH], configured[MAX_PATH], combined[MAX_PATH];
+    char encodedValue[4096];
+    DWORD length, attributes;
+    if (!plugin) return TRUE;
+    // Compatibility boundary: existing INI values serialize as UTF-8; paths stay UTF-16 after decoding.
+    GetMyRegStr(plugin->section, "Path", encodedValue, sizeof(encodedValue), "");
+    if (!encodedValue[0] && function == MOUSEFUNC_TCAPTURE_SETTINGS)
+        GetMyRegStr("ETC", "TCapturePath", encodedValue, sizeof(encodedValue), "");
+    if (encodedValue[0]) {
+        if (tc_utf8_to_utf16(encodedValue, configured, _countof(configured)) <= 0) return FALSE;
+    } else {
+        lstrcpynW(configured, plugin->file, _countof(configured));
+    }
+    length = GetModuleFileNameW(NULL, directory, _countof(directory));
+    if (!length || length >= _countof(directory) || !PathRemoveFileSpecW(directory)) return FALSE;
+    if (!PathCombineW(combined, directory, configured)) return FALSE;
+    attributes = GetFileAttributesW(combined);
+    return attributes != INVALID_FILE_ATTRIBUTES && !(attributes & FILE_ATTRIBUTE_DIRECTORY);
+}
+
 BOOL act_is_available(HWND dialog, int function)
 {
-    const char* section;
-    int id;
+    const ACT_PLUGIN* plugin = act_find_plugin(function);
     HWND page, checkbox, parent = dialog ? GetParent(dialog) : NULL;
     LONG enabled;
-    switch (function) {
-    case MOUSEFUNC_TCARD_OPEN: section = "TCard"; id = IDC_ETC_TCARD_INTEGRATION; break;
-    case MOUSEFUNC_TCALENDAR_OPEN: section = "TCalendar"; id = IDC_ETC_TCALENDAR_INTEGRATION; break;
-    case MOUSEFUNC_TCAPTURE_SETTINGS: section = "TCapture"; id = IDC_ETC_TCAPTURE_INTEGRATION; break;
-    case MOUSEFUNC_TCYCLE_OPEN: section = "TCycle"; id = IDC_ETC_TCYCLE_INTEGRATION; break;
-    default: return TRUE;
-    }
+    if (!plugin) return TRUE;
+    if (!act_is_installed(function)) return FALSE;
     // Candidate lists follow the current property checkbox before Apply, without writing INI.
     for (page = parent ? GetWindow(parent, GW_CHILD) : NULL; page; page = GetWindow(page, GW_HWNDNEXT)) {
-        checkbox = GetDlgItem(page, id);
+        checkbox = GetDlgItem(page, plugin->control);
         if (checkbox) return SendMessageW(checkbox, BM_GETCHECK, 0, 0) == BST_CHECKED;
     }
-    enabled = GetMyRegLong(section, "Enable", -1);
+    enabled = GetMyRegLong(plugin->section, "Enable", -1);
     if (enabled == -1 && function == MOUSEFUNC_TCAPTURE_SETTINGS)
         enabled = GetMyRegLong("ETC", "TCaptureEnable", 0);
     return enabled != -1 && enabled != 0;

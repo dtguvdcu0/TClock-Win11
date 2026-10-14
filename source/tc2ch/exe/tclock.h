@@ -171,6 +171,7 @@ int r_strcmp(const char* d, const char* s);
 #define MOUSEFUNC_TCYCLE_OPEN 217
 #define IDC_TCYC_OPEN 45992
 /* New actions belong in both mouse and builtin lists; plugin eligibility is shared. */
+BOOL act_is_installed(int function);
 BOOL act_is_available(HWND dialog, int function);
 #define MOUSEFUNC_NONE       -1
 #define MOUSEFUNC_DATETIME    0

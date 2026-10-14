@@ -248,6 +248,7 @@ void CreateMyNotificationFont(int fontwidth, int fontheigt);
 void ClearSpecificSubClock(int i);
 void led_stop_subsurface(int index);
 void sub_refresh_edges(void);
+void wui_close_secondary(int index);
 void sub_prepare_edge(int index);
 void sub_write_edge(int index, RGBQUAD* pixels, int width, int height);
 void ext_get_source(HWND target, RECT* source);

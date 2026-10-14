@@ -52,6 +52,7 @@ static void sub_release_edge(int index)
 {
  TBE_REGION* region;
  if (index < 0 || index >= MAX_SUBSCREEN) return;
+ wui_close_secondary(index);
  region = &g_subEdgeRegions[index];
  if (region->applied && IsWindow(region->window)) tbe_update_region(region->window, NULL, region);
  ZeroMemory(region, sizeof(*region));

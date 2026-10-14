@@ -12,6 +12,8 @@
 #define WUI_TIP_SLOTS_PROP L"TClock.TooltipSlots"
 #define WUI_TIP_AXIS_PROP L"TClock.TooltipVertical"
 #define WUI_TIP_FADE_PROP L"TClock.TooltipFadeDisabled"
+// Borrowed HWND lets attached image/LED surfaces stack above their secondary text host.
+#define WUI_SECONDARY_PROP L"TClock.WinUI.SecondaryHost"
 
 #define TC_WUI_STYLE_VERSION 1
 #define TC_WUI_BASELINE_VERSION 1
@@ -93,6 +95,10 @@ WUI_API BOOL WINAPI WuiUpdateState(const TC_DISPLAY_BACKEND_RENDER_STATE* state)
 // Optional combined placement and presentation; legacy exports remain compatible.
 WUI_API BOOL WINAPI WuiApplyState(const TC_DISPLAY_BACKEND_RENDER_STATE* state);
 WUI_API BOOL WINAPI WuiRefresh(void);
+// Secondary state/layer bytes are copied before return; source is a crop of the full clock frame.
+WUI_API BOOL WINAPI WuiApplySecondary(HWND target, const TC_DISPLAY_BACKEND_RENDER_STATE* state, const RECT* source);
+// NULL closes all secondary hosts on the main host thread.
+WUI_API void WINAPI WuiDestroySecondary(HWND target);
 WUI_API BOOL WINAPI WuiSetTooltip(const WCHAR* text, BOOL visible, HFONT font, COLORREF backColor,
 	UINT initialDelay, UINT reshowDelay, UINT autoPopDelay);
 WUI_API BOOL WINAPI WuiRefreshTooltipText(const WCHAR* text);

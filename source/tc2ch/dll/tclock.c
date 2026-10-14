@@ -471,6 +471,9 @@ static BOOL(WINAPI* g_wuiSetTooltip)(const WCHAR*, BOOL, HFONT, COLORREF, UINT, 
 static BOOL(WINAPI* g_wuiRefreshTooltip)(const WUI_TOOLTIP_STATE*) = NULL;
 static BOOL(WINAPI* g_wuiIsTooltip)(HWND) = NULL;
 static BOOL g_wuiDllLive = FALSE;
+static BOOL(WINAPI* g_wuiApplySecondary)(HWND, const TC_DISPLAY_BACKEND_RENDER_STATE*, const RECT*) = NULL;
+static void(WINAPI* g_wuiDestroySecondary)(HWND) = NULL;
+static BOOL g_wuiSubReady[MAX_SUBSCREEN] = {0};
 static BOOL g_wuiHostOn = FALSE;
 static BOOL g_wuiHostReady = FALSE;
 static BOOL g_wuiHostLinked = FALSE;
@@ -1751,6 +1754,8 @@ static BOOL wui_load_dll(void)
 	g_wuiUpdateState = (BOOL(WINAPI*)(const TC_DISPLAY_BACKEND_RENDER_STATE*))GetProcAddress(g_wuiDll, "WuiUpdateState");
 	g_wuiApplyState = (BOOL(WINAPI*)(const TC_DISPLAY_BACKEND_RENDER_STATE*))GetProcAddress(g_wuiDll, "WuiApplyState");
 	g_wuiRefreshHost = (BOOL(WINAPI*)(void))GetProcAddress(g_wuiDll, "WuiRefresh");
+	g_wuiApplySecondary = (BOOL(WINAPI*)(HWND, const TC_DISPLAY_BACKEND_RENDER_STATE*, const RECT*))GetProcAddress(g_wuiDll, "WuiApplySecondary");
+	g_wuiDestroySecondary = (void(WINAPI*)(HWND))GetProcAddress(g_wuiDll, "WuiDestroySecondary");
 	g_wuiSetTooltip = (BOOL(WINAPI*)(const WCHAR*, BOOL, HFONT, COLORREF, UINT, UINT, UINT))GetProcAddress(g_wuiDll, "WuiSetTooltip");
 	g_wuiRefreshTooltip = (BOOL(WINAPI*)(const WUI_TOOLTIP_STATE*))GetProcAddress(g_wuiDll, "WuiRefreshTooltip");
 	g_wuiIsTooltip = (BOOL(WINAPI*)(HWND))GetProcAddress(g_wuiDll, "WuiIsTooltip");
@@ -1902,6 +1907,9 @@ static void wui_unload_dll(void)
 	g_wuiUpdateState = NULL;
 	g_wuiApplyState = NULL;
 	g_wuiRefreshHost = NULL;
+	g_wuiApplySecondary = NULL;
+	g_wuiDestroySecondary = NULL;
+	ZeroMemory(g_wuiSubReady, sizeof(g_wuiSubReady));
 	g_wuiSetTooltip = NULL;
 	g_wuiRefreshTooltip = NULL;
 	g_wuiIsTooltip = NULL;
@@ -1986,8 +1994,35 @@ static COLORREF tc_txtclr(int infoval)
 	return tc_clr(TextColorFromInfoVal(infoval));
 }
 
+void wui_close_secondary(int index)
+{
+ if (index < 0 || index >= MAX_SUBSCREEN) return;
+ g_wuiSubReady[index] = FALSE;
+ if (g_wuiDestroySecondary && hwndClockSubClk[index]) g_wuiDestroySecondary(hwndClockSubClk[index]);
+}
+
+static void wui_push_secondary(const TC_DISPLAY_BACKEND_RENDER_STATE* state)
+{
+ TC_DISPLAY_BACKEND_RENDER_STATE secondary = *state;
+ secondary.layerPixels = (const BYTE*)m_color_start;
+ secondary.layerWidth = bmi_MainClock.bmiHeader.biWidth;
+ secondary.layerHeight = bmi_MainClock.bmiHeader.biHeight;
+ GdiFlush();
+ for (int i = 0; i < MAX_SUBSCREEN; ++i) {
+  RECT source;
+  if (!bWin11Sub || !g_wuiDllLive || g_wuiStyleFallback || !g_wuiApplySecondary ||
+      !bEnableSpecificSubClk[i] || bSuppressUpdateSubClk[i] || !IsWindow(hwndClockSubClk[i])) {
+   wui_close_secondary(i);continue;
+  }
+  ext_get_source(hwndClockSubClk[i], &source);
+  g_wuiSubReady[i] = g_wuiApplySecondary(hwndClockSubClk[i], &secondary, &source);
+  if (!g_wuiSubReady[i]) wui_close_secondary(i);
+ }
+}
+
 static void wui_push_frame(TC_DISPLAY_BACKEND_RENDER_STATE* state)
 {
+	wui_push_secondary(state);
 	if (g_wuiDllLive && !g_wuiStyleFallback && (IsVertTaskbar(hwndTaskBarMain) || (ext_is_active())) && m_color_start) {
 		GdiFlush();
 		state->layerPixels = (const BYTE*)m_color_start;
@@ -7030,8 +7065,6 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
 		}
 	}
 
-	if (g_wuiBgOnly) return;
-
 	HDC hdcSub = NULL;
 	HDC hdcSubBuffer = NULL;
 	HBITMAP hbm_tempDIBSection = NULL;
@@ -7042,6 +7075,7 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
 
 	for (int i = 0; i < MAX_SUBSCREEN; i++) {
 		if (bEnableSpecificSubClk[i]) {
+            if (g_wuiSubOnly && g_wuiSubReady[i]) continue;
             RECT source;SIZE frame;
             ext_get_source(hwndClockSubClk[i],&source);
             ext_get_frame(hwndClockSubClk[i],widthSubClock[i],heightSubClock[i],&frame);
@@ -9056,7 +9090,8 @@ static BOOL ext_update_surface(const SYSTEMTIME* time,const RECT* slot)
             widthMainClockFrame<=0||heightMainClockFrame<=0||widthSubClock[i]<=0||heightSubClock[i]<=0){
             led_stop_subsurface(i);continue;
         }
-        sub.target=hwndClockSubClk[i];sub.taskbar=hwndTaskBarSubClk[i];sub.host=NULL;
+        sub.target=hwndClockSubClk[i];sub.taskbar=hwndTaskBarSubClk[i];
+        sub.host=(HWND)GetPropW(sub.target,WUI_SECONDARY_PROP);
         SetRect(&sub.bounds,
             MulDiv(state.bounds.left,widthSubClock[i],widthMainClockFrame),
             MulDiv(state.bounds.top,heightSubClock[i],heightMainClockFrame),
@@ -9179,6 +9214,7 @@ static BOOL ext_publish_hosts(const RECT* slot)
             if(widthMainClockFrame<=0 || heightMainClockFrame<=0)continue;
             EXT_DETACH_HOME* sub=&packet.homes[packet.count++];
             sub->target=(uint64_t)(UINT_PTR)hwndClockSubClk[i];sub->taskbar=(uint64_t)(UINT_PTR)hwndTaskBarSubClk[i];
+            sub->anchor=(uint64_t)(UINT_PTR)GetPropW(hwndClockSubClk[i],WUI_SECONDARY_PROP);
             left=MulDiv(x,cx,widthMainClockFrame);top=MulDiv(y,cy,heightMainClockFrame);
             width=MulDiv(g_extSize.cx,cx,widthMainClockFrame);
             height=MulDiv(g_extSize.cy,cy,heightMainClockFrame);

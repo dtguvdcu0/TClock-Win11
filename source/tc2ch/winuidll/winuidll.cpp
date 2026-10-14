@@ -1,6 +1,7 @@
 #include <windows.h>
 #include <stdint.h>
 #include <limits.h>
+#include <new>
 #include <commctrl.h>
 #include <gdiplus.h>
 #include "wui_api.h"
@@ -155,23 +156,23 @@ static int wui_tip_width(const WCHAR* text, HFONT font)
 	return limitWidth;
 }
 
-static BOOL wui_draw_styled(Gdiplus::Graphics& graphics, const RECT& rcClient)
+static BOOL wui_draw_styled(Gdiplus::Graphics& graphics, const RECT& rcClient, const TC_DISPLAY_BACKEND_RENDER_STATE& state)
 {
 	Gdiplus::Font* fonts[TC_WUI_MAX_STYLES] = {};
 	Gdiplus::StringFormat format;
 	DWORD i;
 	BOOL ok = FALSE;
-	if (g_wuiState.styleVersion != TC_WUI_STYLE_VERSION || !g_wuiState.styleCount ||
-		!g_wuiState.runCount || g_wuiState.styleCount > TC_WUI_MAX_STYLES ||
-		g_wuiState.runCount > TC_WUI_MAX_RUNS) return FALSE;
+	if (state.styleVersion != TC_WUI_STYLE_VERSION || !state.styleCount ||
+		!state.runCount || state.styleCount > TC_WUI_MAX_STYLES ||
+		state.runCount > TC_WUI_MAX_RUNS) return FALSE;
 	format.SetFormatFlags(Gdiplus::StringFormatFlagsNoClip | Gdiplus::StringFormatFlagsMeasureTrailingSpaces);
 	graphics.SetCompositingMode(Gdiplus::CompositingModeSourceOver);
 	graphics.SetCompositingQuality(Gdiplus::CompositingQualityHighQuality);
 	graphics.SetTextRenderingHint(Gdiplus::TextRenderingHintAntiAliasGridFit);
 	graphics.SetSmoothingMode(Gdiplus::SmoothingModeHighQuality);
 	wui_begin_font_frame();
-	for (i = 0; i < g_wuiState.styleCount; i++) {
-		const TC_DISPLAY_BACKEND_STYLE& style = g_wuiState.styles[i];
+	for (i = 0; i < state.styleCount; i++) {
+		const TC_DISPLAY_BACKEND_STYLE& style = state.styles[i];
 		INT fontStyle = Gdiplus::FontStyleRegular;
 		int pixelHeight = abs(style.fontHeight);
 		if (style.fontWeight >= FW_BOLD) fontStyle |= Gdiplus::FontStyleBold;
@@ -180,15 +181,15 @@ static BOOL wui_draw_styled(Gdiplus::Graphics& graphics, const RECT& rcClient)
 		fonts[i] = wui_get_font(style.fontFace, pixelHeight, fontStyle);
 		if (!fonts[i]) goto cleanup;
 	}
-	for (i = 0; i < g_wuiState.runCount; i++) {
-		const TC_DISPLAY_BACKEND_RUN& run = g_wuiState.runs[i];
+	for (i = 0; i < state.runCount; i++) {
+		const TC_DISPLAY_BACKEND_RUN& run = state.runs[i];
 		const TC_DISPLAY_BACKEND_STYLE* style;
 		Gdiplus::SolidBrush textBrush(Gdiplus::Color(255, 255, 255, 255));
 		Gdiplus::SolidBrush shadowBrush(Gdiplus::Color(255, 0, 0, 0));
 		Gdiplus::RectF rect;
-		if (run.styleIndex >= g_wuiState.styleCount || run.textStart < 0 || run.textLength <= 0 ||
-			run.textStart + run.textLength >= (LONG)_countof(g_wuiState.text)) goto cleanup;
-		style = &g_wuiState.styles[run.styleIndex];
+		if (run.styleIndex >= state.styleCount || run.textStart < 0 || run.textLength <= 0 ||
+			run.textStart + run.textLength >= (LONG)_countof(state.text)) goto cleanup;
+		style = &state.styles[run.styleIndex];
 		textBrush.SetColor(wui_argb(style->textColor));
 		shadowBrush.SetColor(wui_argb(style->shadowColor));
 		rect = Gdiplus::RectF((Gdiplus::REAL)(rcClient.left + run.x), (Gdiplus::REAL)run.y,
@@ -197,7 +198,7 @@ static BOOL wui_draw_styled(Gdiplus::Graphics& graphics, const RECT& rcClient)
 			Gdiplus::RectF shadowRect = rect;
 			shadowRect.X += (Gdiplus::REAL)style->shadowRange;
 			shadowRect.Y += (Gdiplus::REAL)style->shadowRange;
-			graphics.DrawString(g_wuiState.text + run.textStart, run.textLength, fonts[run.styleIndex], shadowRect, &format, &shadowBrush);
+			graphics.DrawString(state.text + run.textStart, run.textLength, fonts[run.styleIndex], shadowRect, &format, &shadowBrush);
 		}
 		if (style->clockBorder) {
 			static const int offsets[][2] = { {-1, 1}, {1, -1}, {1, 1}, {0, -1}, {1, 0}, {-1, -1} };
@@ -206,10 +207,10 @@ static BOOL wui_draw_styled(Gdiplus::Graphics& graphics, const RECT& rcClient)
 				Gdiplus::RectF borderRect = rect;
 				borderRect.X += (Gdiplus::REAL)offsets[offsetIndex][0];
 				borderRect.Y += (Gdiplus::REAL)offsets[offsetIndex][1];
-				graphics.DrawString(g_wuiState.text + run.textStart, run.textLength, fonts[run.styleIndex], borderRect, &format, &shadowBrush);
+				graphics.DrawString(state.text + run.textStart, run.textLength, fonts[run.styleIndex], borderRect, &format, &shadowBrush);
 			}
 		}
-		graphics.DrawString(g_wuiState.text + run.textStart, run.textLength, fonts[run.styleIndex], rect, &format, &textBrush);
+		graphics.DrawString(state.text + run.textStart, run.textLength, fonts[run.styleIndex], rect, &format, &textBrush);
 	}
 	ok = TRUE;
 
@@ -217,7 +218,7 @@ cleanup:
 	return ok;
 }
 
-static void wui_draw_text(Gdiplus::Graphics& graphics, const RECT& rcClient)
+static void wui_draw_text(Gdiplus::Graphics& graphics, const RECT& rcClient, const TC_DISPLAY_BACKEND_RENDER_STATE& state)
 {
 	WCHAR textBuffer[4096];
 	WCHAR* context = NULL;
@@ -236,16 +237,16 @@ static void wui_draw_text(Gdiplus::Graphics& graphics, const RECT& rcClient)
 	int fontPixelHeight = 0;
 	INT fontStyle = Gdiplus::FontStyleRegular;
 
-	if (!g_wuiState.text[0]) return;
-	if (wui_draw_styled(graphics, rcClient)) return;
+	if (!state.text[0]) return;
+	if (wui_draw_styled(graphics, rcClient, state)) return;
 
-	lstrcpynW(textBuffer, g_wuiState.text, _countof(textBuffer));
-	fontPixelHeight = abs(g_wuiState.fontHeight);
+	lstrcpynW(textBuffer, state.text, _countof(textBuffer));
+	fontPixelHeight = abs(state.fontHeight);
 	if (fontPixelHeight <= 0) {
 		fontPixelHeight = (rcClient.bottom - rcClient.top) - 2;
 	}
-	if (g_wuiState.fontFace[0]) {
-		pFontFamilyCustom = new Gdiplus::FontFamily(g_wuiState.fontFace);
+	if (state.fontFace[0]) {
+		pFontFamilyCustom = new Gdiplus::FontFamily(state.fontFace);
 		if (pFontFamilyCustom->IsAvailable()) {
 			pFontFamily = pFontFamilyCustom;
 		}
@@ -254,11 +255,11 @@ static void wui_draw_text(Gdiplus::Graphics& graphics, const RECT& rcClient)
 			pFontFamilyCustom = NULL;
 		}
 	}
-	if (g_wuiState.fontWeight >= FW_BOLD) fontStyle |= Gdiplus::FontStyleBold;
-	if (g_wuiState.fontItalic) fontStyle |= Gdiplus::FontStyleItalic;
+	if (state.fontWeight >= FW_BOLD) fontStyle |= Gdiplus::FontStyleBold;
+	if (state.fontItalic) fontStyle |= Gdiplus::FontStyleItalic;
 	pFont = new Gdiplus::Font(pFontFamily, (Gdiplus::REAL)fontPixelHeight, fontStyle, Gdiplus::UnitPixel);
-	brushText.SetColor(wui_argb(g_wuiState.textColor));
-	brushShadow.SetColor(wui_argb(g_wuiState.shadowColor));
+	brushText.SetColor(wui_argb(state.textColor));
+	brushShadow.SetColor(wui_argb(state.shadowColor));
 	format.SetFormatFlags(Gdiplus::StringFormatFlagsNoClip);
 	graphics.SetCompositingMode(Gdiplus::CompositingModeSourceOver);
 	graphics.SetCompositingQuality(Gdiplus::CompositingQualityHighQuality);
@@ -271,14 +272,14 @@ static void wui_draw_text(Gdiplus::Graphics& graphics, const RECT& rcClient)
 		line = wcstok_s(NULL, L"\r\n", &context);
 	}
 	if (lineCount <= 0) lineCount = 1;
-	lineStep = fontPixelHeight + g_wuiState.lineHeight;
+	lineStep = fontPixelHeight + state.lineHeight;
 	if (lineStep <= 0) lineStep = fontPixelHeight;
 	totalHeight = fontPixelHeight + ((lineCount - 1) * lineStep);
 	y = ((rcClient.bottom - rcClient.top) - totalHeight) / 2;
-	y += g_wuiState.vertPos;
-	if (g_wuiState.contentVersion == 1) y += rcClient.top;
+	y += state.vertPos;
+	if (state.contentVersion == 1) y += rcClient.top;
 
-	lstrcpynW(textBuffer, g_wuiState.text, _countof(textBuffer));
+	lstrcpynW(textBuffer, state.text, _countof(textBuffer));
 	line = wcstok_s(textBuffer, L"\r\n", &context);
 	if (!line) line = textBuffer;
 	while (line) {
@@ -287,18 +288,18 @@ static void wui_draw_text(Gdiplus::Graphics& graphics, const RECT& rcClient)
 		Gdiplus::REAL x = 0.0f;
 
 		graphics.MeasureString(line, -1, pFont, Gdiplus::PointF(0.0f, 0.0f), &format, &rcMeasure);
-		if (g_wuiState.textPos == 1) x = 0.0f;
-		else if (g_wuiState.textPos == 2) x = (Gdiplus::REAL)((rcClient.right - rcClient.left) - rcMeasure.Width);
+		if (state.textPos == 1) x = 0.0f;
+		else if (state.textPos == 2) x = (Gdiplus::REAL)((rcClient.right - rcClient.left) - rcMeasure.Width);
 		else x = ((Gdiplus::REAL)(rcClient.right - rcClient.left) - rcMeasure.Width) / 2.0f;
-		if (g_wuiState.contentVersion == 1) x += rcClient.left;
+		if (state.contentVersion == 1) x += rcClient.left;
 		rcLine = Gdiplus::RectF(x, (Gdiplus::REAL)y, rcMeasure.Width + 4.0f, (Gdiplus::REAL)fontPixelHeight + 4.0f);
-		if (g_wuiState.clockShadow && g_wuiState.shadowRange > 0) {
+		if (state.clockShadow && state.shadowRange > 0) {
 			Gdiplus::RectF rcShadow = rcLine;
-			rcShadow.X += (Gdiplus::REAL)g_wuiState.shadowRange;
-			rcShadow.Y += (Gdiplus::REAL)g_wuiState.shadowRange;
+			rcShadow.X += (Gdiplus::REAL)state.shadowRange;
+			rcShadow.Y += (Gdiplus::REAL)state.shadowRange;
 			graphics.DrawString(line, -1, pFont, rcShadow, &format, &brushShadow);
 		}
-		if (g_wuiState.clockBorder) {
+		if (state.clockBorder) {
 			Gdiplus::RectF rcBorder = rcLine;
 			rcBorder.X -= 1.0f;
 			rcBorder.Y += 1.0f;
@@ -374,15 +375,16 @@ static void wui_copy_layer(const TC_DISPLAY_BACKEND_RENDER_STATE& state)
 	g_wuiLayerHeight = height;
 }
 
-static void wui_blend_layer(BYTE* pixels, LONG width, LONG height, LONG left)
+static void wui_blend_pixels(BYTE* pixels, LONG width, LONG height, LONG left,
+ const BYTE* layer, LONG layerWidth, LONG layerHeight)
 {
-	if (!g_wuiLayerPixels) return;
-	for (LONG y = 0; y < height && y < g_wuiLayerHeight; ++y) {
-		for (LONG x = 0; x < g_wuiLayerWidth; ++x) {
+	if (!layer) return;
+	for (LONG y = 0; y < height && y < layerHeight; ++y) {
+		for (LONG x = 0; x < layerWidth; ++x) {
 			LONG targetX = x + left;
 			if (targetX < 0 || targetX >= width) continue;
 			BYTE* foreground = pixels + ((SIZE_T)y * width + targetX) * 4u;
-			const BYTE* background = g_wuiLayerPixels + ((SIZE_T)y * g_wuiLayerWidth + x) * 4u;
+			const BYTE* background = layer + ((SIZE_T)y * layerWidth + x) * 4u;
 			// GDI+ on an HDC may leave RGB coverage without matching alpha.
 			UINT alpha = max(max(foreground[3], foreground[0]), max(foreground[1], foreground[2]));
 			UINT inverse = 255u - alpha;
@@ -392,6 +394,187 @@ static void wui_blend_layer(BYTE* pixels, LONG width, LONG height, LONG left)
 			foreground[3] = (BYTE)(alpha + (background[3] * inverse + 127u) / 255u);
 		}
 	}
+}
+
+// Secondary hosts own their render state; the main host keeps Shell reservation ownership.
+#define WUI_SECONDARY_CLASS L"TClockWinUISubWindow"
+struct WUI_SECONDARY {
+ HWND window, target;
+ TC_DISPLAY_BACKEND_RENDER_STATE state;
+ RECT source;
+ TBE_FRAME background, scaled, frame;
+ TBE_REGION region;
+ TBE_COLOR edge;
+ WUI_SECONDARY* next;
+};
+static WUI_SECONDARY* g_wuiSecondaries = NULL;
+
+static void wui_scale_secondary(TC_DISPLAY_BACKEND_RENDER_STATE& state, const RECT& source, LONG width, LONG height)
+{
+ LONG sx = source.right-source.left, sy = source.bottom-source.top;
+ RECT area = state.contentVersion == 1 ? state.contentRect : RECT{0,0,state.layerWidth,abs(state.layerHeight)};
+ state.contentVersion = 1;
+ state.contentRect = {MulDiv(area.left-source.left,width,sx), MulDiv(area.top-source.top,height,sy),
+  MulDiv(area.right-source.left,width,sx), MulDiv(area.bottom-source.top,height,sy)};
+ state.fontHeight = MulDiv(state.fontHeight,height,sy);
+ state.vertPos = MulDiv(state.vertPos,height,sy);
+ state.lineHeight = MulDiv(state.lineHeight,height,sy);
+ state.shadowRange = MulDiv(state.shadowRange,height,sy);
+ for (DWORD i=0;i<state.styleCount && i<TC_WUI_MAX_STYLES;++i) {
+  state.styles[i].fontHeight = MulDiv(state.styles[i].fontHeight,height,sy);
+  state.styles[i].shadowRange = MulDiv(state.styles[i].shadowRange,height,sy);
+ }
+ for (DWORD i=0;i<state.runCount && i<TC_WUI_MAX_RUNS;++i) {
+  state.runs[i].x = MulDiv(state.runs[i].x-source.left,width,sx);
+  state.runs[i].y = MulDiv(state.runs[i].y-source.top,height,sy);
+  state.runBaselines[i] = MulDiv(state.runBaselines[i]-source.top,height,sy);
+ }
+ state.layerPixels = NULL;
+}
+
+static BOOL wui_present_secondary(WUI_SECONDARY* host)
+{
+ RECT bounds, cut;
+ if (!IsWindow(host->target) || GetPropW(host->target,WUI_SECONDARY_PROP)!=host->window ||
+     !GetWindowRect(host->target,&bounds)) return FALSE;
+ LONG width=bounds.right-bounds.left, height=bounds.bottom-bounds.top;
+ if (width<=0 || height<=0 || width>8192 || height>8192 || !host->background.pixels) return FALSE;
+ if (!tbe_ensure_frame(&host->frame,width,height) || !tbe_ensure_frame(&host->scaled,width,height)) return FALSE;
+ TC_DISPLAY_BACKEND_RENDER_STATE state=host->state;
+ wui_scale_secondary(state,host->source,width,height);
+ BYTE* pixels=(BYTE*)host->frame.pixels;
+ ZeroMemory(pixels,(SIZE_T)width*height*4u);
+ for (SIZE_T i=0;i<(SIZE_T)width*height;++i) pixels[i*4+3]=1;
+ RECT textArea={0,0,width,height};
+ if (!state.runCount) textArea=state.contentRect;
+ if (!state.textRenderer || !wui_render_text(state,textArea,width,height,pixels)) {
+  Gdiplus::Graphics graphics(host->frame.dc);
+  wui_draw_text(graphics,textArea,state);
+  graphics.Flush(Gdiplus::FlushIntentionSync);
+ }
+ GdiFlush();
+ {
+  Gdiplus::Bitmap background(host->background.size.cx,host->background.size.cy,
+   host->background.size.cx*4,PixelFormat32bppPARGB,(BYTE*)host->background.pixels);
+  Gdiplus::Bitmap scaled(width,height,width*4,PixelFormat32bppPARGB,(BYTE*)host->scaled.pixels);
+  Gdiplus::Graphics graphics(&scaled);
+  Gdiplus::ImageAttributes attributes;
+  attributes.SetWrapMode(Gdiplus::WrapModeTileFlipXY);
+  graphics.SetCompositingMode(Gdiplus::CompositingModeSourceCopy);
+  graphics.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
+  if (graphics.DrawImage(&background,Gdiplus::Rect(0,0,width,height),0,0,
+      host->background.size.cx,host->background.size.cy,Gdiplus::UnitPixel,&attributes)!=Gdiplus::Ok) return FALSE;
+  graphics.Flush(Gdiplus::FlushIntentionSync);
+ }
+ wui_blend_pixels(pixels,width,height,0,(const BYTE*)host->scaled.pixels,width,height);
+ HWND taskbar=tbe_find_taskbar(host->target);
+ COLORREF edge=tbe_sample_color(NULL,host->target,taskbar,&cut,&host->edge);
+ tbe_write_strip(host->frame.pixels,width,height,&cut,edge);
+ POINT destination={bounds.left,bounds.top}, origin={0,0};SIZE size={width,height};
+ BLENDFUNCTION blend={AC_SRC_OVER,0,255,AC_SRC_ALPHA};
+ if (!UpdateLayeredWindow(host->window,NULL,&destination,&size,host->frame.dc,&origin,0,&blend,ULW_ALPHA)) return FALSE;
+ tbe_update_region(host->window,taskbar,&host->region);
+ if (tbs_can_present(host->target,taskbar)) tbs_sync_order(host->window,taskbar);
+ else ShowWindow(host->window,SW_HIDE);
+ return TRUE;
+}
+
+static LRESULT CALLBACK wui_secondary_proc(HWND window,UINT message,WPARAM wParam,LPARAM lParam)
+{
+ WUI_SECONDARY* host=(WUI_SECONDARY*)GetWindowLongPtrW(window,GWLP_USERDATA);
+ if (!host) return DefWindowProcW(window,message,wParam,lParam);
+ switch (message) {
+ case WM_MOUSEACTIVATE:return MA_NOACTIVATE;
+ case WM_NCHITTEST:return HTCLIENT;
+ case WM_ERASEBKGND:return 1;
+ case WM_PAINT:{PAINTSTRUCT paint;BeginPaint(window,&paint);EndPaint(window,&paint);return 0;}
+ case WM_TIMER:
+  if (!IsWindow(host->target) || GetPropW(host->target,WUI_SECONDARY_PROP)!=window) DestroyWindow(window);
+  else if (!wui_present_secondary(host)) ShowWindow(window,SW_HIDE);
+  return 0;
+ case WM_THEMECHANGED:
+ case WM_DWMCOLORIZATIONCOLORCHANGED:
+ case WM_SETTINGCHANGE:
+ case WM_DISPLAYCHANGE:
+ case WM_DPICHANGED:host->edge.attempted=FALSE;return 0;
+ case WM_MOUSEMOVE:{TRACKMOUSEEVENT track={sizeof(track),TME_LEAVE,window,0};TrackMouseEvent(&track);break;}
+ case WM_MOUSELEAVE:
+  if (IsWindow(host->target)) SendMessageW(host->target,message,wParam,lParam);
+  return 0;
+ case WM_LBUTTONDOWN:case WM_RBUTTONDOWN:case WM_MBUTTONDOWN:case WM_XBUTTONDOWN:
+  SetCapture(window);break;
+ case WM_LBUTTONUP:case WM_RBUTTONUP:case WM_MBUTTONUP:case WM_XBUTTONUP:
+  if (GetCapture()==window) ReleaseCapture();break;
+ case WM_MOUSEWHEEL:case WM_MOUSEHWHEEL:break;
+ case WM_CLOSE:DestroyWindow(window);return 0;
+ case WM_NCDESTROY:{
+  KillTimer(window,WUI_TIMER_ID);
+  if (GetPropW(host->target,WUI_SECONDARY_PROP)==window) RemovePropW(host->target,WUI_SECONDARY_PROP);
+  WUI_SECONDARY** link=&g_wuiSecondaries;
+  while (*link && *link!=host) link=&(*link)->next;
+  if (*link) *link=host->next;
+  tbe_release_frame(&host->background);tbe_release_frame(&host->scaled);tbe_release_frame(&host->frame);
+  SetWindowLongPtrW(window,GWLP_USERDATA,0);delete host;
+  return DefWindowProcW(window,message,wParam,lParam);
+ }
+ default:return DefWindowProcW(window,message,wParam,lParam);
+ }
+ // Preserve screen coordinates for wheel input; translate client coordinates for buttons/motion.
+ HWND target=host->target;
+ POINT point={(short)LOWORD(lParam),(short)HIWORD(lParam)};
+ if (message!=WM_MOUSEWHEEL && message!=WM_MOUSEHWHEEL) {
+  ClientToScreen(window,&point);ScreenToClient(target,&point);lParam=MAKELPARAM(point.x,point.y);
+ }
+ return IsWindow(target)?SendMessageW(target,message,wParam,lParam):0;
+}
+
+void WINAPI WuiDestroySecondary(HWND target)
+{
+ if (!target) {
+  while (g_wuiSecondaries) DestroyWindow(g_wuiSecondaries->window);
+  if (g_wuiInst) UnregisterClassW(WUI_SECONDARY_CLASS,g_wuiInst);
+  return;
+ }
+ HWND window=(HWND)GetPropW(target,WUI_SECONDARY_PROP);
+ if (!window) return;
+ if (GetWindowThreadProcessId(window,NULL)==GetCurrentThreadId()) DestroyWindow(window);
+ else {RemovePropW(target,WUI_SECONDARY_PROP);PostMessageW(window,WM_CLOSE,0,0);}
+}
+
+BOOL WINAPI WuiApplySecondary(HWND target,const TC_DISPLAY_BACKEND_RENDER_STATE* state,const RECT* source)
+{
+ if (!g_wuiHost || !g_wuiGdip || GetWindowThreadProcessId(g_wuiHost,NULL)!=GetCurrentThreadId() ||
+     !IsWindow(target) || !state || state->cb<sizeof(*state) || !source || !state->layerPixels ||
+     state->layerWidth<=0 || !state->layerHeight || state->layerHeight==LONG_MIN ||
+     source->left<0 || source->top<0 || source->right<=source->left || source->bottom<=source->top ||
+     source->right>state->layerWidth || source->bottom>abs(state->layerHeight)) return FALSE;
+ HWND window=(HWND)GetPropW(target,WUI_SECONDARY_PROP);
+ WUI_SECONDARY* host=window?(WUI_SECONDARY*)GetWindowLongPtrW(window,GWLP_USERDATA):NULL;
+ if (!host) {
+  host=new(std::nothrow) WUI_SECONDARY{};if (!host) return FALSE;
+  WNDCLASSW cls={};cls.lpfnWndProc=wui_secondary_proc;cls.hInstance=g_wuiInst;
+  cls.hCursor=LoadCursorW(NULL,IDC_ARROW);cls.lpszClassName=WUI_SECONDARY_CLASS;
+  RegisterClassW(&cls);
+  window=CreateWindowExW(WS_EX_TOOLWINDOW|WS_EX_LAYERED|WS_EX_NOACTIVATE,WUI_SECONDARY_CLASS,
+   L"TClock WinUI secondary",WS_POPUP,0,0,1,1,target,NULL,g_wuiInst,NULL);
+  if (!window) {delete host;return FALSE;}
+  host->target=target;host->window=window;host->next=g_wuiSecondaries;g_wuiSecondaries=host;
+  SetWindowLongPtrW(window,GWLP_USERDATA,(LONG_PTR)host);
+  if (!SetPropW(target,WUI_SECONDARY_PROP,window) || !SetTimer(window,WUI_TIMER_ID,WUI_TIMER_MS,NULL)) {
+   DestroyWindow(window);return FALSE;
+  }
+ }
+ if (!tbe_ensure_frame(&host->background,source->right-source->left,source->bottom-source->top)) {
+  DestroyWindow(window);return FALSE;
+ }
+ for (LONG y=source->top;y<source->bottom;++y) {
+  LONG row=state->layerHeight>0?state->layerHeight-1-y:y;
+  CopyMemory(host->background.pixels+(SIZE_T)(y-source->top)*host->background.size.cx,
+   state->layerPixels+((SIZE_T)row*state->layerWidth+source->left)*4u,(SIZE_T)host->background.size.cx*4u);
+ }
+ host->state=*state;host->state.layerPixels=NULL;host->source=*source;
+ if (!wui_present_secondary(host)) {DestroyWindow(window);return FALSE;}
+ return TRUE;
 }
 
 static void wui_present(HWND hwnd)
@@ -446,7 +629,7 @@ static void wui_present(HWND hwnd)
         if (!g_wuiState.textRenderer || !wui_render_text(g_wuiState, textArea,
             sizeWindow.cx, sizeWindow.cy, pixels)) {
             pGraphics = new Gdiplus::Graphics(hdcMem);
-            wui_draw_text(*pGraphics, textArea);
+            wui_draw_text(*pGraphics, textArea, g_wuiState);
         }
     }
 
@@ -456,7 +639,8 @@ static void wui_present(HWND hwnd)
 		pGraphics = NULL;
 	}
 	GdiFlush();
-	wui_blend_layer(pixels, sizeWindow.cx, sizeWindow.cy, g_wuiContentLeft);
+	wui_blend_pixels(pixels, sizeWindow.cx, sizeWindow.cy, g_wuiContentLeft,
+        g_wuiLayerPixels, g_wuiLayerWidth, g_wuiLayerHeight);
 	{
 		RECT cut;
 		COLORREF edgeColor = tbe_sample_strip(hdcScreen, hwnd, edgeTaskbar, &cut);
@@ -922,6 +1106,7 @@ extern "C" BOOL WINAPI WuiCreateHost(HWND hwndTargetClock)
 
 extern "C" void WINAPI WuiDestroyHost(void)
 {
+	WuiDestroySecondary(NULL);
 	wui_release_taskbar();
 	wui_clear_layer();
 	wui_reset_text();

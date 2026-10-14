@@ -807,6 +807,9 @@ static void wui_schedule_tip(void)
 		wui_hide_tip();
 }
 
+static LRESULT CALLBACK wui_notify_tip(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam,
+	UINT_PTR id, DWORD_PTR);
+
 static BOOL wui_make_tip(void)
 {
 	INITCOMMONCONTROLSEX icc = { sizeof(icc), ICC_WIN95_CLASSES };
@@ -819,6 +822,11 @@ static BOOL wui_make_tip(void)
 		TOOLTIPS_CLASSW, NULL, WS_POPUP | TTS_ALWAYSTIP | TTS_NOPREFIX | TTS_NOANIMATE | TTS_NOFADE,
 		0, 0, 0, 0, g_wuiTarget, NULL, g_wuiInst, NULL);
 	if (!g_wuiTooltip) return FALSE;
+	if (!SetWindowSubclass(g_wuiTarget, wui_notify_tip, 1, 0)) {
+		DestroyWindow(g_wuiTooltip);
+		g_wuiTooltip = NULL;
+		return FALSE;
+	}
 	ZeroMemory(&ti, sizeof(ti));
 	ti.cbSize = sizeof(ti);
 	ti.uFlags = TTF_TRACK;
@@ -863,18 +871,14 @@ static void wui_fit_tip(void)
 		}
 	}
 	if (!GetWindowRect(g_wuiTooltip, &rcTip)) return;
-	RECT target;
 	MONITORINFO monitor = { sizeof(monitor) };
-	int x = rcTip.left, y = rcTip.top;
-	if (GetWindowRect(g_wuiTarget, &target)
-	 && GetMonitorInfoW(MonitorFromPoint(g_wuiHover.point, MONITOR_DEFAULTTONEAREST), &monitor)) {
-		// Keep the hover anchor while the text or title changes size.
-		if (target.top <= monitor.rcMonitor.top) { x = g_wuiHover.point.x - width / 2; y = target.bottom + 8; }
-		else if (target.bottom >= monitor.rcMonitor.bottom) { x = g_wuiHover.point.x - width / 2; y = target.top - height - 8; }
-		else { x = target.right + 8; y = g_wuiHover.point.y - height / 2;
-			if (x + width > monitor.rcWork.right) x = target.left - width - 8; }
-		x = max(monitor.rcWork.left, min(x, monitor.rcWork.right - width));
-		y = max(monitor.rcWork.top, min(y, monitor.rcWork.bottom - height));
+	// Match the secondary clock's pointer-relative placement at the taskbar.
+	// Keep the hover anchor while text/title sizing changes, without a taskbar gap.
+	int x = g_wuiHover.point.x, y = g_wuiHover.point.y - height;
+	if (GetMonitorInfoW(MonitorFromPoint(g_wuiHover.point, MONITOR_DEFAULTTONEAREST), &monitor)) {
+		if (y < monitor.rcMonitor.top) y = g_wuiHover.point.y;
+		x = max(monitor.rcMonitor.left, min(x, monitor.rcMonitor.right - width));
+		y = max(monitor.rcMonitor.top, min(y, monitor.rcMonitor.bottom - height));
 	}
 	if (rcTip.left != x || rcTip.top != y
 	 || rcTip.right - rcTip.left != width || rcTip.bottom - rcTip.top != height) {
@@ -884,6 +888,23 @@ static void wui_fit_tip(void)
 	// Native placement can leave a stale region even when the outer size is correct.
 	// Clear it after every fit, including position-only and already-sized refreshes.
 	SetWindowRgn(g_wuiTooltip, NULL, TRUE);
+}
+
+// Commit placement in TTN_SHOW, before Comctl32 makes the popup visible.
+static LRESULT CALLBACK wui_notify_tip(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam,
+	UINT_PTR id, DWORD_PTR)
+{
+	if (msg == WM_NCDESTROY) RemoveWindowSubclass(hwnd, wui_notify_tip, id);
+	if (msg == WM_NOTIFY && lParam) {
+		const NMHDR* notify = (const NMHDR*)lParam;
+		if (notify->hwndFrom == g_wuiTooltip && notify->code == TTN_SHOW) {
+			// Keep the owner's existing text/style notification handling.
+			DefSubclassProc(hwnd, msg, wParam, lParam);
+			wui_fit_tip();
+			return TRUE;
+		}
+	}
+	return DefSubclassProc(hwnd, msg, wParam, lParam);
 }
 
 static void wui_activate_tip(void)
@@ -1111,6 +1132,7 @@ extern "C" void WINAPI WuiDestroyHost(void)
 	wui_clear_layer();
 	wui_reset_text();
 	wui_hide_tip();
+	if (g_wuiTarget) RemoveWindowSubclass(g_wuiTarget, wui_notify_tip, 1);
 	if (g_wuiTooltip && IsWindow(g_wuiTooltip)) {
 		DestroyWindow(g_wuiTooltip);
 	}

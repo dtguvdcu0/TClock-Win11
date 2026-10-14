@@ -267,6 +267,29 @@ static void tip_schedule_native(void)
 		tip_reset_native();
 }
 
+static HWND tip_find_surface(HWND owner)
+{
+	HWND surface = (HWND)GetPropW(owner, WUI_SECONDARY_PROP);
+	if (!surface || !IsWindow(surface) || !IsWindowVisible(surface)
+	 || GetWindow(surface, GW_OWNER) != GetAncestor(owner, GA_ROOT)) return NULL;
+	return surface;
+}
+
+// A secondary WinUI surface forwards input to its registered native clock tool.
+static LRESULT CALLBACK tip_resolve_native(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam,
+	UINT_PTR id, DWORD_PTR data)
+{
+	(void)data;
+	if (message == WM_NCDESTROY) RemoveWindowSubclass(hwnd, tip_resolve_native, id);
+	if (message == TTM_WINDOWFROMPOINT) {
+		HWND hit = (HWND)DefSubclassProc(hwnd, message, wParam, lParam);
+		HWND surface = tip_find_surface(tip_native_owner);
+		if (surface && hit == surface) return (LRESULT)tip_native_owner;
+		return (LRESULT)hit;
+	}
+	return DefSubclassProc(hwnd, message, wParam, lParam);
+}
+
 static void tip_wait_native(void)
 {
 	POINT point = {0};
@@ -355,7 +378,9 @@ static BOOL tip_handle_native(MSG* msg, int uid)
 		tip_native_owner = msg->hwnd;
 		tip_conceal_native();
 	}
-	if (!tip_native_hover.inside) {
+	// The visible WinUI surface already forwards its own leave notifications.
+	// Tracking the covered clock would cancel hover as soon as the surface receives input.
+	if (!tip_native_hover.inside && !tip_find_surface(msg->hwnd)) {
 		TRACKMOUSEEVENT track = {sizeof(track), TME_LEAVE, msg->hwnd, 0};
 		TrackMouseEvent(&track);
 	}
@@ -533,6 +558,11 @@ void TooltipInit(HWND hwnd)
 		hwnd, NULL, hmod, NULL);
 
 	if (!hwndTooltip) return;
+	if (bWin11Main && !SetWindowSubclass(hwndTooltip, tip_resolve_native, 1, 0)) {
+		DestroyWindow(hwndTooltip);
+		hwndTooltip = NULL;
+		return;
+	}
 
 	SetWindowPos(hwndTooltip, HWND_TOPMOST, 0, 0, 0, 0,
 		SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE);
@@ -647,6 +677,7 @@ void TooltipEnd(HWND hwnd)
 		ti.uId = 1;
 		SendMessage(hwndTooltip, TTM_ACTIVATE, FALSE, 0);
 		SendMessage(hwndTooltip, TTM_DELTOOL, 0, (LPARAM)(LPTOOLINFO)&ti);
+		RemoveWindowSubclass(hwndTooltip, tip_resolve_native, 1);
 		DestroyWindow(hwndTooltip);
 		hwndTooltip = NULL;
 	}

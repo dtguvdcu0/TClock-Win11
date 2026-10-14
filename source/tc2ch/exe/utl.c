@@ -1062,6 +1062,17 @@ static BOOL ini_is_ledformat(const char* section,const char* entry)
         (_stricmp(entry,"LedDateFormat")==0 || _stricmp(entry,"LedFormat1")==0 || _stricmp(entry,"LedFormat2")==0 || _stricmp(entry,"LedFormat3")==0);
 }
 
+static BOOL ini_keep_menuquotes(const char* section, const char* entry)
+{
+    const char* suffix;
+    if (!section || !entry || _stricmp(section, "MenuCustom") != 0 || _strnicmp(entry, "Item", 4) != 0) return FALSE;
+    suffix = entry + 4;
+    if (*suffix < '0' || *suffix > '9') return FALSE;
+    while (*suffix >= '0' && *suffix <= '9') ++suffix;
+    // Compatibility boundary: label-format quotes are syntax, not INI storage wrappers.
+    return _stricmp(suffix, "LabelFormat") == 0;
+}
+
 int GetMyRegStr(const char* section, const char* entry, char* val, int cbData,
 	const char* defval)
 {
@@ -1103,7 +1114,7 @@ int GetMyRegStr(const char* section, const char* entry, char* val, int cbData,
 				if (tc_ini_utf8_read_string(g_inifile, key, entry, missingSentinel, mainbuf, (int)sizeof(mainbuf)) > 0 ||
 					mainbuf[0] == '\0') {
 					if (lstrcmp(mainbuf, missingSentinel) != 0) {
-						tc_strip_wrapping_quotes(mainbuf);
+						if (!ini_keep_menuquotes(section, entry)) tc_strip_wrapping_quotes(mainbuf);
 						if (isMenuCustomSection && mainbuf[0] && !tc_is_valid_utf8_bytes(mainbuf)) {
 							/* MenuCustom must remain UTF-8: ignore non-UTF8 main value and try Utf8Hex fallback. */
 						}

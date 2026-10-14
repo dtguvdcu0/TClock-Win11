@@ -490,6 +490,25 @@ static void rm_update_select_nav_buttons(HWND hDlg)
     EnableDlgItem(hDlg, IDC_RM_SELECT_NEXT, hasSel && sel < (count - 1));
 }
 
+static void rm_fill_label(HWND hDlg)
+{
+    char mode[64], encoded[sizeof(g_rm_items[0].labelFormat)];
+    WCHAR text[256], literal[258];
+    int selected, length;
+    if (g_rm_loading) return;
+    rm_get_combo_text(hDlg, IDC_RM_ITEM_TYPE, mode, sizeof(mode), "builtin");
+    if (lstrcmpi(mode, "builtin") != 0) return;
+    selected = (int)SendDlgItemMessageW(hDlg, IDC_RM_ITEM_ACTION, CB_GETCURSEL, 0, 0);
+    if (selected < 0) return;
+    length = (int)SendDlgItemMessageW(hDlg, IDC_RM_ITEM_ACTION, CB_GETLBTEXTLEN, selected, 0);
+    if (length <= 0 || length >= (int)_countof(text)) return;
+    if (SendDlgItemMessageW(hDlg, IDC_RM_ITEM_ACTION, CB_GETLBTEXT, selected, (LPARAM)text) == CB_ERR) return;
+    // Quote the displayed name so datetime tokens remain literal; later manual edits stay editable.
+    if (swprintf_s(literal, _countof(literal), L"\"%ls\"", text) < 0) return;
+    if (tc_utf16_to_utf8(literal, encoded, sizeof(encoded)) <= 0) return;
+    SetDlgItemTextUTF8Strict(hDlg, IDC_RM_ITEM_LABEL_FORMAT, encoded);
+}
+
 static void rm_update_hint(HWND hDlg)
 {
     int configured = 0;
@@ -514,7 +533,7 @@ static void rm_item_init(RM_MENU_ITEM_DATA* item)
     lstrcpyn(item->mode, "builtin", (int)sizeof(item->mode));
     item->enabled = 1;
     lstrcpyn(item->action, action, (int)sizeof(item->action));
-    lstrcpyn(item->labelFormat, rm_default_label_for_action(action), (int)sizeof(item->labelFormat));
+    sprintf_s(item->labelFormat, sizeof(item->labelFormat), "\"%s\"", rm_default_label_for_action(action));
     item->show = SW_SHOWNORMAL;
     item->labelUpdateSec = 1;
     item->alarmInitialSec = 60;
@@ -955,6 +974,12 @@ BOOL CALLBACK PageRClickMenuProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
         if (id == IDC_RM_ALARM_SAMPLE && code == BN_CLICKED) { rm_load_alarm_sample(hDlg); return TRUE; }
         if (id == IDC_RM_ITEM_TYPE && code == CBN_SELCHANGE) {
             rm_apply_type_ui_state(hDlg);
+            rm_fill_label(hDlg);
+            rm_send_ps_changed(hDlg);
+            return TRUE;
+        }
+        if (id == IDC_RM_ITEM_ACTION && code == CBN_SELCHANGE) {
+            rm_fill_label(hDlg);
             rm_send_ps_changed(hDlg);
             return TRUE;
         }

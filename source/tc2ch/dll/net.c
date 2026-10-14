@@ -3,8 +3,11 @@
   get network interface info
 ---------------------------------------------------------------------------*/
 
+#include <winsock2.h>
+#include <ws2tcpip.h>
 #include <windows.h>
-#include <iprtrmib.h>
+#include <iphlpapi.h>
+#include <netioapi.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -14,11 +17,18 @@ void Net_start(void);
 void Net_get(void);
 void Net_end(void);
 void Net_clear_Win10(void);
-void Net_getIP_Win10(void);
+BOOL Net_getIP_Win10(void);
+void Net_getRecvSend_Win10(double*, double*, double*, double*, double*, double*, double*, double*);
+extern BOOL b_CompactMode;
+extern BOOL IsMinimalMode(void);
+extern BOOL net_start_profiles(void);
+extern void net_stop_profiles(void);
+extern BOOL net_refresh_profiles(void);
 void Net_UpdateInterfaceTable(void);
 
 static HMODULE hmodIPHLP = NULL;
-static HGLOBAL *buffer = NULL;
+static HGLOBAL buffer = NULL;
+static ULONG g_netTableCapacity = 0;
 static MIB_IFROW *ifr;
 static MIB_IFTABLE *ift;
 static int count;
@@ -33,6 +43,16 @@ typedef DWORD (WINAPI *pfnGetIfTable)(PMIB_IFTABLE,PULONG,BOOL);
 typedef DWORD (WINAPI *pfnGetIfEntry)(PMIB_IFROW);
 static pfnGetIfTable pGetIfTable;
 static pfnGetIfEntry pGetIfEntry;
+
+static volatile LONG g_netDirty = 1;
+static ULONGLONG g_netLastRefresh = 0, g_netRetryAfter = 0;
+static BOOL g_netHasRefresh = FALSE, g_netWatchReady = FALSE;
+static HANDLE g_netAddressWatch = NULL, g_netInterfaceWatch = NULL, g_netRouteWatch = NULL;
+typedef DWORD (WINAPI *NET_ADDRESS_NOTIFY)(ADDRESS_FAMILY, PUNICAST_IPADDRESS_CHANGE_CALLBACK, PVOID, BOOLEAN, HANDLE*);
+typedef DWORD (WINAPI *NET_INTERFACE_NOTIFY)(ADDRESS_FAMILY, PIPINTERFACE_CHANGE_CALLBACK, PVOID, BOOLEAN, HANDLE*);
+typedef DWORD (WINAPI *NET_ROUTE_NOTIFY)(ADDRESS_FAMILY, PIPFORWARD_CHANGE_CALLBACK, PVOID, BOOLEAN, HANDLE*);
+typedef DWORD (WINAPI *NET_CANCEL_NOTIFY)(HANDLE);
+static NET_CANCEL_NOTIFY g_netCancelNotify = NULL;
 
 extern LONG GetMyRegLong(const char* section, const char* entry, LONG defval);
 
@@ -147,99 +167,52 @@ static BOOL IsUsableIPv4(DWORD ipv4)
 
 
 
-void Net_getIP_Win10(void)
+BOOL Net_getIP_Win10(void)
 {
-
-
-
-	if (ift && hmodIPHLP)
-	{
-
-		//pGetIpAddrTable = (pfnGetIpAddrTable)GetProcAddress(hmodIPHLP, "GetIpAddrTable");
-
-		if (pGetIpAddrTable == NULL) return;
-
-		if (pIPAddrTable) {
-			if (pGetIpAddrTable(pIPAddrTable, &dwSize, 0) ==
-				ERROR_INSUFFICIENT_BUFFER) {
-				FREE(pIPAddrTable);
-				pIPAddrTable = (MIB_IPADDRTABLE *)MALLOC(dwSize);
-			}
-			if (pIPAddrTable == NULL) {
-				if (b_DebugLog) writeDebugLog_Win10("[net.c][Net_getIP_Win10] Memory allocation failed for GetIpAddrTable", 999);
-			}
-
-		}
-
-
-		if ((dwRetVal = pGetIpAddrTable(pIPAddrTable, &dwSize, 0)) == NO_ERROR)
-		{
-			int i;
-			char buf_Str[32];
-			DWORD buf_IPAddr = 0;
-
-
-			for (i = 0; i < (int)pIPAddrTable->dwNumEntries; i++)
-			{
-				buf_IPAddr = pIPAddrTable->table[i].dwAddr;
-				if (!IsUsableIPv4(buf_IPAddr)) continue;
-				if (pIPAddrTable->table[i].dwIndex == (DWORD)ifIndex_Ether)
-				{
-					FormatIPv4Address(buf_IPAddr, buf_Str, sizeof(buf_Str));
-					strcpy_s(ipEther, 32, buf_Str);
-				}
-				else if (pIPAddrTable->table[i].dwIndex == (DWORD)ifIndex_WiFi)
-				{
-					FormatIPv4Address(buf_IPAddr, buf_Str, sizeof(buf_Str));
-					strcpy_s(ipWiFi, 32, buf_Str);
-				}
-				else if (pIPAddrTable->table[i].dwIndex == (DWORD)ifIndex_LTE)
-				{
-					FormatIPv4Address(buf_IPAddr, buf_Str, sizeof(buf_Str));
-					strcpy_s(ipLTE, 32, buf_Str);
-				}
-				else if (pIPAddrTable->table[i].dwIndex == (DWORD)ifIndex_VPN)
-				{
-					FormatIPv4Address(buf_IPAddr, buf_Str, sizeof(buf_Str));
-					strcpy_s(ipVPN, 32, buf_Str);
-				}
-			}
-
-			// Fallback: if index mapping did not hit, classify by IF type via dwIndex.
-			for (i = 0; i < (int)pIPAddrTable->dwNumEntries; i++)
-			{
-				MIB_IFROW ifRowByIndex;
-				DWORD ifEntryRet;
-				buf_IPAddr = pIPAddrTable->table[i].dwAddr;
-				if (!IsUsableIPv4(buf_IPAddr)) continue;
-				ZeroMemory(&ifRowByIndex, sizeof(ifRowByIndex));
-				ifRowByIndex.dwIndex = pIPAddrTable->table[i].dwIndex;
-				ifEntryRet = pGetIfEntry(&ifRowByIndex);
-				if (ifEntryRet != NO_ERROR) continue;
-				if (ifRowByIndex.dwOperStatus != IF_OPER_STATUS_OPERATIONAL) continue;
-				FormatIPv4Address(buf_IPAddr, buf_Str, sizeof(buf_Str));
-
-				if ((ifRowByIndex.dwType == IF_TYPE_WWANPP || ifRowByIndex.dwType == IF_TYPE_WWANPP2) && IsUnsetIP(ipLTE))
-				{
-					strcpy_s(ipLTE, 32, buf_Str);
-				}
-				else if ((ifRowByIndex.dwType == IF_TYPE_IEEE80211) && IsUnsetIP(ipWiFi))
-				{
-					strcpy_s(ipWiFi, 32, buf_Str);
-				}
-				else if ((ifRowByIndex.dwType == MIB_IF_TYPE_ETHERNET) && IsUnsetIP(ipEther))
-				{
-					strcpy_s(ipEther, 32, buf_Str);
-				}
-			}
-		}
-		else
-		{
-			if (b_DebugLog) writeDebugLog_Win10("[net.c][Net_getIP_Win10] GetIpAddrTable failed with error: ", (int)dwRetVal);
-			return;
-		}
+	char addresses[4][32] = { "--- --- --- ---", "--- --- --- ---", "--- --- --- ---", "--- --- --- ---" };
+	ULONG size = dwSize;
+	DWORD result, i;
+	if (!ift || !hmodIPHLP || !pGetIpAddrTable) return FALSE;
+	if (!pIPAddrTable) pIPAddrTable = (MIB_IPADDRTABLE*)MALLOC(dwSize);
+	if (!pIPAddrTable) return FALSE;
+	result = pGetIpAddrTable(pIPAddrTable, &size, FALSE);
+	if (result == ERROR_INSUFFICIENT_BUFFER) {
+		MIB_IPADDRTABLE* resized = (MIB_IPADDRTABLE*)MALLOC(size);
+		if (!resized) return FALSE;
+		FREE(pIPAddrTable); pIPAddrTable = resized; dwSize = size;
+		result = pGetIpAddrTable(pIPAddrTable, &size, FALSE);
 	}
-
+	if (result != NO_ERROR) {
+		if (b_DebugLog) writeDebugLog_Win10("[net.c] GetIpAddrTable failed =", (int)result);
+		return FALSE; /* Preserve the last valid address snapshot on transient errors. */
+	}
+	for (i = 0; i < pIPAddrTable->dwNumEntries; ++i) {
+		DWORD index = pIPAddrTable->table[i].dwIndex;
+		DWORD address = pIPAddrTable->table[i].dwAddr;
+		int slot = index == (DWORD)ifIndex_Ether ? 0 : index == (DWORD)ifIndex_WiFi ? 1 :
+			index == (DWORD)ifIndex_LTE ? 2 : index == (DWORD)ifIndex_VPN ? 3 : -1;
+		if (IsUsableIPv4(address) && slot >= 0) FormatIPv4Address(address, addresses[slot], sizeof(addresses[slot]));
+	}
+	/* Compatibility fallback uses the same interface snapshot, without per-address queries. */
+	for (i = 0; i < pIPAddrTable->dwNumEntries; ++i) {
+		DWORD index = pIPAddrTable->table[i].dwIndex;
+		DWORD address = pIPAddrTable->table[i].dwAddr, row;
+		int slot = -1;
+		if (!IsUsableIPv4(address)) continue;
+		for (row = 0; row < ift->dwNumEntries; ++row) {
+			const MIB_IFROW* entry = &ift->table[row];
+			if (entry->dwIndex != index || entry->dwOperStatus != IF_OPER_STATUS_OPERATIONAL) continue;
+			if (entry->dwType == IF_TYPE_WWANPP || entry->dwType == IF_TYPE_WWANPP2) slot = 2;
+			else if (entry->dwType == IF_TYPE_IEEE80211) slot = 1;
+			else if (entry->dwType == MIB_IF_TYPE_ETHERNET) slot = 0;
+			break;
+		}
+		if (slot >= 0 && IsUnsetIP(addresses[slot])) FormatIPv4Address(address, addresses[slot], sizeof(addresses[slot]));
+	}
+	/* Existing formatter boundary stores IPv4 display strings, never paths or commands. */
+	strcpy_s(ipEther, 32, addresses[0]); strcpy_s(ipWiFi, 32, addresses[1]);
+	strcpy_s(ipLTE, 32, addresses[2]); strcpy_s(ipVPN, 32, addresses[3]);
+	return TRUE;
 }
 
 
@@ -262,87 +235,126 @@ void Net_clear_Win10(void)
 
 	ifIndex_Ether = ifIndex_WiFi = ifIndex_LTE = ifIndex_VPN = -1;
 
-	strcpy_s(ipLTE, 32, "--- --- --- ---");
-	strcpy_s(ipWiFi, 32, "--- --- --- ---");
-	strcpy_s(ipEther, 32, "--- --- --- ---");
-	strcpy_s(ipVPN, 32, "--- --- --- ---");
+	/* Address caches are updated independently by net_poll_connection. */
+}
+
+void net_mark_changed(void)
+{
+	/* OS callbacks never query profiles, touch UI, or acquire the clock thread's resources. */
+	InterlockedExchange(&g_netDirty, 1);
+}
+
+static void CALLBACK net_notify_address(PVOID context, PMIB_UNICASTIPADDRESS_ROW row, MIB_NOTIFICATION_TYPE type)
+{
+	UNREFERENCED_PARAMETER(context); UNREFERENCED_PARAMETER(row); UNREFERENCED_PARAMETER(type);
+	net_mark_changed();
+}
+
+static void CALLBACK net_notify_interface(PVOID context, PMIB_IPINTERFACE_ROW row, MIB_NOTIFICATION_TYPE type)
+{
+	UNREFERENCED_PARAMETER(context); UNREFERENCED_PARAMETER(row); UNREFERENCED_PARAMETER(type);
+	net_mark_changed();
+}
+
+static void CALLBACK net_notify_route(PVOID context, PMIB_IPFORWARD_ROW2 row, MIB_NOTIFICATION_TYPE type)
+{
+	UNREFERENCED_PARAMETER(context); UNREFERENCED_PARAMETER(row); UNREFERENCED_PARAMETER(type);
+	net_mark_changed();
+}
+
+static void net_start_watch(void)
+{
+	NET_ADDRESS_NOTIFY addressNotify = (NET_ADDRESS_NOTIFY)GetProcAddress(hmodIPHLP, "NotifyUnicastIpAddressChange");
+	NET_INTERFACE_NOTIFY interfaceNotify = (NET_INTERFACE_NOTIFY)GetProcAddress(hmodIPHLP, "NotifyIpInterfaceChange");
+	NET_ROUTE_NOTIFY routeNotify = (NET_ROUTE_NOTIFY)GetProcAddress(hmodIPHLP, "NotifyRouteChange2");
+	BOOL profilesReady = TRUE;
+	g_netCancelNotify = (NET_CANCEL_NOTIFY)GetProcAddress(hmodIPHLP, "CancelMibChangeNotify2");
+	if (g_netCancelNotify) {
+		if (addressNotify) addressNotify(AF_UNSPEC, net_notify_address, NULL, FALSE, &g_netAddressWatch);
+		if (interfaceNotify) interfaceNotify(AF_UNSPEC, net_notify_interface, NULL, FALSE, &g_netInterfaceWatch);
+		if (routeNotify) routeNotify(AF_UNSPEC, net_notify_route, NULL, FALSE, &g_netRouteWatch);
+	}
+	if (!b_CompactMode && !IsMinimalMode()) profilesReady = net_start_profiles();
+	g_netWatchReady = g_netAddressWatch && g_netInterfaceWatch && g_netRouteWatch && profilesReady;
+	g_netHasRefresh = FALSE;
+	g_netRetryAfter = 0;
+	net_mark_changed();
+	if (b_DebugLog) writeDebugLog_Win10("[net.c] Change notification coverage ready =", g_netWatchReady);
+}
+
+static void net_stop_watch(void)
+{
+	HANDLE* handles[] = { &g_netAddressWatch, &g_netInterfaceWatch, &g_netRouteWatch };
+	int i;
+	/* Cancellation waits for callbacks; no callback depends on this thread. */
+	net_stop_profiles();
+	for (i = 0; i < (int)_countof(handles); ++i) {
+		if (*handles[i] && g_netCancelNotify) {
+			DWORD result = g_netCancelNotify(*handles[i]);
+			if (result != NO_ERROR && b_DebugLog) writeDebugLog_Win10("[net.c] Cancel notification error =", (int)result);
+			*handles[i] = NULL;
+		}
+	}
+	g_netCancelNotify = NULL;
+	g_netWatchReady = FALSE;
+	g_netHasRefresh = FALSE;
+	InterlockedExchange(&g_netDirty, 0);
+}
+
+BOOL net_poll_connection(BOOL profiles)
+{
+	ULONGLONG now = GetTickCount64();
+	ULONGLONG elapsed = now - g_netLastRefresh;
+	ULONGLONG interval = g_netWatchReady ? 30000 : 5000;
+	double recv, send, recvWAN, sendWAN, recvWiFi, sendWiFi, recvEther, sendEther;
+	double activityEther = net[18], activityWiFi = net[15], activityLTE = net[12];
+	BOOL success;
+	if (!hmodIPHLP || !pGetIfTable || now < g_netRetryAfter) return FALSE;
+	if (g_netHasRefresh && elapsed < interval &&
+		(!InterlockedCompareExchange(&g_netDirty, 0, 0) || elapsed < 2000)) return FALSE;
+	/* Clear before querying so notifications arriving during collection are retained. */
+	InterlockedExchange(&g_netDirty, 0);
+	g_netLastRefresh = now;
+	g_netHasRefresh = TRUE;
+	Net_UpdateInterfaceTable();
+	if (!ift) { g_netRetryAfter = now + 5000; net_mark_changed(); return FALSE; }
+	net[12] = net[15] = net[18] = 0;
+	ifIndex_Ether = ifIndex_WiFi = ifIndex_LTE = ifIndex_VPN = -1;
+	Net_getRecvSend_Win10(&recv, &send, &recvWAN, &sendWAN, &recvWiFi, &sendWiFi, &recvEther, &sendEther);
+	/* A metadata refresh must not reset traffic totals, baselines, or activity indicators. */
+	if (net[18] && activityEther == 2) net[18] = 2;
+	if (net[15] && activityWiFi == 2) net[15] = 2;
+	if (net[12] && activityLTE == 2) net[12] = 2;
+	active_physical_adapter_Win10 = flag_Ether ? 0 : flag_WiFi ? 1 : flag_LTE ? 2 : -1;
+	success = Net_getIP_Win10();
+	if (profiles && !net_refresh_profiles()) success = FALSE;
+	g_netLastRefresh = GetTickCount64();
+	g_netRetryAfter = success ? 0 : g_netLastRefresh + 5000;
+	if (!success) net_mark_changed();
+	if (b_DebugLog) writeDebugLog_Win10("[net.c] Connection snapshot query elapsed(ms) =", (int)(GetTickCount64() - now));
+	return TRUE;
 }
 
 void Net_start(void)
 {
-	DWORD bufsize;
-	DWORD iftable;
-
-
-
-	recv_old = 0, 	
-	send_old = 0;
-
-	net[0] = 0;
-	net[1] = 0;
-
-
-
-
-	bytesInGigaByte = 1024 * 1024 * kMegabytesPerGigabyte;
-
-
-
-	number_ActiveNet = 0;
-	number_ActiveNet_old = 0;
-
 	if (hmodIPHLP) Net_end();
-	ifr = NULL;
-	ift = NULL;
-
+	recv_old = send_old = 0;
+	net[0] = net[1] = 0;
+	bytesInGigaByte = 1024 * 1024 * kMegabytesPerGigabyte;
+	number_ActiveNet = number_ActiveNet_old = 0;
+	ifr = NULL; ift = NULL;
 	hmodIPHLP = LoadLibraryW(L"iphlpapi.dll");
-	if (hmodIPHLP == NULL) return;
-
+	if (!hmodIPHLP) return;
 	pGetIfTable = (pfnGetIfTable)GetProcAddress(hmodIPHLP, "GetIfTable");
 	pGetIfEntry = (pfnGetIfEntry)GetProcAddress(hmodIPHLP, "GetIfEntry");
-
 	pGetIpAddrTable = (pfnGetIpAddrTable)GetProcAddress(hmodIPHLP, "GetIpAddrTable");
-
-
-	if (pGetIfTable == NULL || pGetIfEntry == NULL)
-	{
-		FreeLibrary(hmodIPHLP); hmodIPHLP = NULL;
-		return;
-	}
-
-	bufsize = 0;
-	iftable = pGetIfTable((PMIB_IFTABLE)buffer, &bufsize, TRUE);
-	if (iftable != ERROR_INSUFFICIENT_BUFFER)
-	{
-		return;
-	}
-
-
-
-	buffer = GlobalAlloc(GPTR, bufsize);
-
-	if (buffer == NULL)
-	{
-		return;
-	}
-	iftable = pGetIfTable((PMIB_IFTABLE)buffer, &bufsize, TRUE);
-	if (iftable != NO_ERROR)
-	{
-		GlobalFree(buffer); buffer = NULL;
-		return;
-	}
-
-	ift = (MIB_IFTABLE *)buffer;
-	count = ift->dwNumEntries;
-
-	pIPAddrTable = (MIB_IPADDRTABLE *)MALLOC(dwSize);
-
+	if (!pGetIfTable || !pGetIfEntry) { Net_end(); return; }
+	Net_UpdateInterfaceTable();
+	if (!ift) { Net_end(); return; }
 	sec = 1;
-
 	Net_get();
-
-
-
+	net_start_watch();
+	net_poll_connection(!b_CompactMode && !IsMinimalMode());
 }
 
 
@@ -431,7 +443,7 @@ void Net_getRecvSend_Win10(double* recv, double* send, double* recvWAN, double* 
 		for (i = 0; i < count; i++)
 		{
 			ifr = (ift->table) + i;
-			pGetIfEntry(ifr);
+			/* GetIfTable already supplied this row's status and counters. */
 			//Added for LTE indicator by TTTT
 			if (!flag_LTE)
 			{
@@ -572,6 +584,7 @@ void Net_get(void)
 		double recvEther, sendEther; //Added for Ether indicator by TTTT
 
 		Net_UpdateInterfaceTable(); //Added to conform dyanamic change of interface table by TTTT 20190723
+		if (!ift) return;
 
 		Net_getRecvSend_Win10(&recv, &send, &recvWAN, &sendWAN, &recvWiFi, &sendWiFi, &recvEther, &sendEther); //Added for Ether/WiFi/LTE indicator by TTTT
 
@@ -639,7 +652,7 @@ void Net_get(void)
 		else if (net[15] > 0)active_physical_adapter_Win10 = 1;
 		else if (net[12] > 0)active_physical_adapter_Win10 = 2;
 
-		Net_getIP_Win10();
+		/* Local addresses are refreshed on notifications, independently of traffic sampling. */
 
 	}
 	
@@ -647,6 +660,7 @@ void Net_get(void)
 
 void Net_end(void)
 {
+	net_stop_watch();
 	if(hmodIPHLP)
 	{
 		FreeLibrary(hmodIPHLP);
@@ -657,6 +671,7 @@ void Net_end(void)
 	}
 
 	hmodIPHLP = NULL; buffer = NULL;
+	ifr = NULL; ift = NULL; g_netTableCapacity = 0;
 
 	if (pIPAddrTable != NULL)
 	{
@@ -700,45 +715,19 @@ void Net_end(void)
 
 void Net_UpdateInterfaceTable(void)
 {
-	DWORD bufsize;
-	DWORD iftable;
-
-
-	if (hmodIPHLP)
-	{
-		ifr = NULL;
-		ift = NULL;
-
-		bufsize = 0;
-		iftable = pGetIfTable((PMIB_IFTABLE)buffer, &bufsize, TRUE);
-		if (iftable != ERROR_INSUFFICIENT_BUFFER)
-		{
-			return;
-		}
-
-		if (buffer)
-		{
-			GlobalFree(buffer);
-		}
-
-		buffer = GlobalAlloc(GPTR, bufsize);
-
-		if (buffer == NULL)
-		{
-			return;
-		}
-
-		iftable = pGetIfTable((PMIB_IFTABLE)buffer, &bufsize, TRUE);
-		if (iftable != NO_ERROR)
-		{
-			GlobalFree(buffer); buffer = NULL;
-			return;
-		}
-
-		ift = (MIB_IFTABLE *)buffer;
-		count = ift->dwNumEntries;
-
-		pIPAddrTable = (MIB_IPADDRTABLE *)MALLOC(dwSize);
+	ULONG size = g_netTableCapacity;
+	DWORD result;
+	if (!hmodIPHLP || !pGetIfTable) return;
+	ifr = NULL; ift = NULL;
+	result = pGetIfTable((PMIB_IFTABLE)buffer, &size, TRUE);
+	if (result == ERROR_INSUFFICIENT_BUFFER) {
+		HGLOBAL resized = GlobalAlloc(GPTR, size);
+		if (!resized) return;
+		if (buffer) GlobalFree(buffer);
+		buffer = resized; g_netTableCapacity = size;
+		result = pGetIfTable((PMIB_IFTABLE)buffer, &size, TRUE);
 	}
-
+	if (result != NO_ERROR) return;
+	ift = (MIB_IFTABLE*)buffer;
+	count = ift->dwNumEntries;
 }

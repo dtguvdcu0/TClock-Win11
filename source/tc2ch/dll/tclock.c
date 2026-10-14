@@ -548,6 +548,8 @@ int nChime = 0;
 int BlinksOnChime = 3;
 int dwidth = 0, dheight = 0, dvpos = 0, dlineheight = 0, dclkvpos = 0;
 BOOL bDispSysInfo = FALSE, bTimerSysInfo = FALSE;
+static BOOL g_netDisplay = FALSE, g_netEnabled = FALSE;
+static WCHAR g_netDisplayText[4096];
 BOOL bGetBattery = FALSE, bGetMem = FALSE,
 bGetPm = FALSE, bGetNet = FALSE, bGetHdd = FALSE, bGetCpu = FALSE, bGetVol = FALSE, bGetGpu = FALSE, bGetTemp = FALSE;
 int iFreeRes[3] = {0,0,0}, totalCPUUsage = 0, iBatteryLife = 0, iVolume = 0, totalGPUUsage = 0;
@@ -3210,6 +3212,9 @@ void RestartOnRefresh(void)
 
 static void InitSysInfoMinimal(DWORD sysMask)
 {
+	g_netDisplay = (sysMask & (FORMAT_NET | FORMAT_CONNECTION)) != 0;
+	g_netEnabled = g_netDisplay;
+	g_netDisplayText[0] = L'\0';
 	bDispSysInfo = FALSE;
 	bTimerSysInfo = FALSE;
 	bGetBattery = FALSE;
@@ -3232,7 +3237,6 @@ static void InitSysInfoMinimal(DWORD sysMask)
 	}
 	if ((sysMask & FORMAT_NET) != 0) {
 		bGetNet = TRUE;
-		bDispSysInfo = TRUE;
 	}
 	if ((sysMask & FORMAT_HDD) != 0) {
 		bGetHdd = TRUE;
@@ -4564,6 +4568,9 @@ void InitSysInfo()
 
 	dwInfoFormat = g_formatW ? FindFormatW(g_formatW) : FindFormat(format);
 	dwInfoTip = TooltipFindFormat();
+	g_netDisplay = (dwInfoFormat & (FORMAT_NET | FORMAT_CONNECTION)) != 0;
+	g_netEnabled = ((dwInfoFormat | dwInfoTip) & (FORMAT_NET | FORMAT_CONNECTION)) != 0;
+	g_netDisplayText[0] = L'\0';
 
 	//bGetBattery = ((dwInfoFormat | dwInfoTip) & FORMAT_BATTERY) ? TRUE : FALSE;
 	//if (dwInfoFormat & FORMAT_BATTERY) bDispSysInfo = TRUE;
@@ -4575,7 +4582,7 @@ void InitSysInfo()
 	if(dwInfoFormat & FORMAT_MEMORY) bDispSysInfo = TRUE;
 
 	bGetNet = (((dwInfoFormat | dwInfoTip) & FORMAT_NET)||(bGraph&&graphMode==1))? TRUE:FALSE;
-	if(dwInfoFormat & FORMAT_NET) bDispSysInfo = TRUE;
+	/* Network tokens redraw only after their formatted values change. */
 
 	bGetHdd = ((dwInfoFormat | dwInfoTip) & FORMAT_HDD)? TRUE:FALSE;
 	if(dwInfoFormat & FORMAT_HDD) bDispSysInfo = TRUE;
@@ -4761,6 +4768,7 @@ BOOL WINAPI FormatDisplayTextW(const WCHAR* fmt,const SYSTEMTIME* time,WCHAR* ou
     BuildMainFormatWrapped(raw,wrapped,sizeof(wrapped),FALSE,"[LED format]");
     if(!MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,wrapped,-1,wrappedW,_countof(wrappedW)))return FALSE;
     infoFlags=FindFormatW(wrappedW);
+    if(infoFlags & (FORMAT_NET|FORMAT_CONNECTION))net_poll_connection(!b_MinimalMode && !b_CompactMode);
     if(infoFlags & (FORMAT_BATTERY|FORMAT_MEMORY|FORMAT_NET|FORMAT_HDD|FORMAT_CPU|FORMAT_VOL|FORMAT_GPU|FORMAT_TEMP))
         UpdateSysRes((infoFlags&FORMAT_BATTERY)!=0,(infoFlags&FORMAT_MEMORY)!=0,(infoFlags&FORMAT_NET)!=0,
             (infoFlags&FORMAT_HDD)!=0,(infoFlags&FORMAT_CPU)!=0,(infoFlags&FORMAT_VOL)!=0,
@@ -4801,6 +4809,7 @@ BOOL WINAPI FormatMenuLabel_Win11(const char* fmt, char* out, int outBytes)
 	}
 
 	dwInfo = FindFormatW(tmpW);
+	if (dwInfo & (FORMAT_NET | FORMAT_CONNECTION)) net_poll_connection(!b_MinimalMode && !b_CompactMode);
 	if (dwInfo & (FORMAT_BATTERY | FORMAT_MEMORY | FORMAT_NET | FORMAT_HDD | FORMAT_CPU | FORMAT_VOL | FORMAT_GPU | FORMAT_TEMP)) {
 		UpdateSysRes(
 			(dwInfo & FORMAT_BATTERY) ? TRUE : FALSE,
@@ -4845,6 +4854,16 @@ void PlayChime(BOOL b_sedondary)
 /*------------------------------------------------
 　WM_TIMER の処理 New Version for TClock-Win10
  --------------------------------------------------*/
+static BOOL clk_update_network(SYSTEMTIME* time, int beat100)
+{
+	WCHAR text[4096];
+	if (!g_netDisplay || !g_formatW) return FALSE;
+	FormatNetworkTextW(text, _countof(text), time, beat100, g_formatW, &g_formatStyleRules);
+	if (lstrcmpW(text, g_netDisplayText) == 0) return FALSE;
+	lstrcpynW(g_netDisplayText, text, _countof(g_netDisplayText));
+	return TRUE;
+}
+
 void OnTimer_Win10(void)
 {
 	BOOL bRedraw;
@@ -4870,6 +4889,8 @@ void OnTimer_Win10(void)
 
 
 	GetDisplayTime(&t, nDispBeat ? (&beat100) : NULL);
+	if (g_netEnabled || (!b_MinimalMode && !b_CompactMode))
+		net_poll_connection(!b_MinimalMode && !b_CompactMode);
 	if (!b_MinimalMode) {
 		CustomFormatVarsTick();
 		GipTick();
@@ -4963,7 +4984,7 @@ void OnTimer_Win10(void)
 
 
 
-	bRedraw = FALSE;
+	bRedraw = clk_update_network(&t, beat100);
 
 	if (ext_is_active() && ((g_extOptions.mode != EXT_MODE_FLIP && g_extOptions.mode != EXT_MODE_NIXIE) || g_extOptions.seconds) &&
         LastTime.wSecond != t.wSecond) bRedraw = TRUE;
@@ -8224,7 +8245,7 @@ void OntimerCheckNetStat_Win10(HWND hwnd)
 
 	if (!b_CompactMode)
 	{
-		chkInternetConnectionProfile_Win10(); // replaced by TTTT to check whether this chkDataPlanUsage_OK is needed or not.
+		net_poll_connection(TRUE);
 	}
 
 }

@@ -103,12 +103,12 @@ DWORD min_sysmask(DWORD dwInfoFormat)
 
 	if (!b_MinimalMode || !b_MinSysInfo) return 0;
 
-	mask = dwInfoFormat & (FORMAT_BATTERY | FORMAT_MEMORY | FORMAT_NET | FORMAT_HDD | FORMAT_CPU | FORMAT_VOL | FORMAT_GPU | FORMAT_TEMP);
+	mask = dwInfoFormat & (FORMAT_BATTERY | FORMAT_MEMORY | FORMAT_NET | FORMAT_CONNECTION | FORMAT_HDD | FORMAT_CPU | FORMAT_VOL | FORMAT_GPU | FORMAT_TEMP);
 	if (!b_MinBattery) {
 		mask &= ~FORMAT_BATTERY;
 	}
 	if (!b_MinNetwork) {
-		mask &= ~FORMAT_NET;
+		mask &= ~(FORMAT_NET | FORMAT_CONNECTION);
 	}
 	return mask;
 }
@@ -124,7 +124,7 @@ DWORD min_backendmask(DWORD sysMask)
 	if ((sysMask & FORMAT_CPU) != 0) backendMask |= MINBACK_PERMON;
 	if ((sysMask & FORMAT_GPU) != 0) backendMask |= MINBACK_GPU;
 	if ((sysMask & FORMAT_TEMP) != 0) backendMask |= MINBACK_TEMP;
-	if ((sysMask & FORMAT_NET) != 0) backendMask |= MINBACK_NET;
+	if ((sysMask & (FORMAT_NET | FORMAT_CONNECTION)) != 0) backendMask |= MINBACK_NET;
 	if ((sysMask & FORMAT_HDD) != 0) backendMask |= MINBACK_DISK;
 	return backendMask;
 }

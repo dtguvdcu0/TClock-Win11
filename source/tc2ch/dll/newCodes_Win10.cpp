@@ -39,6 +39,45 @@ using namespace Windows::UI::Notifications;	// for Win10(UWP) notirfation
 using namespace Windows::Data::Xml::Dom;	// for Win10(UWP) notirfation
 using namespace Windows::UI::Notifications::Management;
 
+extern BOOL b_StartupCompleted;
+static EventRegistrationToken g_netStatusToken;
+static BOOL g_netStatusRegistered = FALSE;
+
+extern "C" BOOL net_start_profiles(void)
+{
+	if (g_netStatusRegistered) return TRUE;
+	try {
+		g_netStatusToken = NetworkInformation::NetworkStatusChanged +=
+			ref new NetworkStatusChangedEventHandler([](Platform::Object^) { net_mark_changed(); });
+		g_netStatusRegistered = TRUE;
+	}
+	catch (Platform::Exception^) { return FALSE; }
+	return TRUE;
+}
+
+extern "C" void net_stop_profiles(void)
+{
+	if (!g_netStatusRegistered) return;
+	NetworkInformation::NetworkStatusChanged -= g_netStatusToken;
+	g_netStatusRegistered = FALSE;
+}
+
+extern "C" BOOL net_refresh_profiles(void)
+{
+	BOOL success = FALSE;
+	if (!b_StartupCompleted) newCodes_startup_Win10();
+	/* One worker collects profiles; the clock thread waits before using the snapshot. */
+	std::thread worker([&] {
+		try {
+			chkInternetConnectionProfile_Win10();
+			success = TRUE;
+		}
+		catch (Platform::Exception^) { net_mark_changed(); }
+	});
+	worker.join();
+	return success;
+}
+
 ConnectionProfile^ internetConnectProf;
 Collections::IVectorView<ConnectionProfile^>^ connectProfs;
 
@@ -634,15 +673,12 @@ extern "C" void newCodes_startup_Win10()
 
 	//////extern BOOL b_ImmediateUsageUpdate;
 
-	auto th1 = std::thread([] {internetConnectProf = NetworkInformation::GetInternetConnectionProfile(); });
-	auto th2 = std::thread([] {connectProfs = NetworkInformation::GetConnectionProfiles(); });
+	/* Connection queries are consolidated in the notification-driven refresh. */
 
 	granularityForInquiry = DataUsageGranularity::Total;
 	networkUsageStatesForInquiry.Shared = TriStates::No;
 	networkUsageStatesForInquiry.Roaming = TriStates::No;
 
-	th1.join();
-	th2.join();
 
 
 	
@@ -735,8 +771,7 @@ extern "C" BOOL updateConnectProfsInfo_Win10(BOOL b_Detail)	// return value: 1 =
 
 
 
-	auto th1 = std::thread([] {connectProfs = NetworkInformation::GetConnectionProfiles(); });
-	th1.join();
+	connectProfs = NetworkInformation::GetConnectionProfiles();
 
 	String^ currentInternetConnecProfName = nullptr;
 	if (internetConnectProf != nullptr) currentInternetConnecProfName = internetConnectProf->ProfileName;
@@ -789,11 +824,10 @@ extern "C" BOOL updateConnectProfsInfo_Win10(BOOL b_Detail)	// return value: 1 =
 				if (currentInternetConnecProfName != nullptr && connectProfName[i] == currentInternetConnecProfName) b_CurrentInternetProf = TRUE;
 
 				NetworkConnectivityLevel tempConnectLevel;
-				std::thread th2;
 
 				if (b_Detail)
 				{
-					th2 = std::thread([&] {tempConnectLevel = connectProf_work->GetNetworkConnectivityLevel(); });
+					tempConnectLevel = connectProf_work->GetNetworkConnectivityLevel();
 
 				}
 
@@ -838,7 +872,6 @@ extern "C" BOOL updateConnectProfsInfo_Win10(BOOL b_Detail)	// return value: 1 =
 
 				if (b_Detail)
 				{
-					th2.join();
 
 					if (tempConnectLevel == NetworkConnectivityLevel::None)
 						connectProfConnectLevel[i] = 0;
@@ -856,7 +889,7 @@ extern "C" BOOL updateConnectProfsInfo_Win10(BOOL b_Detail)	// return value: 1 =
 
 					if ((tempConnectLevel == NetworkConnectivityLevel::InternetAccess) || b_CurrentInternetProf)
 					{
-						if (b_WiFiProf[i]) connectedWiFiProfNum = i;
+						if (b_WiFiProf[i] && (b_CurrentInternetProf || connectedWiFiProfNum == -1)) connectedWiFiProfNum = i;
 						if (b_LTEProf[i] && !b_WiFiProf[i])
 						{
 							connectedLTEProfNum = i;
@@ -974,6 +1007,10 @@ extern "C" void chkInternetConnectionProfile_Win10()
 
 
 	if (!b_StartupCompleted) newCodes_startup_Win10();
+	/* Read the current profile before deriving status, SSID/APN, and selected profile indexes. */
+	internetConnectProf = NetworkInformation::GetInternetConnectionProfile();
+	if (updateConnectProfsInfo_Win10(TRUE)) return;
+	b_MeteredNetNow = FALSE;
 
 	if (internetConnectProf != nullptr)
 	{
@@ -1071,8 +1108,7 @@ extern "C" void chkInternetConnectionProfile_Win10()
 
 
 	//WAN接続時に、以下の行がたまーに失敗してクラッシュしている可能性
-	auto th1 = std::thread([] {internetConnectProf = NetworkInformation::GetInternetConnectionProfile(); });
-	th1.join();
+	/* The profile above is already current; do not query it again after classification. */
 
 
 
@@ -1105,14 +1141,7 @@ extern "C" void chkInternetConnectionProfile_Win10()
 	{
 		identifyInternetConnectProfNum_Win10();
 
-		if (internetConnectProfNum == -1)
-		{
-			if (b_DebugLog) writeDebugLog_Win10("[chkInternetConnectionProfile_Win10] profile index unresolved; refreshing profile list.", 999);
-			if (!updateConnectProfsInfo_Win10(TRUE))
-			{
-				identifyInternetConnectProfNum_Win10();
-			}
-		}
+		/* The profile list was refreshed once at the start of this snapshot. */
 
 		if (b_DebugLog) writeDebugLog_Win10("[chkInternetConnectionProfile_Win10] CurrentInternetProfileNumber is identified as: ", internetConnectProfNum);
 	}

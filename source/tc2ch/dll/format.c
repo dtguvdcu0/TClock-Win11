@@ -4459,6 +4459,46 @@ DWORD FindFormat(char* fmt)
 	return ret;
 }
 
+static BOOL fmt_scan_connection(const WCHAR** cursor)
+{
+	const WCHAR* p = *cursor;
+	const WCHAR* end = p;
+	if (tc_scan_ip_token_w(&end)) { *cursor = end; return TRUE; }
+	/* Connection labels have no rate/counter dependency. */
+	if (tc_scan_network_token_w(&end) &&
+		!(_wcsnicmp(p, L"NR", 2) == 0 || _wcsnicmp(p, L"NS", 2) == 0)) {
+		*cursor = end; return TRUE;
+	}
+	return FALSE;
+}
+
+void FormatNetworkTextW(WCHAR* out, int capacity, SYSTEMTIME* time, int beat100, const WCHAR* fmt, const TC_FS_RULESET* rules)
+{
+	WCHAR text[4096];
+	char info[4096];
+	TC_FORMAT_SPANS spans;
+	WCHAR* dest = out;
+	int remaining = capacity, i;
+	if (!out || capacity <= 0) return;
+	*out = L'\0';
+	/* Compare exactly the visible token values, including width/rounding and quoted/named blocks. */
+	ZeroMemory(&spans, sizeof(spans));
+	ZeroMemory(info, sizeof(info));
+	MakeFormatExW(text, _countof(text), info, time, beat100, fmt, &spans);
+	if (rules && rules->enabled && !TcFormatStyleTransform(rules, text, _countof(text), info, &spans)) spans.overflow = TRUE;
+	if (spans.overflow) { lstrcpynW(out, text, capacity); return; }
+	for (i = 0; i < spans.count; ++i) {
+		const TC_FORMAT_SPAN* span = &spans.items[i];
+		const WCHAR* end = span->selector;
+		int n;
+		if (!(tc_scan_network_token_w(&end) || tc_scan_ip_token_w(&end)) || *end) continue;
+		tc_wappend_uint_var(&dest, &remaining, (unsigned int)span->length);
+		tc_wappend_char(&dest, &remaining, L':');
+		for (n = 0; n < span->length; ++n) tc_wappend_char(&dest, &remaining, text[span->start + n]);
+		tc_wappend_char(&dest, &remaining, L';');
+	}
+}
+
 DWORD FindFormatW(const WCHAR* fmt)
 {
 	const WCHAR* sp;
@@ -4552,12 +4592,12 @@ DWORD FindFormatW(const WCHAR* fmt)
 					sp += 4;
 					ret |= FORMAT_MEMORY;
 				}
-				else if (*sp == L'N' &&
-					(*(sp + 1) == L'R' || *(sp + 1) == L'S') &&
-					(*(sp + 2) == L'S' || *(sp + 2) == L'A') &&
-					(*(sp + 3) == L'M' || *(sp + 3) == L'K' || *(sp + 3) == L'B' || *(sp + 3) == L'G' || *(sp + 3) == L'A'))
+				else if (fmt_scan_connection(&sp))
 				{
-					sp += 4;
+					ret |= FORMAT_CONNECTION;
+				}
+				else if (tc_scan_network_token_w(&sp))
+				{
 					ret |= FORMAT_NET;
 				}
 				else if (*sp == L'H' && (*(sp + 1) == L'R' || *(sp + 1) == L'W' || *(sp + 1) == L'D') && (*(sp + 2) >= L'A' && *(sp + 2) <= L'Z') && (*(sp + 3) == L'B' || *(sp + 3) == L'K' || *(sp + 3) == L'M' || *(sp + 3) == L'A'))

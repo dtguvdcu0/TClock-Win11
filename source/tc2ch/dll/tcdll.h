@@ -187,8 +187,10 @@ void CustomFormatVarsInvalidateSettings(void);
 #define FORMAT_VOL       0x0800
 #define FORMAT_GPU     0x1000
 #define FORMAT_TEMP		0x2000
+#define FORMAT_CONNECTION 0x4000
 DWORD FindFormat(char* fmt);
 DWORD FindFormatW(const WCHAR* fmt);
+void FormatNetworkTextW(WCHAR* out, int capacity, SYSTEMTIME* time, int beat100, const WCHAR* fmt, const TC_FS_RULESET* rules);
 
 SYSTEMTIME CalcTimeDifference_Win10(SYSTEMTIME*, int, int, BOOL);
 SYSTEMTIME CalcTimeDifference_US_Win10(SYSTEMTIME*, int, int, BOOL);
@@ -384,6 +386,11 @@ void TooltipRemoveSubClock(int index);
 #ifdef __cplusplus
 extern "C" {
 #endif
+	void net_mark_changed(void);
+	BOOL net_poll_connection(BOOL profiles);
+	BOOL net_start_profiles(void);
+	void net_stop_profiles(void);
+	BOOL net_refresh_profiles(void);
 	void chkInternetConnectionProfile_Win10(void);
 
 	void identifyInternetConnectProfNum_Win10(void);

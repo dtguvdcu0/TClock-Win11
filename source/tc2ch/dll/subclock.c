@@ -1,5 +1,6 @@
 #include "tcdll.h"
 #include "resource.h"
+#include "../common/taskbar_edge.h"
 
 
 
@@ -38,6 +39,48 @@ extern BOOL bEnableTooltip;
 BOOL bWmPaintRecevied = FALSE;
 BOOL bWmWinPosChangingRecevied = FALSE;
 BOOL bSubClkRecovering = FALSE;
+
+static TBE_COLOR g_subEdgeColors[MAX_SUBSCREEN] = {0};
+static TBE_REGION g_subEdgeRegions[MAX_SUBSCREEN] = {0};
+
+void sub_refresh_edges(void)
+{
+ for (int i = 0; i < MAX_SUBSCREEN; ++i) g_subEdgeColors[i].attempted = FALSE;
+}
+
+static void sub_release_edge(int index)
+{
+ TBE_REGION* region;
+ if (index < 0 || index >= MAX_SUBSCREEN) return;
+ region = &g_subEdgeRegions[index];
+ if (region->applied && IsWindow(region->window)) tbe_update_region(region->window, NULL, region);
+ ZeroMemory(region, sizeof(*region));
+ ZeroMemory(&g_subEdgeColors[index], sizeof(g_subEdgeColors[index]));
+}
+
+void sub_prepare_edge(int index)
+{
+ if (!bWin11Sub || index < 0 || index >= MAX_SUBSCREEN) return;
+ if (g_subEdgeRegions[index].window != hwndClockSubClk[index]) sub_release_edge(index);
+ tbe_update_region(hwndClockSubClk[index], hwndTaskBarSubClk[index], &g_subEdgeRegions[index]);
+}
+
+// The secondary DIB is bottom-up; compose only after scaling and alpha reconstruction.
+void sub_write_edge(int index, RGBQUAD* pixels, int width, int height)
+{
+ RECT cut;
+ COLORREF color;
+ LONG top;
+ if (!bWin11Sub || index < 0 || index >= MAX_SUBSCREEN) return;
+ color = tbe_sample_color(NULL, hwndClockSubClk[index], hwndTaskBarSubClk[index], &cut, &g_subEdgeColors[index]);
+ if (color == CLR_INVALID) return;
+ top = height - cut.bottom;
+ cut.bottom = height - cut.top;
+ cut.top = top;
+ tbe_write_strip(pixels, width, height, &cut, color);
+}
+
+
 
 
 /*------------------------------------------------
@@ -99,9 +142,18 @@ LRESULT CALLBACK WndProcSubClk(HWND hwnd, UINT message, WPARAM wParam, LPARAM lP
 
 		break;
 	}
+	case WM_THEMECHANGED:
+	case WM_SYSCOLORCHANGE:
+	case WM_DISPLAYCHANGE:
+#ifdef WM_DPICHANGED
+	case WM_DPICHANGED:
+#endif
+		sub_refresh_edges();
+		break;
 	case WM_SIZE:
 	case WM_WININICHANGE:
 	{
+		sub_refresh_edges();
 		//NG残骸！自身のサイズを変更するコードを入れると無限ループする！！
 		//int i = 0;
 		//i = GetSubClkIndexFromHWND(hwnd);
@@ -216,6 +268,7 @@ LRESULT CALLBACK WndProcSubClk(HWND hwnd, UINT message, WPARAM wParam, LPARAM lP
 		WNDPROC oldProc = NULL;
 		if (bWin11Main) TooltipOnMouseEvent(hwnd, WM_NCDESTROY, 0, 0, BASE_UID_SUBSCREEN + i);
 		if (i != 999) {
+			sub_release_edge(i);
 			led_stop_subsurface(i);
 			oldProc = oldWndProcSub[i];
 			if (oldProc && (WNDPROC)GetWindowLongPtr(hwnd, GWLP_WNDPROC) == WndProcSubClk) {
@@ -556,6 +609,7 @@ void CheckSubClocks(void)
 					if (i == MAX_SUBSCREEN) return;
 				}						//空きindexを見つける
 
+				sub_release_edge(i);
 				hwndTaskBarSubClk[i] = tempHwndSubTaskbar;
 				hwndClockSubClk[i] = tempHwndSubClk;
 
@@ -585,6 +639,7 @@ void FindAllSubClocks(void)
 	//最初のサブクロック検出
 
 	for (int i = 0; i < MAX_SUBSCREEN; i++) {
+		sub_release_edge(i);
 		hwndTaskBarSubClk[i] = NULL;
 		hwndClockSubClk[i] = NULL;
 		bEnableSpecificSubClk[i] = FALSE;
@@ -634,6 +689,7 @@ void FindAllSubClocks(void)
 
 void DisableSpecificSubClock(int i) {
 	HWND tempHwnd;
+	sub_release_edge(i);
 	led_stop_subsurface(i);
 
 	POINT pos, pos2, nextcorner;

@@ -1,5 +1,6 @@
 #include "led_surface.h"
 #include "taskbar_surface.h"
+#include "taskbar_edge.h"
 #include <new>
 #include <cstdio>
 
@@ -79,6 +80,8 @@ static DWORD WINAPI led_run_surface(void* parameter)
             ZeroMemory(pixels,(SIZE_T)size.cx*size.cy*sizeof(*pixels));
             RECT clip={0,0,size.cx,size.cy};
             led_blend(context,pixels,size.cx,size.cy,state.bounds.left-viewport.left,state.bounds.top-viewport.top,&clip);
+            RECT display=viewport;OffsetRect(&display,origin.x,origin.y);
+            tbe_clear_strip(pixels,size.cx,size.cy,&display,state.taskbar,FALSE);
             POINT destination={origin.x+viewport.left,origin.y+viewport.top},source={0,0};
             BLENDFUNCTION blend={AC_SRC_OVER,0,255,AC_SRC_ALPHA};
             GdiFlush();

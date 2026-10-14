@@ -204,7 +204,7 @@ static __inline BOOL tbe_can_sample(HWND taskbar, POINT point)
  return window == taskbar;
 }
 
-static __inline COLORREF tbe_sample_strip(HDC screen, HWND window, HWND taskbar, RECT* cut)
+static __inline COLORREF tbe_sample_color(HDC screen, HWND window, HWND taskbar, RECT* cut, TBE_COLOR* cache)
 {
  RECT bounds, task, strip;
  MONITORINFO monitor = { sizeof(monitor) };
@@ -216,15 +216,15 @@ static __inline COLORREF tbe_sample_strip(HDC screen, HWND window, HWND taskbar,
      !GetMonitorInfoW(MonitorFromWindow(taskbar, MONITOR_DEFAULTTONEAREST), &monitor) ||
      !tbe_get_strip(&task, &monitor.rcMonitor, &strip) || !IntersectRect(cut, &bounds, &strip)) return CLR_INVALID;
  OffsetRect(cut, -bounds.left, -bounds.top);
- if (g_tbeColor.taskbar != taskbar || !EqualRect(&g_tbeColor.task, &task) ||
-     !EqualRect(&g_tbeColor.monitor, &monitor.rcMonitor)) {
-  ZeroMemory(&g_tbeColor, sizeof(g_tbeColor));
-  g_tbeColor.taskbar = taskbar; g_tbeColor.task = task; g_tbeColor.monitor = monitor.rcMonitor;
+ if (cache->taskbar != taskbar || !EqualRect(&cache->task, &task) ||
+     !EqualRect(&cache->monitor, &monitor.rcMonitor)) {
+  ZeroMemory(cache, sizeof(*cache));
+  cache->taskbar = taskbar; cache->task = task; cache->monitor = monitor.rcMonitor;
  }
  now = GetTickCount();
- if (g_tbeColor.attempted && now - g_tbeColor.attemptTick < (g_tbeColor.fresh ? 10000u : 1000u))
-  return g_tbeColor.valid ? g_tbeColor.color : CLR_INVALID;
- g_tbeColor.attempted = TRUE; g_tbeColor.fresh = FALSE; g_tbeColor.attemptTick = now;
+ if (cache->attempted && now - cache->attemptTick < (cache->fresh ? 10000u : 1000u))
+  return cache->valid ? cache->color : CLR_INVALID;
+ cache->attempted = TRUE; cache->fresh = FALSE; cache->attemptTick = now;
  if (!screen) { screen = GetDC(NULL); ownDC = TRUE; }
  candidates[0] = bounds.left - 4; candidates[1] = bounds.right + 4;
  candidates[2] = task.left + 4; candidates[3] = task.right - 5;
@@ -235,11 +235,34 @@ static __inline COLORREF tbe_sample_strip(HDC screen, HWND window, HWND taskbar,
    COLORREF color;
    if (point.x < task.left || point.x >= task.right || !tbe_can_sample(taskbar, point)) continue;
    color = GetPixel(screen, point.x, point.y);
-   if (color != CLR_INVALID) { g_tbeColor.color = color; g_tbeColor.valid = TRUE; g_tbeColor.fresh = TRUE; break; }
+   if (color != CLR_INVALID) { cache->color = color; cache->valid = TRUE; cache->fresh = TRUE; break; }
   }
  }
  if (ownDC && screen) ReleaseDC(NULL, screen);
- return g_tbeColor.valid ? g_tbeColor.color : CLR_INVALID;
+ return cache->valid ? cache->color : CLR_INVALID;
+}
+
+// Main and notification surfaces keep their existing taskbar-local cache.
+static __inline COLORREF tbe_sample_strip(HDC screen, HWND window, HWND taskbar, RECT* cut)
+{
+ return tbe_sample_color(screen, window, taskbar, cut, &g_tbeColor);
+}
+
+// Attached overlays leave the native/clock border visible; floating clocks do not call this.
+static __inline void tbe_clear_strip(RGBQUAD* pixels, LONG width, LONG height,
+ const RECT* bounds, HWND taskbar, BOOL topDown)
+{
+ RECT task, strip, cut, bitmap = {0, 0, width, height};
+ MONITORINFO monitor = { sizeof(monitor) };
+ if (!pixels || !taskbar || !GetWindowRect(taskbar, &task) ||
+     !GetMonitorInfoW(MonitorFromWindow(taskbar, MONITOR_DEFAULTTONEAREST), &monitor) ||
+     !tbe_get_strip(&task, &monitor.rcMonitor, &strip) || !IntersectRect(&cut, bounds, &strip)) return;
+ OffsetRect(&cut, -bounds->left, -bounds->top);
+ if (!IntersectRect(&cut, &cut, &bitmap)) return;
+ for (LONG y = cut.top; y < cut.bottom; ++y) {
+  LONG row = topDown ? y : height - 1 - y;
+  ZeroMemory(pixels + (SIZE_T)row * width + cut.left, (SIZE_T)(cut.right - cut.left) * sizeof(*pixels));
+ }
 }
 
 // Offscreen-only helper: visible surfaces must present a completed frame instead.

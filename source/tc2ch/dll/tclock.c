@@ -2464,6 +2464,7 @@ void EndClock(void)
 	wui_stop_host();
 	tbe_release_frame(&g_tbeFrame);
 	tbe_reset_color();
+	sub_refresh_edges();
 	w11_close_desktop();
 	acs_destroy(g_extContext);
 	flp_destroy(g_flipContext);
@@ -2640,6 +2641,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 		case WM_NCDESTROY:
 			tbe_release_frame(&g_tbeFrame);
 			tbe_reset_color();
+			sub_refresh_edges();
 			ZeroMemory(&g_tbeRegion, sizeof(g_tbeRegion));
 			if (oldWndProc && (WNDPROC)WndProc == (WNDPROC)GetWindowLongPtr(hwnd, GWLP_WNDPROC))
 			{
@@ -2690,6 +2692,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 			if (message != WM_TIMECHANGE && message != WM_USER + 101) {
 				g_abThemePending = TRUE;
 				tbe_reset_color();
+				sub_refresh_edges();
 			}
 			CreateClockDC();
 
@@ -2899,6 +2902,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 			else if (LOWORD(wParam) == CLOCKM_BGCOLOR_UPDATE)
 			{
 				tbe_reset_color();
+				sub_refresh_edges();
 				g_abThemePending = TRUE;
 				SetTimer(hwndClockMain, IDTIMERDLL_DELEYED_RESPONSE, 500, NULL);
 				return 0;
@@ -7041,6 +7045,7 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
             RECT source;SIZE frame;
             ext_get_source(hwndClockSubClk[i],&source);
             ext_get_frame(hwndClockSubClk[i],widthSubClock[i],heightSubClock[i],&frame);
+            sub_prepare_edge(i);
 			hdcSub = NULL;
 			hdcSub = GetDC(hwndClockSubClk[i]);		//サブディスプレイの時計が存在するとhdcSubが存在することになる。
 			if (hdcSub != NULL)
@@ -7094,11 +7099,13 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
 					SetBrushOrgEx(hdcSubBuffer, 0, 0, NULL);
 					StretchBlt(hdcSubBuffer, 0, 0, frame.cx, frame.cy, hdcClock, source.left, source.top, source.right-source.left, source.bottom-source.top, SRCCOPY);
 
+					GdiFlush();
 					for (color = temp_m_color_start, color_work = temp_m_color_start2; color < temp_m_color_end; ++color, ++color_work)
 					{
 						color_work->rgbReserved = color->rgbRed;
 					}
 
+					sub_write_edge(i, temp_m_color_start2, widthSubClock[i], heightSubClock[i]);
 					BitBlt(hdcSub, 0, 0, frame.cx, frame.cy, hdcSubBuffer, 0, 0, SRCCOPY);
 
 				}

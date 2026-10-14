@@ -8,6 +8,7 @@
 #include <vector>
 #include "../common/ext_renderer.h"
 #include "../common/taskbar_surface.h"
+#include "../common/taskbar_edge.h"
 
 extern "C" BOOL b_EnglishMenu;
 
@@ -389,6 +390,8 @@ void ext_update_clock(Clock& clock,bool force=false) {
                 if(!PtInRect(&slot,point))memset(pixel,0,4);
                 else if(ext_armed && !pixel[3])pixel[3]=1; // Alt also owns transparent digital gaps.
             }
+            tbe_clear_strip(reinterpret_cast<RGBQUAD*>(clipped.data()),size,height,&clock.frame,
+                ext_get_window(clock.binding.taskbar),TRUE);
             pixels=clipped.data();
         }
         if(!ext_present_pixels(clock.window,clock.frame,pixels))return;

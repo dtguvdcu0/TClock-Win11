@@ -17,8 +17,9 @@ static __inline int ab_clamp(int value, int high)
 enum { AB_HORIZONTAL, AB_SIDE, AB_PROFILE_COUNT };
 enum { AB_INVALID = -2, AB_FUTURE = -1, AB_LEGACY, AB_POINTS_SAVED, AB_DEFAULTS };
 #define AB_QUERY_MESSAGE L"TClock.AutoBack.LegacyPoint.v1"
-#define AB_OFFSET_QUERY_MESSAGE L"TClock.AutoBack.OffsetColor.v1"
 #define AB_MODE_KEY "AutoBackHorizontalSamplingMode"
+#define AB_SIDE_MODE_KEY "AutoBackSideSamplingMode"
+#define AB_AUTO_QUERY_MESSAGE L"TClock.AutoBack.AutomaticPoint.v1"
 
 typedef struct AB_OFFSETS {
  int clock;
@@ -31,6 +32,13 @@ static __inline void ab_load_offsets(AB_OFFSETS* offsets)
  offsets->clock = max(-200, min(200, (int)GetMyRegLong("Color_Font", "AutoBackSampleClockOffset", 0)));
  offsets->desktop = max(-200, min(200, (int)GetMyRegLong("Color_Font", "AutoBackSampleShowDesktopOffset", 0)));
  offsets->balance = ab_clamp((int)GetMyRegLong("Color_Font", "AutoBackBlendRatio", 50), 100);
+}
+
+static __inline void ab_load_side(AB_OFFSETS* offsets)
+{
+ offsets->clock = max(-200, min(200, (int)GetMyRegLong("Color_Font", "AutoBackSideClockOffset", 0)));
+ offsets->desktop = max(-200, min(200, (int)GetMyRegLong("Color_Font", "AutoBackSideDesktopOffset", 0)));
+ offsets->balance = ab_clamp((int)GetMyRegLong("Color_Font", "AutoBackSideBlendRatio", 50), 100);
 }
 
 typedef struct AB_PROFILE {
@@ -71,7 +79,13 @@ static __inline int ab_load(int profile, AB_POINTS* points)
  }
  points->count = GetMyRegLong("Color_Font", description->count, 2) == 1 ? 1 : 2;
  points->balance = ab_clamp((int)GetMyRegLong("Color_Font", description->balance, 50), 100);
- if (profile == AB_SIDE) return AB_POINTS_SAVED;
+ if (profile == AB_SIDE) {
+  DWORD selection = GetMyRegLong("Color_Font", AB_SIDE_MODE_KEY, 0xFFFFFFFF);
+  DWORD sideVersion = GetMyRegLong("Color_Font", "AutoBackSidePointsVersion", 0xFFFFFFFF);
+  if ((sideVersion != 0xFFFFFFFF && sideVersion > 1) || (selection != 0xFFFFFFFF && selection > 1)) return AB_FUTURE;
+  // Retain pre-existing side manual points until the user explicitly selects automatic references.
+  return selection == 0 ? AB_LEGACY : AB_POINTS_SAVED;
+ }
  if (version != 0xFFFFFFFF && version > 1) return AB_FUTURE;
  {
   DWORD selection = GetMyRegLong("Color_Font", AB_MODE_KEY, 0xFFFFFFFF);
@@ -112,12 +126,12 @@ static __inline BOOL ab_save(int profile, const AB_POINTS* points)
 // Commit both parameter sets and the selected mode atomically; failed writes leave the INI intact.
 static __inline BOOL ab_save_settings(LPCWSTR path, int profile, const AB_POINTS* points, const AB_OFFSETS* offsets, int selection)
 {
- DWORD mode = GetMyRegLong("Color_Font", AB_MODE_KEY, 0xFFFFFFFF);
- DWORD version = GetMyRegLong("Color_Font", "AutoBackHorizontalPointsVersion", 0xFFFFFFFF);
+ DWORD mode = GetMyRegLong("Color_Font", profile == AB_SIDE ? AB_SIDE_MODE_KEY : AB_MODE_KEY, 0xFFFFFFFF);
+ DWORD version = GetMyRegLong("Color_Font", profile == AB_SIDE ? "AutoBackSidePointsVersion" : "AutoBackHorizontalPointsVersion", 0xFFFFFFFF);
  const char* keys[11];
  int values[11], count = 0, i, used = 0;
  char entries[1024] = {0};
- if (profile == AB_SIDE) return ab_save(profile, points);
+ if (profile < 0 || profile >= AB_PROFILE_COUNT) return FALSE;
  if ((mode != 0xFFFFFFFF && mode > 1) || (version != 0xFFFFFFFF && version > 1)) return FALSE;
  if (selection < 0 || selection > 1 || offsets->clock < -200 || offsets->clock > 200 ||
      offsets->desktop < -200 || offsets->desktop > 200 || offsets->balance < 0 || offsets->balance > 100 ||
@@ -128,11 +142,11 @@ static __inline BOOL ab_save_settings(LPCWSTR path, int profile, const AB_POINTS
  }
  keys[count] = ab_profiles[profile].balance; values[count++] = points->balance;
  keys[count] = ab_profiles[profile].count; values[count++] = points->count;
- keys[count] = "AutoBackHorizontalPointsVersion"; values[count++] = 1;
- keys[count] = "AutoBackSampleClockOffset"; values[count++] = offsets->clock;
- keys[count] = "AutoBackSampleShowDesktopOffset"; values[count++] = offsets->desktop;
- keys[count] = "AutoBackBlendRatio"; values[count++] = offsets->balance;
- keys[count] = AB_MODE_KEY; values[count++] = selection;
+ keys[count] = profile == AB_SIDE ? "AutoBackSidePointsVersion" : "AutoBackHorizontalPointsVersion"; values[count++] = 1;
+ keys[count] = profile == AB_SIDE ? "AutoBackSideClockOffset" : "AutoBackSampleClockOffset"; values[count++] = offsets->clock;
+ keys[count] = profile == AB_SIDE ? "AutoBackSideDesktopOffset" : "AutoBackSampleShowDesktopOffset"; values[count++] = offsets->desktop;
+ keys[count] = profile == AB_SIDE ? "AutoBackSideBlendRatio" : "AutoBackBlendRatio"; values[count++] = offsets->balance;
+ keys[count] = profile == AB_SIDE ? AB_SIDE_MODE_KEY : AB_MODE_KEY; values[count++] = selection;
  for (i = 0; i < count; ++i) {
   int length = sprintf_s(entries + used, sizeof(entries) - used, "%s=%d", keys[i], values[i]);
   if (length < 0) return FALSE;
@@ -153,13 +167,35 @@ static __inline BOOL ab_place_offsets(const RECT* task, const RECT* clock, int n
      clock->right <= clock->left || !IntersectRect(&overlap, task, clock)) return FALSE;
  if (notifyWidth > 0 && desktopPosition > 0)
   positions[0] = clock->right + max(0, min(notifyWidth - 1, desktopPosition + offsets->desktop));
- else positions[0] = clock->left - (notifyWidth > 0 ? notifyWidth / 2 : 10);
- positions[1] = clock->left + offsets->clock - (winui ? 10 : 0);
+ else positions[0] = clock->left - (notifyWidth > 0 ? notifyWidth / 2 : 10) + offsets->desktop;
+ positions[1] = clock->left - 1 + offsets->clock - (winui ? 10 : 0);
  positions[0] = max(task->left, min(task->right - 1, positions[0]));
  positions[1] = max(task->left, min(task->right - 1, positions[1]));
  return TRUE;
 }
 
+
+// Side offsets move along screen Y. Keep each reference outside the clock, even at a taskbar end.
+static __inline BOOL ab_place_side(const RECT* task, const RECT* clock, const AB_OFFSETS* offsets, POINT positions[2])
+{
+ RECT overlap;
+ int i;
+ if (task->right <= task->left || task->bottom <= task->top ||
+     !IntersectRect(&overlap, task, clock)) return FALSE;
+ if (overlap.top == task->top && overlap.bottom == task->bottom) return FALSE;
+ for (i = 0; i < 2; ++i) {
+  BOOL below = i == 0;
+  int low, high, anchor;
+  if (below && overlap.bottom >= task->bottom) below = FALSE;
+  if (!below && overlap.top <= task->top) below = TRUE;
+  low = below ? overlap.bottom : task->top;
+  high = below ? task->bottom - 1 : overlap.top - 1;
+  anchor = below ? overlap.bottom + (i == 0 ? 10 : 20) : overlap.top - (i == 1 ? 10 : 20);
+  positions[i].x = task->left + (task->right - task->left) / 2;
+  positions[i].y = max(low, min(high, anchor + (i ? offsets->clock : offsets->desktop)));
+ }
+ return TRUE;
+}
 
 static __inline HWND ab_find_taskbar(HWND clock)
 {
@@ -228,25 +264,38 @@ static __inline COLORREF ab_blend(COLORREF first, COLORREF second, int balance)
             (GetBValue(first) * (100-ratio) + GetBValue(second) * ratio) / 100);
 }
 
-static __inline BOOL ab_sample_at(HWND taskbar, HWND clock, int screenX, BOOL top, COLORREF colors[2])
+// Main background follows the screen-facing edge; frame color follows the desktop boundary.
+static __inline int ab_get_outer(const RECT* task, const RECT* monitor)
 {
- RECT rect;
- POINT point[2];
- HDC dc;
- HWND marker = NULL, overlay = FindWindowW(L"TClockWinUIDllWindow", NULL);
- int i;
- colors[0] = colors[1] = CLR_INVALID;
- while ((marker = FindWindowExW(NULL, marker, L"TClockSamplePoint", NULL)) != NULL)
-  if (IsWindowVisible(marker)) return FALSE;
- if (!GetWindowRect(taskbar, &rect) || rect.right <= rect.left || rect.bottom <= rect.top) return FALSE;
- point[0].x = point[1].x = max(rect.left, min(rect.right - 1, screenX));
- point[0].y = top ? rect.top + (rect.bottom - rect.top) / 2 : rect.bottom - 1;
- point[1].y = top ? rect.bottom - 1 : rect.top;
- for (i = 0; i < 2; ++i)
-  if (ab_contains(clock, point[i]) || ab_contains(overlay, point[i])) return FALSE;
- dc = GetDC(NULL);
- if (!dc) return FALSE;
- for (i = 0; i < 2; ++i) colors[i] = GetPixel(dc, point[i].x, point[i].y);
- ReleaseDC(NULL, dc);
- return colors[0] != CLR_INVALID && colors[1] != CLR_INVALID;
+ return task->left + task->right > monitor->left + monitor->right ? task->right - 1 : task->left;
+}
+
+// Balance is the first color's share; move the half-color position without averaging the body.
+static __inline void ab_fill_gradient(HDC dc, int width, int height, COLORREF first,
+ COLORREF second, int balance, BOOL vertical)
+{
+ RECT bounds = {0, 0, width, height};
+ TRIVERTEX vertices[4];
+ GRADIENT_RECT mesh[2] = {{0, 1}, {2, 3}};
+ COLORREF colors[4];
+ int extent = vertical ? height : width;
+ int split, i;
+ balance = ab_clamp(balance, 100);
+ if (width <= 0 || height <= 0) return;
+ if (first == second || balance == 0 || balance == 100 || extent == 1) {
+  HBRUSH brush = CreateSolidBrush(balance == 0 ? second : first);
+  FillRect(dc, &bounds, brush); DeleteObject(brush); return;
+ }
+ split = max(1, min(extent-1, MulDiv(extent, balance, 100)));
+ colors[0] = first; colors[1] = colors[2] = ab_blend(first, second, 50); colors[3] = second;
+ ZeroMemory(vertices, sizeof(vertices));
+ vertices[1].x = vertical ? width : split; vertices[1].y = vertical ? split : height;
+ vertices[2].x = vertical ? 0 : split; vertices[2].y = vertical ? split : 0;
+ vertices[3].x = width; vertices[3].y = height;
+ for (i = 0; i < 4; ++i) {
+  vertices[i].Red = (COLOR16)(GetRValue(colors[i]) << 8);
+  vertices[i].Green = (COLOR16)(GetGValue(colors[i]) << 8);
+  vertices[i].Blue = (COLOR16)(GetBValue(colors[i]) << 8);
+ }
+ GradientFill(dc, vertices, 4, mesh, 2, vertical ? GRADIENT_FILL_RECT_V : GRADIENT_FILL_RECT_H);
 }

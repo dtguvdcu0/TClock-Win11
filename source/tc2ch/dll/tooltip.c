@@ -10,6 +10,7 @@
 #include "../common/text_file_utf8.h"
 #include "../common/tooltip_hover.h"
 #include "../common/tooltip_fade.h"
+#include "../common/tooltip_position.h"
 #include <stdio.h>
 
 extern HANDLE hmod;
@@ -207,7 +208,7 @@ static void tip_read_delays(UINT* initialDelay, UINT* reshowDelay, UINT* autoPop
 	}
 }
 
-// Native secondary tooltips retain their placement; timing belongs to tooltip_hover.h.
+// Native tooltip timing belongs to tooltip_hover.h; placement can exclude the taskbar.
 #define TIP_NATIVE_TIMER 0x54435401u
 #define TIP_NATIVE_FADE_TIMER 0x54435403u
 
@@ -215,6 +216,7 @@ static HWND tip_native_owner = NULL;
 static TIP_HOVER_STATE tip_native_hover = {0};
 static TIP_FADE_STATE tip_native_fade = {0};
 static BOOL tip_fade_enabled = TRUE;
+static BOOL tip_outside = FALSE;
 static BOOL tip_native_internal = FALSE;
 
 static int tip_scale_native(int value)
@@ -281,6 +283,26 @@ static LRESULT CALLBACK tip_resolve_native(HWND hwnd, UINT message, WPARAM wPara
 {
 	(void)data;
 	if (message == WM_NCDESTROY) RemoveWindowSubclass(hwnd, tip_resolve_native, id);
+	if (message == WM_WINDOWPOSCHANGING && tip_outside && lParam) {
+		WINDOWPOS* next = (WINDOWPOS*)lParam;
+		LRESULT result = DefSubclassProc(hwnd, message, wParam, lParam);
+		RECT current;
+		POINT anchor, outside;
+		HWND owner = tip_native_owner ? tip_native_owner : hwndCurrentTooltipOwner;
+		if (!(next->flags & SWP_HIDEWINDOW) &&
+			((next->flags & (SWP_NOMOVE | SWP_NOSIZE)) != (SWP_NOMOVE | SWP_NOSIZE) ||
+			(next->flags & SWP_SHOWWINDOW)) && GetWindowRect(hwnd, &current)) {
+			int width = (next->flags & SWP_NOSIZE) ? current.right - current.left : next->cx;
+			int height = (next->flags & SWP_NOSIZE) ? current.bottom - current.top : next->cy;
+			if (tip_has_point) anchor = tip_hover_point;
+			else if (!GetCursorPos(&anchor)) return result;
+			if (width > 0 && height > 0 && tip_position_outside(owner, anchor, width, height, &outside)) {
+				next->x = outside.x; next->y = outside.y;
+				next->flags &= ~SWP_NOMOVE;
+			}
+		}
+		return result;
+	}
 	if (message == TTM_WINDOWFROMPOINT) {
 		HWND hit = (HWND)DefSubclassProc(hwnd, message, wParam, lParam);
 		HWND surface = tip_find_surface(tip_native_owner);
@@ -538,6 +560,7 @@ static void tip_publish_area(void)
 		SetPropW(hwndClockMain, WUI_TIP_SLOTS_PROP, (HANDLE)(INT_PTR)(bTooltip2 ? (bTooltip3 ? 3 : 2) : 1));
 		SetPropW(hwndClockMain, WUI_TIP_AXIS_PROP, (HANDLE)(INT_PTR)(bTooltipTate ? 1 : 0));
 		SetPropW(hwndClockMain, WUI_TIP_FADE_PROP, (HANDLE)(INT_PTR)(tip_fade_enabled ? 0 : 1));
+		SetPropW(hwndClockMain, WUI_TIP_OUTSIDE_PROP, (HANDLE)(INT_PTR)(tip_outside ? 1 : 0));
 	}
 }
 
@@ -558,7 +581,7 @@ void TooltipInit(HWND hwnd)
 		hwnd, NULL, hmod, NULL);
 
 	if (!hwndTooltip) return;
-	if (bWin11Main && !SetWindowSubclass(hwndTooltip, tip_resolve_native, 1, 0)) {
+	if (!SetWindowSubclass(hwndTooltip, tip_resolve_native, 1, 0)) {
 		DestroyWindow(hwndTooltip);
 		hwndTooltip = NULL;
 		return;
@@ -1222,6 +1245,7 @@ void TooltipReadData(void)
 	bTooltip3 = GetMyRegLong("Tooltip", "Tip3Use", FALSE);
 	bTooltipTate = GetMyRegLong("Tooltip", "TipTateFlg", FALSE);
 	tip_fade_enabled = GetMyRegLong("Tooltip", "FadeIn", TRUE) != FALSE;
+	tip_outside = GetMyRegLong("Tooltip", "OutsideTaskbar", TRUE) != FALSE;
 	tip_publish_area();
 
 	bEnableTooltip = GetMyRegLong("Tooltip", "EnableTooltip", TRUE);

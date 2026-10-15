@@ -210,6 +210,7 @@ BOOL CALLBACK PageTooltipProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
 			case IDC_DISPTSPIN:
 			case IDC_TIPENABLE:
 			case IDC_TIPFADE:
+			case IDC_TIPOUTSIDE:
 			case IDC_TIPTATE:
 			case IDC_UPDATETIP1:
 			case IDC_UPDATETIP2:
@@ -380,6 +381,7 @@ void OnInit(HWND hDlg)
 		GetMyRegLong("Tooltip", "EnableTooltip", TRUE));
 
 	CheckDlgButton(hDlg, IDC_TIPFADE, GetMyRegLong("Tooltip", "FadeIn", TRUE));
+	CheckDlgButton(hDlg, IDC_TIPOUTSIDE, GetMyRegLong("Tooltip", "OutsideTaskbar", TRUE));
 
 	CheckDlgButton(hDlg, IDC_TIPTATE,
 		GetMyRegLong("Tooltip", "TipTateFlg", FALSE));
@@ -450,6 +452,7 @@ void OnApply(HWND hDlg)
 	SetMyRegLongDef("Tooltip", "TipTateFlg", IsDlgButtonChecked(hDlg, IDC_TIPTATE));
 	SetMyRegLongDef("Tooltip", "EnableTooltip", IsDlgButtonChecked(hDlg, IDC_TIPENABLE));
 	SetMyRegLongDef("Tooltip", "FadeIn", IsDlgButtonChecked(hDlg, IDC_TIPFADE));
+	SetMyRegLongDef("Tooltip", "OutsideTaskbar", IsDlgButtonChecked(hDlg, IDC_TIPOUTSIDE));
 
 	SetMyRegLong("Tooltip", "Tip1Update", IsDlgButtonChecked(hDlg, IDC_UPDATETIP1));
 	SetMyRegLongDef("Tooltip", "Tip2Update", IsDlgButtonChecked(hDlg, IDC_UPDATETIP2));

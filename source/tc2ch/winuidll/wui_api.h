@@ -12,6 +12,7 @@
 #define WUI_TIP_SLOTS_PROP L"TClock.TooltipSlots"
 #define WUI_TIP_AXIS_PROP L"TClock.TooltipVertical"
 #define WUI_TIP_FADE_PROP L"TClock.TooltipFadeDisabled"
+#define WUI_TIP_OUTSIDE_PROP L"TClock.TooltipOutsideTaskbar"
 // Borrowed HWND lets attached image/LED surfaces stack above their secondary text host.
 #define WUI_SECONDARY_PROP L"TClock.WinUI.SecondaryHost"
 

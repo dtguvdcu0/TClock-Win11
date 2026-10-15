@@ -4,6 +4,7 @@
 //
 #define IDC_UPDATE_NOTICE               49010
 #define IDC_TIPFADE                     49011
+#define IDC_TIPOUTSIDE                  49012
 #define IDS_CAUTION                     1
 #define IDS_DLLVER                      2
 #define IDS_PROPERTY                    3

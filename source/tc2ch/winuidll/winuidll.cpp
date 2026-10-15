@@ -11,6 +11,7 @@
 #include "../common/taskbar_surface.h"
 #include "../common/tooltip_hover.h"
 #include "../common/tooltip_fade.h"
+#include "../common/tooltip_position.h"
 
 #pragma comment(lib, "gdiplus.lib")
 #pragma comment(lib, "comctl32.lib")
@@ -879,6 +880,11 @@ static void wui_fit_tip(void)
 		if (y < monitor.rcMonitor.top) y = g_wuiHover.point.y;
 		x = max(monitor.rcMonitor.left, min(x, monitor.rcMonitor.right - width));
 		y = max(monitor.rcMonitor.top, min(y, monitor.rcMonitor.bottom - height));
+	}
+	POINT outside;
+	if (GetPropW(g_wuiTarget, WUI_TIP_OUTSIDE_PROP) &&
+		tip_position_outside(g_wuiTarget, g_wuiHover.point, width, height, &outside)) {
+		x = outside.x; y = outside.y;
 	}
 	if (rcTip.left != x || rcTip.top != y
 	 || rcTip.right - rcTip.left != width || rcTip.bottom - rcTip.top != height) {

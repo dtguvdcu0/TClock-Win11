@@ -409,6 +409,8 @@ static AB_POINTS g_abPoints[AB_PROFILE_COUNT];
 static int g_abModes[AB_PROFILE_COUNT];
 static AB_OFFSETS g_abSideOffsets;
 static int g_abColorProfile = -1;
+// Owned-window destruction can reenter teardown on the taskbar thread.
+static BOOL g_clkEnding = FALSE;
 
 BOOL bAutoBackMatchTaskbar = TRUE;
 int autoBackAlpha = 96;
@@ -1445,6 +1447,7 @@ void InitClock()
 
 
 	if(hwndClockMain != NULL) return;
+	g_clkEnding = FALSE;
 
 	HookEnd();	//Ver 4.0.5.3試行。Initclock起動してからは不要なのでフック外す。不具合出るならこの行を削除する。
 
@@ -2474,6 +2477,8 @@ void DeleteClockRes(void)
 
 void EndClock(void)
 {
+	if (g_clkEnding) return;
+	g_clkEnding = TRUE;
 
 	if (b_DebugLog)writeDebugLog_Win10("[tclock.c] EndClock called.", 999);
 
@@ -2674,6 +2679,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 			}
 			return DefWindowProc(hwnd, message, wParam, lParam);
 		case WM_DESTROY:
+			// EndClock owns intentional destruction; never notify the EXE from nested teardown.
+			if (g_clkEnding) return 0;
 			if (b_DebugLog) writeDebugLog_Win10("[tclock.c][WndProc()] WM_DESTROY received, bAutoRestart =", bAutoRestart);
 			//何らかの理由でWM_CLOSEではなく、直接DESTROYが来たケース。WinExplorerでDestroyするとこれが呼ばれる。Explorerクラッシュ時にはこれは来ない。
 			if (bWin11Main) {
@@ -2892,11 +2899,13 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 			{
 				if (b_DebugLog) writeDebugLog_Win10("[tclock.c][WndProc()] WM_COMMAND with 102(IDC_EXIT) received", 999);
 				EndClock();	// Modified by TTTT for Win10AU (WIN10RS1) compatibility
+				return 0;
 			}
 			else if (LOWORD(wParam) == IDC_RESTART)
 			{
 				if (b_DebugLog) writeDebugLog_Win10("[tclock.c][WndProc()] WM_COMMAND with IDC_RESTART received", 999);
 				RestartTClockFromDLL();	// Added by TTTT
+				return 0;
 			}
 			else if (LOWORD(wParam) == CLOCKM_REQUEST_TEMPCOUNTERINFO)
 			{
@@ -8763,6 +8772,7 @@ static void NormalizeUtf8InPlaceNoWriteback(char* value, int valueBytes)
 void RestartTClockFromDLL(void)
 {
 	HWND hwndExeMain;
+	if (g_clkEnding) return;
 
 	if (b_DebugLog) writeDebugLog_Win10("TClock will be restarted ...", 999);
 

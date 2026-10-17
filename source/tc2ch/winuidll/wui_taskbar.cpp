@@ -287,7 +287,8 @@ struct Lease {
             return result;
         }
         Thickness desired = margin.owned ? margin.baseline : element.Margin();
-        desired.Top += pixels / scale;
+        // XAML stores Thickness components as float; retain exact lease ownership after readback.
+        desired.Top = static_cast<float>(desired.Top + pixels / scale);
         bool unchanged = margin.owned && margin.written == desired;
         result = margin.Write(element, property, desired);
         if (FAILED(result)) return result;

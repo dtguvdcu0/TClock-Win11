@@ -110,12 +110,17 @@ static void etc_refresh_plugins(HWND hDlg)
     static const int controls[] = { IDC_ETC_TCARD_INTEGRATION, IDC_ETC_TCYCLE_INTEGRATION,
         IDC_ETC_TCALENDAR_INTEGRATION, IDC_ETC_TCAPTURE_INTEGRATION };
     int i;
+    BOOL hasPlugin = FALSE;
     for (i = 0; i < (int)_countof(functions); ++i) {
         HWND checkbox = GetDlgItem(hDlg, controls[i]);
         BOOL installed = act_is_installed(functions[i]);
         ShowWindow(checkbox, installed ? SW_SHOW : SW_HIDE);
         EnableWindow(checkbox, installed);
+        if (installed) hasPlugin = TRUE;
     }
+    ShowWindow(GetDlgItem(hDlg, IDC_ETC_EXTENSIONS_GROUP), hasPlugin ? SW_SHOW : SW_HIDE);
+    ShowWindow(GetDlgItem(hDlg, IDC_ETC_EXIT_EXTENSIONS_ON_EXIT), hasPlugin ? SW_SHOW : SW_HIDE);
+    EnableWindow(GetDlgItem(hDlg, IDC_ETC_EXIT_EXTENSIONS_ON_EXIT), hasPlugin);
 }
 
 INT_PTR CALLBACK PageEtcProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)

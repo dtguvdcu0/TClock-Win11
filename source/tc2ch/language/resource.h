@@ -741,6 +741,7 @@
 #define IDC_ETC_TCAPTURE_INTEGRATION    1623
 #define IDC_ETC_TCYCLE_INTEGRATION      1624
 #define IDC_ETC_TCARD_INTEGRATION       1625
+#define IDC_ETC_EXTENSIONS_GROUP       49002
 #define IDC_ABOUTICON                   1701
 #define IDC_EDITINI                     1702
 #define IDC_README2                     1703

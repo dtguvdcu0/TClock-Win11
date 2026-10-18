@@ -1,5 +1,5 @@
 ***********************************************
-***  tclock-win11 Ver 0.2.6.2 (2026/10/8)  ***
+***  tclock-win11 Ver 0.2.6.3 (2026/10/18)  ***
 ***       by ID:DTgUvdcU0                   ***
 ***********************************************
 
@@ -27,24 +27,22 @@ https://web.archive.org/web/20260000000000*/http://tclock2ch.no.land.to/
 利用上の注意
 ************
 
-・ほかのTClock系ソフトと同様に、本ソフトを利用することによって生じた一切の損害等の責任は負いません。
+・本ソフトを利用することによって生じた一切の損害等の責任は負いません。
 
-・本ソフトのベースはTClock2chであり、TClockLight系(現在はTClockLight-kt)とは別の系統になります。書式等、TClockLight系と異なる点がありますのでご注意ください。
+・本ソフトのベースはTClock2chであり、TClockLight系(現在はTClockLight-kt)とは別の系統になります。
+  書式等、TClockLight系と異なる点がありますのでご注意ください。
 
 ・ユーザ権限で操作可能なフォルダ(例：ユーザーアカウント内)に置いて運用することを想定しています。
-Program Files等のWindows管理下のフォルダではなく、個人フォルダに置いて利用してください。
-(Program Filesの中では動作に制限がかかります。)
+  Program Files等のWindows管理下のフォルダではなく、個人フォルダに置いて利用してください。
+  (Program Filesの中では動作に制限がかかります。)
 
 ・Visual C++ ランタイムパッケージについて
-本ソフトウェア（64bit版）の実行には、最新の Microsoft Visual C++ v14 再頒布可能パッケージ（x64）が必要です。
-TClock-Win11.exe の起動時に、VCRUNTIME140.dll、VCRUNTIME140_1.dll、MSVCP140.dll などが
-見つからないというメッセージが出る場合は、次の Microsoft 公式リンクから
-vc_redist.x64.exe をダウンロードしてインストールしてください。
-https://aka.ms/vc14/vc_redist.x64.exe
-
-古い Visual C++ 再頒布可能パッケージが入っている場合も、上記の最新版へ更新してください。
-配布元の案内：
-https://learn.microsoft.com/ja-jp/cpp/windows/latest-supported-vc-redist?view=msvc-170
+  本ソフトウェア（64bit版）の実行には、最新の Microsoft Visual C++ v14 再頒布可能パッケージ（x64）が必要です。
+  TClock-Win11.exe の起動時に、VCRUNTIME140.dll、VCRUNTIME140_1.dll、MSVCP140.dll などが
+  見つからないというメッセージが出る場合は、次の Microsoft 公式リンクから
+  vc_redist.x64.exe をダウンロードしてインストールしてください。
+  https://aka.ms/vc14/vc_redist.x64.exe
+  https://learn.microsoft.com/ja-jp/cpp/windows/latest-supported-vc-redist?view=msvc-170
 
 ********************
 アンインストール方法
@@ -54,8 +52,8 @@ https://learn.microsoft.com/ja-jp/cpp/windows/latest-supported-vc-redist?view=ms
 
 ・レジストリは使用していません。
 
-・右クリックメニュー⇒『tclockのプロパティ』⇒『その他』タブにある『レジストリ削除』ボタンは有効です。
-過去のTClock系ソフトによるレジストリエントリをまとめて消すことができます。
+・右クリックメニュー⇒『tclockのプロパティ』⇒『TClock』タブにある『レジストリ削除』ボタンで
+  過去のTClock系ソフトによるレジストリエントリをまとめて消すことができます。
 
 
 **********************
@@ -67,9 +65,6 @@ https://learn.microsoft.com/ja-jp/cpp/windows/latest-supported-vc-redist?view=ms
 https://web.archive.org/web/20260000000000*/http://tclock2ch.no.land.to/
 
 の、『TClock2chのヘルプ』も参照してください。
-
-少なくとも、以下の点は旧来のバージョンと異なっています。
-・TClock2chはWiFiのネットワーク送受信量を正しく検出できませんでしたが、対応しています。またネットワーク速度の折れ線グラフ表示で対数プロットができていなかったのを修正しました。
 
 ・TTBase連携機能、およびデスクトップカレンダーとの連携機能は廃止しました。利用できません。
 
@@ -354,6 +349,17 @@ TCycle連携の有効/無効と実行ファイルパスです。
 ***************
 バージョン履歴
 ***************
+
+2026/10/18 主な変更点（v0.2.6.3）
+マルチディスプレイでのタスクバー境界線とWinUI対応
+ツールチップの位置・ホバーの設定追加
+右クリックメニューの描画のちらつき抑制
+接続通知によるIP・ネットワーク表示の取得タイミング修正
+表示倍率による縦置き時計の位置ずれループ修正
+終了時の不具合修正
+プラグインの分離
+そのほか軽微な修正
+
 2026/10/8 主な変更点（v0.2.6.2）
 起動時の読込み最適化
 拡張表示のタスクバー外の表示オプション追加

@@ -28,7 +28,6 @@ void InitComboColor(HWND hDlg, int numcol, COMBOCOLOR *pCombocolor, int maxcol, 
 	if (strcmp(pCombocolor[0].colname, "BackNetColSend") == 0) strcpy(section, "Graph");
 	else if (strcmp(pCombocolor[0].colname, "ColorGPUGraph") == 0) strcpy(section, "Graph");
 	else if (strcmp(pCombocolor[0].colname, "BackColor") == 0) strcpy(section, "Color_Font");
-	else if (strcmp(pCombocolor[0].colname, "Saturday_TextColor") == 0) strcpy(section, "Color_Font");
 	else if (strcmp(pCombocolor[0].colname, "AClockHourHandColor") == 0) strcpy(section, "AnalogClock");
 	else if (strcmp(pCombocolor[0].colname, "TipFontColor") == 0) strcpy(section, "Tooltip");
 	else if (strcmp(pCombocolor[0].colname, "ColorBarMeterBL_High") == 0) strcpy(section, "BarMeter");

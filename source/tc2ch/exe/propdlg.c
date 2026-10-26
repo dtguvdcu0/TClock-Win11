@@ -39,7 +39,6 @@ INT_PTR CALLBACK PageKeywordProc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK PageAppControlProc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK PageEtc1Proc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK PageWin11Proc(HWND, UINT, WPARAM, LPARAM);
-INT_PTR CALLBACK PageColorAdditionalProc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK PageCustomVarsProc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK PageRClickMenuProc(HWND, UINT, WPARAM, LPARAM);
 
@@ -421,11 +420,6 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 							CreatePageDialog(hDwnd, hDlg, bDlgFlg, nowDlg, GetSafeLanguageOffset() + IDD_PAGEBARMETER, PageBarmeterProc);
 							break;
 
-
-						case 106:
-							nowDlg = 6;
-							CreatePageDialog(hDwnd, hDlg, bDlgFlg, nowDlg, GetSafeLanguageOffset() + IDD_PAGECOLOR_ADDITIONAL, PageColorAdditionalProc);
-							break;
 
 						case 107:
 							nowDlg = 7;

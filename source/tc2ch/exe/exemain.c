@@ -2447,7 +2447,6 @@ void CreateDefaultIniFile_Win10(const wchar_t* fnameW)
 		SetMyRegLong("Color_Font", "ForeColor", 0);
 		SetMyRegLong("Color_Font", "ShadowColor", 0);
 		SetMyRegStr("Color_Font", "Font", "MS Gothic");
-		SetMyRegLong("Color_Font", "UseAllColor", 0);
 		SetMyRegLong("Color_Font", "AutoBackMatchTaskbar", 1);
 		SetMyRegLong("Color_Font", "AutoBackAlpha", 255);
 		SetMyRegLong("Color_Font", "AutoBackBlendRatio", 50);

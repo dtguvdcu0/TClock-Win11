@@ -78,9 +78,6 @@
     <ClCompile Include="page_win11.c">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
-    <ClCompile Include="pagecolor_additional.c">
-      <Filter>ソース ファイル</Filter>
-    </ClCompile>
     <ClCompile Include="pagechime.c">
       <Filter>ソース ファイル</Filter>
     </ClCompile>

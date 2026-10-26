@@ -74,7 +74,6 @@ void min_ensure_defaults(void)
 	min_put_long_if_missing("Color_Font", "ForeColor", 0);
 	min_put_long_if_missing("Color_Font", "BackColor", 15790320);
 	min_put_long_if_missing("Color_Font", "BackColor2", 15790320);
-	min_put_long_if_missing("Color_Font", "UseAllColor", FALSE);
 	min_put_long_if_missing("Color_Font", "TextPos", 0);
 	min_put_long_if_missing("Color_Font", "VertPos", 0);
 	min_put_long_if_missing("Color_Font", "LineHeight", 0);

@@ -5,6 +5,7 @@
 -------------------------------------------------------*/
 #include "tcdll.h"
 #include "minmode.h"
+#include "../common/plugin_api.h"
 #include "../common/analog_skin.h"
 #include "../common/chime_schedule.h"
 #include "../common/flip_clock.h"
@@ -432,11 +433,6 @@ BOOL bTimerCheckNetStat = FALSE;	//Added by TTTT
 BOOL bTimerAdjust_SysInfo = FALSE;
 BOOL bTimerAdjust_NetStat = FALSE;
 COLORREF ColorWeekdayText = RGB(0, 0, 0);
-COLORREF ColorSaturdayText = RGB(0, 0, 0);
-COLORREF ColorSundayText = RGB(0, 0, 0);
-COLORREF ColorHolidayText = RGB(0, 0, 0);
-COLORREF ColorVPNText = RGB(0, 0, 0);
-COLORREF textcol_DoWzone = RGB(0, 0, 0);
 BOOL bSaturday = FALSE;
 BOOL bSunday = FALSE;
 BOOL bHoliday = FALSE;
@@ -1001,11 +997,6 @@ int intWin11NotificationNumberPrev = 999;
 int offsetClockMS = 0;
 
 
-BOOL bUseAllColor = FALSE;
-BOOL bUseVPNColor = FALSE;
-BOOL bUseDateColor = FALSE;
-BOOL bUseDowColor = FALSE;
-BOOL bUseTimeColor = FALSE;
 
 
 
@@ -3426,16 +3417,6 @@ static void tc_read_minimal(void)
 	dwidth = (int)(short)GetMyRegLong("Color_Font", "ClockWidth", 0);
 	dvpos = (int)(short)GetMyRegLong("Color_Font", "VertPos", 0);
 	dlineheight = (int)(short)GetMyRegLong("Color_Font", "LineHeight", 0);
-	ColorSaturdayText = (COLORREF)GetMyRegColor("Color_Font", "Saturday_TextColor", 0x00C8FFC8);
-	ColorSundayText = (COLORREF)GetMyRegColor("Color_Font", "Sunday_TextColor", 0x00C8C8FF);
-	ColorHolidayText = (COLORREF)GetMyRegColor("Color_Font", "Holiday_TextColor", 0x00C8C8FF);
-	ColorVPNText = (COLORREF)GetMyRegColor("Color_Font", "VPN_TextColor", 0x00FFFF00);
-	bUseAllColor = GetMyRegLong("Color_Font", "UseAllColor", FALSE);
-	SetMyRegLong("Color_Font", "UseAllColor", bUseAllColor);
-	bUseVPNColor = GetMyRegLong("Color_Font", "UseVPNColor", FALSE);
-	bUseDateColor = GetMyRegLong("Color_Font", "UseDateColor", FALSE);
-	bUseDowColor = GetMyRegLong("Color_Font", "UseDowColor", FALSE);
-	bUseTimeColor = GetMyRegLong("Color_Font", "UseTimeColor", FALSE);
 
 	bGraph = FALSE;
 	if (bGraphTimerStart) KillTimer(hwndClockMain, IDTIMERDLL_GRAPH);
@@ -4015,28 +3996,6 @@ static void tc_read_settings(void)
 	dvpos = (int)(short)GetMyRegLong("Color_Font", "VertPos", 0);
 	dlineheight = (int)(short)GetMyRegLong("Color_Font", "LineHeight", 0);
 
-	ColorSaturdayText = (COLORREF)GetMyRegColor("Color_Font", "Saturday_TextColor", 0x00C8FFC8);
-	//if (ColorSaturdayText & 0x80000000) ColorSaturdayText = GetSysColor(ColorSaturdayText & 0x00ffffff);
-
-	ColorSundayText = (COLORREF)GetMyRegColor("Color_Font", "Sunday_TextColor", 0x00C8C8FF);
-	//if (ColorSundayText & 0x80000000) ColorSundayText = GetSysColor(ColorSundayText & 0x00ffffff);
-
-	ColorHolidayText = (COLORREF)GetMyRegColor("Color_Font", "Holiday_TextColor", 0x00C8C8FF);
-	//if (ColorHolidayText & 0x80000000) ColorHolidayText = GetSysColor(ColorHolidayText & 0x00ffffff);
-
-	ColorVPNText = (COLORREF)GetMyRegColor("Color_Font", "VPN_TextColor", 0x00FFFF00);
-	//if (ColorVPNText & 0x80000000) ColorVPNText = GetSysColor(ColorVPNText & 0x00ffffff);
-
-	bUseAllColor = GetMyRegLong("Color_Font", "UseAllColor", FALSE);
-	SetMyRegLong("Color_Font", "UseAllColor", bUseAllColor);
-
-	bUseVPNColor = GetMyRegLong("Color_Font", "UseVPNColor", FALSE);
-
-	bUseDateColor = GetMyRegLong("Color_Font", "UseDateColor", FALSE);
-
-	bUseDowColor = GetMyRegLong("Color_Font", "UseDowColor", FALSE);
-
-	bUseTimeColor = GetMyRegLong("Color_Font", "UseTimeColor", FALSE);
 
 
 	bGraph = GetMyRegLong("Graph", "BackNet", FALSE);
@@ -4998,17 +4957,6 @@ void OnTimer_Win10(void)
 		b_DayChange = TRUE;
 	}
 
-	if (b_DayChange) {
-		if (IsHoliday_Win10(&t)) {
-			textcol_DoWzone = ColorHolidayText;
-		}else if (t.wDayOfWeek == 0) {
-			textcol_DoWzone = ColorSundayText;
-		}else if (t.wDayOfWeek == 6) {
-			textcol_DoWzone = ColorSaturdayText;
-		}else {
-			textcol_DoWzone = ColorWeekdayText;
-		}
-	}
 
 
 	if (nBlink > 0) {
@@ -5964,23 +5912,7 @@ void Textout_Tclock_Win10_3(int x, int y, const char* sp, int len, int infoval)
 		}
 
 		{
-			BOOL use_dow_channel = FALSE;
-
-			if (infoval == 88) {
-				use_dow_channel = TRUE;
-			}
-			else if (bUseAllColor) {
-				use_dow_channel = TRUE;
-			}
-			else if ((infoval == 0x02) && bUseDateColor) {
-				use_dow_channel = TRUE;
-			}
-			else if ((infoval == 0x04) && bUseDowColor) {
-				use_dow_channel = TRUE;
-			}
-			else if ((infoval == 0x08) && bUseTimeColor) {
-				use_dow_channel = TRUE;
-			}
+			BOOL use_dow_channel = TextColorFromInfoVal(infoval) == TextColorFromInfoVal(88);
 
 			if (use_dow_channel) {
 				SetTextColor(hdcClock_work, RGB(0, 255, 0));
@@ -6378,12 +6310,7 @@ void Textout_Tclock_Win10_3W(int x, int y, const WCHAR* spW, int wlen, int infov
 			ClockTextOutCompatW(hdcClock_work, x - 1, y - 1, spW, wlen);
 		}
 		{
-			BOOL use_dow_channel = FALSE;
-			if (infoval == 88) { use_dow_channel = TRUE; }
-			else if (bUseAllColor) { use_dow_channel = TRUE; }
-			else if ((infoval == 0x02) && bUseDateColor) { use_dow_channel = TRUE; }
-			else if ((infoval == 0x04) && bUseDowColor) { use_dow_channel = TRUE; }
-			else if ((infoval == 0x08) && bUseTimeColor) { use_dow_channel = TRUE; }
+			BOOL use_dow_channel = TextColorFromInfoVal(infoval) == TextColorFromInfoVal(88);
 			if (use_dow_channel) { SetTextColor(hdcClock_work, RGB(0, 255, 0)); }
 			else { SetTextColor(hdcClock_work, RGB(255, 0, 0)); }
 		}
@@ -6392,63 +6319,37 @@ void Textout_Tclock_Win10_3W(int x, int y, const WCHAR* spW, int wlen, int infov
 }
 
 
+static COLORREF tpc_query_color(int kind)
+{
+    static struct { UINT kind; COLORREF value; } cache[16];
+    static UINT used;
+    static DWORD stamp;
+    static COLORREF base;
+    static BOOL vpn;
+    DWORD now = GetTickCount(), resultTick;
+    DWORD_PTR result = 0;
+    TC_TEXT_CONTEXT context = { sizeof(context) };
+    COPYDATASTRUCT data;
+    UINT i;
+    if (now - stamp >= 1000 || base != ColorWeekdayText || vpn != flag_VPN) {
+        used = 0;stamp = now;base = ColorWeekdayText;vpn = flag_VPN;
+    }
+    for (i = 0; i < used; ++i) if (cache[i].kind == (UINT)kind) return cache[i].value;
+    context.kind = (UINT)kind;context.base = ColorWeekdayText;
+    GetLocalTime(&context.time);context.holiday = IsHoliday_Win10(&context.time);context.vpn = flag_VPN;
+    data.dwData = TC_PLUGIN_COLOR_DATA;data.cbData = sizeof(context);data.lpData = &context;
+    resultTick = SendMessageTimeoutW(hwndTClockExeMain, WM_COPYDATA, (WPARAM)hwndClockMain,
+        (LPARAM)&data, SMTO_ABORTIFHUNG | SMTO_BLOCK, 50, &result) ? 1 : 0;
+    if (!resultTick || !(result & 0x01000000u)) result = ColorWeekdayText;
+    else result = (ColorWeekdayText & 0xff000000u) | (result & 0x00ffffffu);
+    if (used < _countof(cache)) { cache[used].kind = (UINT)kind;cache[used++].value = (COLORREF)result; }
+    return (COLORREF)result;
+}
 COLORREF TextColorFromInfoVal(int infoval)
 {
-	COLORREF colRet;
-
-	if (infoval == 99) {
-		colRet = colShadow;
-	}
-	else if (infoval == 88) {
-		colRet = textcol_DoWzone;
-	}
-	else if (flag_VPN && bUseVPNColor)
-	{
-		colRet = ColorVPNText;
-	}
-	else if (bUseAllColor)
-	{
-		colRet = textcol_DoWzone;
-	}
-	else if (infoval == 0x02)	//日付
-	{
-		if (bUseDateColor) {
-			colRet = textcol_DoWzone;
-		}
-		else {
-			colRet = ColorWeekdayText;
-		}
-	}
-	else if (infoval == 0x04)	//曜日
-	{
-		if (bUseDowColor) {
-			colRet = textcol_DoWzone;
-		}
-		else {
-			colRet = ColorWeekdayText;
-		}
-	}
-	else if (infoval == 0x08)	//時刻
-	{
-		if (bUseTimeColor) {
-			colRet = textcol_DoWzone;
-		}
-		else {
-			colRet = ColorWeekdayText;
-		}
-	}
-	else
-	{
-		colRet = ColorWeekdayText;
-	}
-
-	if ((nBlink % 2) != 0)
-	{
-		colRet = (~colRet & 0xFFFFFF) + 0xFF000000;
-	}
-
-	return colRet;
-
+    COLORREF color = infoval == 99 ? colShadow : tpc_query_color(infoval);
+    if (nBlink % 2) color = (~color & 0x00ffffffu) | 0xff000000u;
+    return color;
 }
 
 

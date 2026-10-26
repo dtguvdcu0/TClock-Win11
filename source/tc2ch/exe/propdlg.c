@@ -265,6 +265,8 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 
 	switch(message){
 		case WM_INITDIALOG:
+            SetWindowLongPtrW(hDwnd, GWL_STYLE,
+                GetWindowLongPtrW(hDwnd, GWL_STYLE) | WS_CLIPCHILDREN);
 			InitCommonControls();
 
 			hTree = GetDlgItem(hDwnd, IDC_TREE);
@@ -332,8 +334,11 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
                     break;
 				case TVN_SELCHANGEDA:
 				case TVN_SELCHANGEDW:
-					ShowWindow(*hNowDlg, SW_HIDE);
-					UpdateWindow(*hNowDlg);
+                {
+                    HWND previous = hNowDlg ? *hNowDlg : NULL;
+                    int previousPage = nowDlg;
+                    BOOL redraw = IsWindowVisible(hDwnd);
+                    if (redraw) SendMessageW(hDwnd, WM_SETREDRAW, FALSE, 0);
 					nowDlg = (int)pNMTV->itemNew.lParam;
 					switch (nowDlg)		//nowDlgはここのところだけはTree選択のバッファとして利用されているが、このswitchを出るときにもともとのnowDlgとしての意味に戻っている。
 					{
@@ -440,10 +445,19 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 							nowDlg = 0;
 							break;
 					}
+                    if (!hDlg[nowDlg]) nowDlg = previous ? previousPage : 0;
 					hNowDlg = &hDlg[nowDlg];
-					ShowWindow(*hNowDlg, SW_SHOW);
-					UpdateWindow(*hNowDlg);
+                    if (*hNowDlg) {
+                        SetWindowPos(*hNowDlg, HWND_TOP, 0, 0, 0, 0,
+                            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+                        if (previous && previous != *hNowDlg) ShowWindow(previous, SW_HIDE);
+                    }
+                    if (redraw) {
+                        SendMessageW(hDwnd, WM_SETREDRAW, TRUE, 0);
+                        RedrawWindow(hDwnd, NULL, NULL, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
+                    }
 					break;
+                }
 			}
 			InterlockedDecrement(&g_propdlgNotifyDepth);
 			}

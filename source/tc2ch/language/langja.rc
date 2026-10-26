@@ -1228,15 +1228,6 @@ BEGIN
     CONTROL         "",IDC_SPIN_THERMALZONE,"msctls_updown32",UDS_WRAP | UDS_SETBUDDYINT | UDS_ALIGNRIGHT | UDS_AUTOBUDDY | UDS_ARROWKEYS,101,72,10,13
     LTEXT           "現在のデータ: ** ℃",IDC_LABEL_CURRENT_TEMP,114,75,73,8
     LTEXT           "*機種によっては固定値しか取得できません。",-1,62,89,142,11
-    GROUPBOX        "拡張機能",IDC_ETC_EXTENSIONS_GROUP,6,145,208,74
-    CONTROL         "タスクスケジューラ",IDC_ETC_TCYCLE_INTEGRATION,
-                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,9,161,62,11
-    CONTROL         "カレンダー",IDC_ETC_TCALENDAR_INTEGRATION,
-                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,72,161,60,11
-    CONTROL         "キャプチャー",IDC_ETC_TCAPTURE_INTEGRATION,
-                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,124,161,60,11
-    CONTROL         "付箋",IDC_ETC_TCARD_INTEGRATION,
-                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,9,177,60,11
 END
 
 IDD_PAGE_ETC_ENG DIALOGEX 0, 0, 210, 230
@@ -1254,15 +1245,6 @@ BEGIN
     CONTROL         "",IDC_SPIN_THERMALZONE,"msctls_updown32",UDS_WRAP | UDS_SETBUDDYINT | UDS_ALIGNRIGHT | UDS_AUTOBUDDY | UDS_ARROWKEYS,101,72,10,13
     LTEXT           "Current Value: ** deg.",IDC_LABEL_CURRENT_TEMP,114,75,92,8
     LTEXT           "*Availability is device-dependent.",-1,70,89,134,11
-    GROUPBOX        "Extensions",IDC_ETC_EXTENSIONS_GROUP,6,145,198,74
-    CONTROL         "TCycle",IDC_ETC_TCYCLE_INTEGRATION,
-                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,8,161,52,11
-    CONTROL         "TCalendar",IDC_ETC_TCALENDAR_INTEGRATION,
-                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,70,161,60,11
-    CONTROL         "TCapture",IDC_ETC_TCAPTURE_INTEGRATION,
-                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,134,161,60,11
-    CONTROL         "Sticky notes",IDC_ETC_TCARD_INTEGRATION,
-                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,9,177,60,11
 END
 
 IDD_INI_RECOVERY DIALOGEX 0, 0, 244, 184
@@ -2314,3 +2296,5 @@ BEGIN
     IDS_TIMESYNC_FAILED2 "Time synchronization failed.\nCheck the Windows Time service and network connection.\n\nError: %lu\n%s"
     IDS_TIMESYNC_BUSY2 "Time synchronization is already running."
 END
+
+#include "plugin_page.rc2"

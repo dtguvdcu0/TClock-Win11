@@ -425,6 +425,9 @@
     </ClCompile>
     <ClCompile Include="filelist.c" />
     <ClCompile Include="menu.c" />
+    <ClCompile Include="plugin_actions.c" />
+    <ClCompile Include="plugin_registry.c" />
+    <ClCompile Include="page_plugins.c" />
     <ClCompile Include="mouse.c" />
     <ClCompile Include="page.c" />
     <ClCompile Include="pageabout.c" />
@@ -464,6 +467,10 @@
     <ClInclude Include="resource.h" />
     <ClInclude Include="tclock.h" />
     <ClInclude Include="update_notice.h" />
+    <ClInclude Include="plugin_actions.h" />
+    <ClInclude Include="plugin_registry.h" />
+    <ClInclude Include="..\common\plugin_api.h" />
+    <ClInclude Include="..\common\plugin_resources.h" />
     <ClInclude Include="..\common\text_codec.h" />
     <ClInclude Include="..\common\text_file_utf8.h" />
     <ClInclude Include="..\common\ini_io_utf8.h" />
@@ -479,6 +486,11 @@
     <ResourceCompile Include="tclock.rc" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\plugins\sample_actions\sample_actions.vcxproj" Condition="'$(Platform)'=='x64' And ('$(Configuration)'=='Release' Or '$(Configuration)'=='Debug')">
+      <Project>{0B3DC12C-6DE7-43ED-83D5-ED08FD917A1A}</Project>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <LinkLibraryDependencies>false</LinkLibraryDependencies>
+    </ProjectReference>
     <ProjectReference Include="..\dll\dll.vcxproj">
       <Project>{5764565b-0bc9-4c10-88c6-f8d5b8c40c26}</Project>
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>

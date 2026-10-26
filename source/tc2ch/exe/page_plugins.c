@@ -1,0 +1,113 @@
+#include <wchar.h>
+#include "tclock.h"
+#include "plugin_registry.h"
+#include "plugin_actions.h"
+#include "../common/plugin_resources.h"
+#include <commctrl.h>
+extern BOOL b_EnglishMenu;
+#define PPG_POLL_TIMER 1
+
+typedef struct PPG_STATE {
+    PLUGIN_RECORD rows[PREG_MAX_RECORDS];
+    BOOL changed[PREG_MAX_RECORDS];
+    int count,selected;
+    BOOL loading,dirty,settings;
+} PPG_STATE;
+static LPCWSTR ppg_text(LPCWSTR english,LPCWSTR japanese){return b_EnglishMenu?english:japanese;}
+static PPG_STATE* ppg_state(HWND dialog){return (PPG_STATE*)GetWindowLongPtrW(dialog,GWLP_USERDATA);}
+static BOOL ppg_is_listed(const PLUGIN_RECORD* r){return r->visible&&(!r->automatic||r->discovered);}
+static void ppg_mark(HWND dialog){PPG_STATE* s=ppg_state(dialog);if(s&&!s->loading){s->dirty=TRUE;SendMessageW(GetParent(dialog),PSM_CHANGED,(WPARAM)dialog,0);}}
+static void ppg_capture(HWND dialog){
+    PPG_STATE* s=ppg_state(dialog);PLUGIN_RECORD* r;
+    if(!s||s->loading||s->selected<0||s->selected>=s->count)return;r=&s->rows[s->selected];
+    r->enabled=IsDlgButtonChecked(dialog,IDC_PL_ENABLED)==BST_CHECKED;
+    if(r->known>=0){const int controls[]={IDC_ETC_TCARD_INTEGRATION,IDC_ETC_TCYCLE_INTEGRATION,IDC_ETC_TCALENDAR_INTEGRATION,IDC_ETC_TCAPTURE_INTEGRATION};CheckDlgButton(dialog,controls[r->known],r->enabled?BST_CHECKED:BST_UNCHECKED);}
+}
+static void ppg_show(HWND dialog){
+    PPG_STATE* s=ppg_state(dialog);PLUGIN_RECORD* r=s->selected>=0?&s->rows[s->selected]:NULL;WCHAR description[TC_PLUGIN_DESCRIPTION_CHARS]=L"";
+    s->loading=TRUE;
+    if(r){
+        if(r->conflict)wcscpy_s(description,_countof(description),ppg_text(L"More than one registration or DLL uses this plugin ID. Keep one matching DLL in the plugins folder.",L"\u540c\u3058\u30d7\u30e9\u30b0\u30a4\u30f3ID\u306eDLL\u307e\u305f\u306f\u767b\u9332\u304c\u91cd\u8907\u3057\u3066\u3044\u307e\u3059\u3002plugins\u30d5\u30a9\u30eb\u30c0\u5185\u306e\u5bfe\u8c61DLL\u30921\u3064\u306b\u3057\u3066\u304f\u3060\u3055\u3044\u3002"));
+        else preg_get_description(r,b_EnglishMenu,description,_countof(description));
+    }
+    SetDlgItemTextW(dialog,IDC_PL_DESCRIPTION,description);
+    EnableWindow(GetDlgItem(dialog,IDC_PL_ENABLED),r!=NULL);CheckDlgButton(dialog,IDC_PL_ENABLED,r&&r->enabled?BST_CHECKED:BST_UNCHECKED);
+    EnableWindow(GetDlgItem(dialog,IDC_PL_SETTINGS),preg_can_configure(r));
+    s->loading=FALSE;
+}
+static void ppg_render(HWND dialog){
+    PPG_STATE* s=ppg_state(dialog);HWND list=GetDlgItem(dialog,IDC_PL_LIST);int i,row=0,selected=-1;
+    s->loading=TRUE;SendMessageW(list,LVM_DELETEALLITEMS,0,0);
+    for(i=0;i<s->count;++i)if(ppg_is_listed(&s->rows[i])){
+        PLUGIN_RECORD* r=&s->rows[i];LVITEMW item={0};LPCWSTR status;WCHAR name[128],version[64];
+        preg_get_title(r,b_EnglishMenu,name,_countof(name));item.mask=LVIF_TEXT|LVIF_PARAM;item.iItem=row;item.pszText=name;item.lParam=i;SendMessageW(list,LVM_INSERTITEMW,0,(LPARAM)&item);
+        item.mask=LVIF_TEXT;item.iSubItem=1;item.pszText=(LPWSTR)(r->kind==PREG_KIND_DLL?L"DLL":L"EXE");SendMessageW(list,LVM_SETITEMTEXTW,row,(LPARAM)&item);
+        preg_get_version(r,version,_countof(version));item.iSubItem=2;item.pszText=version;SendMessageW(list,LVM_SETITEMTEXTW,row,(LPARAM)&item);
+        status=r->conflict?ppg_text(L"ID conflict",L"ID\u91cd\u8907"):!preg_is_present(r)?ppg_text(L"Not found",L"\u672a\u691c\u51fa"):(r->enabled?ppg_text(L"Enabled",L"\u6709\u52b9"):ppg_text(L"Disabled",L"\u7121\u52b9"));
+        item.iSubItem=3;item.pszText=(LPWSTR)status;SendMessageW(list,LVM_SETITEMTEXTW,row,(LPARAM)&item);
+        if(i==s->selected)selected=row;++row;
+    }
+    if(selected<0&&row){LVITEMW item={0};item.mask=LVIF_PARAM;item.iItem=0;SendMessageW(list,LVM_GETITEMW,0,(LPARAM)&item);s->selected=(int)item.lParam;selected=0;}
+    if(selected>=0){LVITEMW item={0};item.stateMask=LVIS_SELECTED|LVIS_FOCUSED;item.state=item.stateMask;SendMessageW(list,LVM_SETITEMSTATE,selected,(LPARAM)&item);}else s->selected=-1;
+    s->loading=FALSE;ppg_show(dialog);
+}
+static void ppg_sync(HWND dialog,BOOL force){
+    PPG_STATE* s=ppg_state(dialog);PLUGIN_RECORD fresh[PREG_MAX_RECORDS];BOOL changed[PREG_MAX_RECORDS]={0};WCHAR selected[64]=L"";int count,i,j;BOOL inventoryChanged;
+    if(!s||s->settings)return;
+    inventoryChanged=preg_discover();if(!force&&!inventoryChanged)return;
+    ppg_capture(dialog);
+    if(s->selected>=0)wcscpy_s(selected,64,s->rows[s->selected].id);
+    count=preg_load(fresh,PREG_MAX_RECORDS);
+    for(i=0;i<count;++i)for(j=0;j<s->count;++j)if(s->changed[j]&&wcscmp(fresh[i].id,s->rows[j].id)==0){fresh[i].enabled=s->rows[j].enabled;changed[i]=TRUE;break;}
+    memcpy(s->rows,fresh,sizeof(*fresh)*count);memcpy(s->changed,changed,sizeof(changed));s->count=count;s->selected=-1;
+    for(i=0;i<count;++i)if(wcscmp(s->rows[i].id,selected)==0&&ppg_is_listed(&s->rows[i])){s->selected=i;break;}
+    {
+        const int controls[]={IDC_ETC_TCARD_INTEGRATION,IDC_ETC_TCYCLE_INTEGRATION,IDC_ETC_TCALENDAR_INTEGRATION,IDC_ETC_TCAPTURE_INTEGRATION};
+        for(i=0;i<PREG_KNOWN&&i<count;++i)CheckDlgButton(dialog,controls[i],s->rows[i].enabled?BST_CHECKED:BST_UNCHECKED);
+    }
+    ppg_render(dialog);if(inventoryChanged)pact_refresh();
+}
+static BOOL ppg_commit(HWND dialog){
+    PPG_STATE* s=ppg_state(dialog);if(!s||!s->dirty)return TRUE;
+    ppg_sync(dialog,TRUE);
+    if(!preg_save(s->rows,s->count))return FALSE;
+    ZeroMemory(s->changed,sizeof(s->changed));s->dirty=FALSE;pact_refresh();ppg_sync(dialog,TRUE);return TRUE;
+}
+INT_PTR CALLBACK PagePluginsProc(HWND dialog,UINT message,WPARAM wParam,LPARAM lParam){
+    PPG_STATE* s=ppg_state(dialog);
+    switch(message){
+    case WM_INITDIALOG:{
+        const int controls[]={IDC_ETC_TCARD_INTEGRATION,IDC_ETC_TCYCLE_INTEGRATION,IDC_ETC_TCALENDAR_INTEGRATION,IDC_ETC_TCAPTURE_INTEGRATION};
+        HWND list=GetDlgItem(dialog,IDC_PL_LIST);RECT rc;LVCOLUMNW column={0};int i;BOOL migrated;
+        s=(PPG_STATE*)HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY,sizeof(*s));if(!s)return FALSE;SetWindowLongPtrW(dialog,GWLP_USERDATA,(LONG_PTR)s);s->selected=-1;s->loading=TRUE;
+        migrated=preg_migrate();s->dirty=GetMyRegLong("Plugins","RegistryVersion",0)<1;
+        for(i=0;i<PREG_KNOWN;++i)CreateWindowExW(0,L"BUTTON",L"",WS_CHILD|BS_AUTOCHECKBOX,0,0,1,1,dialog,(HMENU)(INT_PTR)controls[i],g_hInst,NULL);
+        SendMessageW(list,LVM_SETEXTENDEDLISTVIEWSTYLE,0,LVS_EX_FULLROWSELECT|LVS_EX_DOUBLEBUFFER);GetClientRect(list,&rc);
+        column.mask=LVCF_TEXT|LVCF_WIDTH;column.cx=(rc.right-GetSystemMetrics(SM_CXVSCROLL))*40/100;column.pszText=(LPWSTR)ppg_text(L"Plugin",L"\u30d7\u30e9\u30b0\u30a4\u30f3");SendMessageW(list,LVM_INSERTCOLUMNW,0,(LPARAM)&column);
+        column.cx=(rc.right-GetSystemMetrics(SM_CXVSCROLL))*12/100;column.pszText=(LPWSTR)ppg_text(L"Type",L"\u5f62\u5f0f");SendMessageW(list,LVM_INSERTCOLUMNW,1,(LPARAM)&column);
+        column.cx=(rc.right-GetSystemMetrics(SM_CXVSCROLL))*23/100;column.pszText=(LPWSTR)ppg_text(L"Version",L"\u30d0\u30fc\u30b8\u30e7\u30f3");SendMessageW(list,LVM_INSERTCOLUMNW,2,(LPARAM)&column);
+        column.cx=(rc.right-GetSystemMetrics(SM_CXVSCROLL))*25/100;column.pszText=(LPWSTR)ppg_text(L"Status",L"\u72b6\u614b");SendMessageW(list,LVM_INSERTCOLUMNW,3,(LPARAM)&column);
+        SetDlgItemTextW(dialog,IDC_PL_LABEL_DESCRIPTION,ppg_text(L"Description",L"\u8aac\u660e"));SetDlgItemTextW(dialog,IDC_PL_SETTINGS,ppg_text(L"Settings",L"\u8a2d\u5b9a"));SetDlgItemTextW(dialog,IDC_PL_ENABLED,ppg_text(L"Enable plugin",L"\u30d7\u30e9\u30b0\u30a4\u30f3\u3092\u6709\u52b9\u306b\u3059\u308b"));
+        s->loading=FALSE;ppg_sync(dialog,TRUE);
+        if(!migrated)MessageBoxW(dialog,ppg_text(L"Old plugin settings could not be migrated. Original settings were retained.",L"\u65e7\u30d7\u30e9\u30b0\u30a4\u30f3\u8a2d\u5b9a\u3092\u79fb\u884c\u3067\u304d\u307e\u305b\u3093\u3067\u3057\u305f\u3002\u5143\u306e\u8a2d\u5b9a\u306f\u4fdd\u6301\u3057\u3066\u3044\u307e\u3059\u3002"),L"TClock",MB_OK|MB_ICONINFORMATION);
+        SetTimer(dialog,PPG_POLL_TIMER,2000,NULL);return TRUE;
+    }
+    case WM_SHOWWINDOW:if(wParam&&s)ppg_sync(dialog,TRUE);return TRUE;
+    case WM_TIMER:if(wParam==PPG_POLL_TIMER&&s&&!s->settings&&IsWindowVisible(dialog))ppg_sync(dialog,FALSE);return TRUE;
+    case WM_NOTIFY:
+        if(s&&((NMHDR*)lParam)->idFrom==IDC_PL_LIST&&((NMHDR*)lParam)->code==LVN_ITEMCHANGED&&!s->loading){NMLISTVIEW* change=(NMLISTVIEW*)lParam;if((change->uNewState&LVIS_SELECTED)&&!(change->uOldState&LVIS_SELECTED)){ppg_capture(dialog);s->selected=(int)change->lParam;ppg_show(dialog);}}return TRUE;
+    case WM_COMMAND:
+        if(!s)return FALSE;
+        if(LOWORD(wParam)==IDC_PL_ENABLED&&s->selected>=0){ppg_capture(dialog);s->changed[s->selected]=TRUE;ppg_mark(dialog);ppg_render(dialog);return TRUE;}
+        if(LOWORD(wParam)==IDC_PL_SETTINGS&&s->selected>=0&&preg_can_configure(&s->rows[s->selected])){
+            BOOL ok;ppg_capture(dialog);s->settings=TRUE;ok=preg_open(&s->rows[s->selected],dialog,TRUE,b_EnglishMenu);s->settings=FALSE;
+            if(!ok)MessageBoxW(dialog,ppg_text(L"Could not open plugin settings.",L"\u30d7\u30e9\u30b0\u30a4\u30f3\u306e\u8a2d\u5b9a\u3092\u958b\u3051\u307e\u305b\u3093\u3067\u3057\u305f\u3002"),L"TClock",MB_OK|MB_ICONERROR);
+            ppg_sync(dialog,TRUE);return TRUE;
+        }break;
+    case PPG_COMMIT:
+        if(ppg_commit(dialog)){SetWindowLongPtrW(dialog,DWLP_MSGRESULT,TRUE);return TRUE;}
+        MessageBoxW(dialog,ppg_text(L"Could not save plugin enablement. Check INI write access.",L"\u30d7\u30e9\u30b0\u30a4\u30f3\u306e\u6709\u52b9\u72b6\u614b\u3092\u4fdd\u5b58\u3067\u304d\u307e\u305b\u3093\u3002INI\u3078\u306e\u66f8\u304d\u8fbc\u307f\u3092\u78ba\u8a8d\u3057\u3066\u304f\u3060\u3055\u3044\u3002"),L"TClock",MB_OK|MB_ICONERROR);SetWindowLongPtrW(dialog,DWLP_MSGRESULT,FALSE);return TRUE;
+    case WM_DESTROY:KillTimer(dialog,PPG_POLL_TIMER);if(s){HeapFree(GetProcessHeap(),0,s);SetWindowLongPtrW(dialog,GWLP_USERDATA,0);}return TRUE;
+    }
+    return FALSE;
+}

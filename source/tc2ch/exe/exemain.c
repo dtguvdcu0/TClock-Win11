@@ -4,7 +4,9 @@
 ---------------------------------------------------------------*/
 
 #include "tclock.h"
+#include "plugin_actions.h"
 #include "update_notice.h"
+#include "plugin_registry.h"
 #include <winver.h>
 #include <shellapi.h>
 #include "../common/text_codec.h"
@@ -1048,12 +1050,7 @@ static void LaunchTCalendarAlertIfEnabled(void)
 static void TerminateExtensionsOnExplicitExitIfNeeded(void)
 {
     if (!g_ExitRequestedFromMenu) return;
-    if (!GetMyRegLong("ETC", "ExitExtensionsOnTClockExit", 0)) return;
-
-    ShellExecuteW(NULL, L"open", L"taskkill.exe", L"/F /IM TCycle.exe", NULL, SW_HIDE);
-    ShellExecuteW(NULL, L"open", L"taskkill.exe", L"/F /IM TCalendar.exe", NULL, SW_HIDE);
-    ShellExecuteW(NULL, L"open", L"taskkill.exe", L"/F /IM TCapture.exe", NULL, SW_HIDE);
-    if (b_DebugLog) WriteDebug_New2("[exemain.c] ExitExtensionsOnTClockExit applied.");
+    preg_stop_tools();
 }
 
 // TEMP_VERIFY_START ghostchk
@@ -1542,6 +1539,7 @@ LRESULT CALLBACK WndProc(HWND hwnd,	UINT message, WPARAM wParam, LPARAM lParam)	
 {
 	LRESULT extendedResult;
 	if (ext_handle_message(hwnd,message,wParam,lParam,&extendedResult)) return extendedResult;
+    if (pact_handle_message(message,lParam,&extendedResult)) return extendedResult;
 	switch (message)
 	{
 		case WM_CREATE:

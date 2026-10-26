@@ -30,6 +30,7 @@ static void pl_tree(HWND tree, HTREEITEM roots[], HTREEITEM children[])
  roots[8] = pl_insert(tree, group, 8, MyStringW(IDS_PROP_CUSTOMVARS));
  roots[2] = pl_insert(tree, group, 2, MyStringW(IDS_PROP_KEYWORDS));
  roots[7] = pl_insert(tree, group, 7, MyStringW(IDS_PROP_ETC));
+ roots[10] = pl_insert(tree, group, 10, b_EnglishMenu ? L"Plugins" : L"\u30d7\u30e9\u30b0\u30a4\u30f3");
  roots[5] = pl_insert(tree, group, 5, MyStringW(IDS_PROP_WIN11));
  group = pl_insert(tree, TVI_ROOT, -1, b_EnglishMenu ? L"Information" : L"\u60c5\u5831");
  roots[4] = pl_insert(tree, group, 4, MyStringW(IDS_MISC));

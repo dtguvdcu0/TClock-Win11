@@ -1,0 +1,8 @@
+; Copy to <TClock directory>\plugins\action-plugins.ini only if it is absent.
+; Set Enabled=1 and restart TClock to expose the operation in builtin candidates.
+; ASCII templates are supported; save non-ASCII paths as UTF-16 LE with BOM.
+[Plugins]
+Count=1
+[Plugin1]
+Enabled=0
+Path=SampleActions.dll

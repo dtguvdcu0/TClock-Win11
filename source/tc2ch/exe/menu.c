@@ -5,6 +5,8 @@
 
 #include "tclock.h"
 #include "update_notice.h"
+#include "plugin_actions.h"
+#include "plugin_registry.h"
 #include <stdio.h>
 #include <commctrl.h>
 #include "..\\dll\\minmode.h"
@@ -25,6 +27,7 @@ BOOL b_CompactMode_menu;
 BOOL b_SafeMode_menu;
 //BOOL b_UseDataPlanFunc;
 extern BOOL b_DebugLog;
+extern BOOL b_EnglishMenu;
 //BOOL b_AutomaticFindWLTEProfile;
 BOOL b_UseBarMeterVL;
 BOOL b_UseBarMeterBL;
@@ -131,7 +134,7 @@ void tc_card_launch(void)
 
 typedef struct {
 	UINT id;
-	int mode; /* 1: shell, 2: commandline, 3: passive */
+	int mode; /* 1: shell, 2: commandline, 3: passive, 4: DLL action */
 	char target[MAX_PATH];
 	char args[512];
 	char workdir[MAX_PATH];
@@ -673,6 +676,11 @@ static int tc_menu_dynamic_execute(UINT id)
 			ShellExecuteUtf8Strict(g_hwndMain, "open", "cmd.exe", targetUtf8[0] ? targetUtf8 : NULL,
 				workdirUtf8[0] ? workdirUtf8 : NULL,
 				e->show ? e->show : SW_SHOWNORMAL);
+			return 1;
+		}
+		if (e->mode == 4) {
+			if (strncmp(e->target, "exe:", 4) == 0) preg_run_action(e->target, g_hwndMain);
+			else pact_execute(e->target, g_hwndMain, b_EnglishMenu);
 			return 1;
 		}
 		if (e->mode == 3) {
@@ -1354,6 +1362,9 @@ static BOOL tc_menu_get_default_item(int index, char* type, int typeLen, char* a
 
 static const char* tc_menu_default_label_for_action(const char* action)
 {
+	const char* pluginLabel = pact_get_label(action, b_EnglishMenu);
+	if (!pluginLabel) pluginLabel = preg_get_label(action);
+	if (pluginLabel) return pluginLabel;
 	if (!action || !action[0]) return "";
 	if (_stricmp(action, "taskmgr") == 0) return MyStringUTF8(IDS_TASKMGR);
 	if (_stricmp(action, "cmd") == 0) return MyStringUTF8(IDS_CMD);
@@ -1865,7 +1876,7 @@ static void tc_menu_apply_custom_from_ini(HMENU hMenu)
 	for (i = 1; i <= count; ++i) {
 		char key[64];
 		char mode[32];
-		char action[64];
+		char action[128];
 		char param[512];
 		char args[512];
 		char workdir[MAX_PATH];
@@ -2027,7 +2038,11 @@ static void tc_menu_apply_custom_from_ini(HMENU hMenu)
 		show = tc_menu_section_cache_get_long(&cache, key, SW_SHOWNORMAL);
 
 		if (_stricmp(mode, "builtin") == 0 || mode[0] == '\0') {
-			if (!tc_menu_action_to_command(action, &cmdId)) {
+			if (strncmp(action, "dll:", 4) == 0 || strncmp(action, "exe:", 4) == 0) {
+				if (!pact_get_label(action, b_EnglishMenu) && !preg_get_label(action)) continue;
+				cmdId = tc_menu_dynamic_register(4, action, "", "", SW_SHOWNORMAL);
+				if (!cmdId) continue;
+			} else if (!tc_menu_action_to_command(action, &cmdId)) {
 				char warn[256];
 				wsprintf(warn, "[menu.c][menucustom] Unknown action skipped: %s", action);
 				if (b_NormalLog) WriteNormalLog(warn);

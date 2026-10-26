@@ -4,6 +4,8 @@
 ---------------------------------------------*/
 
 #include "tclock.h"
+#include "plugin_actions.h"
+#include "plugin_registry.h"
 #include "../common/ini_io_utf8.h"
 #include "../common/text_codec.h"
 #include <stdio.h>
@@ -210,6 +212,9 @@ static int rm_decode_utf8_hex(const char* hex, char* out, int outBytes)
 
 static const char* rm_default_label_for_action(const char* action)
 {
+    const char* pluginLabel = pact_get_label(action, b_EnglishMenu);
+    if (!pluginLabel) pluginLabel = preg_get_label(action);
+    if (pluginLabel) return pluginLabel;
     if (!action || !action[0]) return "";
     if (lstrcmpi(action, "taskmgr") == 0) return MyStringUTF8(IDS_TASKMGR);
     if (lstrcmpi(action, "cmd") == 0) return MyStringUTF8(IDS_CMD);
@@ -235,6 +240,10 @@ static const char* rm_default_label_for_action(const char* action)
 
 static const char* rm_action_key_from_index(int idx)
 {
+    if (idx >= 19) {
+        const char* key = idx < 19 + PACT_ACTION_CAPACITY ? pact_get_key(idx - 19) : preg_get_action(idx - 19 - PACT_ACTION_CAPACITY);
+        return key ? key : "";
+    }
     switch (idx) {
     case 0: return "taskmgr";
     case 1: return "cmd";
@@ -261,9 +270,9 @@ static const char* rm_action_key_from_index(int idx)
 
 static int rm_action_index_from_key(const char* key)
 {
-    int i;
+    int i, count = 19 + PACT_ACTION_CAPACITY + preg_count_actions();
     if (!key || !key[0]) return -1;
-    for (i = 0; i < 19; ++i) {
+    for (i = 0; i < count; ++i) {
         if (lstrcmpi(key, rm_action_key_from_index(i)) == 0) return i;
     }
     return -1;
@@ -271,7 +280,7 @@ static int rm_action_index_from_key(const char* key)
 
 static void rm_fill_builtin_action_combo(HWND hDlg)
 {
-    int i;
+    int i, exeCount = preg_count_actions(), dllCount = pact_count();
     CBResetContent(hDlg, IDC_RM_ITEM_ACTION);
     for (i = 0; i < 19; ++i) {
         int function = i == 13 ? MOUSEFUNC_TCARD_OPEN : i == 14 ? MOUSEFUNC_TCALENDAR_OPEN :
@@ -280,6 +289,22 @@ static void rm_fill_builtin_action_combo(HWND hDlg)
         if (!act_is_available(hDlg, function)) continue;
         row = CBAddStringUTF8Compat(hDlg, IDC_RM_ITEM_ACTION, rm_default_label_for_action(rm_action_key_from_index(i)));
         CBSetItemData(hDlg, IDC_RM_ITEM_ACTION, row, i);
+    }
+    for (i = 0; i < dllCount; ++i) {
+        const char* key = pact_get_key(i);
+        int row;
+        const char* label = key ? pact_get_label(key, b_EnglishMenu) : NULL;
+        if (!label) continue;
+        row = CBAddStringUTF8Compat(hDlg, IDC_RM_ITEM_ACTION, label);
+        if (row >= 0) CBSetItemData(hDlg, IDC_RM_ITEM_ACTION, row, 19 + i);
+    }
+    for (i = 0; i < exeCount; ++i) {
+        const char* key = preg_get_action(i);
+        const char* label = preg_get_label(key);
+        int row;
+        if (!label) continue;
+        row = CBAddStringUTF8Compat(hDlg, IDC_RM_ITEM_ACTION, label);
+        if (row >= 0) CBSetItemData(hDlg, IDC_RM_ITEM_ACTION, row, 19 + PACT_ACTION_CAPACITY + i);
     }
 }
 static void rm_fill_show_combo(HWND hDlg, int alarmMode)

@@ -4,6 +4,7 @@
 ---------------------------------------------*/
 
 #include "tclock.h"
+#include "plugin_registry.h"
 #include "..\common\ini_io_utf8.h"
 #include "..\common\text_codec.h"
 #include "..\common\color_value.h"
@@ -74,6 +75,7 @@ static BOOL tc_is_utf8_hex_target_key(const char* section, const char* entry)
 		lstrcmpi(entry, "TCapturePath") == 0) return TRUE;
 	if (lstrcmpi(section, "CustomVars") == 0 && tc_is_customvars_utf8hex_entry(entry)) return TRUE;
 	if (lstrcmpi(section, "MenuCustom") == 0) return TRUE;
+	if (lstrcmpi(section, "Plugins") == 0) return TRUE;
 	return FALSE;
 }
 
@@ -1086,6 +1088,13 @@ int GetMyRegStr(const char* section, const char* entry, char* val, int cbData,
 
 	if (strlen(g_inifile) == 0) return 0;
 	if (!val || cbData <= 0) return 0;
+	{
+		char canonical[128], redirected[8192];
+		if (preg_map_key(section, entry, canonical, sizeof(canonical))) {
+			GetMyRegStr("Plugins", canonical, redirected, sizeof(redirected), "\x1d");
+			if (strcmp(redirected, "\x1d") != 0) { lstrcpyn(val, redirected, cbData); return lstrlen(val); }
+		}
+	}
 	val[0] = '\0';
 
 	key[0] = 0;
@@ -1186,6 +1195,14 @@ getmyregstr_done:
 --------------------------------------------------*/
 LONG GetMyRegLong(const char* section, const char* entry, LONG defval)
 {
+    if (!g_inifile[0]) return 0;
+    {
+        char canonical[128], present[16];
+        if (preg_map_key(section, entry, canonical, sizeof(canonical))) {
+            GetMyRegStr("Plugins", canonical, present, sizeof(present), "\x1d");
+            if (strcmp(present, "\x1d") != 0) return GetMyRegLong("Plugins", canonical, defval);
+        }
+    }
 	char key[80];
 	LONG r = 0;
 
@@ -1318,6 +1335,10 @@ LONG GetMyRegColor(const char* section, const char* entry, LONG defval)
 
 BOOL SetMyRegStr(const char* section, const char* entry, const char* val)
 {
+    {
+        char canonical[128];
+        if (preg_map_key(section, entry, canonical, sizeof(canonical))) return SetMyRegStr("Plugins", canonical, val);
+    }
 	BOOL r = FALSE;
 	char key[80];
 	BOOL isUtf8 = FALSE;
@@ -1479,6 +1500,10 @@ BOOL SetMyRegLongDef(const char* section, const char* entry, DWORD val)
 
 BOOL SetMyRegLong(const char* section, const char* entry, DWORD val)
 {
+    {
+        char canonical[128];
+        if (preg_map_key(section, entry, canonical, sizeof(canonical))) return SetMyRegLong("Plugins", canonical, val);
+    }
 	BOOL r = FALSE;
 	char key[80];
 	BOOL isUtf8 = FALSE;
@@ -1530,6 +1555,10 @@ BOOL SetMyRegLong(const char* section, const char* entry, DWORD val)
 ---------------------------------------------*/
 BOOL DelMyReg(const char* section, const char* entry)
 {
+    {
+        char canonical[128];
+        if (preg_map_key(section, entry, canonical, sizeof(canonical))) return DelMyReg("Plugins", canonical);
+    }
 	BOOL r = FALSE;
 	char key[80];
 	BOOL isUtf8 = FALSE;

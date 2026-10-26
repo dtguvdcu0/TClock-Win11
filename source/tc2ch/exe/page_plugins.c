@@ -1,7 +1,7 @@
 #include <wchar.h>
 #include "tclock.h"
 #include "plugin_registry.h"
-#include "plugin_actions.h"
+#include "plugin_runtime.h"
 #include "../common/plugin_resources.h"
 #include <commctrl.h>
 extern BOOL b_EnglishMenu;
@@ -65,13 +65,13 @@ static void ppg_sync(HWND dialog,BOOL force){
         const int controls[]={IDC_ETC_TCARD_INTEGRATION,IDC_ETC_TCYCLE_INTEGRATION,IDC_ETC_TCALENDAR_INTEGRATION,IDC_ETC_TCAPTURE_INTEGRATION};
         for(i=0;i<PREG_KNOWN&&i<count;++i)CheckDlgButton(dialog,controls[i],s->rows[i].enabled?BST_CHECKED:BST_UNCHECKED);
     }
-    ppg_render(dialog);if(inventoryChanged)pact_refresh();
+    ppg_render(dialog);if(inventoryChanged)prt_refresh();
 }
 static BOOL ppg_commit(HWND dialog){
     PPG_STATE* s=ppg_state(dialog);if(!s||!s->dirty)return TRUE;
     ppg_sync(dialog,TRUE);
     if(!preg_save(s->rows,s->count))return FALSE;
-    ZeroMemory(s->changed,sizeof(s->changed));s->dirty=FALSE;pact_refresh();ppg_sync(dialog,TRUE);return TRUE;
+    ZeroMemory(s->changed,sizeof(s->changed));s->dirty=FALSE;prt_refresh();ppg_sync(dialog,TRUE);return TRUE;
 }
 INT_PTR CALLBACK PagePluginsProc(HWND dialog,UINT message,WPARAM wParam,LPARAM lParam){
     PPG_STATE* s=ppg_state(dialog);

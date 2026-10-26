@@ -11,10 +11,10 @@
 #include "../common/analog_skin.h"
 #include "../common/chime_schedule.h"
 #include "../common/ini_io_utf8.h"
-#include "plugin_actions.h"
+#include "plugin_runtime.h"
 #define PL_PLUGIN_FIRST 22
 #define PL_PLUGIN_TREE 200
-#define MAX_PAGE (PL_PLUGIN_FIRST + 32)
+#define MAX_PAGE (PL_PLUGIN_FIRST + PRT_PAGE_CAPACITY)
 #include "plugin_registry.h"
 #define WM_TCLOCK_APPLY_REFRESH (WM_APP + 101)
 
@@ -210,8 +210,8 @@ static VOID CreatePageDialogW(HWND hParent, HWND hDlg[], BOOL bDlgFlg[], int ind
 static void pl_sync_extensions(HWND tree, HTREEITEM children[])
 {
     int i;HTREEITEM after = children[0];
-    for (i = 0; i < 32; ++i) {
-        LPCWSTR label = pact_page_label(i, b_EnglishMenu);
+    for (i = 0; i < PRT_PAGE_CAPACITY; ++i) {
+        LPCWSTR label = prt_page_label(i, b_EnglishMenu);
         if (label && label[0]) {
             if (!children[PL_PLUGIN_FIRST+i]) {
                 TVINSERTSTRUCTW item = { 0 };
@@ -272,7 +272,7 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 			AdjustPropertyTreeHeight(hTree);
             ZeroMemory(hDlg, sizeof(hDlg));ZeroMemory(bDlgFlg, sizeof(bDlgFlg));
             ZeroMemory(hParent, sizeof(hParent));ZeroMemory(hChild, sizeof(hChild));
-            pact_refresh();
+            prt_refresh();
             pl_tree(hTree, hParent, hChild);
             pl_sync_extensions(hTree, hChild);
 
@@ -433,10 +433,10 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 							break;
 
                         default:
-                            if (nowDlg >= PL_PLUGIN_TREE && nowDlg < PL_PLUGIN_TREE + 32) {
+                            if (nowDlg >= PL_PLUGIN_TREE && nowDlg < PL_PLUGIN_TREE + PRT_PAGE_CAPACITY) {
                                 int page = nowDlg - PL_PLUGIN_TREE;nowDlg = PL_PLUGIN_FIRST + page;
                                 if (!bDlgFlg[nowDlg]) {
-                                    hDlg[nowDlg] = pact_create_page(page, hDwnd, b_EnglishMenu);
+                                    hDlg[nowDlg] = prt_create_page(page, hDwnd, b_EnglishMenu);
                                     if (hDlg[nowDlg]) { SetPageDlgPos(hDwnd, hDlg[nowDlg]);bDlgFlg[nowDlg] = TRUE; }
                                 }
                                 if (!hDlg[nowDlg]) nowDlg = 0;
@@ -492,7 +492,7 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
                     }
                     for (pageIdx = PL_PLUGIN_FIRST; pageIdx < MAX_PAGE; ++pageIdx) {
                         if (hDlg[pageIdx] && (!applyActiveOnly || nowDlg == pageIdx) &&
-                            !pact_apply_page(pageIdx - PL_PLUGIN_FIRST, hDlg[pageIdx])) break;
+                            !prt_apply_page(pageIdx - PL_PLUGIN_FIRST, hDlg[pageIdx])) break;
                     }
                     if (pageIdx < MAX_PAGE) {
                         TreeView_SelectItem(hTree, hChild[pageIdx]);

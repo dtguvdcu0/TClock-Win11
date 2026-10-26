@@ -131,5 +131,7 @@
     <ClInclude Include="..\common\flip_clock.h" />
     <ClInclude Include="..\common\nixie_draw.h" />
     <ClCompile Include="pageextended.c" />
+    <ClCompile Include="plugin_runtime.c" />
+    <ClInclude Include="plugin_runtime.h" />
   </ItemGroup>
 </Project>

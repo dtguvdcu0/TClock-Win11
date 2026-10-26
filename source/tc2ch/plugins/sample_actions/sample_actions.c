@@ -49,6 +49,35 @@ static HRESULT WINAPI sample_invoke(LPCWSTR action, const TC_ACTION_CONTEXT* con
  * プラグインの識別情報です。別のプラグインを作るときは sample.actions を
  * 独自のIDへ変更し、.rcの TC_PLUGIN_HEADER_ID も同じIDに揃えます。
  */
+static WCHAR sample_ids[128][TC_PLUGIN_ID_CHARS];
+static HRESULT WINAPI sample_run(void* user, const TC_ACTION_CONTEXT* context) {
+    return sample_invoke((LPCWSTR)user, context);
+}
+static HRESULT WINAPI sample_start(const TC_PLUGIN_CONTEXT* context) {
+    const TC_HOST_REGISTRY* registry;TC_REGISTRATION token;HRESULT result;
+    TC_PLUGIN_ACTION ja = { sizeof(ja) }, en = { sizeof(en) };
+    TC_COMMAND_REGISTRATION command = { sizeof(command) };
+    if (!context || context->size < sizeof(*context) || !context->query_host) return E_INVALIDARG;
+    result = context->query_host(context->plugin, TC_PLUGIN_ABI, TC_HOST_REGISTRY_ID, (const void**)&registry);
+    if (FAILED(result)) return result;
+    {
+        UINT i, count = sample_count();
+        if (count > _countof(sample_ids)) return E_INVALIDARG;
+        for (i = 0; i < count; ++i) {
+            result = sample_describe(i, MAKELANGID(LANG_JAPANESE, SUBLANG_DEFAULT), &ja);if (FAILED(result)) return result;
+            result = sample_describe(i, MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US), &en);if (FAILED(result)) return result;
+            if (wcscmp(ja.id, en.id)) return E_INVALIDARG;
+            wcscpy_s(sample_ids[i], TC_PLUGIN_ID_CHARS, ja.id);
+            command.id = sample_ids[i];command.japanese = ja.label;command.english = en.label;command.user = sample_ids[i];command.invoke = sample_run;
+            result = registry->command(context->plugin, &command, &token);if (FAILED(result)) return result;
+        }
+    }
+    return S_OK;
+}
+static void WINAPI sample_stop(void) {
+}
+static const TC_PLUGIN_RUNTIME sample_runtime = { sizeof(TC_PLUGIN_RUNTIME), sample_start, NULL, sample_stop };
+
 static const TC_PLUGIN_INFO sample_info = { sizeof(TC_PLUGIN_INFO), L"sample.actions", L"Sample builtin actions" };
 
 /*
@@ -68,6 +97,7 @@ HRESULT WINAPI TClockGetInterface(UINT abi, LPCWSTR id, const void** out) {
     if (abi != TC_PLUGIN_ABI || !id) return E_NOINTERFACE;
 
     if (wcscmp(id, TC_PLUGIN_INFO_ID) == 0) *out = &sample_info;
+    else if (wcscmp(id, TC_PLUGIN_RUNTIME_ID) == 0) *out = &sample_runtime;
     else if (wcscmp(id, TC_PLUGIN_ACTIONS_ID) == 0) *out = &sample_actions;
     /* このサンプルは個別設定を持たないため、設定用の機能は返しません。 */
     else return E_NOINTERFACE;

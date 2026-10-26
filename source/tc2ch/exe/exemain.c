@@ -4,7 +4,7 @@
 ---------------------------------------------------------------*/
 
 #include "tclock.h"
-#include "plugin_actions.h"
+#include "plugin_runtime.h"
 #include "update_notice.h"
 #include "plugin_registry.h"
 #include <winver.h>
@@ -1398,6 +1398,8 @@ static UINT WINAPI TclockExeMain(void)
 		handle_PowerNotify = RegisterPowerSettingNotification(hwnd, &GUID_CONSOLE_DISPLAY_STATE, DEVICE_NOTIFY_WINDOW_HANDLE);
 	}
 
+	prt_refresh();
+
 	while(GetMessageW(&msg, NULL, 0, 0))		//キューからメッセージを受け取るGetMessageの戻り値が0になる(＝WM_QUITがポストされる) まで、
 											//取得したメッセージをウィンドウプロシージャに送りつづける
 	{
@@ -1416,6 +1418,7 @@ static UINT WINAPI TclockExeMain(void)
 
 	if (b_DebugLog) WriteDebug_New2("[exemain.c][TclockExeMain] Got out from the main message loop");
 
+	prt_shutdown();
 	update_Drain();
 	if(g_hMenu) DestroyMenu(g_hMenu);				//右クリックメニュ表示中なら、メニューを消す
 
@@ -1539,7 +1542,7 @@ LRESULT CALLBACK WndProc(HWND hwnd,	UINT message, WPARAM wParam, LPARAM lParam)	
 {
 	LRESULT extendedResult;
 	if (ext_handle_message(hwnd,message,wParam,lParam,&extendedResult)) return extendedResult;
-    if (pact_handle_message(message,lParam,&extendedResult)) return extendedResult;
+    if (prt_handle_message(message,lParam,&extendedResult)) return extendedResult;
 	switch (message)
 	{
 		case WM_CREATE:
@@ -1896,6 +1899,7 @@ void TerminateTClock(HWND hwnd)
 	if (bDestroy == TRUE) return;	//２重終了しないように
 
 	bDestroy = TRUE;
+	prt_shutdown();
 	ext_close_hosts();
 	EndMouseFunction(hwnd);
 	update_Stop();
@@ -1947,6 +1951,7 @@ void TerminateTClockFromDLL(HWND hwnd, BOOL restartRequested)
 	if (bDestroy == TRUE) return;	//２重終了しないように
 
 	bDestroy = TRUE;
+	prt_shutdown();
 	ext_close_hosts();
 	EndMouseFunction(hwnd);
 	update_Stop();

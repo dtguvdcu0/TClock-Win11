@@ -4,7 +4,7 @@
 #include "tclock.h"
 #include "plugin_registry.h"
 #include "../common/plugin_resources.h"
-#include "plugin_actions.h"
+#include "plugin_runtime.h"
 #include <tlhelp32.h>
 #include <winver.h>
 #include "../common/text_codec.h"
@@ -217,7 +217,7 @@ BOOL preg_open(const PLUGIN_RECORD* record,HWND owner,BOOL settings,BOOL english
     WCHAR path[MAX_PATH],parameters[1024];LPCWSTR args=record->args;
     if(settings && record->kind==PREG_KIND_DLL) {
         if(record->conflict||(record->automatic&&!record->discovered))return FALSE;
-        HRESULT result=pact_show_settings(record->id,record->path,record->ini,owner,english);
+        HRESULT result=prt_show_settings(record->id,record->path,record->ini,owner,english);
         if(result!=E_NOINTERFACE)return SUCCEEDED(result);
     }
     if(settings && record->ini[0]) {

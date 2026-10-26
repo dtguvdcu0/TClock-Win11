@@ -2797,18 +2797,8 @@ void OnTClockCommand(HWND hwnd, WORD wID, WORD wCode)
 		}
 
 		case IDC_DATETIME_Win10:
-		{
-			HWND hwndTray;
-			hwndTray = FindWindowW(L"Shell_TrayWnd", NULL);
-			if(hwndTray)
-			{
-				if (wID == IDC_DATETIME_Win10)
-					PostMessage(hwndTray, WM_COMMAND, (WPARAM)IDC_DATETIME, 0);
-				else
-					PostMessage(hwndTray, WM_COMMAND, (WPARAM)wID, 0);
-			}
+			ShellExecuteW(NULL, L"open", L"ms-settings:dateandtime", NULL, NULL, SW_SHOWNORMAL);
 			return;
-		}
 		case IDC_HOTKEY0:
 			ExecuteMouseFunction(hwnd, wCode, IDS_HOTKEY - IDS_LEFTBUTTON, 0);
             return;

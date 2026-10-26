@@ -9,6 +9,7 @@
 #include <shobjidl.h>
 
 #include "../common/analog_skin.h"
+#include "../common/chime_schedule.h"
 #define MAX_PAGE  21
 #define WM_TCLOCK_APPLY_REFRESH (WM_APP + 101)
 
@@ -420,6 +421,13 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 					if (hDlg[20] && IsWindow(hDlg[20]) && (!applyActiveOnly || nowDlg == 20) &&
                         !SendMessageW(hDlg[20], ACS_VALIDATE, 0, 0)) {
                         TreeView_SelectItem(hTree, hChild[20]);
+                        InterlockedExchange(&g_inApplyDispatch, 0);
+                        InterlockedDecrement(&g_propdlgCommandDepth);
+                        break;
+                    }
+                    if (hDlg[7] && IsWindow(hDlg[7]) && (!applyActiveOnly || nowDlg == 7) &&
+                        !SendMessageW(hDlg[7], CHM_VALIDATE, 0, 0)) {
+                        TreeView_SelectItem(hTree, hChild[7]);
                         InterlockedExchange(&g_inApplyDispatch, 0);
                         InterlockedDecrement(&g_propdlgCommandDepth);
                         break;

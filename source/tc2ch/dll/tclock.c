@@ -6,6 +6,7 @@
 #include "tcdll.h"
 #include "minmode.h"
 #include "../common/analog_skin.h"
+#include "../common/chime_schedule.h"
 #include "../common/flip_clock.h"
 #include "../common/led_clock.h"
 #include "../common/led_surface.h"
@@ -1011,7 +1012,9 @@ BOOL bUseTimeColor = FALSE;
 
 BOOL b_EnableChime = FALSE; 
 BOOL b_EnableBlinkOnChime = FALSE;
-static TCHAR szChimeWav[MAX_PATH] = "";
+static WCHAR szChimeWav[MAX_PATH] = L"";
+static int chimeWeekdays = 127;
+static BOOL chimePaused = FALSE;
 //int intVolChime = 100;
 int intOffsetChimeSec = 0;
 int chimeHourStart = 0;
@@ -1019,7 +1022,7 @@ int chimeHourEnd = 24;
 BOOL b_EnableSecondaryChime = FALSE;
 BOOL b_CuckooClock = FALSE;
 int intOffsetSecondaryChimeSec = 1800;
-static TCHAR szSecondaryChimeWav[MAX_PATH] = "";
+static WCHAR szSecondaryChimeWav[MAX_PATH] = L"";
 
 extern int numThermalZone;
 extern int indexSelectedThermalZone;
@@ -3845,7 +3848,6 @@ static void tc_read_settings(void)
 	LONG weight, italic;
 	SYSTEMTIME lt;
 	DWORD dwInfoFormat;
-	TCHAR fname[MAX_PATH];
 	LONG readDepth;
 
 	extern BOOL b_exist_DOWzone;
@@ -4414,7 +4416,17 @@ static void tc_read_settings(void)
 	wui_refresh();
 
 
-	b_EnableChime = GetMyRegLong("Chime", "EnableChime", 0);
+    {
+        BOOL wasActive = b_EnableChime && !chimePaused;
+        b_EnableChime = GetMyRegLong("Chime", "EnableChime", 0);
+        chimeWeekdays = GetMyRegLong("Chime", "Weekdays", 127) & 127;
+        chimePaused = !b_EnableChime && GetMyRegLong("Chime", "Paused", FALSE);
+        if (!b_EnableChime) {
+            nChime = 0;
+            if (wasActive) PlaySoundW(NULL, NULL, 0);
+        }
+        if (chimePaused) nBlink = 0;
+    }
 
 	//intVolChime = (int)(short)GetMyRegLong("Chime", "VolChime", 100);
 	//SetMyRegLong("Chime", "VolChime", intVolChime);
@@ -4427,14 +4439,13 @@ static void tc_read_settings(void)
 	chimeHourEnd = (int)(short)GetMyRegLong("Chime", "ChimeHourEnd", 24);
 	if ((chimeHourEnd < 1) || (chimeHourEnd > 24)) chimeHourEnd = 0;
 
-	GetMyRegStr("Chime", "ChimeWav", fname, MAX_PATH, "C:\\Windows\\Media\\notify.wav");
-	if (GetFileAttributes(fname) != 0xFFFFFFFF)
 	{
-		lstrcpy(szChimeWav, fname);
-	}
-	else {
-		lstrcpy(szChimeWav, "C:\\Windows\\Media\\notify.wav");
-	}
+        /* UTF-8 INI serialization boundary; audio paths remain UTF-16. */
+        char encoded[MAX_PATH * 4];
+        GetMyRegStr("Chime", "ChimeWav", encoded, sizeof(encoded), "");
+        if (!encoded[0] || tc_utf8_to_utf16(encoded, szChimeWav, MAX_PATH) <= 0)
+            wcscpy_s(szChimeWav, MAX_PATH, L"C:\\Windows\\Media\\notify.wav");
+    }
 
 	b_EnableBlinkOnChime = GetMyRegLong("Chime", "EnableBlinkOnChime", 0);
 
@@ -4446,14 +4457,13 @@ static void tc_read_settings(void)
 
 	intOffsetSecondaryChimeSec = (int)(short)GetMyRegLong("Chime", "OffsetSecondaryChimeSec", 1800);
 
-	GetMyRegStr("Chime", "SecondaryChimeWav", fname, MAX_PATH, "C:\\Windows\\Media\\chimes.wav");
-	if (GetFileAttributes(fname) != 0xFFFFFFFF)
 	{
-		lstrcpy(szSecondaryChimeWav, fname);
-	}
-	else {
-		lstrcpy(szSecondaryChimeWav, "C:\\Windows\\Media\\chimes.wav");
-	}
+        /* UTF-8 INI serialization boundary; audio paths remain UTF-16. */
+        char encoded[MAX_PATH * 4];
+        GetMyRegStr("Chime", "SecondaryChimeWav", encoded, sizeof(encoded), "");
+        if (!encoded[0] || tc_utf8_to_utf16(encoded, szSecondaryChimeWav, MAX_PATH) <= 0)
+            wcscpy_s(szSecondaryChimeWav, MAX_PATH, L"C:\\Windows\\Media\\chimes.wav");
+    }
 
 
 
@@ -4823,22 +4833,12 @@ BOOL WINAPI FormatMenuLabel_Win11(const char* fmt, char* out, int outBytes)
 }
 
 
-void PlayChime(BOOL b_sedondary)
+void PlayChime(BOOL secondary)
 {
-	if (!b_sedondary) 
-	{
-		if (GetFileAttributes(szChimeWav) != 0xFFFFFFFF)
-		{
-			PlaySound(szChimeWav, NULL, SND_FILENAME | SND_ASYNC | SND_NODEFAULT);
-		}
-	}
-	else 
-	{
-		if (GetFileAttributes(szSecondaryChimeWav) != 0xFFFFFFFF)
-		{
-			PlaySound(szSecondaryChimeWav, NULL, SND_FILENAME | SND_ASYNC | SND_NODEFAULT);
-		}
-	}
+    LPCWSTR path = secondary ? szSecondaryChimeWav : szChimeWav;
+    DWORD attributes = GetFileAttributesW(path);
+    if (attributes != INVALID_FILE_ATTRIBUTES && !(attributes & FILE_ATTRIBUTE_DIRECTORY))
+        PlaySoundW(path, NULL, SND_FILENAME | SND_ASYNC | SND_NODEFAULT);
 }
 
 /*------------------------------------------------
@@ -4858,7 +4858,7 @@ void OnTimer_Win10(void)
 {
 	BOOL bRedraw;
 	SYSTEMTIME t;
-	int beat100 = 0, tempInt = 0;
+	int beat100 = 0;
 	//HDC hdc;
 
 
@@ -5016,80 +5016,36 @@ void OnTimer_Win10(void)
 		bRedraw = TRUE;
 	}
 
-	tempInt = (3600 + t.wMinute * 60 + t.wSecond - intOffsetChimeSec) % 3600;
-	if (tempInt == 0)
-	{
-		if (b_EnableChime) {
-			BOOL bRing = FALSE;
-			int tempHour = t.wHour;
-			if (intOffsetChimeSec < 0) {
-				tempHour++;
-				if (tempHour == 24) tempHour = 0;
-			}
-
-			if ((tempHour >= chimeHourStart) && (tempHour <= chimeHourEnd)) {
-				bRing = TRUE;
-			}
-
-			if (bRing) {
-				if (b_CuckooClock)
-				{
-					nChime = (tempHour + 11) % 12 + 1;
-					//if (intOffsetChimeSec < 0)
-					//{
-					//	nChime = t.wHour % 12 + 1;
-					//}
-					//else
-					//{
-					//	nChime = (t.wHour + 11) % 12 + 1;
-					//}
-				}
-				else {
-					nChime = 1;
-				}
-			}
-		}
-		if (b_EnableBlinkOnChime) {
-			nBlink = BlinksOnChime * 2;
-			bRedraw = TRUE;
-		}
-	}
-	else
-	{
-		tempInt = (3600 + t.wMinute * 60 + t.wSecond - intOffsetSecondaryChimeSec) % 3600;
-
-		if (tempInt == 0)
-		{
-			if (b_EnableChime && b_EnableSecondaryChime) {
-				if (intOffsetSecondaryChimeSec < 0)
-				{
-					if (((t.wHour == 23) && (chimeHourStart == 0)) || ((chimeHourStart - t.wHour - 1) <= 0))
-					{
-						if ((chimeHourEnd - t.wHour) > 0)
-						{
-							PlayChime(TRUE);
-						}
-					}
-				}
-				else
-				{
-					if ((chimeHourStart - t.wHour) <= 0)
-					{
-						if (((chimeHourEnd - t.wHour) >= 0) || ((t.wHour == 0) && (chimeHourEnd == 24)))
-						{
-							PlayChime(TRUE);
-						}
-					}
-				}
-			}
-		}
-	}
-
-	if (nChime > 0) {
-		PlayChime(FALSE);
-		nChime--;
-	}
-
+    /* Filter the actual playback day, including offsets across midnight.
+       Keep the legacy hour gates and primary-over-secondary precedence. */
+    if (chimePaused || !chm_allows_day(chimeWeekdays, t.wDayOfWeek)) {
+        nChime = 0;
+    } else {
+        int seconds = t.wMinute * 60 + t.wSecond;
+        BOOL primaryTick = (3600 + seconds - intOffsetChimeSec) % 3600 == 0;
+        if (primaryTick) {
+            if (b_EnableChime && chm_matches(t.wHour, seconds, intOffsetChimeSec,
+                    chimeHourStart, chimeHourEnd, FALSE)) {
+                int target = chm_target_hour(t.wHour, intOffsetChimeSec);
+                nChime = b_CuckooClock ? (target + 11) % 12 + 1 : 1;
+            }
+            /* Legacy blink-only and outside-audio-hours behavior is preserved.
+               The new explicit pause flag suspends it without deleting settings. */
+            if (b_EnableBlinkOnChime) {
+                nBlink = BlinksOnChime * 2;
+                bRedraw = TRUE;
+            }
+        } else if (b_EnableChime && b_EnableSecondaryChime &&
+                   chm_matches(t.wHour, seconds, intOffsetSecondaryChimeSec,
+                       chimeHourStart, chimeHourEnd, TRUE)) {
+            PlayChime(TRUE);
+        }
+        if (!b_EnableChime) nChime = 0;
+        if (nChime > 0) {
+            PlayChime(FALSE);
+            --nChime;
+        }
+    }
 
 	memcpy(&LastTime, &t, sizeof(t));
 

@@ -1319,16 +1319,16 @@ static int tc_menu_is_english_ui(void)
 
 static BOOL tc_menu_get_default_item(int index, char* type, int typeLen, char* action, int actionLen, int* enabled)
 {
-	/* Baseline that mirrors current non-fixed menu block (with separators). */
+	/* Seed preset actions as builtins; explicit external commands remain user-configurable. */
 	static const char* kType[] = {
 		"separator",
-		"command", "command", "command", "command",
+		"builtin", "builtin", "builtin", "builtin",
 		"separator",
-		"command", "command", "command",
+		"builtin", "builtin", "builtin",
 		"separator",
-		"command", "command", "command",
+		"builtin", "builtin", "builtin",
 		"separator",
-		"command",
+		"builtin",
 		"separator"
 	};
 	static const char* kAction[] = {
@@ -1792,36 +1792,24 @@ static void tc_menu_ensure_ini_defaults(void)
 	for (i = 1; i <= 16; ++i) {
 		char key[64];
 		char type[32];
-		char mode[32];
 		char action[64];
 		int enabled = 1;
 		const char* defaultLabel;
 		type[0] = '\0';
-		mode[0] = '\0';
 		action[0] = '\0';
 		tc_menu_get_default_item(i, type, (int)sizeof(type), action, (int)sizeof(action), &enabled);
-		if (_stricmp(type, "command") == 0) {
-			lstrcpyn(mode, tc_menu_default_exec_type_for_action(action), (int)sizeof(mode));
-		} else {
-			lstrcpyn(mode, type, (int)sizeof(mode));
-		}
 		wsprintf(key, "Item%dMode", i);
-		SetMyRegStr(TC_MENU_SECTION, key, mode);
+		SetMyRegStr(TC_MENU_SECTION, key, type);
 		wsprintf(key, "Item%dEnabled", i);
 		SetMyRegLong(TC_MENU_SECTION, key, enabled);
-		if (_stricmp(type, "command") == 0) {
-			char param[512];
+		if (_stricmp(type, "builtin") == 0) {
+			char labelFormat[512];
 			wsprintf(key, "Item%dAction", i);
 			SetMyRegStr(TC_MENU_SECTION, key, action);
 			defaultLabel = tc_menu_default_label_for_action(action);
 			wsprintf(key, "Item%dLabelFormat", i);
-			SetMyRegStr(TC_MENU_SECTION, key, (char*)defaultLabel);
-			param[0] = '\0';
-			tc_menu_default_param_for_action(action, param, (int)sizeof(param));
-			if (param[0]) {
-				wsprintf(key, "Item%dParam", i);
-				SetMyRegStr(TC_MENU_SECTION, key, param);
-			}
+			sprintf_s(labelFormat, sizeof(labelFormat), "\"%s\"", defaultLabel);
+			SetMyRegStr(TC_MENU_SECTION, key, labelFormat);
 		}
 	}
 	{

@@ -1328,7 +1328,6 @@ static UINT WINAPI TclockExeMain(void)
 
 
 
-	InitializeMenuItems();
 	MenuCustomMigrateLegacyModeKeys();
 
 	if(!CheckTCDLL()) { return 1; }	//tclock.dllのバージョンチェック
@@ -1440,9 +1439,7 @@ Set process priority idle as default
 ---------------------------------------------*/
 void SetIdlePriority(void)
 {
-	HANDLE op = OpenProcess(PROCESS_ALL_ACCESS, TRUE, GetCurrentProcessId());
-	SetPriorityClass(op, IDLE_PRIORITY_CLASS);
-	Sleep(10);
+	SetPriorityClass(GetCurrentProcess(), IDLE_PRIORITY_CLASS);
 }
 
 
@@ -1522,17 +1519,13 @@ void CheckCommandLine(HWND hwnd)
 			else if(PrefixEqualsNoCaseW(p, L"idle", 4))	//idleオプション：優先度をIDLEにして起動
 			{
 				//if (b_DebugLog) WriteDebug_New2("[exemain.c][CheckCommandLine] Launched with  idle option");
-				HANDLE op = OpenProcess(PROCESS_ALL_ACCESS, TRUE, GetCurrentProcessId());
-				SetPriorityClass(op, IDLE_PRIORITY_CLASS);
-				Sleep(10);
+				SetPriorityClass(GetCurrentProcess(), IDLE_PRIORITY_CLASS);
 				p += 4;
 			}
 			else if (PrefixEqualsNoCaseW(p, L"normal", 4))	//normalオプション：優先度をNORMALにして起動
 			{
 				//if (b_DebugLog) WriteDebug_New2("[exemain.c][CheckCommandLine] Launched with  normal option");
-				HANDLE op = OpenProcess(PROCESS_ALL_ACCESS, TRUE, GetCurrentProcessId());
-				SetPriorityClass(op, NORMAL_PRIORITY_CLASS);
-				Sleep(10);
+				SetPriorityClass(GetCurrentProcess(), NORMAL_PRIORITY_CLASS);
 				p += 6;
 			}
 		}

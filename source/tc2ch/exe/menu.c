@@ -2429,6 +2429,8 @@ void OnContextMenu(HWND hwnd, HWND hwndClicked, int xPos, int yPos)
 			}
 		}
 
+		free(tpStorageDeviceDescripter);
+
 		for (i = 1; i < 10; i++) DeleteMenu(hPopupMenu, IDC_REMOVE_DRIVE0 + i, MF_BYCOMMAND);
 
 

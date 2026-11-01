@@ -5,6 +5,9 @@
 
 #include "tclock.h"
 #include "plugin_runtime.h"
+#include "plugin_format_bridge.h"
+#include "plugin_chime.h"
+#include "plugin_render.h"
 #include "update_notice.h"
 #include "plugin_registry.h"
 #include <winver.h>
@@ -1418,6 +1421,9 @@ static UINT WINAPI TclockExeMain(void)
 
 	if (b_DebugLog) WriteDebug_New2("[exemain.c][TclockExeMain] Got out from the main message loop");
 
+	pfb_shutdown(g_hwndMain);
+	pch_shutdown(g_hwndMain);
+	prn_shutdown(g_hwndMain);
 	prt_shutdown();
 	update_Drain();
 	if(g_hMenu) DestroyMenu(g_hMenu);				//右クリックメニュ表示中なら、メニューを消す
@@ -1543,6 +1549,10 @@ LRESULT CALLBACK WndProc(HWND hwnd,	UINT message, WPARAM wParam, LPARAM lParam)	
 	LRESULT extendedResult;
 	if (ext_handle_message(hwnd,message,wParam,lParam,&extendedResult)) return extendedResult;
     if (prt_handle_message(message,lParam,&extendedResult)) return extendedResult;
+    if(mouse_handle_message(hwnd,message,wParam,lParam))return 0;
+	if (pfb_handle_message(hwnd, message, wParam, lParam)) return 0;
+	if (pch_handle_message(hwnd, message, wParam, lParam)) return 0;
+	if (prn_handle_message(hwnd, message, wParam, lParam)) return 0;
 	switch (message)
 	{
 		case WM_CREATE:
@@ -1589,11 +1599,18 @@ LRESULT CALLBACK WndProc(HWND hwnd,	UINT message, WPARAM wParam, LPARAM lParam)	
 				//if (b_DebugLog) WriteDebug_New2("[exemain.c][WndProc] WM_TIMER(IDTIMER_MAIN) received");
 				OnTimerMain(hwnd);
 				MenuOnTimerTick(hwnd);
+				pfb_refresh(hwnd, FALSE);
+				pch_refresh(hwnd, FALSE);
+				prn_refresh(hwnd, FALSE);
 			}
 			else if (wParam == IDTIMER_MOUSE)
 			{
 				//if (b_DebugLog) WriteDebug_New2("[exemain.c][WndProc] WM_TIMER(IDTIMER_MOUSE) received");
-				OnTimerMouse(hwnd);
+				OnTimerMouseEvent(hwnd);
+			}
+			else if (wParam == PFB_POLL_TIMER)
+			{
+				pfb_on_timer(hwnd);
 			}
 			else if(wParam == IDTIMER_CREATE)	//クリエイトタイマー(デフォルト5秒)のタイムアウトの処理
 			{
@@ -1640,6 +1657,10 @@ LRESULT CALLBACK WndProc(HWND hwnd,	UINT message, WPARAM wParam, LPARAM lParam)	
 			if (b_DebugLog) WriteDebug_New2("[exemain.c][WndProc] WM_USER received");	//DLL Window生成時にハンドルを通知
 			//nCountFindingClock = -1;
 			g_hwndClock = (HWND)lParam;
+            mouse_reset_context(hwnd);
+			pfb_refresh(hwnd, TRUE);
+			pch_refresh(hwnd, TRUE);
+			prn_refresh(hwnd, TRUE);
 			// TEMP_VERIFY_START ghostchk
 			if (b_DebugLog) {
 				char tempString[128];
@@ -1899,6 +1920,9 @@ void TerminateTClock(HWND hwnd)
 	if (bDestroy == TRUE) return;	//２重終了しないように
 
 	bDestroy = TRUE;
+	pfb_shutdown(hwnd);
+	pch_shutdown(hwnd);
+	prn_shutdown(hwnd);
 	prt_shutdown();
 	ext_close_hosts();
 	EndMouseFunction(hwnd);
@@ -1951,6 +1975,9 @@ void TerminateTClockFromDLL(HWND hwnd, BOOL restartRequested)
 	if (bDestroy == TRUE) return;	//２重終了しないように
 
 	bDestroy = TRUE;
+	pfb_shutdown(hwnd);
+	pch_shutdown(hwnd);
+	prn_shutdown(hwnd);
 	prt_shutdown();
 	ext_close_hosts();
 	EndMouseFunction(hwnd);
@@ -2356,8 +2383,10 @@ static BOOL SetIniPathFromWide(const wchar_t* inifileW)
 	if (!inifileW || !inifileW[0]) return FALSE;
 	if (tc_utf16_to_utf8(inifileW, g_inifile, MAX_PATH) <= 0) {
 		g_inifile[0] = '\0';
+        prt_note_setting(NULL,NULL);
 		return FALSE;
 	}
+    prt_note_setting(NULL,NULL);
 	return TRUE;
 }
 
@@ -2633,6 +2662,9 @@ static BOOL AddMessageFilters(void)
 		WM_USER,
 		WM_USER+1,
 		WM_USER+2,
+		TCF_BRIDGE_READY,	/* posted by the clock in Explorer; see format_bridge.h */
+		TCC_OUTCOME,	/* posted by the clock in Explorer; see chime_bridge.h */
+		TCR_READY,	/* posted by the clock in Explorer; see render_bridge.h */
 	};
 
 	HMODULE hUser32 = GetModuleHandleW(L"user32.dll");
@@ -2720,6 +2752,75 @@ int WINAPI WinMain(HINSTANCE hinst,HINSTANCE hinstPrev,LPSTR lpszCmdLine, int nS
 /*------------------------------------------------
 Open a file copied from alarm.c
 --------------------------------------------------*/
+/* Wide execution boundary for Unicode mouse commands. The legacy char entry
+   remains available to its existing callers until their contracts are migrated. */
+BOOL ExecFileW(HWND hwnd, const WCHAR* command)
+{
+    const WCHAR *start, *end, *args, *scan;
+    WCHAR *file, *directory, *separator;
+    size_t length, fileLength;
+    SHELLEXECUTEINFOW info = {0};
+    WIN32_FIND_DATAW found;
+    HANDLE search;
+    BOOL result;
+    DWORD error;
+    if (!command || !*command) { SetLastError(ERROR_INVALID_PARAMETER); return FALSE; }
+    length = wcslen(command);
+    if (length > 32767) { SetLastError(ERROR_INSUFFICIENT_BUFFER); return FALSE; }
+    file = malloc((length + 1) * sizeof(*file));
+    directory = malloc((length + 1) * sizeof(*directory));
+    if (!file || !directory) {
+        free(file); free(directory); SetLastError(ERROR_NOT_ENOUGH_MEMORY); return FALSE;
+    }
+    start = command;
+    end = command + length;
+    if (*start == L'"') {
+        ++start;
+        end = wcschr(start, L'"');
+        if (!end || (end[1] && end[1] != L' ' && end[1] != L'\t')) {
+            free(file); free(directory); SetLastError(ERROR_INVALID_DATA); return FALSE;
+        }
+        args = end + 1;
+    } else {
+        /* Preserve the existing unquoted, existing-path prefix selection in UTF-16. */
+        for (scan = start; ; ++scan) {
+            if (*scan == L' ' || *scan == L'\t' || !*scan) {
+                fileLength = (size_t)(scan - start);
+                if (fileLength) {
+                    memcpy(file, start, fileLength * sizeof(*file)); file[fileLength] = 0;
+                    search = FindFirstFileW(file, &found);
+                    if (search != INVALID_HANDLE_VALUE) { FindClose(search); end = scan; break; }
+                }
+                if (!*scan) break;
+            }
+        }
+        args = end;
+    }
+    while (*args == L' ' || *args == L'\t') ++args;
+    fileLength = (size_t)(end - start);
+    if (!fileLength) { free(file); free(directory); SetLastError(ERROR_INVALID_DATA); return FALSE; }
+    memcpy(file, start, fileLength * sizeof(*file)); file[fileLength] = 0;
+    memcpy(directory, file, (fileLength + 1) * sizeof(*directory));
+    separator = NULL;
+    for (scan = directory; *scan; ++scan) if (*scan == L'\\' || *scan == L'/') separator = (WCHAR*)scan;
+    if (separator) {
+        /* Retain a drive/root separator instead of converting C:\ into drive-relative C:. */
+        if (separator == directory || (separator == directory + 2 && directory[1] == L':')) separator[1] = 0;
+        else *separator = 0;
+    } else directory[0] = 0;
+    info.cbSize = sizeof(info);
+    info.hwnd = hwnd;
+    info.lpFile = file;
+    info.lpDirectory = directory[0] ? directory : NULL;
+    info.lpParameters = *args ? args : NULL;
+    info.nShow = SW_SHOW;
+    result = ShellExecuteExW(&info);
+    error = GetLastError();
+    free(file); free(directory);
+    SetLastError(error);
+    return result;
+}
+
 BOOL ExecFile(HWND hwnd, const char* command)
 {
 	char fname[MAX_PATH], fpath[MAX_PATH], *opt;

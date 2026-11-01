@@ -101,6 +101,7 @@ typedef struct {
 typedef struct {
 	WCHAR url[TC_GIP_URL_MAX];
 	char field[TC_GIP_FIELD_MAX];
+	HMODULE module;
 } TC_GIP_REQUEST;
 
 static const TC_GIP_PROVIDER g_gipProviders[] = {
@@ -1488,6 +1489,22 @@ static void tc_custom_defer_interval_bootstrap(DWORD nowTick)
 	}
 }
 
+/* Refresh only explicit provider CUSTOM demand, outside paint/callback capture.
+   Existing file/script deadlines and configured execution policy still apply. */
+void CustomFormatVarsDemand(UINT mask)
+{
+    int i;DWORD tick;TC_CUSTOM_BATCH_TEXT batch;
+    if (!mask) return;
+    if (!g_customSettingsLoaded) CustomFormatVarsReadSettings();
+    tick=GetTickCount();
+    if (InterlockedExchange(&g_customDeferIntervalBootstrapOnce,0)!=0)
+        tc_custom_defer_interval_bootstrap(tick);
+    ZeroMemory(&batch,sizeof(batch));
+    for (i=0;i<TC_CUSTOM_VAR_MAX;i++) if (mask & (1u << i))
+        tc_custom_refresh_one(&batch,i,tick,FALSE);
+    cv_clear_batch(&batch);
+}
+
 void CustomFormatVarsTick(void)
 {
 	int i;
@@ -1636,6 +1653,7 @@ cleanup:
 static DWORD WINAPI tc_gip_thread(LPVOID param)
 {
 	TC_GIP_REQUEST* req = (TC_GIP_REQUEST*)param;
+	HMODULE workerModule = req ? req->module : NULL;
 	TC_CUSTOM_VAR_ENTRY tempEntry;
 	char json[8192];
 	char ip[TC_GIP_VALUE_MAX];
@@ -1675,6 +1693,7 @@ static DWORD WINAPI tc_gip_thread(LPVOID param)
 
 	if (req) HeapFree(GetProcessHeap(), 0, req);
 	InterlockedExchange(&g_gipFetchRunning, 0);
+	if (workerModule) FreeLibraryAndExitThread(workerModule, 0);
 	return 0;
 }
 
@@ -1780,8 +1799,15 @@ void GipTick(void)
 		return;
 	}
 
+	/* Keep this DLL loaded until the network worker has actually exited. */
+	if (!hmod || !GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, (LPCWSTR)hmod, &req->module)) {
+		HeapFree(GetProcessHeap(), 0, req);
+		InterlockedExchange(&g_gipFetchRunning, 0);
+		return;
+	}
 	thread = CreateThread(NULL, 0, tc_gip_thread, req, 0, NULL);
 	if (!thread) {
+		FreeLibrary(req->module);
 		HeapFree(GetProcessHeap(), 0, req);
 		InterlockedExchange(&g_gipFetchRunning, 0);
 		return;
@@ -1874,8 +1900,6 @@ extern char strDispStatus[];
 
 extern BOOL b_DataPlanRetreveOK;
 
-extern char activeSSID[];
-extern char activeAPName[];
 
 extern int NetMIX_Length;
 extern int SSID_AP_Length;
@@ -3429,25 +3453,23 @@ static void tc_wappend_utf8_fixed_w(WCHAR** dp, int* remain, const char* src, in
 	for (; i < fixed; ++i) tc_wappend_char(dp, remain, L' ');
 }
 
-static void tc_emit_net_mix_w(WCHAR** dp, int* remain)
+static void tc_get_netmix(char* label, int capacity)
 
 {
 
-	char label[64];
-
-	if (!dp || !*dp || !remain) return;
+	if (!label || capacity <= 0) return;
 
 	label[0] = '\0';
 
 	if (g_InternetConnectStat_Win10 == 0 && net[18] == 2) {
 
-		lstrcpyn(label, "Ethernet*", (int)sizeof(label));
+		lstrcpyn(label, "Ethernet*", capacity);
 
 	}
 
 	else if (g_InternetConnectStat_Win10 == 0 && net[18] == 1) {
 
-		lstrcpyn(label, "Ethernet", (int)sizeof(label));
+		lstrcpyn(label, "Ethernet", capacity);
 
 	}
 
@@ -3455,9 +3477,9 @@ static void tc_emit_net_mix_w(WCHAR** dp, int* remain)
 
 		active_physical_adapter_Win10 == 1) {
 
-		lstrcpyn(label, activeSSID, (int)sizeof(label));
+		lstrcpyn(label, activeSSID, capacity);
 
-		if (label[0] == '\0') lstrcpyn(label, "SSID:N/A", (int)sizeof(label));
+		if (label[0] == '\0') lstrcpyn(label, "SSID:N/A", capacity);
 
 	}
 
@@ -3465,16 +3487,22 @@ static void tc_emit_net_mix_w(WCHAR** dp, int* remain)
 
 		active_physical_adapter_Win10 == 2) {
 
-		lstrcpyn(label, activeAPName, (int)sizeof(label));
+		lstrcpyn(label, activeAPName, capacity);
 
-		if (label[0] == '\0') lstrcpyn(label, "APN: N/A", (int)sizeof(label));
+		if (label[0] == '\0') lstrcpyn(label, "APN: N/A", capacity);
 
 	}
 
-	tc_wappend_ansi_fixed_w(dp, remain, label, NetMIX_Length);
-
 }
 
+
+static void tc_emit_net_mix_w(WCHAR** dp, int* remain)
+{
+    char label[TC_NETLABEL_BYTES];
+    if (!dp || !*dp || !remain) return;
+    tc_get_netmix(label, sizeof(label));
+    tc_wappend_ansi_fixed_w(dp, remain, label, NetMIX_Length);
+}
 
 static BOOL tc_gip_align(const char* src, char* out, int outCch)
 {
@@ -4283,6 +4311,177 @@ void MakeFormatW(WCHAR* s, int sCch, char* s_info, SYSTEMTIME* pt, int beat100, 
 /*------------------------------------------------
   check format
 --------------------------------------------------*/
+static void fc_copy_legacy(WCHAR* output, int capacity, const char* text)
+{
+    /* Compatibility boundary: cached display labels use the configured legacy
+       codepage. Decode once into the Unicode snapshot; no paths or commands. */
+    if (tc_ansi_to_utf16_compat((UINT)codepage, text, output, capacity) <= 0) output[0] = L'\0';
+}
+
+static BOOL fc_add_calendar(TC_FORMAT_SOURCE* source, const SYSTEMTIME* time)
+{
+    TC_FORMAT_CALENDAR* entry;
+    UINT locale = MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT);
+    if (TcfFindCalendar(source, TcfSourceBytes(source->calendarCount), time)) return TRUE;
+    if (source->calendarCount == TCF_CALENDAR_MAX) return FALSE;
+    entry = &source->calendar[source->calendarCount++];
+    entry->time = *time;
+#define FC_LOCALE(bit, field, call) do { if (call) entry->valid |= bit; else entry->field[0] = L'\0'; } while (0)
+    FC_LOCALE(TCF_CAL_SHORT_DATE, shortDate, GetDateFormatW(locale, DATE_SHORTDATE, time, NULL, entry->shortDate, _countof(entry->shortDate)));
+    FC_LOCALE(TCF_CAL_LONG_DATE, longDate, GetDateFormatW(locale, DATE_LONGDATE, time, NULL, entry->longDate, _countof(entry->longDate)));
+    FC_LOCALE(TCF_CAL_TIME, timeText, GetTimeFormatW(locale, TIME_FORCE24HOURFORMAT, time, NULL, entry->timeText, _countof(entry->timeText)));
+    FC_LOCALE(TCF_CAL_SHORT_DAY, shortDay, GetDateFormatW(locale, 0, time, L"ddd", entry->shortDay, _countof(entry->shortDay)));
+    FC_LOCALE(TCF_CAL_LONG_DAY, longDay, GetDateFormatW(locale, 0, time, L"dddd", entry->longDay, _countof(entry->longDay)));
+    FC_LOCALE(TCF_CAL_SHORT_MONTH, shortMonth, GetDateFormatW(locale, 0, time, L"MMM", entry->shortMonth, _countof(entry->shortMonth)));
+    FC_LOCALE(TCF_CAL_LONG_MONTH, longMonth, GetDateFormatW(locale, 0, time, L"MMMM", entry->longMonth, _countof(entry->longMonth)));
+#undef FC_LOCALE
+    return TRUE;
+}
+
+static BOOL fc_collect_calendar(TC_FORMAT_SOURCE* source)
+{
+    const WCHAR* p = source->format;
+    SYSTEMTIME display = source->time;
+    UINT options = source->options;
+    BOOL compound = FALSE;
+    if (!fc_add_calendar(source, &display)) return FALSE;
+    while (*p) {
+        if (!compound) {
+            if (p[0] == L'<' && p[1] == L'%') { compound = TRUE; p += 2; }
+            else p++;
+        }
+        else if (p[0] == L'%' && p[1] == L'>') { compound = FALSE; p += 2; }
+        else if (*p == L'"') {
+            p++; while (*p && *p != L'"') p++;
+            if (*p) p++;
+        }
+        else if (p[0] == L't' && (p[1] == L'd' || p[1] == L'u' || p[1] == L'e') &&
+            (p[2] == L'+' || p[2] == L'-') && p[3] >= L'0' && p[3] <= L'2' &&
+            p[4] >= L'0' && p[4] <= L'9' && p[5] == L':' &&
+            p[6] >= L'0' && p[6] <= L'5' && p[7] >= L'0' && p[7] <= L'9') {
+            int hours = (p[3] - L'0') * 10 + p[4] - L'0';
+            int minutes = (p[6] - L'0') * 10 + p[7] - L'0';
+            if (hours > 23) hours = minutes = 0;
+            if (!TcfShiftTime(source, &display, p[1], hours, minutes, p[2] == L'-', &display, &options) ||
+                !fc_add_calendar(source, &display)) return FALSE;
+            p += 8;
+        }
+        else p++;
+    }
+    return TRUE;
+}
+
+HRESULT FormatCaptureSourceW(const SYSTEMTIME* time, const SYSTEMTIME* utc, int beat100,
+    const WCHAR* formatText, UINT consumer, ULONGLONG revision, UINT refreshedCategories,
+    TC_FORMAT_SOURCE** output)
+{
+    TC_FORMAT_SOURCE* source;
+    FILETIME checkedTime;
+    WCHAR shortText[32];
+    char gip[TC_GIP_VALUE_MAX], aligned[TC_GIP_VALUE_MAX], mix[TC_NETLABEL_BYTES];
+    UINT length, i;
+    extern int currentTimeZoneBiasMin, nCores;
+    const char* legacy[] = {EraStr,strMute,ipEther,ipWiFi,ipLTE,ipVPN};
+    const UINT labelIds[] = {TCF_LABEL_ERA,TCF_LABEL_MUTE,TCF_LABEL_IP_ETHERNET,
+        TCF_LABEL_IP_WIFI,TCF_LABEL_IP_LTE,TCF_LABEL_IP_VPN};
+    const char* utf8[] = {activeSSID,activeAPName,strLTE,charLTE};
+    const UINT utf8Ids[] = {TCF_LABEL_SSID,TCF_LABEL_APN,TCF_LABEL_LTE,TCF_LABEL_LTE_CHAR};
+    const int utf8Cap[] = {128,128,64,8};
+    if (!output) return E_POINTER;
+    if (!time || !formatText || !revision || beat100 < 0 || beat100 >= 100000 ||
+        time->wDayOfWeek > 6 || !SystemTimeToFileTime(time, &checkedTime) ||
+        (utc && (utc->wDayOfWeek > 6 || !SystemTimeToFileTime(utc, &checkedTime))) ||
+        (refreshedCategories & ~TCF_CATEGORY_ALL)) return E_INVALIDARG;
+    for (length = 0; length < TCF_FORMAT_CCH && formatText[length]; length++) {}
+    if (length == TCF_FORMAT_CCH) return HRESULT_FROM_WIN32(ERROR_BUFFER_OVERFLOW);
+    source = (TC_FORMAT_SOURCE*)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*source));
+    if (!source) return E_OUTOFMEMORY;
+    source->version = TCF_SOURCE_VERSION; source->consumer = consumer;
+    source->revision = revision; source->sampleTick = GetTickCount64(); source->time = *time;
+    if (utc) { source->utc = *utc; source->options |= TCF_OPT_UTC; }
+    source->beat100 = beat100; source->timeZoneBiasMinutes = currentTimeZoneBiasMin;
+    source->alternativeYear = AltYear; source->logicalProcessors = nLogicalProcessors;
+    source->physicalCores = nCores;
+    source->sampledProcessors = nLogicalProcessors < 0 ? 0 :
+        nLogicalProcessors > TCF_PROCESSOR_COUNT ? TCF_PROCESSOR_COUNT : (UINT)nLogicalProcessors;
+    source->totalCpu = totalCPUUsage; source->clock2Average = CPUClock2Ave;
+    CopyMemory(source->cpuUsage, CPUUsage, sizeof(source->cpuUsage));
+    CopyMemory(source->cpuClock, iCPUClock, sizeof(source->cpuClock));
+    CopyMemory(source->cpuClock2, CPUClock2, sizeof(source->cpuClock2));
+    source->memory[TCF_MEMORY_TOTAL_PHYSICAL] = msMemory.ullTotalPhys;
+    source->memory[TCF_MEMORY_AVAILABLE_PHYSICAL] = msMemory.ullAvailPhys;
+    source->memory[TCF_MEMORY_TOTAL_PAGEFILE] = msMemory.ullTotalPageFile;
+    source->memory[TCF_MEMORY_AVAILABLE_PAGEFILE] = msMemory.ullAvailPageFile;
+    source->memory[TCF_MEMORY_TOTAL_VIRTUAL] = msMemory.ullTotalVirtual;
+    source->memory[TCF_MEMORY_AVAILABLE_VIRTUAL] = msMemory.ullAvailVirtual;
+    source->megabytesPerGigabyte = kMegabytesPerGigabyte; source->refreshedCategories = refreshedCategories;
+    CopyMemory(source->network, net, sizeof(source->network));
+    CopyMemory(source->diskFree, diskFree, sizeof(source->diskFree));
+    CopyMemory(source->diskTotal, diskAll, sizeof(source->diskTotal));
+    CopyMemory(source->diskRead, diskRateRead, sizeof(source->diskRead));
+    CopyMemory(source->diskWrite, diskRateWrite, sizeof(source->diskWrite));
+    CopyMemory(source->diskRate, diskRateTotal, sizeof(source->diskRate));
+    source->batteryLife = iBatteryLife; source->batteryHours = blt_h; source->batteryMinutes = blt_m;
+    source->batterySeconds = blt_s; source->powerSource = pw_mode; source->volume = iVolume;
+    source->gpuUsage = totalGPUUsage; source->gpuInstances = numPDHGPUInstance; source->temperature = pdhTemperature;
+    source->connection = g_InternetConnectStat_Win10; source->physicalAdapter = active_physical_adapter_Win10;
+    source->lteProfile = currentLTEProfNum; source->networkWidth = NetMIX_Length; source->ssidWidth = SSID_AP_Length;
+    if (bHour12) source->options |= TCF_OPT_HOUR12;
+    if (bHourZero) source->options |= TCF_OPT_HOUR_ZERO;
+    if (b_SafeMode) source->options |= TCF_OPT_SAFE;
+    if (b_EnableClock2) source->options |= TCF_OPT_CLOCK2;
+    if (b_TempAvailable) source->options |= TCF_OPT_TEMPERATURE;
+    if (b_Charging) source->options |= TCF_OPT_CHARGING;
+    if (muteStatus) source->options |= TCF_OPT_MUTE;
+    if (flag_VPN) source->options |= TCF_OPT_VPN;
+    if (b_MeteredNetNow) source->options |= TCF_OPT_METERED;
+    if (b_SummerTime_US) source->options |= TCF_OPT_SUMMER_US;
+    if (b_SummerTime_Europe) source->options |= TCF_OPT_SUMMER_EUROPE;
+    CopyMemory(source->format, formatText, (length + 1) * sizeof(WCHAR));
+    tc_get_locale_sdate_w(shortText, 16); lstrcpyW(source->labels[TCF_LABEL_DATE_SEPARATOR], shortText);
+    tc_get_locale_stime_w(shortText, 16); lstrcpyW(source->labels[TCF_LABEL_TIME_SEPARATOR], shortText);
+    tc_get_locale_ampm_w(TRUE, shortText, _countof(shortText)); lstrcpyW(source->labels[TCF_LABEL_AM], shortText);
+    tc_get_locale_ampm_w(FALSE, shortText, _countof(shortText)); lstrcpyW(source->labels[TCF_LABEL_PM], shortText);
+    for (i = 0; i < _countof(legacy); i++) fc_copy_legacy(source->labels[labelIds[i]], TCF_LABEL_CCH, legacy[i]);
+    for (i = 0; i < _countof(utf8); i++)
+        if (!tc_custom_utf8_to_utf16(utf8[i], source->labels[utf8Ids[i]], utf8Cap[i])) source->labels[utf8Ids[i]][0] = L'\0';
+    tc_get_netmix(mix, sizeof(mix));
+    fc_copy_legacy(source->labels[TCF_LABEL_NETWORK_MIX], TCF_LABEL_CCH, mix);
+    /* Capture is a cache read, never a CUSTOM refresh or script launch. */
+    if (g_customSettingsLoaded) {
+        source->options |= TCF_OPT_CUSTOM_READY;
+        for (i = 0; i < TCF_CUSTOM_COUNT; i++) {
+            const char* cached = tc_custom_get_emit_value(&g_customVars[i]);
+            if (!tc_custom_text_to_utf16_compat(cached, source->custom[i], TCF_CUSTOM_CCH)) {
+                UINT n;
+                for (n = 0; n < TCF_CUSTOM_CCH - 1 && cached[n]; n++)
+                    source->custom[i][n] = (WCHAR)(unsigned char)cached[n];
+                source->custom[i][n] = L'\0';
+            }
+            if (source->custom[i][0]) source->customState[i] |= TCF_CUSTOM_PRESENT;
+            if (g_customVars[i].hasPath) source->customState[i] |= TCF_CUSTOM_PATH;
+            if (g_customVars[i].execEnable) source->customState[i] |= TCF_CUSTOM_SCRIPT;
+        }
+    }
+    tc_gip_lock();
+    if (!TryEnterCriticalSection(&g_gipLock)) { TcfFreeSource(source); return HRESULT_FROM_WIN32(ERROR_BUSY); }
+    strcpy_s(gip, sizeof(gip), g_gipValueUtf8);
+    LeaveCriticalSection(&g_gipLock);
+    /* GIP emits cached bytes directly today: preserve that display compatibility
+       as Unicode data, without transferring a legacy byte pointer. */
+    for (i = 0; i < TC_GIP_VALUE_MAX - 1 && gip[i]; i++)
+        source->labels[TCF_LABEL_GIP][i] = (WCHAR)(unsigned char)gip[i];
+    if (tc_gip_align(gip, aligned, sizeof(aligned))) {
+        source->options |= TCF_OPT_GIP_ALIGNED;
+        fc_copy_legacy(source->labels[TCF_LABEL_GIP_ALIGNED], TCF_LABEL_CCH, aligned);
+    }
+    if (!fc_collect_calendar(source)) { TcfFreeSource(source); return E_INVALIDARG; }
+    source->bytes = TcfSourceBytes(source->calendarCount);
+    if (!TcfValidateSource(source, source->bytes)) { TcfFreeSource(source); return E_INVALIDARG; }
+    *output = source;
+    return S_OK;
+}
+
 DWORD FindFormat(char* fmt)
 {
 	char *sp;
@@ -4472,31 +4671,45 @@ static BOOL fmt_scan_connection(const WCHAR** cursor)
 	return FALSE;
 }
 
+BOOL FormatNetworkFrameW(WCHAR* out, int capacity, const WCHAR* text, int textCapacity,
+    const TC_FORMAT_SPANS* spans)
+{
+    WCHAR staged[TC_FS_TEXT_CCH + TC_FORMAT_MAX_SPANS * 8];
+    WCHAR* dest = staged;
+    int remaining = _countof(staged), length, i;
+    if (!out || capacity <= 0 || !text || textCapacity <= 0 || textCapacity > TC_FS_TEXT_CCH) return FALSE;
+    for (length = 0; length < textCapacity && text[length]; length++) {}
+    if (length == textCapacity || !TcFormatStyleValidateFrame(text, length, spans)) return FALSE;
+    staged[0] = L'\0';
+    for (i = 0; i < spans->count; ++i) {
+        const TC_FORMAT_SPAN* span = &spans->items[i];
+        const WCHAR* end = span->selector;
+        int n;
+        if (!(tc_scan_network_token_w(&end) || tc_scan_ip_token_w(&end)) || *end) continue;
+        tc_wappend_uint_var(&dest, &remaining, (unsigned int)span->length);
+        tc_wappend_char(&dest, &remaining, L':');
+        for (n = 0; n < span->length; ++n) tc_wappend_char(&dest, &remaining, text[span->start + n]);
+        tc_wappend_char(&dest, &remaining, L';');
+    }
+    /* Stage before writing: invalid frames and aliased output cannot corrupt the source. */
+    lstrcpynW(out, staged, capacity);
+    return TRUE;
+}
+
 void FormatNetworkTextW(WCHAR* out, int capacity, SYSTEMTIME* time, int beat100, const WCHAR* fmt, const TC_FS_RULESET* rules)
 {
-	WCHAR text[4096];
-	char info[4096];
-	TC_FORMAT_SPANS spans;
-	WCHAR* dest = out;
-	int remaining = capacity, i;
-	if (!out || capacity <= 0) return;
-	*out = L'\0';
-	/* Compare exactly the visible token values, including width/rounding and quoted/named blocks. */
-	ZeroMemory(&spans, sizeof(spans));
-	ZeroMemory(info, sizeof(info));
-	MakeFormatExW(text, _countof(text), info, time, beat100, fmt, &spans);
-	if (rules && rules->enabled && !TcFormatStyleTransform(rules, text, _countof(text), info, &spans)) spans.overflow = TRUE;
-	if (spans.overflow) { lstrcpynW(out, text, capacity); return; }
-	for (i = 0; i < spans.count; ++i) {
-		const TC_FORMAT_SPAN* span = &spans.items[i];
-		const WCHAR* end = span->selector;
-		int n;
-		if (!(tc_scan_network_token_w(&end) || tc_scan_ip_token_w(&end)) || *end) continue;
-		tc_wappend_uint_var(&dest, &remaining, (unsigned int)span->length);
-		tc_wappend_char(&dest, &remaining, L':');
-		for (n = 0; n < span->length; ++n) tc_wappend_char(&dest, &remaining, text[span->start + n]);
-		tc_wappend_char(&dest, &remaining, L';');
-	}
+    WCHAR text[4096];
+    char info[4096];
+    TC_FORMAT_SPANS spans;
+    if (!out || capacity <= 0) return;
+    *out = L'\0';
+    /* Compare exactly the visible token values, including width/rounding and quoted/named blocks. */
+    ZeroMemory(&spans, sizeof(spans));
+    ZeroMemory(info, sizeof(info));
+    MakeFormatExW(text, _countof(text), info, time, beat100, fmt, &spans);
+    if (rules && rules->enabled && !TcFormatStyleTransform(rules, text, _countof(text), info, &spans)) spans.overflow = TRUE;
+    /* Keep the legacy full-text fallback when token metadata is unavailable. */
+    if (!FormatNetworkFrameW(out, capacity, text, _countof(text), &spans)) lstrcpynW(out, text, capacity);
 }
 
 DWORD FindFormatW(const WCHAR* fmt)

@@ -31,6 +31,7 @@
 #pragma warning(pop)
 
 #include "format_style.h"
+#include "../common/format_source.h"
 
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "gdi32.lib")
@@ -165,11 +166,45 @@ void InitFormat(SYSTEMTIME* lt);
 void MakeFormatW(WCHAR* s, int sCch, char* s_info, SYSTEMTIME* pt, int beat100, const WCHAR* fmt);
 void MakeFormatExW(WCHAR* s, int sCch, char* s_info, SYSTEMTIME* pt, int beat100,
 	const WCHAR* fmt, TC_FORMAT_SPANS* spans);
+/* Extract a network fingerprint from an existing validated frame, without formatting again. */
+BOOL FormatNetworkFrameW(WCHAR* out, int capacity, const WCHAR* text, int textCapacity,
+	const TC_FORMAT_SPANS* spans);
+/* Owner-thread cache capture. Scheduled refresh is a separate caller obligation.
+   On failure output is unchanged; success returns process-heap owned storage. */
+HRESULT FormatCaptureSourceW(const SYSTEMTIME* time, const SYSTEMTIME* utc, int beat100,
+	const WCHAR* formatText, UINT consumer, ULONGLONG revision, UINT refreshedCategories,
+	TC_FORMAT_SOURCE** output);
+/* Exe-side formatter route (format_bridge.c); clock thread only. */
+#include "../common/format_bridge.h"
+BOOL fbr_active(void);
+BOOL fbr_receive(HWND sender, const COPYDATASTRUCT* data);
+BOOL fbr_format(WCHAR* text, int capacity, char* info, const SYSTEMTIME* time, int beat100,
+	const WCHAR* formatText, TC_FORMAT_SPANS* spans);
+BOOL fbr_format_text(UINT consumer, WCHAR* text, int capacity, const SYSTEMTIME* time, int beat100,
+	const WCHAR* formatText, BOOL publish);
+void fbr_reset(void);
+void fbr_mark_collected(void);
+/* Selected tclock.chime/1 plan (chime_route.c); clock thread only. */
+BOOL ccr_receive(HWND sender, const COPYDATASTRUCT* data, LRESULT* result);
+BOOL ccr_tick(const SYSTEMTIME* time, BOOL paused, BOOL* redraw);
+void ccr_reset(void);
+void PlayChime(BOOL secondary);
+/* Selected tclock.render/1 provider (render_route.c); clock thread only. */
+#include "../common/render_bridge.h"
+BOOL rrt_active(void);
+BOOL rrt_showing(void);
+BOOL rrt_receive(HWND sender, const COPYDATASTRUCT* data, LRESULT* result);
+BOOL rrt_take(const SYSTEMTIME* time, const WCHAR* text, UINT width, UINT height, UINT dpi, UINT flags, const char* excluded);
+void rrt_blend(RGBQUAD* buffer, UINT width, UINT height, BOOL topDown);
+BOOL rrt_measure(LONG* width, LONG* height);
+void rrt_reset(void);
+BOOL fbr_tick(const SYSTEMTIME* time, int beat100, const WCHAR* formatText);
 void CustomFormatVarsReadSettings(void);
 void GipRead(void);
 void CustomFormatVarsPreloadIfEnabled(void);
 void CustomFormatVarsSuppressNextPreload(void);
 void CustomFormatVarsTick(void);
+void CustomFormatVarsDemand(UINT mask);
 void GipTick(void);
 void CustomFormatVarsInvalidateSettings(void);
 //void MakeFormat_Colored(char* s, COLORREF* s_col,  SYSTEMTIME* pt, int beat100, char* fmt);
@@ -334,10 +369,13 @@ void Net_UpdateInterfaceTable(void);
 
 // hdd.c
 void Hdd_get(void);
+void Hdd_sweep(void);
 
 // diskrate.c
 void DiskRate_start(void);
 int DiskRate_get(void);
+int DiskRate_sweep(void);
+BOOL DiskRate_pending(void);
 void DiskRate_end(void);
 
 /* tooltip.c */
@@ -347,6 +385,7 @@ void TooltipDeleteRes(void);
 void TooltipEnd(HWND hwnd);
 DWORD TooltipFindFormat(void);
 void TooltipOnTimer(HWND hwnd, BOOL bForce);
+void TooltipRefreshBridge(void);
 void TooltipOnRefresh(HWND hwnd);
 BOOL TooltipOnNotify(LRESULT *plRes, LPARAM lParam);
 void TooltipOnMouseEvent(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam, int uid);
@@ -386,6 +425,10 @@ void TooltipRemoveSubClock(int index);
 #ifdef __cplusplus
 extern "C" {
 #endif
+/* Shared UTF-8 connection-label capacity, including the terminator. */
+#define TC_NETLABEL_BYTES 64
+extern char activeSSID[TC_NETLABEL_BYTES];
+extern char activeAPName[TC_NETLABEL_BYTES];
 	void net_mark_changed(void);
 	BOOL net_poll_connection(BOOL profiles);
 	BOOL net_start_profiles(void);

@@ -2,16 +2,22 @@
 #include "tclock.h"
 #include "plugin_registry.h"
 #include "plugin_runtime.h"
+#include "plugin_format_bridge.h"
+#include "plugin_chime.h"
+#include "plugin_render.h"
+#include "../common/page_api.h"
 #include "../common/plugin_resources.h"
 #include <commctrl.h>
 extern BOOL b_EnglishMenu;
 #define PPG_POLL_TIMER 1
 
 typedef struct PPG_STATE {
-    PLUGIN_RECORD rows[PREG_MAX_RECORDS];
-    BOOL changed[PREG_MAX_RECORDS];
+    PLUGIN_RECORD* rows;
+    BOOL* changed;
     int count,selected;
-    BOOL loading,dirty,settings;
+    BOOL loading,dirty,settings,retry,refreshPending,pageChanged;
+    /* Provider whose tclock.page/1 page replaces the Chime entry; empty = built-in. */
+    WCHAR pageOwner[TC_PLUGIN_ID_CHARS];
 } PPG_STATE;
 static LPCWSTR ppg_text(LPCWSTR english,LPCWSTR japanese){return b_EnglishMenu?english:japanese;}
 static PPG_STATE* ppg_state(HWND dialog){return (PPG_STATE*)GetWindowLongPtrW(dialog,GWLP_USERDATA);}
@@ -33,6 +39,10 @@ static void ppg_show(HWND dialog){
     SetDlgItemTextW(dialog,IDC_PL_DESCRIPTION,description);
     EnableWindow(GetDlgItem(dialog,IDC_PL_ENABLED),r!=NULL);CheckDlgButton(dialog,IDC_PL_ENABLED,r&&r->enabled?BST_CHECKED:BST_UNCHECKED);
     EnableWindow(GetDlgItem(dialog,IDC_PL_SETTINGS),preg_can_configure(r));
+    /* The current selection stays visible and removable while its plugin is unavailable. */
+    {BOOL owns=r&&r->provider[0]&&!wcscmp(s->pageOwner,r->provider);
+    EnableWindow(GetDlgItem(dialog,IDC_PL_PAGE),r&&r->provider[0]&&(owns||prt_find_substitute(r->provider,TC_PAGE_TARGET_CHIME)>=0));
+    CheckDlgButton(dialog,IDC_PL_PAGE,owns?BST_CHECKED:BST_UNCHECKED);}
     s->loading=FALSE;
 }
 static void ppg_render(HWND dialog){
@@ -51,27 +61,38 @@ static void ppg_render(HWND dialog){
     if(selected>=0){LVITEMW item={0};item.stateMask=LVIS_SELECTED|LVIS_FOCUSED;item.state=item.stateMask;SendMessageW(list,LVM_SETITEMSTATE,selected,(LPARAM)&item);}else s->selected=-1;
     s->loading=FALSE;ppg_show(dialog);
 }
-static void ppg_sync(HWND dialog,BOOL force){
-    PPG_STATE* s=ppg_state(dialog);PLUGIN_RECORD fresh[PREG_MAX_RECORDS];BOOL changed[PREG_MAX_RECORDS]={0};WCHAR selected[64]=L"";int count,i,j;BOOL inventoryChanged;
-    if(!s||s->settings)return;
-    inventoryChanged=preg_discover();if(!force&&!inventoryChanged)return;
-    ppg_capture(dialog);
-    if(s->selected>=0)wcscpy_s(selected,64,s->rows[s->selected].id);
-    count=preg_load(fresh,PREG_MAX_RECORDS);
-    for(i=0;i<count;++i)for(j=0;j<s->count;++j)if(s->changed[j]&&wcscmp(fresh[i].id,s->rows[j].id)==0){fresh[i].enabled=s->rows[j].enabled;changed[i]=TRUE;break;}
-    memcpy(s->rows,fresh,sizeof(*fresh)*count);memcpy(s->changed,changed,sizeof(changed));s->count=count;s->selected=-1;
+static BOOL ppg_sync(HWND dialog,BOOL force){
+    PPG_STATE* s=ppg_state(dialog);PLUGIN_RECORD* fresh=NULL;BOOL* changed=NULL;WCHAR selected[64]=L"";int count,i,j;BOOL inventoryChanged;
+    if(!s||s->settings)return FALSE;
+    inventoryChanged=preg_discover();if(inventoryChanged)s->refreshPending=TRUE;if(!force&&!inventoryChanged&&!s->retry&&preg_discovery_ok())return TRUE;
+    ppg_capture(dialog);if(s->selected>=0)wcscpy_s(selected,64,s->rows[s->selected].id);
+    if(!preg_load_all(&fresh,&count))goto failed;
+    changed=(BOOL*)HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY,(SIZE_T)count*sizeof(*changed));if(!changed)goto failed;
+    for(j=0;j<s->count;++j)if(s->changed[j]){
+        int match=-1;for(i=0;i<count;++i)if(wcscmp(fresh[i].id,s->rows[j].id)==0){if(match>=0)goto failed;match=i;}
+        if(match<0)goto failed;fresh[match].enabled=s->rows[j].enabled;changed[match]=TRUE;
+    }
+    if(s->rows)HeapFree(GetProcessHeap(),0,s->rows);if(s->changed)HeapFree(GetProcessHeap(),0,s->changed);
+    s->rows=fresh;s->changed=changed;s->count=count;s->selected=-1;s->retry=FALSE;
     for(i=0;i<count;++i)if(wcscmp(s->rows[i].id,selected)==0&&ppg_is_listed(&s->rows[i])){s->selected=i;break;}
     {
         const int controls[]={IDC_ETC_TCARD_INTEGRATION,IDC_ETC_TCYCLE_INTEGRATION,IDC_ETC_TCALENDAR_INTEGRATION,IDC_ETC_TCAPTURE_INTEGRATION};
         for(i=0;i<PREG_KNOWN&&i<count;++i)CheckDlgButton(dialog,controls[i],s->rows[i].enabled?BST_CHECKED:BST_UNCHECKED);
     }
-    ppg_render(dialog);if(inventoryChanged)prt_refresh();
+    ppg_render(dialog);if(s->refreshPending){s->refreshPending=FALSE;prt_refresh();}return TRUE;
+failed:
+    if(fresh)HeapFree(GetProcessHeap(),0,fresh);if(changed)HeapFree(GetProcessHeap(),0,changed);s->retry=TRUE;return FALSE;
 }
 static BOOL ppg_commit(HWND dialog){
     PPG_STATE* s=ppg_state(dialog);if(!s||!s->dirty)return TRUE;
-    ppg_sync(dialog,TRUE);
+    if(!ppg_sync(dialog,TRUE))return FALSE;
     if(!preg_save(s->rows,s->count))return FALSE;
-    ZeroMemory(s->changed,sizeof(s->changed));s->dirty=FALSE;prt_refresh();ppg_sync(dialog,TRUE);return TRUE;
+    if(s->pageChanged){char owner[TC_PLUGIN_ID_CHARS*3];
+        if(!WideCharToMultiByte(CP_UTF8,0,s->pageOwner,-1,owner,sizeof(owner),NULL,NULL)||!SetMyRegStr("Plugins","Page.chime",owner))return FALSE;
+        s->pageChanged=FALSE;}
+    if(s->changed)ZeroMemory(s->changed,(SIZE_T)s->count*sizeof(*s->changed));s->dirty=FALSE;prt_refresh();
+    /* Hand the clock to a newly selected formatter, or back to the built-in one, right away. */
+    pfb_refresh(g_hwndMain,TRUE);pch_refresh(g_hwndMain,TRUE);prn_refresh(g_hwndMain,TRUE);ppg_sync(dialog,TRUE);return TRUE;
 }
 INT_PTR CALLBACK PagePluginsProc(HWND dialog,UINT message,WPARAM wParam,LPARAM lParam){
     PPG_STATE* s=ppg_state(dialog);
@@ -81,6 +102,8 @@ INT_PTR CALLBACK PagePluginsProc(HWND dialog,UINT message,WPARAM wParam,LPARAM l
         HWND list=GetDlgItem(dialog,IDC_PL_LIST);RECT rc;LVCOLUMNW column={0};int i;BOOL migrated;
         s=(PPG_STATE*)HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY,sizeof(*s));if(!s)return FALSE;SetWindowLongPtrW(dialog,GWLP_USERDATA,(LONG_PTR)s);s->selected=-1;s->loading=TRUE;
         migrated=preg_migrate();s->dirty=GetMyRegLong("Plugins","RegistryVersion",0)<1;
+        {char owner[TC_PLUGIN_ID_CHARS*3];GetMyRegStr("Plugins","Page.chime",owner,sizeof(owner),"");
+        if(!MultiByteToWideChar(CP_UTF8,0,owner,-1,s->pageOwner,_countof(s->pageOwner)))s->pageOwner[0]=0;}
         for(i=0;i<PREG_KNOWN;++i)CreateWindowExW(0,L"BUTTON",L"",WS_CHILD|BS_AUTOCHECKBOX,0,0,1,1,dialog,(HMENU)(INT_PTR)controls[i],g_hInst,NULL);
         SendMessageW(list,LVM_SETEXTENDEDLISTVIEWSTYLE,0,LVS_EX_FULLROWSELECT|LVS_EX_DOUBLEBUFFER);GetClientRect(list,&rc);
         column.mask=LVCF_TEXT|LVCF_WIDTH;column.cx=(rc.right-GetSystemMetrics(SM_CXVSCROLL))*40/100;column.pszText=(LPWSTR)ppg_text(L"Plugin",L"\u30d7\u30e9\u30b0\u30a4\u30f3");SendMessageW(list,LVM_INSERTCOLUMNW,0,(LPARAM)&column);
@@ -88,6 +111,7 @@ INT_PTR CALLBACK PagePluginsProc(HWND dialog,UINT message,WPARAM wParam,LPARAM l
         column.cx=(rc.right-GetSystemMetrics(SM_CXVSCROLL))*23/100;column.pszText=(LPWSTR)ppg_text(L"Version",L"\u30d0\u30fc\u30b8\u30e7\u30f3");SendMessageW(list,LVM_INSERTCOLUMNW,2,(LPARAM)&column);
         column.cx=(rc.right-GetSystemMetrics(SM_CXVSCROLL))*25/100;column.pszText=(LPWSTR)ppg_text(L"Status",L"\u72b6\u614b");SendMessageW(list,LVM_INSERTCOLUMNW,3,(LPARAM)&column);
         SetDlgItemTextW(dialog,IDC_PL_LABEL_DESCRIPTION,ppg_text(L"Description",L"\u8aac\u660e"));SetDlgItemTextW(dialog,IDC_PL_SETTINGS,ppg_text(L"Settings",L"\u8a2d\u5b9a"));SetDlgItemTextW(dialog,IDC_PL_ENABLED,ppg_text(L"Enable plugin",L"\u30d7\u30e9\u30b0\u30a4\u30f3\u3092\u6709\u52b9\u306b\u3059\u308b"));
+        SetDlgItemTextW(dialog,IDC_PL_PAGE,ppg_text(L"Use as Chime settings page",L"\u6642\u5831\u306e\u8a2d\u5b9a\u30da\u30fc\u30b8\u3068\u3057\u3066\u4f7f\u3046"));
         s->loading=FALSE;ppg_sync(dialog,TRUE);
         if(!migrated)MessageBoxW(dialog,ppg_text(L"Old plugin settings could not be migrated. Original settings were retained.",L"\u65e7\u30d7\u30e9\u30b0\u30a4\u30f3\u8a2d\u5b9a\u3092\u79fb\u884c\u3067\u304d\u307e\u305b\u3093\u3067\u3057\u305f\u3002\u5143\u306e\u8a2d\u5b9a\u306f\u4fdd\u6301\u3057\u3066\u3044\u307e\u3059\u3002"),L"TClock",MB_OK|MB_ICONINFORMATION);
         SetTimer(dialog,PPG_POLL_TIMER,2000,NULL);return TRUE;
@@ -98,6 +122,10 @@ INT_PTR CALLBACK PagePluginsProc(HWND dialog,UINT message,WPARAM wParam,LPARAM l
         if(s&&((NMHDR*)lParam)->idFrom==IDC_PL_LIST&&((NMHDR*)lParam)->code==LVN_ITEMCHANGED&&!s->loading){NMLISTVIEW* change=(NMLISTVIEW*)lParam;if((change->uNewState&LVIS_SELECTED)&&!(change->uOldState&LVIS_SELECTED)){ppg_capture(dialog);s->selected=(int)change->lParam;ppg_show(dialog);}}return TRUE;
     case WM_COMMAND:
         if(!s)return FALSE;
+        if(LOWORD(wParam)==IDC_PL_PAGE&&s->selected>=0&&!s->loading){PLUGIN_RECORD* r=&s->rows[s->selected];
+            if(IsDlgButtonChecked(dialog,IDC_PL_PAGE)==BST_CHECKED)wcscpy_s(s->pageOwner,_countof(s->pageOwner),r->provider);
+            else if(!wcscmp(s->pageOwner,r->provider))s->pageOwner[0]=0;
+            s->pageChanged=TRUE;ppg_mark(dialog);return TRUE;}
         if(LOWORD(wParam)==IDC_PL_ENABLED&&s->selected>=0){ppg_capture(dialog);s->changed[s->selected]=TRUE;ppg_mark(dialog);ppg_render(dialog);return TRUE;}
         if(LOWORD(wParam)==IDC_PL_SETTINGS&&s->selected>=0&&preg_can_configure(&s->rows[s->selected])){
             BOOL ok;ppg_capture(dialog);s->settings=TRUE;ok=preg_open(&s->rows[s->selected],dialog,TRUE,b_EnglishMenu);s->settings=FALSE;
@@ -107,7 +135,7 @@ INT_PTR CALLBACK PagePluginsProc(HWND dialog,UINT message,WPARAM wParam,LPARAM l
     case PPG_COMMIT:
         if(ppg_commit(dialog)){SetWindowLongPtrW(dialog,DWLP_MSGRESULT,TRUE);return TRUE;}
         MessageBoxW(dialog,ppg_text(L"Could not save plugin enablement. Check INI write access.",L"\u30d7\u30e9\u30b0\u30a4\u30f3\u306e\u6709\u52b9\u72b6\u614b\u3092\u4fdd\u5b58\u3067\u304d\u307e\u305b\u3093\u3002INI\u3078\u306e\u66f8\u304d\u8fbc\u307f\u3092\u78ba\u8a8d\u3057\u3066\u304f\u3060\u3055\u3044\u3002"),L"TClock",MB_OK|MB_ICONERROR);SetWindowLongPtrW(dialog,DWLP_MSGRESULT,FALSE);return TRUE;
-    case WM_DESTROY:KillTimer(dialog,PPG_POLL_TIMER);if(s){HeapFree(GetProcessHeap(),0,s);SetWindowLongPtrW(dialog,GWLP_USERDATA,0);}return TRUE;
+    case WM_DESTROY:KillTimer(dialog,PPG_POLL_TIMER);if(s){if(s->rows)HeapFree(GetProcessHeap(),0,s->rows);if(s->changed)HeapFree(GetProcessHeap(),0,s->changed);HeapFree(GetProcessHeap(),0,s);SetWindowLongPtrW(dialog,GWLP_USERDATA,0);}return TRUE;
     }
     return FALSE;
 }

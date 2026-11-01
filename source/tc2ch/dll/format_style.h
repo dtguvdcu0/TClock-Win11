@@ -143,6 +143,8 @@ typedef struct TC_FORMAT_SPANS {
 
 void TcFormatStyleInit(TC_FS_RULESET* ruleset);
 BOOL TcFormatStyleIdentifier(const WCHAR* name);
+/* Read-only validation also applies to frames marked resolved. */
+BOOL TcFormatStyleValidateFrame(const WCHAR* text, int textLength, const TC_FORMAT_SPANS* spans);
 BOOL TcFormatStyleSelectorSupported(const WCHAR* selector);
 BOOL TcFormatStyleParseRule(const WCHAR* text, int order, TC_FS_RULE* rule, TC_FS_REPORT* report);
 BOOL TcFormatStyleLoadMulti(const WCHAR* sectionMulti, int sectionCch,

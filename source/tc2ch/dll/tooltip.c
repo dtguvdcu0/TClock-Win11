@@ -72,6 +72,8 @@ static BOOL bTooltipUpdateEnable[3] = {FALSE, FALSE, FALSE};
 //static BOOL bTooltipEnableDoubleBuffering = FALSE;
 static BOOL bTooltipUpdated = FALSE;
 static BOOL bTooltipShow = FALSE;
+/* Set while a bridge frame refreshes the shown tooltip; that refresh must not publish. */
+static BOOL tip_bridge_refresh = FALSE;
 static BOOL bTooltipBalloon = FALSE;
 static BOOL bTooltipHasTitle = FALSE;
 
@@ -1131,7 +1133,8 @@ static void TooltipUpdateText(void)
 		if (tc_utf8_to_utf16(fmt_wrapped, fmt_wrapped_w, (int)(sizeof(fmt_wrapped_w) / sizeof(fmt_wrapped_w[0]))) <= 0) {
 			lstrcpynW(fmt_wrapped_w, L"TClock <%LDATE%>", (int)(sizeof(fmt_wrapped_w) / sizeof(fmt_wrapped_w[0])));
 		}
-		MakeFormatW(s_w, (int)(sizeof(s_w) / sizeof(s_w[0])), NULL, &t, beat100, fmt_wrapped_w);
+		if (!fbr_format_text(TCF_CONSUMER_TOOLTIP_BODY, s_w, (int)(sizeof(s_w) / sizeof(s_w[0])), &t, beat100, fmt_wrapped_w, !tip_bridge_refresh))
+			MakeFormatW(s_w, (int)(sizeof(s_w) / sizeof(s_w[0])), NULL, &t, beat100, fmt_wrapped_w);
 	}
 
 	if(tiptitle[0] != 0)
@@ -1144,7 +1147,8 @@ static void TooltipUpdateText(void)
 		if (tc_utf8_to_utf16(tiptitle_wrapped, tiptitle_wrapped_w, (int)(sizeof(tiptitle_wrapped_w) / sizeof(tiptitle_wrapped_w[0]))) <= 0) {
 			tiptitle_wrapped_w[0] = L'\0';
 		}
-		MakeFormatW(tipt_w, (int)(sizeof(tipt_w) / sizeof(tipt_w[0])), NULL, &t, beat100, tiptitle_wrapped_w);
+		if (!fbr_format_text(TCF_CONSUMER_TOOLTIP_TITLE, tipt_w, (int)(sizeof(tipt_w) / sizeof(tipt_w[0])), &t, beat100, tiptitle_wrapped_w, !tip_bridge_refresh))
+			MakeFormatW(tipt_w, (int)(sizeof(tipt_w) / sizeof(tipt_w[0])), NULL, &t, beat100, tiptitle_wrapped_w);
 		lstrcpynW(titleTooltipW, tipt_w, (int)(sizeof(titleTooltipW) / sizeof(titleTooltipW[0])));
 		lstrcpynW(formatTooltipW, L"\n\n\n", (int)(sizeof(formatTooltipW) / sizeof(formatTooltipW[0])));
 		lstrcpynW(formatTooltipW + lstrlenW(formatTooltipW), s_w, (int)((sizeof(formatTooltipW) / sizeof(formatTooltipW[0])) - lstrlenW(formatTooltipW)));
@@ -1198,6 +1202,15 @@ void TooltipOnTimer(HWND hwnd, BOOL bForce)
 
 	}
 
+}
+
+/* Shows a newly accepted bridge frame in a tooltip that is still visible. */
+void TooltipRefreshBridge(void)
+{
+	if (!hwndTooltip || !bTooltipShow) return;
+	tip_bridge_refresh = TRUE;
+	TooltipOnTimer(hwndClockMain, TRUE);
+	tip_bridge_refresh = FALSE;
 }
 
 void TooltipReadData(void)

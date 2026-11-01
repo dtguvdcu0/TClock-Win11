@@ -6,6 +6,11 @@
 
 #include "tclock.h"
 #include "..\common\text_codec.h"
+#include "..\common\ini_io_utf8.h"
+#include "..\common\input_binding.h"
+#include "plugin_runtime.h"
+#include "plugin_render.h"
+#include <stdio.h>
 
 
 // XButton Messages
@@ -26,11 +31,36 @@ static DWORD last_tickcount;
 static int num_click = 0;
 static int exec_button = -1;
 static BOOL timer = FALSE;
+static ULONGLONG mouse_timer_deadline;
 static BOOL exec_zone_active = FALSE;
 static int exec_zone_button = -1;
 static int exec_zone_click = 0;
 static int exec_zone_entry = 0;
 static LONG exec_zone_func = -1;
+#define MOUSE_HOTKEY_CAP 32
+#define MOUSE_HOTKEY_INDEX (IDS_HOTKEY-IDS_LEFTBUTTON)
+typedef struct {
+	IB_ACTION action;
+	char source[32];
+	int zone, source_zone, count;
+	WORD hotkey;
+} MOUSE_BINDING;
+typedef struct {
+	MOUSE_BINDING binding;
+	PRT_COMMAND command;
+	HWND owner, clock;
+	RECT geometry;
+	DWORD clock_process, clock_thread;
+	int button, click;
+	BOOL geometric;
+	ULONGLONG revision;
+	ULONG_PTR stamp, context;
+} MOUSE_INPUT;
+static MOUSE_INPUT mouse_pending, mouse_hotkeys[MOUSE_HOTKEY_CAP];
+static ULONGLONG mouse_revisions[28][4][3];
+static ULONG_PTR mouse_serial, mouse_context, mouse_control;
+static BOOL mouse_identity_failed;
+static DWORD mouse_thread;
 
 static int GetMouseFuncNum(int button, int nclick);
 void GetMouseFileEntry(int btn, int clk, char* entry, int cch);
@@ -45,6 +75,7 @@ static BOOL mouse_zone_has_action(int button, int nclick);
 static BOOL mouse_zone_resolve_pending(int button, int nclick, LPARAM lParam, LONG* fnc_out);
 
 static ATOM atomHotkey[4] = { 0,0,0,0 };
+static WORD mouse_hotkey_values[4];
 static UINT idTCaptureHotkey[32] = { 0 };
 static char tcapProfileByHotkey[32][128] = { { 0 } };
 extern BOOL b_EnglishMenu;
@@ -83,6 +114,7 @@ static void mouse_zone_reset(void)
 	exec_zone_click = 0;
 	exec_zone_entry = 0;
 	exec_zone_func = -1;
+    ZeroMemory(&mouse_pending,sizeof(mouse_pending));
 }
 
 static int mouse_zone_count(int button, int nclick)
@@ -170,41 +202,203 @@ static int mouse_zone_hit_test(POINT pt_client, const RECT* rc_client, int zone_
 	return 0;
 }
 
+static BOOL mouse_read_record(const char* key, IB_ACTION* action)
+{
+	char value[IB_RECORD_CHARS + 2];
+	tc_ini_utf8_read_string(g_inifile, reg_section, key, "\x1d", value, sizeof(value));
+	if (!strcmp(value, "\x1d")) {
+		tc_ini_utf8_read_string(g_inifile, reg_section, key, "\x1e", value, sizeof(value));
+		if (!strcmp(value, "\x1e")) return FALSE;
+	}
+	if (strlen(value) >= sizeof(value) - 1) {
+		ZeroMemory(action, sizeof(*action));
+		action->kind = IB_OPAQUE;
+	}
+	else ib_parse_action(value, action);
+	if (action->kind == IB_BUILTIN && action->number < MOUSEFUNC_NONE && action->number != -32768) action->kind = IB_OPAQUE;
+	return TRUE;
+}
+/* Opens one indexed INI read session; nested scopes reuse it instead of reloading the file. */
+static BOOL mouse_begin_read(void)
+{
+	WCHAR path[MAX_PATH];
+	return tc_utf8_to_utf16(g_inifile, path, _countof(path)) > 0 && tc_begin_legacyW(path);
+}
+static BOOL mouse_get_binding(int button, int click, int zone, MOUSE_BINDING* binding)
+{
+	int source, alias;
+	BOOL found = FALSE;
+	ZeroMemory(binding, sizeof(*binding));
+	binding->action.kind = IB_OPAQUE;
+	if (button < 0 || button >= 28 || click < 1 || click > 4 || zone < 1 || zone > 3 || !mouse_begin_read()) return FALSE;
+	binding->zone = zone;
+	binding->count = mouse_zone_count(button, click);
+	if (button == MOUSE_HOTKEY_INDEX) {
+		char key[32];
+		sprintf_s(key, sizeof(key), "%d%dHotkey", button, click);
+		binding->hotkey = (WORD)GetMyRegLong(reg_section, key, 0);
+	}
+	for (source = zone; source >= 1; source = source == 1 ? 0 : 1) {
+		for (alias = 0; alias < 5; ++alias) {
+			char key[32];
+			IB_ACTION action;
+			if (!alias) {
+				if (source == 1) sprintf_s(key, sizeof(key), "%d%d", button, click);
+				else sprintf_s(key, sizeof(key), "%d%dFunc%d", button, click, source);
+			}
+			else if (alias == 1) sprintf_s(key, sizeof(key), "%d%dZone%dFunc", button, click, source);
+			else if (alias == 2) sprintf_s(key, sizeof(key), "%d%dZone%d", button, click, source);
+			else {
+				if (button || click != 1) continue;
+				sprintf_s(key, sizeof(key), alias == 3 ? "LeftClickZone%dFunc" : "LeftClickZone%d", source);
+			}
+			if (!mouse_read_record(key, &action) || (action.kind == IB_BUILTIN && action.number == -32768)) continue;
+			binding->action = action;
+			binding->source_zone = source;
+			strcpy_s(binding->source, sizeof(binding->source), key);
+			found = TRUE;
+			break;
+		}
+		if (found) break;
+	}
+	if (!found) {
+		binding->action.kind = IB_BUILTIN;
+		binding->action.number = MOUSEFUNC_NONE;
+	}
+	tc_ini_end();
+	return found;
+}
+static ULONG_PTR mouse_next_stamp(void)
+{
+	if (mouse_identity_failed || mouse_serial == ~(ULONG_PTR)0) {
+		mouse_identity_failed = TRUE;
+		mouse_pending.stamp = 0;
+		ZeroMemory(mouse_hotkeys, sizeof(mouse_hotkeys));
+		return 0;
+	}
+	return ++mouse_serial;
+}
+static ULONGLONG* mouse_find_revision(const MOUSE_INPUT* input)
+{
+	if (input->button < 0 || input->button >= 28 || input->click < 1 || input->click > 4 ||
+		input->binding.zone < 1 || input->binding.zone > 3) return NULL;
+	return &mouse_revisions[input->button][input->click - 1][input->binding.zone - 1];
+}
+static BOOL mouse_match_input(const MOUSE_INPUT* input)
+{
+	MOUSE_BINDING current;
+	RECT geometry;
+	DWORD process = 0, thread;
+	ULONGLONG* revision = mouse_find_revision(input);
+	if (!input->stamp || mouse_identity_failed || !revision || input->revision != *revision ||
+		input->owner != g_hwndMain || !IsWindow(input->owner) || input->context != mouse_context ||
+		input->clock != g_hwndClock) return FALSE;
+	if (input->button == MOUSE_HOTKEY_INDEX &&
+		(!atomHotkey[input->click - 1] || mouse_hotkey_values[input->click - 1] != input->binding.hotkey)) return FALSE;
+	if (input->clock) {
+		thread = GetWindowThreadProcessId(input->clock, &process);
+		if (!thread || thread != input->clock_thread || process != input->clock_process) return FALSE;
+	}
+	if (input->geometric && (!GetClientRect(input->clock, &geometry) || !EqualRect(&geometry, &input->geometry))) return FALSE;
+	if (!mouse_get_binding(input->button, input->click, input->binding.zone, &current)) return FALSE;
+	return current.action.kind == IB_DLL && current.count == input->binding.count &&
+		current.hotkey == input->binding.hotkey && current.source_zone == input->binding.source_zone &&
+		!strcmp(current.source, input->binding.source) && !strcmp(current.action.key, input->binding.action.key);
+}
+static BOOL mouse_accept_input(MOUSE_INPUT* input, HWND owner, BOOL deferred)
+{
+	ULONGLONG* revision = mouse_find_revision(input);
+	if (!revision || !mouse_context || mouse_identity_failed ||
+		(mouse_thread && GetCurrentThreadId() != mouse_thread) ||
+		(input->button != MOUSE_HOTKEY_INDEX && (!g_hwndClock || !IsWindow(g_hwndClock))) ||
+		!prt_capture_command(input->binding.action.key, deferred, &input->command)) return FALSE;
+	input->owner = owner;
+	input->clock = g_hwndClock;
+	input->context = mouse_context;
+	input->revision = *revision;
+	input->clock_thread = input->clock ? GetWindowThreadProcessId(input->clock, &input->clock_process) : 0;
+	input->stamp = mouse_next_stamp();
+	return input->stamp != 0;
+}
+static BOOL mouse_prepare_input(HWND owner, BOOL deferred)
+{
+	return mouse_pending.binding.action.kind != IB_DLL || mouse_accept_input(&mouse_pending, owner, deferred);
+}
+static void mouse_invalidate_input(MOUSE_INPUT* input)
+{
+	ULONGLONG* revision;
+	if (!input->stamp || input->binding.action.kind != IB_DLL || mouse_match_input(input)) return;
+	revision = mouse_find_revision(input);
+	if (revision && *revision != ~(ULONGLONG)0) ++*revision;
+	else {
+		mouse_identity_failed = TRUE;
+		ZeroMemory(mouse_hotkeys, sizeof(mouse_hotkeys));
+		mouse_pending.stamp = 0;
+	}
+	input->stamp = 0;
+}
+void mouse_note_setting(const char* section, const char* key)
+{
+	int i;
+	(void)key;
+	if (!mouse_thread || GetCurrentThreadId() != mouse_thread || (!section && key) ||
+		(section && _stricmp(section, "Mouse"))) return;
+	mouse_invalidate_input(&mouse_pending);
+	for (i = 0; i < MOUSE_HOTKEY_CAP; ++i) mouse_invalidate_input(&mouse_hotkeys[i]);
+}
+void mouse_reset_context(HWND owner)
+{
+	if (mouse_thread && GetCurrentThreadId() != mouse_thread) return;
+	mouse_context = mouse_next_stamp();
+	mouse_control = mouse_context;
+	ZeroMemory(mouse_hotkeys, sizeof(mouse_hotkeys));
+	if (mouse_pending.binding.action.kind == IB_DLL) {
+		if (timer) KillTimer(owner, IDTIMER_MOUSE);
+		timer = FALSE;
+		num_click = 0;
+		last_mousedown = 0;
+		mouse_zone_reset();
+	}
+}
+static BOOL mouse_run_input(const MOUSE_INPUT* input)
+{
+	return (!mouse_thread || GetCurrentThreadId() == mouse_thread) && mouse_match_input(input) &&
+		prt_run_command(&input->command, input->owner, b_EnglishMenu);
+}
+static void mouse_post_hotkey(HWND owner, int click, const MOUSE_BINDING* binding)
+{
+	MOUSE_INPUT input = {0};
+	int i;
+	for (i = 0; i < MOUSE_HOTKEY_CAP; ++i) if (!mouse_hotkeys[i].stamp) break;
+	if (i == MOUSE_HOTKEY_CAP) return;
+	input.binding = *binding;
+	input.button = MOUSE_HOTKEY_INDEX;
+	input.click = click;
+	if (!mouse_accept_input(&input, owner, FALSE)) return;
+	mouse_hotkeys[i] = input;
+	if (!PostMessageW(owner, MOUSE_DISPATCH, (WPARAM)input.stamp, (LPARAM)i)) mouse_hotkeys[i].stamp = 0;
+}
+BOOL mouse_handle_message(HWND owner, UINT message, WPARAM wParam, LPARAM lParam)
+{
+	MOUSE_INPUT input;
+	UINT index;
+	if (message != MOUSE_DISPATCH) return FALSE;
+	if ((mouse_thread && GetCurrentThreadId() != mouse_thread) || (UINT_PTR)lParam >= MOUSE_HOTKEY_CAP || !wParam) return TRUE;
+	index = (UINT)(UINT_PTR)lParam;
+	if (mouse_hotkeys[index].stamp != (ULONG_PTR)wParam || mouse_hotkeys[index].owner != owner) return TRUE;
+	input = mouse_hotkeys[index];
+	mouse_hotkeys[index].stamp = 0;
+	mouse_run_input(&input);
+	return TRUE;
+}
 static LONG mouse_zone_read_func(int button, int nclick, int zone_number, BOOL* found)
 {
-	char entry[32];
-	LONG value;
-	const LONG missing = -32768;
-
-	if (found) *found = FALSE;
-	if (zone_number < 1 || zone_number > 3) return missing;
-
-	if (zone_number == 1) {
-		wsprintf(entry, "%d%d", button, nclick);
-		value = GetMyRegLong(reg_section, entry, missing);
-	}
-	else {
-		wsprintf(entry, "%d%dFunc%d", button, nclick, zone_number);
-		value = GetMyRegLong(reg_section, entry, missing);
-	}
-	if (value == missing) {
-		wsprintf(entry, "%d%dZone%dFunc", button, nclick, zone_number);
-		value = GetMyRegLong(reg_section, entry, missing);
-	}
-	if (value == missing) {
-		wsprintf(entry, "%d%dZone%d", button, nclick, zone_number);
-		value = GetMyRegLong(reg_section, entry, missing);
-	}
-	if (value == missing && button == 0 && nclick == 1) {
-		wsprintf(entry, "LeftClickZone%dFunc", zone_number);
-		value = GetMyRegLong(reg_section, entry, missing);
-		if (value == missing) {
-			wsprintf(entry, "LeftClickZone%d", zone_number);
-			value = GetMyRegLong(reg_section, entry, missing);
-		}
-	}
-	if (value != missing && found) *found = TRUE;
-	return value;
+	MOUSE_BINDING binding;
+	BOOL present = mouse_get_binding(button, nclick, zone_number, &binding);
+	if (found) *found = present;
+	if (!present) return -32768;
+	if (binding.action.kind == IB_DLL) return 0; /* Eligibility marker only; owned type controls dispatch. */
+	return binding.action.kind == IB_BUILTIN ? binding.action.number : MOUSEFUNC_NONE;
 }
 
 static BOOL mouse_zone_has_action(int button, int nclick)
@@ -223,60 +417,39 @@ static BOOL mouse_zone_has_action(int button, int nclick)
 
 static BOOL mouse_zone_resolve_pending(int button, int nclick, LPARAM lParam, LONG* fnc_out)
 {
-	RECT rc_client;
-	POINT pt_client;
-	int zone_count;
-	int zone_index;
-	int source_zone = 0;
-	BOOL found = FALSE;
-	LONG fnc;
-
+	RECT geometry = {0};
+	POINT point;
+	int count, zone = 1;
+	BOOL geometric = FALSE;
+	MOUSE_BINDING binding;
 	if (!fnc_out) return FALSE;
-	*fnc_out = GetMouseFuncNum(button, nclick);
+	*fnc_out = MOUSEFUNC_NONE;
 	mouse_zone_reset();
-
-	zone_count = mouse_zone_count(button, nclick);
-	if (zone_count <= 1) {
-		fnc = mouse_zone_read_func(button, nclick, 1, &found);
-		if (!found) return FALSE;
-
-		*fnc_out = fnc;
-		exec_zone_active = TRUE;
-		exec_zone_button = button;
-		exec_zone_click = nclick;
-		exec_zone_entry = 1;
-		exec_zone_func = fnc;
-		return TRUE;
+	count = mouse_zone_count(button, nclick);
+	if (count > 1) {
+		point.x = GET_X_LPARAM(lParam);
+		point.y = GET_Y_LPARAM(lParam);
+		if (g_hwndClock && GetClientRect(g_hwndClock, &geometry)) {
+			/* A render provider's regions replace the built-in split while its frame is shown. */
+			if (!prn_hit_zone(point, &geometry, &zone)) zone = mouse_zone_hit_test(point, &geometry, count) + 1;
+			if (zone < 1 || zone > count) return FALSE;
+			geometric = TRUE;
+		}
+		else zone = 1; /* Preserve numeric fallback without clock geometry. */
 	}
-	if (!g_hwndClock || !IsWindow(g_hwndClock)) return FALSE;
-	if (!GetClientRect(g_hwndClock, &rc_client)) return FALSE;
-
-	pt_client.x = GET_X_LPARAM(lParam);
-	pt_client.y = GET_Y_LPARAM(lParam);
-	zone_index = mouse_zone_hit_test(pt_client, &rc_client, zone_count);
-	if (zone_index < 0) return FALSE;
-
-	fnc = mouse_zone_read_func(button, nclick, zone_index + 1, &found);
-	if (found) {
-		source_zone = zone_index + 1;
-	}
-	else if (zone_index != 0) {
-		fnc = mouse_zone_read_func(button, nclick, 1, &found);
-		if (found) source_zone = 1;
-	}
-
-	if (!found) {
-		fnc = GetMouseFuncNum(button, nclick);
-	}
-
-	*fnc_out = fnc;
-	if (source_zone <= 0) return FALSE;
-
+	if (!mouse_get_binding(button, nclick, zone, &binding)) return FALSE;
+	if (count > 1 && !geometric && binding.action.kind != IB_BUILTIN) return FALSE;
+	*fnc_out = binding.action.kind == IB_DLL ? 0 : binding.action.kind == IB_BUILTIN ? binding.action.number : MOUSEFUNC_NONE;
 	exec_zone_active = TRUE;
 	exec_zone_button = button;
 	exec_zone_click = nclick;
-	exec_zone_entry = source_zone;
-	exec_zone_func = fnc;
+	exec_zone_entry = binding.source_zone;
+	exec_zone_func = *fnc_out;
+	mouse_pending.binding = binding;
+	mouse_pending.button = button;
+	mouse_pending.click = nclick;
+	mouse_pending.geometric = geometric;
+	mouse_pending.geometry = geometry;
 	return TRUE;
 }
 
@@ -559,6 +732,7 @@ static void InitHotkey(HWND hwnd)
 	for (i = 0; i < 4; i++)
 	{
 		if (atomHotkey[i]) continue;
+        mouse_hotkey_values[i]=0;
 		wsprintf(entry, "15%dHotkey", i + 1);
 		hotkey = (WORD)GetMyRegLong(reg_section, entry, 0);
 		if (!hotkey) continue;
@@ -569,6 +743,7 @@ static void InitHotkey(HWND hwnd)
 			GlobalDeleteAtom(atomHotkey[i]);
 			atomHotkey[i] = 0;
 		}
+        if(atomHotkey[i])mouse_hotkey_values[i]=hotkey;
 	}
 
 	for (i = 0; i < 32; ++i) {
@@ -610,8 +785,10 @@ static void InitHotkey(HWND hwnd)
 static void EndHotkey(HWND hwnd)
 {
 	int i;
+    ZeroMemory(mouse_hotkeys,sizeof(mouse_hotkeys));
 	for (i = 0; i < 4; i++)
 	{
+        mouse_hotkey_values[i]=0;
 		if (!atomHotkey[i]) continue;
 		UnregisterHotKey(hwnd, atomHotkey[i]);
 		GlobalDeleteAtom(atomHotkey[i]);
@@ -641,17 +818,20 @@ void ResetHotkey(HWND hwnd)
 void OnHotkey(HWND hwnd, int id)
 {
 	int i;
+    if(mouse_thread&&GetCurrentThreadId()!=mouse_thread)return;
 	for (i = 0; i < 4; i++)
 	{
-		if (atomHotkey[i] == id)
-		{
-			PostMessage(hwnd, WM_COMMAND, IDC_HOTKEY1 + i, 0);
+        if(atomHotkey[i]&&atomHotkey[i]==id){
+            MOUSE_BINDING binding;mouse_get_binding(MOUSE_HOTKEY_INDEX,i+1,1,&binding);
+            if(binding.action.kind==IB_DLL){if(binding.hotkey==mouse_hotkey_values[i])mouse_post_hotkey(hwnd,i+1,&binding);return;}
+            if(binding.action.kind==IB_OPAQUE)return;
+            PostMessageW(hwnd,WM_COMMAND,IDC_HOTKEY1+i,0);
 			return;
 		}
 	}
 	for (i = 0; i < 32; ++i)
 	{
-		if ((int)idTCaptureHotkey[i] == id)
+		if (idTCaptureHotkey[i] && (int)idTCaptureHotkey[i] == id)
 		{
 			TriggerTCaptureProfile(hwnd, tcapProfileByHotkey[i]);
 			return;
@@ -670,6 +850,7 @@ void InitMouseFunction(HWND hwnd)
 	char entry[20];
 	char s[256];
 
+    mouse_thread=GetCurrentThreadId();mouse_reset_context(hwnd);
 	last_tickcount = GetTickCount();
 
 	// save old data with new format
@@ -708,6 +889,7 @@ void InitMouseFunction(HWND hwnd)
 
 void EndMouseFunction(HWND hwnd)
 {
+    mouse_reset_context(hwnd);
 	EndHotkey(hwnd);
 }
 
@@ -796,7 +978,11 @@ void OnMouseMsg(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 	UINT doubleclick_time;
 	int i;
 	BOOL bDown = FALSE;
+	BOOL later = FALSE;
+	BOOL scoped;
 
+    if(mouse_thread&&GetCurrentThreadId()!=mouse_thread)return;
+    mouse_control=mouse_next_stamp();
 	if(timer) KillTimer(hwnd, IDTIMER_MOUSE);
 	timer = FALSE;
 	mouse_zone_reset();
@@ -857,7 +1043,7 @@ void OnMouseMsg(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 				int zDelta, xPos, yPos;
 				RECT rcClock;
 
-				GetWindowRect(g_hwndClock, &rcClock);
+				if(!g_hwndClock||!GetWindowRect(g_hwndClock,&rcClock))return;
 				xPos = GET_X_LPARAM(lParam);
 				yPos = GET_Y_LPARAM(lParam);
 				if (!( xPos >= rcClock.left && xPos <= rcClock.right && yPos >= rcClock.top && yPos <= rcClock.bottom ))
@@ -928,17 +1114,20 @@ void OnMouseMsg(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 	if(bDown)
 	{
+		/* Resolve every candidate from one INI read; close it before any action runs. */
+		scoped = mouse_begin_read();
 		if (!mouse_zone_resolve_pending(button, num_click + 1, lParam, &n_func))
-			n_func = GetMouseFuncNum(button, num_click + 1);
+			n_func = MOUSEFUNC_NONE;
+		for(i = num_click + 2; n_func >= 0 && !later && i <= 4; i++)
+			later = mouse_zone_has_action(button, i);
+		if (scoped) tc_ini_end();
 		if(n_func >= 0 )
 		{
-			for(i = num_click + 2; i <= 4; i++)
-			{
-				if(mouse_zone_has_action(button, i)) {
-					mouse_zone_reset();
-					return;
-				}
+			if (later) {
+				mouse_zone_reset();
+				return;
 			}
+            if(!mouse_prepare_input(hwnd,FALSE)){mouse_zone_reset();return;}
 			num_click++;
 			exec_button = button;
 			OnTimerMouse(hwnd);
@@ -952,24 +1141,33 @@ void OnMouseMsg(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 	num_click++;
 
+	/* Resolve every candidate from one INI read; close it before any action runs. */
+	scoped = mouse_begin_read();
 	if (!mouse_zone_resolve_pending(button, num_click, lParam, &n_func))
-		n_func = GetMouseFuncNum(button, num_click);
+		n_func = MOUSEFUNC_NONE;
+	for(i = num_click + 1; n_func >= 0 && !later && i <= 4; i++)
+		later = mouse_zone_has_action(button, i);
+	if (scoped) tc_ini_end();
 	if(n_func < 0) {
 		mouse_zone_reset();
 		return;
 	}
 
-	for(i = num_click + 1; i <= 4; i++)
+	if(later)
 	{
-		if(mouse_zone_has_action(button, i))
-		{
-			exec_button = button;
-			timer = TRUE;
-			SetTimer(hwnd, IDTIMER_MOUSE, doubleclick_time, 0);
-			return;
+		if(!mouse_prepare_input(hwnd,TRUE)){mouse_zone_reset();return;}
+		exec_button = button;
+		timer = TRUE;
+		mouse_timer_deadline = GetTickCount64() + doubleclick_time;
+		if (!SetTimer(hwnd, IDTIMER_MOUSE, doubleclick_time, 0)) {
+			timer = FALSE;
+			num_click = 0;
+			mouse_zone_reset();
 		}
+		return;
 	}
 
+    if(!mouse_prepare_input(hwnd,FALSE)){mouse_zone_reset();return;}
 	exec_button = button;
 	OnTimerMouse(hwnd);
 }
@@ -977,12 +1175,39 @@ void OnMouseMsg(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 /*------------------------------------------------
    execute mouse function
 --------------------------------------------------*/
+/* Read serialized mouse paths without the legacy GetMyRegStr ACP output boundary.
+   Legacy decoding is read-only; running an action never migrates the INI. */
+static BOOL mouse_read_path(const char* key, WCHAR* value, int count)
+{
+    WCHAR path[MAX_PATH];
+    char raw[4096];
+    size_t length;
+    value[0] = 0;
+    if (!MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, g_inifile, -1, path, _countof(path))) return FALSE;
+    if (!tc_begin_legacyW(path)) return FALSE;
+    tc_ini_utf8_read_string(g_inifile, reg_section, key, "", raw, sizeof(raw));
+    tc_ini_end();
+    length = strlen(raw);
+    if (length >= 2 && ((raw[0] == '"' && raw[length-1] == '"') || (raw[0] == '\'' && raw[length-1] == '\''))) {
+        memmove(raw, raw + 1, length - 2); raw[length - 2] = 0; length -= 2;
+    }
+    /* Match the page's complete 1023-byte setting contract; never run a prefix. */
+    if (length >= 1024) { SetLastError(ERROR_INSUFFICIENT_BUFFER); return FALSE; }
+    return MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, raw, -1, value, count) > 0;
+}
+
 void ExecuteMouseFunction(HWND hwnd, LONG fnc, int btn, int clk)
 {
 	if(fnc < 0)
 	{
-		fnc = GetMouseFuncNum(btn, clk);
-		if(fnc < 0) return;
+        MOUSE_BINDING binding;
+        if(!mouse_get_binding(btn,clk,1,&binding)||binding.action.kind==IB_OPAQUE)return;
+        if(binding.action.kind==IB_DLL){MOUSE_INPUT input={0};
+            /* DLL hotkeys require their acceptance snapshot, never a late numeric notification. */
+            if(btn==MOUSE_HOTKEY_INDEX)return;input.binding=binding;input.button=btn;input.click=clk;
+            if(mouse_accept_input(&input,hwnd,FALSE))mouse_run_input(&input);return;
+        }
+        fnc=GetMouseFuncNum(btn,clk);if(fnc<0)return;
 	}
 	switch (fnc)
 	{
@@ -1022,24 +1247,21 @@ void ExecuteMouseFunction(HWND hwnd, LONG fnc, int btn, int clk)
 		}
 		case MOUSEFUNC_OPENFILE:
 		{
-			char fname[1024];
+			WCHAR command[1024];
 			char entry[32];
 			GetMouseFileEntry(btn, clk, entry, (int)sizeof(entry));
-			GetMyRegStr(reg_section, entry, fname, 1024, "");
-			if(fname[0]) ExecFile(hwnd, fname);
+			if (mouse_read_path(entry, command, _countof(command)) && command[0]) ExecFileW(hwnd, command);
 			break;
 		}
 		case MOUSEFUNC_CUSTOMPROGRAM:
 		{
-			char file[1024];
-			char workdir[1024];
+			WCHAR file[1024], workdir[MAX_PATH];
 			char entry[32];
 			GetMouseFileEntry(btn, clk, entry, (int)sizeof(entry));
-			GetMyRegStr(reg_section, entry, file, (int)sizeof(file), "");
+			if (!mouse_read_path(entry, file, _countof(file))) break;
 			GetMouseWorkDirEntry(btn, clk, entry, (int)sizeof(entry));
-			GetMyRegStr(reg_section, entry, workdir, (int)sizeof(workdir), "");
-			if (file[0])
-				ShellExecuteUtf8Strict(hwnd, "open", file, NULL, workdir[0] ? workdir : NULL, SW_SHOWNORMAL);
+			if (!mouse_read_path(entry, workdir, _countof(workdir))) break;
+			if (file[0]) ShellExecuteW(hwnd, L"open", file, NULL, workdir[0] ? workdir : NULL, SW_SHOWNORMAL);
 			break;
 		}
 		case MOUSEFUNC_FILELIST:
@@ -1167,17 +1389,28 @@ void ExecuteMouseFunction(HWND hwnd, LONG fnc, int btn, int clk)
 /*------------------------------------------------
    mouse timer event
 --------------------------------------------------*/
+void OnTimerMouseEvent(HWND hwnd)
+{
+	if (timer && GetTickCount64() >= mouse_timer_deadline) OnTimerMouse(hwnd);
+}
+
 void OnTimerMouse(HWND hwnd)
 {
-	int button;
-	LONG fnc;
-
-	button = exec_button;
-	if(timer) KillTimer(hwnd, IDTIMER_MOUSE); timer = FALSE;
-	fnc = exec_zone_active ? exec_zone_func : -1;
-
-	ExecuteMouseFunction(hwnd, fnc, button, num_click);
-	mouse_zone_reset();
+	int button = exec_button;
+	LONG function;
+	ULONG_PTR control = mouse_control;
+	if (!exec_zone_active) return;
+	if (timer) KillTimer(hwnd, IDTIMER_MOUSE);
+	timer = FALSE;
+	if (mouse_pending.binding.action.kind == IB_DLL) {
+		MOUSE_INPUT input = mouse_pending;
+		mouse_zone_reset(); /* Consume before callbacks so newly accepted nested work survives. */
+		mouse_run_input(&input);
+		return;
+	}
+	function = exec_zone_func;
+	ExecuteMouseFunction(hwnd, function, button, num_click);
+	if (mouse_control == control) mouse_zone_reset();
 }
 
 int GetMouseFuncNum(int button, int nclick)

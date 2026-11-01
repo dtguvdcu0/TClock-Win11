@@ -773,10 +773,11 @@ static void wui_forward_mouse(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	if (!g_wuiTarget || !IsWindow(g_wuiTarget)) return;
 	point.x = (int)(short)LOWORD(lParam);
 	point.y = (int)(short)HIWORD(lParam);
+    /* Wheel coordinates are already in screen space. */
 	if (msg != WM_MOUSEWHEEL && msg != WM_MOUSEHWHEEL) {
 		ClientToScreen(hwnd, &point);
+		ScreenToClient(g_wuiTarget, &point);
 	}
-	ScreenToClient(g_wuiTarget, &point);
 	SendMessageW(g_wuiTarget, msg, wParam, MAKELPARAM(point.x, point.y));
 }
 

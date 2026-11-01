@@ -865,16 +865,72 @@ static void fs_assign_item(TC_FS_ITEM* item, const TC_FS_RULE* rule, const TC_FS
 	TcFormatStyleMerge(&item->style, declaration);
 }
 
+static BOOL fs_validate_text(const WCHAR* text, int length)
+{
+    int i;
+    for (i = 0; i < length; i++) {
+        WCHAR ch = text[i];
+        if (!ch) return FALSE;
+        if (ch >= 0xD800 && ch <= 0xDBFF) {
+            if (++i >= length || text[i] < 0xDC00 || text[i] > 0xDFFF) return FALSE;
+        }
+        else if (ch >= 0xDC00 && ch <= 0xDFFF) return FALSE;
+    }
+    return TRUE;
+}
+
+static BOOL fs_validate_style(const TC_FS_STYLE* style)
+{
+    int length;
+    if ((style->setMask & ~0x000001FFu) || style->valueStart || style->valueLength) return FALSE;
+    if ((style->setMask & TC_FS_PROP_FORE_COLOR) && (style->foreColor & 0xFF000000u)) return FALSE;
+    if ((style->setMask & TC_FS_PROP_SHADOW_COLOR) && (style->shadowColor & 0xFF000000u)) return FALSE;
+    if ((style->setMask & TC_FS_PROP_FONT_SIZE) && (style->fontSize < 5 || style->fontSize > 256)) return FALSE;
+    if ((style->setMask & TC_FS_PROP_SHADOW_RANGE) && (style->shadowRange < 0 || style->shadowRange > 10)) return FALSE;
+    if ((style->setMask & TC_FS_PROP_BOLD) && style->bold > 1) return FALSE;
+    if ((style->setMask & TC_FS_PROP_ITALIC) && style->italic > 1) return FALSE;
+    if ((style->setMask & TC_FS_PROP_SHADOW) && style->shadow > 1) return FALSE;
+    if ((style->setMask & TC_FS_PROP_BORDER) && style->border > 1) return FALSE;
+    if (style->setMask & TC_FS_PROP_FONT) {
+        for (length = 0; length < LF_FACESIZE && style->fontFace[length]; length++) {}
+        if (!length || length == LF_FACESIZE || !fs_validate_text(style->fontFace, length)) return FALSE;
+    }
+    return TRUE;
+}
+
+BOOL TcFormatStyleValidateFrame(const WCHAR* text, int textLength, const TC_FORMAT_SPANS* spans)
+{
+    int i, previousEnd = 0;
+    if (!text || textLength < 0 || textLength >= TC_FS_TEXT_CCH || text[textLength] ||
+        !spans || spans->overflow || (spans->resolved != FALSE && spans->resolved != TRUE) ||
+        spans->count < 0 || spans->count > TC_FORMAT_MAX_SPANS || !fs_validate_text(text, textLength)) return FALSE;
+    for (i = 0; i < spans->count; i++) {
+        const TC_FORMAT_SPAN* span = &spans->items[i];
+        int length, end;
+        if (span->start < previousEnd || span->length < 0 || span->start > textLength ||
+            span->length > textLength - span->start) return FALSE;
+        end = span->start + span->length;
+        /* A token boundary cannot bisect a UTF-16 surrogate pair. */
+        if ((span->start < textLength && text[span->start] >= 0xDC00 && text[span->start] <= 0xDFFF) ||
+            (end < textLength && text[end] >= 0xDC00 && text[end] <= 0xDFFF)) return FALSE;
+        for (length = 0; length < TC_FS_SELECTOR_CCH && span->selector[length]; length++) {}
+        if (!length || length == TC_FS_SELECTOR_CCH || !TcFormatStyleIdentifier(span->selector)) return FALSE;
+        /* Style-only callers may leave occurrence and zone unspecified (zero). */
+        if (span->occurrence < 0 || span->occurrence > i || (span->zone != 0 && span->zone != 1 &&
+            span->zone != 2 && span->zone != 4 && span->zone != 8) || !fs_validate_style(&span->style)) return FALSE;
+        previousEnd = end;
+    }
+    return TRUE;
+}
+
 static BOOL fs_resolve_items(const TC_FS_RULESET* ruleset, const WCHAR* text,
 	int textLength, const TC_FORMAT_SPANS* spans, TC_FS_FRAME* frame)
 {
 	int r, b, t, i;
-	if (!text || textLength < 0 || !spans || spans->overflow || spans->count < 0 || spans->count > TC_FORMAT_MAX_SPANS) return FALSE;
+	if (!TcFormatStyleValidateFrame(text, textLength, spans)) return FALSE;
 	for (i = 0; i < spans->count; i++) {
 		const TC_FORMAT_SPAN* span = &spans->items[i];
 		TC_FS_ITEM* item = &frame->items[i];
-		if (span->start < 0 || span->length < 0 || span->start > textLength || span->length > textLength - span->start ||
-			(i > 0 && span->start < spans->items[i - 1].start + spans->items[i - 1].length)) return FALSE;
 		item->selector = span->selector;
 		item->value = text + span->start;
 		item->length = span->length;
@@ -947,10 +1003,10 @@ BOOL TcFormatStyleTransform(const TC_FS_RULESET* ruleset, WCHAR* text, int capac
 	BOOL ok = FALSE;
 	int length, i, used = 0, source = 0;
 	if (!text || !info || !spans || capacity <= 0 || capacity > TC_FS_TEXT_CCH) return FALSE;
-	/* A cached frame is final: never evaluate its assignments twice. */
-	if (spans->resolved) return TRUE;
 	for (length = 0; length < capacity && text[length]; length++) {}
 	if (length == capacity) return FALSE;
+	/* A cached frame is final, but must pass the same validation as a raw frame. */
+	if (spans->resolved) return TcFormatStyleValidateFrame(text, length, spans);
 	frame = (TC_FS_FRAME*)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*frame));
 	if (!frame) return FALSE;
 	if (!fs_resolve_items(ruleset, text, length, spans, frame)) goto done;
@@ -979,6 +1035,7 @@ BOOL TcFormatStyleTransform(const TC_FS_RULESET* ruleset, WCHAR* text, int capac
 	frame->text[used] = L'\0';
 	frame->info[used] = '\0';
 	frame->spans.resolved = TRUE;
+	if (!TcFormatStyleValidateFrame(frame->text, used, &frame->spans)) goto done;
 	CopyMemory(text, frame->text, (SIZE_T)(used + 1) * sizeof(WCHAR));
 	CopyMemory(info, frame->info, (SIZE_T)(used + 1));
 	*spans = frame->spans;

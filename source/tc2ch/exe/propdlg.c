@@ -7,14 +7,53 @@
 #include "tclock.h"
 #include "..\common\text_codec.h"
 #include <shobjidl.h>
+#include <stdio.h>
 
 #include "../common/analog_skin.h"
 #include "../common/chime_schedule.h"
 #include "../common/ini_io_utf8.h"
 #include "plugin_runtime.h"
+#include "../common/page_api.h"
 #define PL_PLUGIN_FIRST 22
-#define PL_PLUGIN_TREE 200
-#define MAX_PAGE (PL_PLUGIN_FIRST + PRT_PAGE_CAPACITY)
+#define PL_PLUGIN_TREE PRT_PAGE_TREE_BASE
+#define PL_RETRY_ROW (-2)
+#define WM_TCLOCK_PLUGIN_SYNC (WM_APP + 73)
+/* Page UI slots stay stable while callbacks and tree notifications are active. */
+#define MAX_PAGE (PL_PLUGIN_FIRST + pl_slot_count)
+typedef struct PL_SLOT { HWND window; BOOL created; HTREEITEM child; ULONGLONG token; } PL_SLOT;
+#define PL_SLOT_BLOCK 32
+static PL_SLOT** pl_blocks;
+static int pl_slot_count, pl_block_count;
+static HTREEITEM pl_error_row;
+static BOOL pl_syncing, pl_title_warning, pl_deferred_failed;
+static ULONGLONG dialogGeneration;
+static WCHAR pl_title[512];
+extern BOOL b_EnglishMenu;
+static void pl_warn_title(HWND dialog) {
+    if (SetWindowTextW(dialog, b_EnglishMenu ? L"Some plugin pages unavailable - reopen settings to retry" :
+        L"\u4e00\u90e8\u306e\u30d7\u30e9\u30b0\u30a4\u30f3\u30da\u30fc\u30b8\u3092\u8868\u793a\u3067\u304d\u307e\u305b\u3093 - \u8a2d\u5b9a\u3092\u958b\u304d\u76f4\u3057\u3066\u518d\u8a66\u884c")) pl_title_warning = TRUE;
+}
+static PL_SLOT* pl_slot(int index) { return &pl_blocks[index / PL_SLOT_BLOCK][index % PL_SLOT_BLOCK]; }
+static BOOL pl_reserve(int count) {
+    while (pl_slot_count < count) {
+        int block = pl_slot_count / PL_SLOT_BLOCK;
+        if (block >= pl_block_count) {
+            PL_SLOT** grown; SIZE_T bytes = ((SIZE_T)block + 1) * sizeof(*grown);
+            if (pl_blocks) grown = (PL_SLOT**)HeapReAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, pl_blocks, bytes);
+            else grown = (PL_SLOT**)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, bytes);
+            if (!grown) return FALSE; pl_blocks = grown; pl_block_count = block + 1;
+        }
+        if (!pl_blocks[block]) {
+            pl_blocks[block] = (PL_SLOT*)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, PL_SLOT_BLOCK * sizeof(PL_SLOT));
+            if (!pl_blocks[block]) return FALSE;
+        }
+        ++pl_slot_count;
+    }
+    return TRUE;
+}
+static HWND* pl_window(HWND* builtins, int index) {return index < PL_PLUGIN_FIRST ? &builtins[index] : &pl_slot(index - PL_PLUGIN_FIRST)->window;}
+static BOOL* pl_created(BOOL* builtins, int index) {return index < PL_PLUGIN_FIRST ? &builtins[index] : &pl_slot(index - PL_PLUGIN_FIRST)->created;}
+static HTREEITEM pl_child(HTREEITEM* builtins, int index) {return index < PL_PLUGIN_FIRST ? builtins[index] : pl_slot(index - PL_PLUGIN_FIRST)->child;}
 #include "plugin_registry.h"
 #define WM_TCLOCK_APPLY_REFRESH (WM_APP + 101)
 
@@ -62,6 +101,7 @@ BOOL g_bApplyClock = FALSE;
 BOOL g_bApplyTaskbar = FALSE;
 BOOL g_bApplyLangDLL = FALSE;
 static LONG g_inApplyDispatch = 0;
+static LONG g_propdlgCancelPending = 0;
 static LONG g_refreshDispatchQueued = 0;
 static LONG g_propdlgCommandDepth = 0;
 static LONG g_propdlgNotifyDepth = 0;
@@ -69,7 +109,6 @@ static LONG g_propdlgNotifyDepth = 0;
 // menu.c
 extern HMENU g_hMenu;
 
-extern BOOL b_EnglishMenu;
 extern BOOL b_NormalLog;
 extern int Language_Offset;
 
@@ -189,6 +228,35 @@ static VOID CreatePageDialog(HWND hParent, HWND hDlg[], BOOL bDlgFlg[], int inde
 	bDlgFlg[index] = hDlg[index] != NULL;
 }
 
+/* Settings entry substitution (tclock.page/1). The Chime entry's owner is resolved when it
+   is first opened in a dialog session and kept until the dialog closes, so a selection
+   change never replaces a page that may hold edits. An unavailable selection keeps the
+   built-in page and says so on the tree item; the stored selection itself is kept. */
+static int pl_chime_page = -1;
+static HWND pl_open_chime(HWND parent, HWND hDlg[], BOOL bDlgFlg[], HWND tree, HTREEITEM item)
+{
+    char raw[TC_PLUGIN_ID_CHARS * 3];
+    WCHAR owner[TC_PLUGIN_ID_CHARS] = L"";
+    if (bDlgFlg[7]) return NULL;
+    GetMyRegStr("Plugins", "Page.chime", raw, sizeof(raw), "");
+    if (!MultiByteToWideChar(CP_UTF8, 0, raw, -1, owner, TC_PLUGIN_ID_CHARS)) owner[0] = 0;
+    pl_chime_page = owner[0] ? prt_find_substitute(owner, TC_PAGE_TARGET_CHIME) : -1;
+    if (pl_chime_page >= 0) {
+        HWND page = prt_create_page(pl_chime_page, parent, b_EnglishMenu);
+        if (page) return page;
+        pl_chime_page = -1;
+    }
+    if (owner[0] && item) {
+        WCHAR label[128];
+        TVITEMW entry = { 0 };
+        swprintf_s(label, 128, b_EnglishMenu ? L"%ls (plugin page unavailable)" : L"%ls (\u30d7\u30e9\u30b0\u30a4\u30f3\u306e\u30da\u30fc\u30b8\u306f\u5229\u7528\u3067\u304d\u307e\u305b\u3093)", MyStringW(IDS_PROP_CHIME));
+        entry.mask = TVIF_TEXT;entry.hItem = item;entry.pszText = label;
+        SendMessageW(tree, TVM_SETITEMW, 0, (LPARAM)&entry);
+    }
+    CreatePageDialog(parent, hDlg, bDlgFlg, 7, GetSafeLanguageOffset() + IDD_PAGECHIME, PageChimeProc);
+    return NULL;
+}
+
 static VOID CreatePageDialogW(HWND hParent, HWND hDlg[], BOOL bDlgFlg[], int index, int wID, DLGPROC dlgprc)
 {
 	HINSTANCE hInst;
@@ -208,21 +276,47 @@ static VOID CreatePageDialogW(HWND hParent, HWND hDlg[], BOOL bDlgFlg[], int ind
 
 static void pl_sync_extensions(HWND tree, HTREEITEM children[])
 {
-    int i;HTREEITEM after = children[0];
-    for (i = 0; i < PRT_PAGE_CAPACITY; ++i) {
-        LPCWSTR label = prt_page_label(i, b_EnglishMenu);
+    int i, count = prt_page_count(); BOOL complete; HTREEITEM after = children[0];
+    ULONGLONG generation = dialogGeneration;
+#define PL_SYNC_CHECK() do {if (generation != dialogGeneration || !IsWindow(tree)) {if (generation == dialogGeneration) pl_syncing = FALSE;return;}} while (0)
+    if (pl_syncing) {if (!PostMessageW(GetParent(tree), WM_TCLOCK_PLUGIN_SYNC, 0, 0)) {pl_deferred_failed = TRUE;pl_warn_title(GetParent(tree));}return;}
+    pl_syncing = TRUE;pl_deferred_failed = FALSE;complete = pl_reserve(count);
+    for (i = 0; i < pl_slot_count; ++i) {
+        /* Substitution pages appear only in place of their built-in entry. */
+        PL_SLOT* slot = pl_slot(i); LPCWSTR label = prt_is_substitute(i) ? NULL : prt_page_label(i, b_EnglishMenu);
+        ULONGLONG token = label ? prt_page_token(i) : 0;
         if (label && label[0]) {
-            if (!children[PL_PLUGIN_FIRST+i]) {
+            if (!slot->child) {
                 TVINSERTSTRUCTW item = { 0 };
-                item.hParent = TreeView_GetParent(tree, children[0]);item.hInsertAfter = after;
+                item.hParent = TreeView_GetParent(tree, children[0]);PL_SYNC_CHECK();item.hInsertAfter = after;
                 item.item.mask = TVIF_TEXT | TVIF_PARAM;item.item.pszText = (LPWSTR)label;item.item.lParam = PL_PLUGIN_TREE+i;
-                children[PL_PLUGIN_FIRST+i] = (HTREEITEM)SendMessageW(tree, TVM_INSERTITEMW, 0, (LPARAM)&item);
+                {HTREEITEM inserted = (HTREEITEM)SendMessageW(tree, TVM_INSERTITEMW, 0, (LPARAM)&item);
+                PL_SYNC_CHECK();slot->child = inserted;}
+                if (slot->child) slot->token = token;else complete = FALSE;
+            } else {
+                TVITEMW item = { 0 };
+                item.mask = TVIF_TEXT;item.hItem = slot->child;item.pszText = (LPWSTR)label;
+                {BOOL updated = (BOOL)SendMessageW(tree, TVM_SETITEMW, 0, (LPARAM)&item);PL_SYNC_CHECK();if (updated) slot->token = token;else complete = FALSE;}
             }
-            after = children[PL_PLUGIN_FIRST+i];
-        } else if (children[PL_PLUGIN_FIRST+i]) {
-            TreeView_DeleteItem(tree, children[PL_PLUGIN_FIRST+i]);children[PL_PLUGIN_FIRST+i] = NULL;
+            if (slot->child) after = slot->child;
+        } else if (slot->child) {
+            if (prt_owns_page(i, slot->window)) after = slot->child;
+            else {BOOL removed = TreeView_DeleteItem(tree, slot->child);PL_SYNC_CHECK();
+                if (removed) {slot->child = NULL;slot->token = 0;}else {after = slot->child;complete = FALSE;}}
         }
     }
+    if (pl_deferred_failed) complete = FALSE;
+    if (!complete && !pl_error_row) {
+        TVINSERTSTRUCTW item = { 0 };
+        item.hParent = TreeView_GetParent(tree, children[0]);PL_SYNC_CHECK();item.hInsertAfter = after;
+        item.item.mask = TVIF_TEXT | TVIF_PARAM;item.item.lParam = PL_RETRY_ROW;
+        item.item.pszText = b_EnglishMenu ? L"Some plugin pages are unavailable. Select to retry." : L"\u4e00\u90e8\u306e\u30d7\u30e9\u30b0\u30a4\u30f3\u30da\u30fc\u30b8\u3092\u8868\u793a\u3067\u304d\u307e\u305b\u3093\u3002\u9078\u629e\u3057\u3066\u518d\u8a66\u884c\u3002";
+        {HTREEITEM inserted = (HTREEITEM)SendMessageW(tree, TVM_INSERTITEMW, 0, (LPARAM)&item);PL_SYNC_CHECK();pl_error_row = inserted;}
+        if (!pl_error_row) pl_warn_title(GetParent(tree));
+    } else if (complete && pl_error_row) {BOOL removed = TreeView_DeleteItem(tree, pl_error_row);PL_SYNC_CHECK();if (removed) pl_error_row = NULL;}
+    if (complete && pl_title_warning && SetWindowTextW(GetParent(tree), pl_title)) pl_title_warning = FALSE;
+    pl_syncing = FALSE;
+#undef PL_SYNC_CHECK
 }
 
 static VOID AdjustPropertyTreeHeight(HWND hTree)
@@ -254,10 +348,10 @@ static VOID AdjustPropertyTreeHeight(HWND hTree)
 INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
 	static HWND hTree;
-	static HWND hDlg[MAX_PAGE];
-	static BOOL bDlgFlg[MAX_PAGE];
+	static HWND hDlg[PL_PLUGIN_FIRST];
+	static BOOL bDlgFlg[PL_PLUGIN_FIRST];
 	static HWND *hNowDlg;
-	static HTREEITEM hParent[MAX_PAGE], hChild[MAX_PAGE];
+	static HTREEITEM hParent[PL_PLUGIN_FIRST], hChild[PL_PLUGIN_FIRST];
 	NM_TREEVIEW *pNMTV;
 //	HINSTANCE hInst;
 	static int nowDlg;
@@ -265,6 +359,7 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 
 	switch(message){
 		case WM_INITDIALOG:
+            ++dialogGeneration;
             SetWindowLongPtrW(hDwnd, GWL_STYLE,
                 GetWindowLongPtrW(hDwnd, GWL_STYLE) | WS_CLIPCHILDREN);
 			InitCommonControls();
@@ -273,6 +368,9 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 			AdjustPropertyTreeHeight(hTree);
             ZeroMemory(hDlg, sizeof(hDlg));ZeroMemory(bDlgFlg, sizeof(bDlgFlg));
             ZeroMemory(hParent, sizeof(hParent));ZeroMemory(hChild, sizeof(hChild));
+            for (i = 0; i < pl_slot_count; ++i) ZeroMemory(pl_slot(i), sizeof(PL_SLOT));
+            pl_error_row = NULL;pl_syncing = FALSE;pl_deferred_failed = FALSE;pl_title_warning = FALSE;pl_chime_page = -1;
+            GetWindowTextW(hDwnd, pl_title, (int)(sizeof(pl_title)/sizeof(pl_title[0])));
             prt_refresh();
             pl_tree(hTree, hParent, hChild);
             pl_sync_extensions(hTree, hChild);
@@ -287,7 +385,7 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 			}
 			//nowDlg = 0;
 			if (nowDlg == 21) CreatePageDialogW(hDwnd, hDlg, bDlgFlg, 21, GetSafeLanguageOffset() + IDD_PAGE_PLUGINS, PagePluginsProc);
-			hNowDlg = &hDlg[nowDlg];
+			hNowDlg = pl_window(hDlg, nowDlg);
 			ShowWindow(*hNowDlg, SW_SHOW);
 			UpdateWindow(*hNowDlg);
 
@@ -309,6 +407,7 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 
 		case WM_NOTIFY:
 			{
+            ULONGLONG generation = dialogGeneration;
 			LONG notifyDepth = InterlockedIncrement(&g_propdlgNotifyDepth);
 			if (notifyDepth > 64) {
 								InterlockedDecrement(&g_propdlgNotifyDepth);
@@ -318,6 +417,24 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 			switch (pNMTV->hdr.code){
                 case TVN_SELCHANGINGA:
                 case TVN_SELCHANGINGW:
+                    if (pNMTV->itemNew.lParam == PL_RETRY_ROW) {
+                        if (!PostMessageW(hDwnd, WM_TCLOCK_PLUGIN_SYNC, 0, 0)) pl_warn_title(hDwnd);
+                        SetWindowLongPtrW(hDwnd, DWLP_MSGRESULT, TRUE);
+                        InterlockedDecrement(&g_propdlgNotifyDepth);return TRUE;
+                    }
+                    /* A displayed row must still name the registration it was built from. */
+                    if (pNMTV->itemNew.lParam >= PL_PLUGIN_TREE && pNMTV->itemNew.lParam < PL_PLUGIN_TREE + pl_slot_count) {
+                        int page = (int)pNMTV->itemNew.lParam - PL_PLUGIN_TREE;
+                        /* Clear only a cached window no longer owned by this page. */
+                        if ((*pl_created(bDlgFlg, PL_PLUGIN_FIRST+page)) && !prt_owns_page(page, (*pl_window(hDlg, PL_PLUGIN_FIRST+page)))) {
+                            (*pl_created(bDlgFlg, PL_PLUGIN_FIRST+page)) = FALSE;(*pl_window(hDlg, PL_PLUGIN_FIRST+page)) = NULL;
+                        }
+                        if (!(*pl_created(bDlgFlg, PL_PLUGIN_FIRST+page)) && (!pl_slot(page)->token || pl_slot(page)->token != prt_page_token(page))) {
+                            SetWindowLongPtrW(hDwnd, DWLP_MSGRESULT, TRUE);
+                            InterlockedDecrement(&g_propdlgNotifyDepth);
+                            return TRUE;
+                        }
+                    }
                     if (pNMTV->itemNew.lParam < 0) {
                         SetWindowLongPtrW(hDwnd, DWLP_MSGRESULT, TRUE);
                         InterlockedDecrement(&g_propdlgNotifyDepth);
@@ -369,7 +486,7 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 
 						case 6:
 							nowDlg = 16;
-							CreatePageDialog(hDwnd, hDlg, bDlgFlg, nowDlg, GetSafeLanguageOffset() + IDD_PAGEMOUSE, PageMouseProc);
+							CreatePageDialogW(hDwnd, hDlg, bDlgFlg, nowDlg, GetSafeLanguageOffset() + IDD_PAGEMOUSE, PageMouseProc);
 							break;
 
 						case 7:
@@ -428,25 +545,40 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 
 						case 107:
 							nowDlg = 7;
-							CreatePageDialog(hDwnd, hDlg, bDlgFlg, nowDlg, GetSafeLanguageOffset() + IDD_PAGECHIME, PageChimeProc);
+							{
+								HWND created = pl_open_chime(hDwnd, hDlg, bDlgFlg, hTree, hChild[7]);
+								/* The plugin callback may have closed or replaced this dialog. */
+								if (generation != dialogGeneration || !IsWindow(hDwnd)) {
+									InterlockedDecrement(&g_propdlgNotifyDepth);return TRUE;
+								}
+								if (created) {SetPageDlgPos(hDwnd, created);hDlg[7] = created;bDlgFlg[7] = TRUE;}
+							}
 							break;
 
                         default:
-                            if (nowDlg >= PL_PLUGIN_TREE && nowDlg < PL_PLUGIN_TREE + PRT_PAGE_CAPACITY) {
+                            if (nowDlg >= PL_PLUGIN_TREE && nowDlg < PL_PLUGIN_TREE + pl_slot_count) {
                                 int page = nowDlg - PL_PLUGIN_TREE;nowDlg = PL_PLUGIN_FIRST + page;
-                                if (!bDlgFlg[nowDlg]) {
-                                    hDlg[nowDlg] = prt_create_page(page, hDwnd, b_EnglishMenu);
-                                    if (hDlg[nowDlg]) { SetPageDlgPos(hDwnd, hDlg[nowDlg]);bDlgFlg[nowDlg] = TRUE; }
+                                if ((*pl_created(bDlgFlg, nowDlg)) && !prt_owns_page(page, (*pl_window(hDlg, nowDlg)))) {(*pl_created(bDlgFlg, nowDlg)) = FALSE;(*pl_window(hDlg, nowDlg)) = NULL;}
+                                if (!(*pl_created(bDlgFlg, nowDlg)) && pl_slot(page)->token && pl_slot(page)->token == prt_page_token(page)) {
+                                    int slot = nowDlg;HWND created = prt_create_page(page, hDwnd, b_EnglishMenu);
+                                    if (generation != dialogGeneration || !IsWindow(hDwnd)) {
+                                        HWND current = g_hwndPropDlg;
+                                        if (current && IsWindow(current) && !PostMessageW(current, WM_TCLOCK_PLUGIN_SYNC, 0, 0))
+                                            SendMessageW(current, WM_TCLOCK_PLUGIN_SYNC, 0, 0);
+                                        InterlockedDecrement(&g_propdlgNotifyDepth);return TRUE;
+                                    }
+                                    (*pl_window(hDlg, slot)) = created;
+                                    if (created) { SetPageDlgPos(hDwnd, created);(*pl_created(bDlgFlg, slot)) = TRUE; }
                                 }
-                                if (!hDlg[nowDlg]) nowDlg = 0;
+                                if (!(*pl_window(hDlg, nowDlg))) nowDlg = 0;
                                 break;
                             }
 							//nowDlg -= 10;
 							nowDlg = 0;
 							break;
 					}
-                    if (!hDlg[nowDlg]) nowDlg = previous ? previousPage : 0;
-					hNowDlg = &hDlg[nowDlg];
+                    if (!(*pl_window(hDlg, nowDlg))) nowDlg = previous ? previousPage : 0;
+					hNowDlg = pl_window(hDlg, nowDlg);
                     if (*hNowDlg) {
                         SetWindowPos(*hNowDlg, HWND_TOP, 0, 0, 0, 0,
                             SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
@@ -470,6 +602,12 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 										InterlockedDecrement(&g_propdlgCommandDepth);
 					break;
 				}
+            /* Keep the dialog alive until an in-flight apply callback returns. */
+            if (LOWORD(wParam) == IDCANCEL && g_inApplyDispatch) {
+                InterlockedExchange(&g_propdlgCancelPending, 1);
+                InterlockedDecrement(&g_propdlgCommandDepth);
+                break;
+            }
 			// apply settings
 			if(LOWORD(wParam) == IDOK || LOWORD(wParam) == ID_APPLY)
 			{
@@ -484,53 +622,74 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 					lp.code = PSN_APPLY;
 					/* INI switch: [ETC] ApplyActivePageOnly=1 keeps active-page-only apply. */
 					applyActiveOnly = GetMyRegLong("ETC", "ApplyActivePageOnly", 0) ? 1 : 0;
-					if (hDlg[20] && IsWindow(hDlg[20]) && (!applyActiveOnly || nowDlg == 20) &&
-                        !SendMessageW(hDlg[20], ACS_VALIDATE, 0, 0)) {
+					if ((*pl_window(hDlg, 20)) && IsWindow((*pl_window(hDlg, 20))) && (!applyActiveOnly || nowDlg == 20) &&
+                        !SendMessageW((*pl_window(hDlg, 20)), ACS_VALIDATE, 0, 0)) {
                         TreeView_SelectItem(hTree, hChild[20]);
                         InterlockedExchange(&g_inApplyDispatch, 0);
                         InterlockedDecrement(&g_propdlgCommandDepth);
                         break;
                     }
-                    if (hDlg[7] && IsWindow(hDlg[7]) && (!applyActiveOnly || nowDlg == 7) &&
-                        !SendMessageW(hDlg[7], CHM_VALIDATE, 0, 0)) {
+                    if (pl_chime_page < 0 && (*pl_window(hDlg, 7)) && IsWindow((*pl_window(hDlg, 7))) && (!applyActiveOnly || nowDlg == 7) &&
+                        !SendMessageW((*pl_window(hDlg, 7)), CHM_VALIDATE, 0, 0)) {
                         TreeView_SelectItem(hTree, hChild[7]);
                         InterlockedExchange(&g_inApplyDispatch, 0);
                         InterlockedDecrement(&g_propdlgCommandDepth);
                         break;
                     }
+                    /* Commit mouse edits before callbacks or other page writes. */
+                    if ((*pl_window(hDlg, 16)) && IsWindow((*pl_window(hDlg, 16))) && (!applyActiveOnly || nowDlg == 16) &&
+                        !SendMessageW((*pl_window(hDlg, 16)), MOUSE_COMMIT, 0, 0)) {
+                        TreeView_SelectItem(hTree, hParent[6]);
+                        InterlockedExchange(&g_inApplyDispatch, 0);
+                        InterlockedDecrement(&g_propdlgCommandDepth);
+                        break;
+                    }
+                    /* A substituted Chime page applies through its plugin; a denied save keeps the
+                       dialog open with the edits. If the plugin went away, the built-in page
+                       is created the next time the entry is opened. */
+                    if (pl_chime_page >= 0 && hDlg[7] && (!applyActiveOnly || nowDlg == 7)) {
+                        if (!prt_owns_page(pl_chime_page, hDlg[7])) {hDlg[7] = NULL;bDlgFlg[7] = FALSE;pl_chime_page = -1;}
+                        else if (!prt_apply_page(pl_chime_page, hDlg[7])) {
+                            TreeView_SelectItem(hTree, hChild[7]);
+                            InterlockedExchange(&g_inApplyDispatch, 0);
+                            InterlockedDecrement(&g_propdlgCommandDepth);
+                            break;
+                        }
+                    }
                     for (pageIdx = PL_PLUGIN_FIRST; pageIdx < MAX_PAGE; ++pageIdx) {
-                        if (hDlg[pageIdx] && (!applyActiveOnly || nowDlg == pageIdx) &&
-                            !prt_apply_page(pageIdx - PL_PLUGIN_FIRST, hDlg[pageIdx])) break;
+                        if ((*pl_window(hDlg, pageIdx)) && !prt_owns_page(pageIdx - PL_PLUGIN_FIRST, (*pl_window(hDlg, pageIdx)))) {(*pl_window(hDlg, pageIdx)) = NULL;(*pl_created(bDlgFlg, pageIdx)) = FALSE;}
+                        if ((*pl_window(hDlg, pageIdx)) && (!applyActiveOnly || nowDlg == pageIdx) &&
+                            !prt_apply_page(pageIdx - PL_PLUGIN_FIRST, (*pl_window(hDlg, pageIdx)))) break;
                     }
                     if (pageIdx < MAX_PAGE) {
-                        TreeView_SelectItem(hTree, hChild[pageIdx]);
+                        TreeView_SelectItem(hTree, pl_child(hChild, pageIdx));
                         InterlockedExchange(&g_inApplyDispatch, 0);
                         InterlockedDecrement(&g_propdlgCommandDepth);
                         break;
                     }
                     /* Commit the menu first so a failed atomic save cannot close OK or write other pages. */
-                    if (hDlg[19] && IsWindow(hDlg[19]) && (!applyActiveOnly || nowDlg == 19) &&
-                        !SendMessageW(hDlg[19], RM_COMMIT, 0, 0)) {
+                    if ((*pl_window(hDlg, 19)) && IsWindow((*pl_window(hDlg, 19))) && (!applyActiveOnly || nowDlg == 19) &&
+                        !SendMessageW((*pl_window(hDlg, 19)), RM_COMMIT, 0, 0)) {
                         InterlockedExchange(&g_inApplyDispatch, 0);
                         InterlockedDecrement(&g_propdlgCommandDepth);
                         break;
                     }
-                    if (hDlg[21] && IsWindow(hDlg[21]) && (!applyActiveOnly || nowDlg == 21) &&
-                        !SendMessageW(hDlg[21], PPG_COMMIT, 0, 0)) {
+                    if ((*pl_window(hDlg, 21)) && IsWindow((*pl_window(hDlg, 21))) && (!applyActiveOnly || nowDlg == 21) &&
+                        !SendMessageW((*pl_window(hDlg, 21)), PPG_COMMIT, 0, 0)) {
                         InterlockedExchange(&g_inApplyDispatch, 0);
                         InterlockedDecrement(&g_propdlgCommandDepth);
                         break;
                     }
-                    if (nowDlg == 21) pl_sync_extensions(hTree, hChild);
+                    if (nowDlg == 21 || (!applyActiveOnly && (*pl_window(hDlg, 21)) && IsWindow((*pl_window(hDlg, 21))))) pl_sync_extensions(hTree, hChild);
 					if (applyActiveOnly) {
-						if (hNowDlg && *hNowDlg && IsWindow(*hNowDlg)) {
+						if (nowDlg != 16 && !(nowDlg == 7 && pl_chime_page >= 0) && hNowDlg && *hNowDlg && IsWindow(*hNowDlg)) {
 							SendMessage(*hNowDlg, WM_NOTIFY, 0, (LPARAM)&lp);
 						}
 					}
 					else {
 						for (pageIdx = 0; pageIdx < MAX_PAGE; ++pageIdx) {
-							if (hDlg[pageIdx] && IsWindow(hDlg[pageIdx])) {
-								SendMessage(hDlg[pageIdx], WM_NOTIFY, 0, (LPARAM)&lp);
+							if (pageIdx != 16 && !(pageIdx == 7 && pl_chime_page >= 0) && (*pl_window(hDlg, pageIdx)) && IsWindow((*pl_window(hDlg, pageIdx)))) {
+								SendMessage((*pl_window(hDlg, pageIdx)), WM_NOTIFY, 0, (LPARAM)&lp);
 							}
 						}
 					}
@@ -576,7 +735,7 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 					}
 				}
 				for (i = 0; i < MAX_PAGE; i++) {
-					bDlgFlg[i] = FALSE;
+					(*pl_created(bDlgFlg, i)) = FALSE;
 				}
 				DestroyWindow(hDwnd);
 				g_hwndPropDlg = NULL;
@@ -597,6 +756,10 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 			}
 			break;
 
+        case WM_TCLOCK_PLUGIN_SYNC:
+            pl_sync_extensions(hTree, hChild);
+            break;
+
 		case WM_TCLOCK_APPLY_REFRESH:
 			if (InterlockedExchange(&g_refreshDispatchQueued, 0) != 0) {
 				PostMessage(g_hwndClock, CLOCKM_REFRESHCLOCK, 0, 0);
@@ -611,6 +774,11 @@ INT_PTR CALLBACK PropertyDialog(HWND hDwnd, UINT message, WPARAM wParam, LPARAM 
 			break;
 	}
 
+    if (!g_inApplyDispatch && !g_propdlgCommandDepth &&
+        InterlockedExchange(&g_propdlgCancelPending, 0)) {
+        if (g_hwndPropDlg == hDwnd && IsWindow(hDwnd))
+            SendMessageW(hDwnd, WM_COMMAND, IDCANCEL, 0);
+    }
 	return 0;
 }
 

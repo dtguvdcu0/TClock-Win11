@@ -7,6 +7,7 @@
 #include <pdh.h>
 #include <pdhmsg.h>
 #include "tcdll.h"
+#include "format_collect.h"
 
 #define MAX_DISKRATE_DRIVE 26
 
@@ -19,6 +20,8 @@ static PDH_HCOUNTER hDiskRateWrite[MAX_DISKRATE_DRIVE] = { NULL };
 static PDH_HCOUNTER hDiskRateTotal[MAX_DISKRATE_DRIVE] = { NULL };
 static BOOL bDiskRateRegistered[MAX_DISKRATE_DRIVE] = { FALSE };
 static int countDiskRateRegistered = 0;
+static BOOL bDiskRateRetiring[MAX_DISKRATE_DRIVE];
+static BOOL bDiskRateLegacy[MAX_DISKRATE_DRIVE];
 
 static HMODULE hmodPDH = NULL;
 static PDH_HQUERY hQueryDiskRate = NULL;
@@ -50,6 +53,7 @@ static void DiskRate_clear_slot(int index)
 	hDiskRateWrite[index] = NULL;
 	hDiskRateTotal[index] = NULL;
 	bDiskRateRegistered[index] = FALSE;
+	bDiskRateRetiring[index] = FALSE;
 }
 
 static void DiskRate_clear_all(void)
@@ -59,46 +63,51 @@ static void DiskRate_clear_all(void)
 		DiskRate_clear_slot(i);
 	}
 	countDiskRateRegistered = 0;
+	ZeroMemory(bDiskRateLegacy,sizeof(bDiskRateLegacy));
+}
+
+static BOOL DiskRate_retire_slot(int index)
+{
+    PDH_HCOUNTER* handles[3]={&hDiskRateRead[index],&hDiskRateWrite[index],&hDiskRateTotal[index]};
+    int i;BOOL complete=TRUE;
+    /* A failed removal retains its exact handle and suppresses all slot reads.
+       Retry before re-registering, including partial-add rollback. */
+    bDiskRateRetiring[index]=TRUE;
+    diskRateRead[index]=diskRateWrite[index]=diskRateTotal[index]=0.0;
+    for (i=0;i<3;i++) if (*handles[i]) {
+        if (pPdhRemoveCounter && pPdhRemoveCounter(*handles[i])==ERROR_SUCCESS) *handles[i]=NULL;
+        else complete=FALSE;
+    }
+    if (!complete) return FALSE;
+    if (bDiskRateRegistered[index]) --countDiskRateRegistered;
+    DiskRate_clear_slot(index);
+    return TRUE;
+}
+BOOL DiskRate_pending(void)
+{
+    int i;
+    for (i=0;i<MAX_DISKRATE_DRIVE;i++) if (bDiskRateRetiring[i]) return TRUE;
+    return FALSE;
 }
 
 static BOOL DiskRate_try_register(int index)
 {
-	wchar_t counterName[64];
-	PDH_HCOUNTER hRead = NULL;
-	PDH_HCOUNTER hWrite = NULL;
-	PDH_HCOUNTER hTotal = NULL;
-	wchar_t driveLetter;
-
-	if (index < 0 || index >= MAX_DISKRATE_DRIVE) return FALSE;
-	if (bDiskRateRegistered[index]) return TRUE;
-	if (!hQueryDiskRate || !pPdhAddCounterW) return FALSE;
-	if (actdvl[index] != 1) return FALSE;
-
-	driveLetter = (wchar_t)(L'A' + index);
-
-	wsprintfW(counterName, L"\\LogicalDisk(%c:)\\Disk Read Bytes/sec", driveLetter);
-	if (pPdhAddCounterW(hQueryDiskRate, counterName, 0, &hRead) != ERROR_SUCCESS) return FALSE;
-
-	wsprintfW(counterName, L"\\LogicalDisk(%c:)\\Disk Write Bytes/sec", driveLetter);
-	if (pPdhAddCounterW(hQueryDiskRate, counterName, 0, &hWrite) != ERROR_SUCCESS) {
-		if (pPdhRemoveCounter && hRead) pPdhRemoveCounter(hRead);
-		return FALSE;
-	}
-
-	wsprintfW(counterName, L"\\LogicalDisk(%c:)\\Disk Bytes/sec", driveLetter);
-	if (pPdhAddCounterW(hQueryDiskRate, counterName, 0, &hTotal) != ERROR_SUCCESS) {
-		if (pPdhRemoveCounter && hRead) pPdhRemoveCounter(hRead);
-		if (pPdhRemoveCounter && hWrite) pPdhRemoveCounter(hWrite);
-		return FALSE;
-	}
-
-	hDiskRateRead[index] = hRead;
-	hDiskRateWrite[index] = hWrite;
-	hDiskRateTotal[index] = hTotal;
-	bDiskRateRegistered[index] = TRUE;
-	countDiskRateRegistered++;
-	if (b_DebugLog) writeDebugLog_Win10("[diskrate.c][DiskRate_try_register] registered drive index =", index);
-	return TRUE;
+    wchar_t counterName[64];wchar_t driveLetter;
+    if (index<0 || index>=MAX_DISKRATE_DRIVE) return FALSE;
+    if (bDiskRateRegistered[index]) return TRUE;
+    if (!hQueryDiskRate || !pPdhAddCounterW || bDiskRateRetiring[index]) return FALSE;
+    driveLetter=(wchar_t)(L'A'+index);
+    wsprintfW(counterName,L"\\LogicalDisk(%c:)\\Disk Read Bytes/sec",driveLetter);
+    if (pPdhAddCounterW(hQueryDiskRate,counterName,0,&hDiskRateRead[index])!=ERROR_SUCCESS) goto rollback;
+    wsprintfW(counterName,L"\\LogicalDisk(%c:)\\Disk Write Bytes/sec",driveLetter);
+    if (pPdhAddCounterW(hQueryDiskRate,counterName,0,&hDiskRateWrite[index])!=ERROR_SUCCESS) goto rollback;
+    wsprintfW(counterName,L"\\LogicalDisk(%c:)\\Disk Bytes/sec",driveLetter);
+    if (pPdhAddCounterW(hQueryDiskRate,counterName,0,&hDiskRateTotal[index])!=ERROR_SUCCESS) goto rollback;
+    bDiskRateRegistered[index]=TRUE;countDiskRateRegistered++;
+    if (b_DebugLog) writeDebugLog_Win10("[diskrate.c][DiskRate_try_register] registered drive index =",index);
+    return TRUE;
+rollback:
+    DiskRate_retire_slot(index);return FALSE;
 }
 
 static void DiskRate_read_counter(PDH_HCOUNTER counter, double* outValue)
@@ -118,6 +127,7 @@ static void DiskRate_read_counter(PDH_HCOUNTER counter, double* outValue)
 void DiskRate_start(void)
 {
 	if (hQueryDiskRate) DiskRate_end();
+	if (hQueryDiskRate) return; /* A failed close still owns this query. */
 	DiskRate_clear_all();
 
 	if (!hmodPDH) {
@@ -146,53 +156,42 @@ void DiskRate_start(void)
 	}
 }
 
-int DiskRate_get(void)
+static int DiskRate_poll(BOOL legacy)
 {
-	int i;
-
-	if (!hQueryDiskRate || !pPdhCollectQueryData) return -1;
-
-	for (i = 0; i < MAX_DISKRATE_DRIVE; i++) {
-		if (actdvl[i] == 1 && !bDiskRateRegistered[i]) {
-			DiskRate_try_register(i);
-		}
-		else if (actdvl[i] != 1 && !bDiskRateRegistered[i]) {
-			diskRateRead[i] = 0.0;
-			diskRateWrite[i] = 0.0;
-			diskRateTotal[i] = 0.0;
-		}
-	}
-
-	if (countDiskRateRegistered <= 0) return 0;
-	if (pPdhCollectQueryData(hQueryDiskRate) != ERROR_SUCCESS) return -1;
-
-	for (i = 0; i < MAX_DISKRATE_DRIVE; i++) {
-		if (!bDiskRateRegistered[i]) continue;
-		DiskRate_read_counter(hDiskRateRead[i], &diskRateRead[i]);
-		DiskRate_read_counter(hDiskRateWrite[i], &diskRateWrite[i]);
-		DiskRate_read_counter(hDiskRateTotal[i], &diskRateTotal[i]);
-	}
-
-	return 0;
+    int i;UINT provider=fcl_rate_drives();
+    if (!hQueryDiskRate || !pPdhCollectQueryData) return -1;
+    for (i=0;i<MAX_DISKRATE_DRIVE;i++) {
+        BOOL wanted;
+        if (legacy) bDiskRateLegacy[i]=actdvl[i]==1;
+        wanted=bDiskRateLegacy[i] || (provider & (1u << i));
+        if (bDiskRateRetiring[i] || !wanted) {
+            if (!DiskRate_retire_slot(i)) continue;
+        }
+        if (wanted && !bDiskRateRegistered[i]) DiskRate_try_register(i);
+    }
+    if (countDiskRateRegistered<=0) return 0;
+    if (pPdhCollectQueryData(hQueryDiskRate)!=ERROR_SUCCESS) return -1;
+    for (i=0;i<MAX_DISKRATE_DRIVE;i++) {
+        if (!bDiskRateRegistered[i] || bDiskRateRetiring[i]) continue;
+        DiskRate_read_counter(hDiskRateRead[i],&diskRateRead[i]);
+        DiskRate_read_counter(hDiskRateWrite[i],&diskRateWrite[i]);
+        DiskRate_read_counter(hDiskRateTotal[i],&diskRateTotal[i]);
+    }
+    return 0;
 }
+int DiskRate_get(void) {return DiskRate_poll(TRUE);}
+int DiskRate_sweep(void) {return DiskRate_poll(FALSE);}
 
 void DiskRate_end(void)
 {
-	DiskRate_clear_all();
-
-	if (hQueryDiskRate && pPdhCloseQuery) {
-		pPdhCloseQuery(hQueryDiskRate);
-	}
-	hQueryDiskRate = NULL;
-
-	if (hmodPDH) {
-		FreeLibrary(hmodPDH);
-		hmodPDH = NULL;
-	}
-	pPdhOpenQueryW = NULL;
-	pPdhAddCounterW = NULL;
-	pPdhCollectQueryData = NULL;
-	pPdhGetFormattedCounterValue = NULL;
-	pPdhRemoveCounter = NULL;
-	pPdhCloseQuery = NULL;
+    /* Failed close retains the exact query, handles and module for retry.
+       Start must not overwrite an owned query after such a failure. */
+    if (hQueryDiskRate) {
+        if (!pPdhCloseQuery || pPdhCloseQuery(hQueryDiskRate)!=ERROR_SUCCESS) return;
+        hQueryDiskRate=NULL;
+    }
+    DiskRate_clear_all();
+    if (hmodPDH) {FreeLibrary(hmodPDH);hmodPDH=NULL;}
+    pPdhOpenQueryW=NULL;pPdhAddCounterW=NULL;pPdhCollectQueryData=NULL;
+    pPdhGetFormattedCounterValue=NULL;pPdhRemoveCounter=NULL;pPdhCloseQuery=NULL;
 }

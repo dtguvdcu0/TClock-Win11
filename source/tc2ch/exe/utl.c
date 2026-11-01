@@ -5,6 +5,7 @@
 
 #include "tclock.h"
 #include "plugin_registry.h"
+#include "plugin_runtime.h"
 #include "..\common\ini_io_utf8.h"
 #include "..\common\text_codec.h"
 #include "..\common\color_value.h"
@@ -1193,6 +1194,16 @@ getmyregstr_done:
 /*------------------------------------------------
 　自分のレジストリからLONG値を得る
 --------------------------------------------------*/
+static LONG ini_read_number(const char* section, const char* entry, LONG fallback)
+{
+    WCHAR path[MAX_PATH], wideSection[128], wideKey[128];
+    /* The stored configuration path is UTF-8; legacy file contents do not make it an ACP path. */
+    if (tc_utf8_to_utf16(g_inifile, path, _countof(path)) <= 0 ||
+        tc_utf8_to_utf16(section, wideSection, _countof(wideSection)) <= 0 ||
+        tc_utf8_to_utf16(entry, wideKey, _countof(wideKey)) <= 0) return fallback;
+    return (LONG)GetPrivateProfileIntW(wideSection, wideKey, fallback, path);
+}
+
 LONG GetMyRegLong(const char* section, const char* entry, LONG defval)
 {
     if (!g_inifile[0]) return 0;
@@ -1289,12 +1300,12 @@ LONG GetMyRegLong(const char* section, const char* entry, LONG defval)
 			}
 			else {
 				/* Compatibility boundary: keep Win32 profile fallback for legacy non-UTF8 INI. */
-				r = GetPrivateProfileInt(key, entry, defval, g_inifile);
+				r = ini_read_number(key, entry, defval);
 			}
 		}
 		else {
 			/* Compatibility boundary: keep Win32 profile fallback for legacy non-UTF8 INI. */
-			r = GetPrivateProfileInt(key, entry, defval, g_inifile);
+			r = ini_read_number(key, entry, defval);
 		}
 	}
 
@@ -1451,6 +1462,9 @@ BOOL SetMyRegStr(const char* section, const char* entry, const char* val)
 		WriteDebug_New2(strLog);
 	}
 
+    /* Observe actual policy even if a legacy companion write reported failure. */
+    prt_note_setting(section,entry);
+    mouse_note_setting(section,entry);
 	return r;
 }
 
@@ -1545,6 +1559,9 @@ BOOL SetMyRegLong(const char* section, const char* entry, DWORD val)
 		WriteDebug_New2(strLog);
 	}
 
+    /* Observe actual policy even if a legacy companion write reported failure. */
+    prt_note_setting(section,entry);
+    mouse_note_setting(section,entry);
 	return r;
 }
 
@@ -1590,6 +1607,9 @@ BOOL DelMyReg(const char* section, const char* entry)
 	else if (tc_ini_utf8_delete_key(g_inifile, key, entry)) {
 		r = TRUE;
 	}
+    /* Observe actual policy even if a legacy companion write reported failure. */
+    prt_note_setting(section,entry);
+    mouse_note_setting(section,entry);
 	return r;
 }
 

@@ -5,16 +5,40 @@
 ---------------------------------------------*/
 
 #include "tclock.h"
+#include <stdio.h>
+#include "plugin_actions.h"
 
 #include "..\\common\\text_codec.h"
+#include "..\\common\\ini_io_utf8.h"
+#include "..\\common\\input_binding.h"
+
+typedef struct { char* data; DWORD used, capacity; } PM_BATCH;
+typedef struct { IB_ACTION action; BOOL edited, protectedAliases; char source[32]; } PM_ACTION;
+typedef struct { char key[IB_KEY_CHARS]; WCHAR label[600]; } PM_COMMAND;
+static PM_COMMAND* pm_commands;
+static int pm_command_count;
+#define PM_ACTION_ROW INT_MIN
+/* Serialized UTF-8 text: match the existing 1024-byte mouse execution input. */
+#define PM_TEXT_BYTES 1024
+static PM_ACTION pm_actions[28][4][3];
+static int pm_zone_initial[28][4];
+static BOOL pm_actions_ready;
+static BOOL pm_text_ready;
+static BYTE pm_edit_invalid[28][4][3];
+typedef struct { WCHAR* text; BOOL pending; } PM_DRAFT;
+static PM_DRAFT pm_drafts[28][4][3];
+static BOOL pm_restoring;
+static int pm_view_button = -1, pm_view_click = -1;
+static void pm_load_actions(void);
+static void pm_select_action(HWND hDlg, int control, int zone);
 
 static void OnInit(HWND hDlg);
-static void OnApply(HWND hDlg);
+static BOOL OnApply(HWND hDlg);
 static void OnDestroy(HWND hDlg);
 static void OnDropFilesChange(HWND hDlg);
 static void OnMouseButton(HWND hDlg);
 static void OnMouseClickTime(HWND hDlg, int id);
-static void OnMouseFunc(HWND hDlg);
+static void OnMouseFunc(HWND hDlg, BOOL selected);
 static void OnMouseFileChange(HWND hDlg);
 static void OnMouseWorkDirChange(HWND hDlg);
 static BOOL GetZoneSel(HWND hDlg, int *button, int *click);
@@ -26,7 +50,7 @@ static void OnZoneFileChange(HWND hDlg, WORD id);
 static void OnZoneWorkDirChange(HWND hDlg, WORD id);
 static void LoadZoneCurrent(HWND hDlg);
 static void SaveZoneCurrent(HWND hDlg);
-static void WriteMouseEntry(int button, int click);
+static BOOL pm_add_slot(PM_BATCH* batch, int button, int click);
 static BOOL HasZoneStringEntry(const char* entry);
 static BOOL HasRawZoneKeys(int button, int click);
 static BOOL HasCompatZoneKeys(int button, int click);
@@ -52,7 +76,6 @@ static int AlignLabelY(HWND hDlg, int label_id, int row_id, int row_y);
 static void LayoutMouseRows(HWND hDlg);
 static void LayoutZoneRows(HWND hDlg, BOOL show_zone, BOOL show_file, BOOL show_workdir, BOOL show_zone2, BOOL show_zone3);
 static void RefreshZoneControls(HWND hDlg);
-static void NormalizeUtf8InPlaceNoWriteback(char *text, int count);
 
 static char reg_section[] = "Mouse";
 
@@ -61,22 +84,22 @@ typedef struct {
 	int func[4];
 	WORD hotkey[4];
 	char format[4][256];
-	char fname[4][256];
+	char fname[4][PM_TEXT_BYTES];
 	int volume[4];
 } CLICKDATA;
 static CLICKDATA *pData = NULL;
 
 static int zone_count_map[28][4];
 static int zone_func_map[28][4][3];
-static char zone_file_map[28][4][3][256];
-static char zone_workdir_map[28][4][3][256];
+static char zone_file_map[28][4][3][PM_TEXT_BYTES];
+static char zone_workdir_map[28][4][3][PM_TEXT_BYTES];
 static int zone_count = 1;
 static int zone_func[3] = { MOUSEFUNC_NONE, MOUSEFUNC_NONE, MOUSEFUNC_NONE };
-static char zone_file[3][256];
-static char zone_workdir[3][256];
+static char zone_file[3][PM_TEXT_BYTES];
+static char zone_workdir[3][PM_TEXT_BYTES];
 static BOOL zone_dirty_map[28][4];
 static int dropfiles_initial = 0;
-static char dropfiles_app_initial[256];
+static char dropfiles_app_initial[PM_TEXT_BYTES];
 static BOOL dropfiles_dirty = FALSE;
 static BOOL dropfiles_app_dirty = FALSE;
 static BOOL rightclick_menu_initial = TRUE;
@@ -143,6 +166,291 @@ static void UpdatePathLabel(HWND hDlg, int labelId, int func)
 		return;
 	}
 	SetDlgItemTextUTF8Strict(hDlg, labelId, MyStringUTF8(IDS_FILE));
+}
+
+static BOOL pm_get_text(HWND hDlg, int control, char* output, int capacity)
+{
+    WCHAR wide[PM_TEXT_BYTES] = {0};
+    HWND target = GetDlgItem(hDlg, control);
+    int length;
+    if (!target) return FALSE;
+    length = GetWindowTextLengthW(target);
+    int bytes;
+    if (length >= (int)_countof(wide) || (int)GetDlgItemTextW(hDlg, control, wide, _countof(wide)) != length) return FALSE;
+    bytes = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, wide, -1, NULL, 0, NULL, NULL);
+    if (bytes <= 0 || bytes > capacity) return FALSE;
+    return WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, wide, -1, output, capacity, NULL, NULL) == bytes;
+}
+
+static void pm_clear_draft(int button, int click, int zone)
+{
+    PM_DRAFT* draft = &pm_drafts[button][click][zone];
+    if (draft->text) free(draft->text);
+    draft->text = NULL; draft->pending = FALSE;
+}
+
+static void pm_clear_drafts(void)
+{
+    int button, click, zone;
+    for (button = 0; button < 28; ++button) for (click = 0; click < 4; ++click)
+        for (zone = 0; zone < 3; ++zone) pm_clear_draft(button, click, zone);
+    pm_view_button = pm_view_click = -1; pm_restoring = FALSE;
+}
+
+static BOOL pm_store_draft(HWND hDlg, int control, int button, int click, int zone)
+{
+    PM_DRAFT* draft = &pm_drafts[button][click][zone];
+    HWND edit = GetDlgItem(hDlg, control);
+    WCHAR* text;
+    int length;
+    draft->pending = TRUE;
+    if (!edit || !IsWindow(edit)) return FALSE;
+    length = GetWindowTextLengthW(edit);
+    if (length < 0 || length == INT_MAX || (SIZE_T)length + 1 > (SIZE_T)-1 / sizeof(*text)) return FALSE;
+    text = malloc(((SIZE_T)length + 1) * sizeof(*text));
+    if (!text) return FALSE;
+    if (GetWindowTextW(edit, text, length + 1) != length || GetWindowTextLengthW(edit) != length) {
+        free(text); return FALSE;
+    }
+    if (draft->text) free(draft->text);
+    draft->text = text; draft->pending = FALSE;
+    return TRUE;
+}
+
+static BOOL pm_read_edit(HWND hDlg, int control, int zone, char* output, int capacity)
+{
+    int button, click;
+    if (pm_restoring || !GetZoneSel(hDlg, &button, &click)) return FALSE;
+    pm_edit_invalid[button][click][zone] = !pm_get_text(hDlg, control, output, capacity);
+    if (pm_edit_invalid[button][click][zone]) {
+        pm_store_draft(hDlg, control, button, click, zone); return FALSE;
+    }
+    pm_clear_draft(button, click, zone);
+    return TRUE;
+}
+
+static void pm_set_edit(HWND hDlg, int control, int zone, const char* value)
+{
+    int button, click;
+    BOOL restoring = pm_restoring;
+    PM_DRAFT* draft;
+    if (!GetZoneSel(hDlg, &button, &click)) return;
+    draft = &pm_drafts[button][click][zone];
+    if (pm_edit_invalid[button][click][zone] && draft->pending) return;
+    pm_restoring = TRUE;
+    if (pm_edit_invalid[button][click][zone] && draft->text)
+        SetDlgItemTextW(hDlg, control, draft->text);
+    else SetDlgItemTextUTF8Strict(hDlg, control, value);
+    pm_restoring = restoring;
+}
+
+static BOOL pm_leave_edits(HWND hDlg)
+{
+    const int controls[] = {IDC_MOUSEFILE, IDC_ZONE2FILE, IDC_ZONE3FILE};
+    int zone;
+    if (pm_view_button < 0 || pm_view_click < 0) return TRUE;
+    for (zone = 0; zone < 3; ++zone) {
+        if (!pm_edit_invalid[pm_view_button][pm_view_click][zone] ||
+            !pm_drafts[pm_view_button][pm_view_click][zone].pending ||
+            pm_store_draft(hDlg, controls[zone], pm_view_button, pm_view_click, zone)) continue;
+        SetMouseButtonSel(hDlg, pm_view_button);
+        CheckRadioButton(hDlg, IDC_RADSINGLE, IDC_RADQUADRUPLE, IDC_RADSINGLE + pm_view_click);
+        MessageBoxW(hDlg, b_EnglishMenu
+            ? L"Could not retain the current edit. Your input is kept here; correct it or retry before changing the input slot."
+            : L"\u7de8\u96c6\u5185\u5bb9\u3092\u4fdd\u6301\u3067\u304d\u307e\u305b\u3093\u3002\n\u5165\u529b\u306f\u3053\u306e\u753b\u9762\u306b\u6b8b\u3063\u3066\u3044\u307e\u3059\u3002\u5207\u308a\u66ff\u3048\u308b\u524d\u306b\u4fee\u6b63\u3059\u308b\u304b\u3001\u518d\u8a66\u884c\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
+            L"TClock", MB_OK | MB_ICONERROR);
+        SetFocus(GetDlgItem(hDlg, controls[zone]));
+        return FALSE;
+    }
+    return TRUE;
+}
+
+static void pm_read_text(const char* key, char* output, int capacity, const char* fallback)
+{
+    char raw[4096];
+    size_t length;
+    tc_ini_utf8_read_string(g_inifile, reg_section, key, fallback, raw, sizeof(raw));
+    length = strlen(raw);
+    /* Match the profile string contract once, without an ACP output roundtrip. */
+    if (length >= 2 && ((raw[0] == '"' && raw[length-1] == '"') || (raw[0] == '\'' && raw[length-1] == '\''))) {
+        memmove(raw, raw + 1, length - 2); raw[length - 2] = 0; length -= 2;
+    }
+    if (length >= (size_t)capacity || !MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, raw, -1, NULL, 0)) {
+        output[0] = 0; pm_text_ready = FALSE; return;
+    }
+    memcpy(output, raw, length + 1);
+}
+
+static BOOL pm_read_action(const char* key, IB_ACTION* action)
+{
+    char value[IB_RECORD_CHARS + 2];
+    tc_ini_utf8_read_string(g_inifile, reg_section, key, "\x1d", value, sizeof(value));
+    if (!strcmp(value, "\x1d")) {
+        /* Two defaults distinguish a missing key from a stored sentinel value. */
+        tc_ini_utf8_read_string(g_inifile, reg_section, key, "\x1e", value, sizeof(value));
+        if (!strcmp(value, "\x1e")) return FALSE;
+    }
+    if(strlen(value)>=sizeof(value)-1){ZeroMemory(action,sizeof(*action));action->kind=IB_OPAQUE;return TRUE;}
+    ib_parse_action(value, action);
+    if (action->kind == IB_BUILTIN && action->number < MOUSEFUNC_NONE && action->number != -32768)
+        action->kind = IB_OPAQUE;
+    return TRUE;
+}
+
+static void pm_load_actions(void)
+{
+    WCHAR path[MAX_PATH];
+    int button, click, zone, alias;
+    ZeroMemory(pm_actions, sizeof(pm_actions));
+    pm_actions_ready = FALSE;
+    if (tc_utf8_to_utf16(g_inifile, path, _countof(path)) <= 0 || !tc_begin_legacyW(path)) return;
+    for (button = 0; button < 28; ++button) for (click = 0; click < 4; ++click) {
+        pm_zone_initial[button][click] = zone_count_map[button][click];
+        for (zone = 0; zone < 3; ++zone) {
+            PM_ACTION* saved = &pm_actions[button][click][zone];
+            BOOL found = FALSE;
+            for (alias = 0; alias < 5; ++alias) {
+                IB_ACTION action;
+                char key[32];
+                if (alias == 0) {
+                    if (!zone) sprintf_s(key, sizeof(key), "%d%d", button, click + 1);
+                    else sprintf_s(key, sizeof(key), "%d%dFunc%d", button, click + 1, zone + 1);
+                } else if (alias == 1) sprintf_s(key, sizeof(key), "%d%dZone%dFunc", button, click + 1, zone + 1);
+                else if (alias == 2) sprintf_s(key, sizeof(key), "%d%dZone%d", button, click + 1, zone + 1);
+                else {
+                    if (button || click) continue;
+                    sprintf_s(key, sizeof(key), alias == 3 ? "LeftClickZone%dFunc" : "LeftClickZone%d", zone + 1);
+                }
+                if (!pm_read_action(key, &action)) continue;
+                if (action.kind != IB_BUILTIN) saved->protectedAliases = TRUE;
+                if (found || (action.kind == IB_BUILTIN && action.number == -32768)) continue;
+                saved->action = action;
+                strcpy_s(saved->source, sizeof(saved->source), key);
+                found = TRUE;
+            }
+            if (saved->action.kind != IB_BUILTIN) zone_func_map[button][click][zone] = MOUSEFUNC_NONE;
+        }
+        pData[button].func[click] = zone_func_map[button][click][0];
+    }
+    tc_ini_end();
+    pm_actions_ready = TRUE;
+}
+
+static BOOL pm_load_commands(void)
+{
+    int i, used = 0, total = pact_count();
+    PM_COMMAND* commands = NULL;
+    if (total < 0 || total > INT_MAX - 1 || (SIZE_T)total > (SIZE_T)-1 / sizeof(*commands)) return FALSE;
+    if (total) {
+        commands = calloc((size_t)total, sizeof(*commands));
+        if (!commands) return FALSE;
+    }
+    for (i = 0; i < total; ++i) {
+        const char* key = pact_get_key(i);
+        const char* label = key ? pact_get_label(key, b_EnglishMenu) : NULL;
+        WCHAR wide[512], stable[IB_KEY_CHARS];
+        char record[IB_RECORD_CHARS];
+        IB_ACTION action;
+        int duplicate;
+        if (!label || !key || strlen(key) >= IB_KEY_CHARS) continue;
+        sprintf_s(record, sizeof(record), "-1|%s", key);
+        ib_parse_action(record, &action);
+        if (action.kind != IB_DLL || tc_utf8_to_utf16(label, wide, _countof(wide)) <= 0 ||
+            tc_utf8_to_utf16(key, stable, _countof(stable)) <= 0) continue;
+        for (duplicate = 0; duplicate < used; ++duplicate)
+            if (!strcmp(commands[duplicate].key, key)) break;
+        if (duplicate < used) continue;
+        /* Own the catalog snapshot; combo positions and runtime slots are not persistent identities. */
+        strcpy_s(commands[used].key, IB_KEY_CHARS, key);
+        swprintf_s(commands[used].label, _countof(commands[0].label), L"DLL: %ls [%ls]", wide, stable);
+        ++used;
+    }
+    if (used == pm_command_count && (!used || !memcmp(commands, pm_commands, (SIZE_T)used * sizeof(*commands)))) {
+        free(commands); return FALSE;
+    }
+    free(pm_commands); pm_commands = commands; pm_command_count = used;
+    return TRUE;
+}
+
+static void pm_refresh_commands(HWND hDlg, BOOL force)
+{
+    const int controls[] = {IDC_MOUSEFUNC, IDC_ZONE2FUNC, IDC_ZONE3FUNC};
+    int i;
+    if (!pData) return;
+    if (!pm_load_commands() && !force) return;
+    for (i = 0; i < 3; ++i) InitMouseFuncCombo(hDlg, controls[i]);
+    for (i = 0; i < 3; ++i) {
+        SetMouseFuncComboValue(hDlg, controls[i], zone_func[i]);
+        pm_select_action(hDlg, controls[i], i);
+    }
+    /* Catalog refresh must not rewrite edit controls or publish a settings change. */
+}
+
+static BOOL pm_choose_action(HWND hDlg, int control, int zone, BOOL selected, int* function)
+{
+    int button, click, row, value;
+    IB_ACTION action = {0};
+    PM_ACTION* saved;
+    if (!GetZoneSel(hDlg, &button, &click)) return FALSE;
+    row = CBGetCurSel(hDlg, control);
+    if (row == CB_ERR) return FALSE;
+    value = (int)(INT_PTR)CBGetItemData(hDlg, control, row);
+    if (value == PM_ACTION_ROW) { *function = zone_func[zone]; return TRUE; }
+    if (value <= -2) {
+        int index = -(value + 2);
+        if (index >= pm_command_count) return FALSE;
+        action.kind = IB_DLL;
+        strcpy_s(action.key, sizeof(action.key), pm_commands[index].key);
+        *function = MOUSEFUNC_NONE;
+    } else { action.number = value; *function = value; }
+    if (selected) {
+        saved = &pm_actions[button][click][zone];
+        ZeroMemory(saved, sizeof(*saved));
+        saved->action = action;
+        saved->edited = TRUE;
+        if (action.kind != IB_BUILTIN || !IsMousePathFunc(value)) {
+            pm_edit_invalid[button][click][zone] = FALSE;
+            pm_clear_draft(button, click, zone);
+        }
+        zone_dirty_map[button][click] = TRUE;
+    }
+    return TRUE;
+}
+
+static void pm_select_action(HWND hDlg, int control, int zone)
+{
+    int button, click, i, row;
+    PM_ACTION* saved;
+    WCHAR label[640], key[IB_KEY_CHARS];
+    if (!GetZoneSel(hDlg, &button, &click)) return;
+    for (i = CBGetCount(hDlg, control) - 1; i >= 0; --i) {
+        if ((int)(INT_PTR)CBGetItemData(hDlg, control, i) == PM_ACTION_ROW)
+            SendDlgItemMessageW(hDlg, control, CB_DELETESTRING, i, 0);
+    }
+    saved = &pm_actions[button][click][zone];
+    if (saved->action.kind == IB_BUILTIN) return;
+    if (saved->action.kind == IB_DLL) {
+        for (i = 0; i < CBGetCount(hDlg, control); ++i) {
+            int value = (int)(INT_PTR)CBGetItemData(hDlg, control, i);
+            if (value <= -2 && value != PM_ACTION_ROW) {
+                int index = -(value + 2);
+                if (index < pm_command_count && !strcmp(pm_commands[index].key, saved->action.key)) {
+                    CBSetCurSel(hDlg, control, i); return;
+                }
+            }
+        }
+        if (tc_utf8_to_utf16(saved->action.key, key, _countof(key)) <= 0) return;
+        swprintf_s(label, _countof(label), b_EnglishMenu ? L"Unavailable DLL: %ls"
+            : L"\u5229\u7528\u3067\u304d\u306a\u3044 DLL: %ls", key);
+    } else {
+        wcscpy_s(label, _countof(label), b_EnglishMenu ? L"Unrecognized operation (preserved)"
+            : L"\u672a\u5bfe\u5fdc\u306e\u64cd\u4f5c\uff08\u4fdd\u6301\u3057\u307e\u3059\uff09");
+    }
+    row = (int)SendDlgItemMessageW(hDlg, control, CB_ADDSTRING, 0, (LPARAM)label);
+    if (row != CB_ERR && row != CB_ERRSPACE) {
+        CBSetItemData(hDlg, control, row, PM_ACTION_ROW);
+        CBSetCurSel(hDlg, control, row);
+    }
 }
 
 static void SetMouseFuncComboValue(HWND hDlg, int ctrlId, int func)
@@ -225,19 +533,18 @@ static void GetZoneFileValue(int button, int click, int zone_number, char *dst, 
 		wsprintf(entry, "%d%dFile", button, click + 1);
 	else
 		wsprintf(entry, "%d%dFile%d", button, click + 1, zone_number);
-	GetMyRegStr(reg_section, entry, dst, dst_count, missing);
+	pm_read_text(entry, dst, dst_count, missing);
 	if (dst[0] == missing[0] && dst[1] == 0)
 	{
 		wsprintf(entry, "%d%dZone%dFile", button, click + 1, zone_number);
-		GetMyRegStr(reg_section, entry, dst, dst_count, missing);
+		pm_read_text(entry, dst, dst_count, missing);
 	}
 	if (dst[0] == missing[0] && dst[1] == 0 && button == 0 && click == 0)
 	{
 		wsprintf(entry, "LeftClickZone%dFile", zone_number);
-		GetMyRegStr(reg_section, entry, dst, dst_count, missing);
+		pm_read_text(entry, dst, dst_count, missing);
 	}
 	if (dst[0] == missing[0] && dst[1] == 0) dst[0] = 0;
-	NormalizeUtf8InPlaceNoWriteback(dst, dst_count);
 }
 
 static void GetZoneWorkDirValue(int button, int click, int zone_number, char *dst, int dst_count)
@@ -252,19 +559,18 @@ static void GetZoneWorkDirValue(int button, int click, int zone_number, char *ds
 		wsprintf(entry, "%d%dWorkDir", button, click + 1);
 	else
 		wsprintf(entry, "%d%dWorkDir%d", button, click + 1, zone_number);
-	GetMyRegStr(reg_section, entry, dst, dst_count, missing);
+	pm_read_text(entry, dst, dst_count, missing);
 	if (dst[0] == missing[0] && dst[1] == 0)
 	{
 		wsprintf(entry, "%d%dZone%dWorkDir", button, click + 1, zone_number);
-		GetMyRegStr(reg_section, entry, dst, dst_count, missing);
+		pm_read_text(entry, dst, dst_count, missing);
 	}
 	if (dst[0] == missing[0] && dst[1] == 0 && button == 0 && click == 0)
 	{
 		wsprintf(entry, "LeftClickZone%dWorkDir", zone_number);
-		GetMyRegStr(reg_section, entry, dst, dst_count, missing);
+		pm_read_text(entry, dst, dst_count, missing);
 	}
 	if (dst[0] == missing[0] && dst[1] == 0) dst[0] = 0;
-	NormalizeUtf8InPlaceNoWriteback(dst, dst_count);
 }
 
 static BOOL GetZoneSel(HWND hDlg, int *button, int *click)
@@ -347,6 +653,7 @@ static void LoadZoneCurrent(HWND hDlg)
 	int i;
 
 	if (!GetZoneSel(hDlg, &button, &click)) return;
+    pm_view_button = button; pm_view_click = click;
 	zone_count = zone_count_map[button][click];
 	for (i = 0; i < 3; i++)
 	{
@@ -669,11 +976,14 @@ static void RefreshZoneControls(HWND hDlg)
 	ShowZoneEditRow(hDlg, IDC_LABZONE2FILE, IDC_ZONE2FILE, IDC_ZONE2FILESANSHO, show_zone && show_zone2_file);
 	ShowZoneEditRow(hDlg, IDC_LABZONE3FILE, IDC_ZONE3FILE, IDC_ZONE3FILESANSHO, show_zone && show_zone3_file);
 	if (show_file)
-		SetDlgItemTextUTF8Strict(hDlg, IDC_MOUSEFILE, zone_file[0]);
+		pm_set_edit(hDlg, IDC_MOUSEFILE, 0, zone_file[0]);
 	if (show_zone2_file)
-		SetDlgItemTextUTF8Strict(hDlg, IDC_ZONE2FILE, zone_file[1]);
+		pm_set_edit(hDlg, IDC_ZONE2FILE, 1, zone_file[1]);
 	if (show_zone3_file)
-		SetDlgItemTextUTF8Strict(hDlg, IDC_ZONE3FILE, zone_file[2]);
+		pm_set_edit(hDlg, IDC_ZONE3FILE, 2, zone_file[2]);
+	pm_select_action(hDlg, IDC_MOUSEFUNC, 0);
+	pm_select_action(hDlg, IDC_ZONE2FUNC, 1);
+	pm_select_action(hDlg, IDC_ZONE3FUNC, 2);
 	LayoutMouseRows(hDlg);
 	LayoutZoneRows(hDlg, show_zone, show_file, show_workdir, show_zone2, show_zone3);
 }
@@ -689,18 +999,19 @@ BOOL CALLBACK PageMouseProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
 			OnInit(hDlg);
 			return TRUE;
         case WM_SHOWWINDOW:
-            if (wParam && pData) {
-                InitMouseFuncCombo(hDlg, IDC_MOUSEFUNC);
-                InitMouseFuncCombo(hDlg, IDC_ZONE2FUNC);
-                InitMouseFuncCombo(hDlg, IDC_ZONE3FUNC);
-                SetMouseFuncComboValue(hDlg, IDC_MOUSEFUNC, zone_func[0]);
-                RefreshZoneControls(hDlg);
-            }
+            if (wParam && pData) pm_refresh_commands(hDlg, TRUE);
             return TRUE;
 		case WM_COMMAND:
 		{
 			WORD id, code;
 			id = LOWORD(wParam); code = HIWORD(wParam);
+            if (pm_restoring && code == EN_CHANGE && (id == IDC_MOUSEFILE || id == IDC_ZONE2FILE || id == IDC_ZONE3FILE)) return TRUE;
+            if (((id == IDC_MOUSEBUTTON && code == CBN_SELCHANGE) ||
+                (id >= IDC_RADSINGLE && id <= IDC_RADQUADRUPLE && code == BN_CLICKED)) && !pm_leave_edits(hDlg)) return TRUE;
+            if (code == CBN_DROPDOWN && (id == IDC_MOUSEFUNC || id == IDC_ZONE2FUNC || id == IDC_ZONE3FUNC)) {
+                pm_refresh_commands(hDlg, FALSE);
+                return TRUE;
+            }
 			switch(id)
 			{
 			// "Drop files"
@@ -714,9 +1025,9 @@ BOOL CALLBACK PageMouseProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
 			case IDC_DROPFILESAPP:
 				if(code == EN_CHANGE)
 				{
-					char s[256];
-					GetDlgItemTextUTF8(hDlg, IDC_DROPFILESAPP, s, 256);
-					dropfiles_app_dirty = (lstrcmp(s, dropfiles_app_initial) != 0);
+					char s[PM_TEXT_BYTES];
+                    dropfiles_app_dirty = !pm_get_text(hDlg, IDC_DROPFILESAPP, s, sizeof(s)) ||
+                        lstrcmp(s, dropfiles_app_initial) != 0;
 					SendPSChanged(hDlg);
 				}
 				break;
@@ -758,7 +1069,7 @@ BOOL CALLBACK PageMouseProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
 			case IDC_MOUSEFUNC:
 				if(code == CBN_SELCHANGE)
 				{
-					OnMouseFunc(hDlg);
+					OnMouseFunc(hDlg, TRUE);
 					SendPSChanged(hDlg);
 				}
 				break;
@@ -779,7 +1090,7 @@ BOOL CALLBACK PageMouseProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
 				}
 				break;
 			case IDC_HOTKEY:
-				OnMouseFunc(hDlg);
+				OnMouseFunc(hDlg, FALSE);
 				SendPSChanged(hDlg);
 				break;
 			case IDC_RCLICKMENU:
@@ -790,10 +1101,34 @@ BOOL CALLBACK PageMouseProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
 			}
 			return TRUE;
 		}
+        case MOUSE_COMMIT:
+            if (OnApply(hDlg)) {
+                SetWindowLongPtrW(hDlg, DWLP_MSGRESULT, TRUE);
+                return TRUE;
+            }
+            if (GetLastError() == ERROR_CANCELLED) {
+                SetWindowLongPtrW(hDlg, DWLP_MSGRESULT, FALSE);
+                return TRUE;
+            }
+            if (GetLastError() == ERROR_INSUFFICIENT_BUFFER)
+                MessageBoxW(hDlg, b_EnglishMenu
+                    ? L"The text is too long or contains invalid Unicode. Your edits are kept; correct it and retry."
+                    : L"\u6587\u5b57\u5217\u304c\u9577\u3059\u304e\u308b\u304b\u3001Unicode \u6587\u5b57\u304c\u4e0d\u6b63\u3067\u3059\u3002\n\u7de8\u96c6\u5185\u5bb9\u306f\u4fdd\u6301\u3057\u3066\u3044\u307e\u3059\u3002\u4fee\u6b63\u3057\u3066\u518d\u8a66\u884c\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
+                    L"TClock", MB_OK | MB_ICONERROR);
+            else
+            MessageBoxW(hDlg,
+                b_EnglishMenu
+                    ? L"Could not save mouse settings. Your edits are kept; resolve the write error and retry."
+                    : L"\u30de\u30a6\u30b9\u8a2d\u5b9a\u3092\u4fdd\u5b58\u3067\u304d\u307e\u305b\u3093\u3002\n\u7de8\u96c6\u5185\u5bb9\u306f\u4fdd\u6301\u3057\u3066\u3044\u307e\u3059\u3002\n\u66f8\u304d\u8fbc\u307f\u30a8\u30e9\u30fc\u3092\u89e3\u6d88\u3057\u3066\u518d\u8a66\u884c\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
+                L"TClock", MB_OK | MB_ICONERROR);
+            SetWindowLongPtrW(hDlg, DWLP_MSGRESULT, FALSE);
+            return TRUE;
 		case WM_NOTIFY:
 			switch(((NMHDR *)lParam)->code)
 			{
-				case PSN_APPLY: OnApply(hDlg); break;
+				case PSN_APPLY:
+                    SetWindowLongPtrW(hDlg, DWLP_MSGRESULT, OnApply(hDlg) ? PSNRET_NOERROR : PSNRET_INVALID_NOCHANGEPAGE);
+                    break;
 			}
 			return TRUE;
 		case WM_DESTROY:
@@ -806,23 +1141,21 @@ BOOL CALLBACK PageMouseProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
 /*------------------------------------------------
 　ページの初期化
 --------------------------------------------------*/
-static void NormalizeUtf8InPlaceNoWriteback(char* value, int valueBytes)
-{
-	WCHAR wbuf[MAX_PATH];
-	char utf8[MAX_PATH];
-	if (!value || valueBytes <= 0 || value[0] == '\0') return;
-	if (tc_utf8_to_utf16(value, wbuf, (int)(sizeof(wbuf) / sizeof(wbuf[0]))) <= 0) return;
-	if (tc_utf16_to_utf8(wbuf, utf8, (int)sizeof(utf8)) <= 0) return;
-	lstrcpyn(value, utf8, valueBytes);
-}
 
 void OnInit(HWND hDlg)
 {
-	char s[256];
+    WCHAR iniPath[MAX_PATH];
+    BOOL scoped;
+	char s[PM_TEXT_BYTES];
 	char entry[20];
 	int i, j, k, n;
 	HFONT hfont;
 
+    pm_text_ready = TRUE;
+    pm_clear_drafts();
+    ZeroMemory(pm_edit_invalid, sizeof(pm_edit_invalid));
+    scoped = tc_utf8_to_utf16(g_inifile, iniPath, _countof(iniPath)) > 0 && tc_begin_legacyW(iniPath);
+    if (!scoped) pm_text_ready = FALSE;
 	hfont = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
 	if(hfont)
 	{
@@ -842,8 +1175,7 @@ void OnInit(HWND hDlg)
 		CBAddStringUTF8Compat(hDlg, IDC_DROPFILES, MyStringUTF8(i));
 	CBSetCurSel(hDlg, IDC_DROPFILES,
 		GetMyRegLong(reg_section, "DropFiles", 0));
-	GetMyRegStr(reg_section, "DropFilesApp", s, 256, "");
-	NormalizeUtf8InPlaceNoWriteback(s, (int)sizeof(s));
+	pm_read_text("DropFilesApp", s, sizeof(s), "");
 	SetDlgItemTextUTF8Strict(hDlg, IDC_DROPFILESAPP, s);
 	dropfiles_initial = CBGetCurSel(hDlg, IDC_DROPFILES);
 	lstrcpyn(dropfiles_app_initial, s, (int)sizeof(dropfiles_app_initial));
@@ -876,8 +1208,7 @@ void OnInit(HWND hDlg)
 			else if(IsMousePathFunc(pData[i].func[j]))
 			{
 				wsprintf(entry, "%d%dFile", i, j+1);
-				GetMyRegStr(reg_section, entry, pData[i].fname[j], 256, "");
-				NormalizeUtf8InPlaceNoWriteback(pData[i].fname[j], (int)sizeof(pData[i].fname[j]));
+				pm_read_text(entry, pData[i].fname[j], sizeof(pData[i].fname[j]), "");
 			}
 			zone_count_map[i][j] = (int)GetZoneCountValue(i, j);
 			for (n = 0; n < 3; n++) {
@@ -894,6 +1225,9 @@ void OnInit(HWND hDlg)
 		}
 	}
 
+
+    pm_load_actions();
+    pm_load_commands();
 
 	for(i = IDS_LEFTBUTTON; i <= IDS_SWHEEL2; i++)
 	{
@@ -923,154 +1257,203 @@ void OnInit(HWND hDlg)
 	SetMouseButtonSel(hDlg, 0);
 	OnDropFilesChange(hDlg);
 	OnMouseButton(hDlg);
+    if (scoped) tc_ini_end();
 }
 
-static void WriteMouseEntry(int button, int click)
+static BOOL pm_add_value(PM_BATCH* batch, const char* key, const char* value)
 {
-	char entry[32];
-	int k;
-	BOOL has_zone_extras;
-	int effective_zone_count;
+    size_t keyBytes = strlen(key), valueBytes = value ? strlen(value) : 0;
+    DWORD need, capacity;
+    char* next;
+    if (!keyBytes || keyBytes >= 128 || valueBytes > 4095) return FALSE;
+    need = batch->used + (DWORD)keyBytes + (DWORD)valueBytes + (value ? 1 : 0) + 2;
+    if (need > TC_PATCH_MAX_BYTES) return FALSE;
+    if (need > batch->capacity) {
+        capacity = batch->capacity ? batch->capacity : 4096;
+        while (capacity < need) capacity *= 2;
+        next = batch->data ? (char*)HeapReAlloc(GetProcessHeap(), 0, batch->data, capacity)
+                           : (char*)HeapAlloc(GetProcessHeap(), 0, capacity);
+        if (!next) return FALSE;
+        batch->data = next; batch->capacity = capacity;
+    }
+    memcpy(batch->data + batch->used, key, keyBytes); batch->used += (DWORD)keyBytes;
+    if (value) {
+        batch->data[batch->used++] = '=';
+        memcpy(batch->data + batch->used, value, valueBytes); batch->used += (DWORD)valueBytes;
+    }
+    batch->data[batch->used++] = 0;
+    batch->data[batch->used] = 0;
+    return TRUE;
+}
 
-	if (button < 0 || button >= 28 || click < 0 || click >= 4) return;
+static BOOL pm_add_number(PM_BATCH* batch, const char* key, int value, BOOL sparse)
+{
+    char number[32];
+    int i;
+    sprintf_s(number, sizeof(number), "%d", value);
+    if (sparse) for (i = 0; i < seed_count(); ++i) {
+        const char *section, *entry, *defaultValue;
+        BOOL emit, eligible;
+        if (seed_get(i, &section, &entry, &defaultValue, &emit, &eligible) && eligible &&
+            !strcmp(section, reg_section) && !strcmp(entry, key)) {
+            if (!strcmp(defaultValue, number)) return pm_add_value(batch, key, NULL);
+            break;
+        }
+    }
+    return pm_add_value(batch, key, number);
+}
 
-	effective_zone_count = zone_count_map[button][click];
-	if (effective_zone_count < 1) effective_zone_count = 1;
-	if (effective_zone_count > 3) effective_zone_count = 3;
-	has_zone_extras = (effective_zone_count > 1) ? TRUE : FALSE;
+static BOOL pm_add_text(PM_BATCH* batch, const char* key, const char* value)
+{
+    char quoted[PM_TEXT_BYTES + 2];
+    /* Existing page strings are serialized UTF-8 settings, not OS path arguments. */
+    if (strpbrk(value, "\"' ")) {
+        if (strlen(value) > sizeof(quoted) - 3) return FALSE;
+        sprintf_s(quoted, sizeof(quoted), "\"%s\"", value);
+        return pm_add_value(batch, key, quoted);
+    }
+    return pm_add_value(batch, key, value);
+}
 
-	wsprintf(entry, "%d%dZoneCount", button, click + 1);
-	if (has_zone_extras)
-		SetMyRegLong(reg_section, entry, effective_zone_count);
-	else
-		DelMyReg(reg_section, entry);
-	for (k = 0; k < 3; k++)
-	{
-		wsprintf(entry, "%d%dZone%dFunc", button, click + 1, k + 1);
-		DelMyReg(reg_section, entry);
-		wsprintf(entry, "%d%dZone%d", button, click + 1, k + 1);
-		DelMyReg(reg_section, entry);
-		wsprintf(entry, "%d%dZone%dFile", button, click + 1, k + 1);
-		DelMyReg(reg_section, entry);
-		wsprintf(entry, "%d%dZone%dWorkDir", button, click + 1, k + 1);
-		DelMyReg(reg_section, entry);
-	}
-
-	wsprintf(entry, "%d%d", button, click + 1);
-	if (zone_func_map[button][click][0] >= 0)
-		SetMyRegLong(reg_section, entry, zone_func_map[button][click][0]);
-	else
-		DelMyReg(reg_section, entry);
-	if (button == IDS_HOTKEY - IDS_LEFTBUTTON)
-	{
-		wsprintf(entry, "%d%dHotkey", button, click + 1);
-		if (pData[button].hotkey[click])
-			SetMyRegLong(reg_section, entry, pData[button].hotkey[click]);
-		else
-			DelMyReg(reg_section, entry);
-	}
-	if (IsMousePathFunc(zone_func_map[button][click][0]))
-	{
-		wsprintf(entry, "%d%dFile", button, click + 1);
-		SetMyRegStr(reg_section, entry, zone_file_map[button][click][0]);
-	}
-	else
-	{
-		wsprintf(entry, "%d%dFile", button, click + 1);
-		DelMyReg(reg_section, entry);
-	}
-	if (IsMouseWorkDirFunc(zone_func_map[button][click][0]))
-	{
-		wsprintf(entry, "%d%dWorkDir", button, click + 1);
-		SetMyRegStr(reg_section, entry, zone_workdir_map[button][click][0]);
-	}
-	else
-	{
-		wsprintf(entry, "%d%dWorkDir", button, click + 1);
-		DelMyReg(reg_section, entry);
-	}
-
-	for (k = 2; k <= 3; k++)
-	{
-		wsprintf(entry, "%d%dFunc%d", button, click + 1, k);
-		if (has_zone_extras && effective_zone_count >= k && zone_func_map[button][click][k - 1] >= 0)
-			SetMyRegLong(reg_section, entry, zone_func_map[button][click][k - 1]);
-		else
-			DelMyReg(reg_section, entry);
-		wsprintf(entry, "%d%dFile%d", button, click + 1, k);
-		if (has_zone_extras && effective_zone_count >= k && IsMousePathFunc(zone_func_map[button][click][k - 1]))
-			SetMyRegStr(reg_section, entry, zone_file_map[button][click][k - 1]);
-		else
-			DelMyReg(reg_section, entry);
-		wsprintf(entry, "%d%dWorkDir%d", button, click + 1, k);
-		if (has_zone_extras && effective_zone_count >= k && IsMouseWorkDirFunc(zone_func_map[button][click][k - 1]))
-			SetMyRegStr(reg_section, entry, zone_workdir_map[button][click][k - 1]);
-		else
-			DelMyReg(reg_section, entry);
-	}
-
-	if (button == 0 && click == 0)
-	{
-		DelMyReg(reg_section, "LeftClickZoneCount");
-		for (k = 0; k < 3; k++)
-		{
-			wsprintf(entry, "LeftClickZone%dFunc", k + 1);
-			DelMyReg(reg_section, entry);
-			wsprintf(entry, "LeftClickZone%d", k + 1);
-			DelMyReg(reg_section, entry);
-			wsprintf(entry, "LeftClickZone%dFile", k + 1);
-			DelMyReg(reg_section, entry);
-			wsprintf(entry, "LeftClickZone%dWorkDir", k + 1);
-			DelMyReg(reg_section, entry);
-		}
-	}
-
-	zone_dirty_map[button][click] = FALSE;
+static BOOL pm_add_slot(PM_BATCH* batch, int button, int click)
+{
+    char key[32];
+    int zone, count = zone_count_map[button][click];
+    BOOL protected = FALSE;
+    if (count < 1) count = 1;
+    if (count > 3) count = 3;
+    for (zone = 0; zone < 3; ++zone) {
+        PM_ACTION* saved = &pm_actions[button][click][zone];
+        if (saved->protectedAliases && !saved->edited) protected = TRUE;
+    }
+    if (!protected || count != pm_zone_initial[button][click]) {
+        sprintf_s(key, sizeof(key), "%d%dZoneCount", button, click + 1);
+        if (count > 1) { if (!pm_add_number(batch, key, count, FALSE)) return FALSE; }
+        else if (!pm_add_value(batch, key, NULL)) return FALSE;
+        if (!button && !click && !pm_add_value(batch, "LeftClickZoneCount", NULL)) return FALSE;
+    }
+    for (zone = 0; zone < 3; ++zone) {
+        PM_ACTION* saved = &pm_actions[button][click][zone];
+        int func = zone_func_map[button][click][zone];
+        const char* formats[] = { "%d%dZone%dFunc", "%d%dZone%d", "%d%dZone%dFile", "%d%dZone%dWorkDir" };
+        int alias;
+        /* Unedited external records stay at their original keys, without truncation or migration. */
+        if (saved->protectedAliases && !saved->edited) continue;
+        for (alias = 0; alias < 4; ++alias) {
+            sprintf_s(key, sizeof(key), formats[alias], button, click + 1, zone + 1);
+            if (!pm_add_value(batch, key, NULL)) return FALSE;
+        }
+        if (!button && !click) {
+            const char* old[] = { "LeftClickZone%dFunc", "LeftClickZone%d", "LeftClickZone%dFile", "LeftClickZone%dWorkDir" };
+            for (alias = 0; alias < 4; ++alias) {
+                sprintf_s(key, sizeof(key), old[alias], zone + 1);
+                if (!pm_add_value(batch, key, NULL)) return FALSE;
+            }
+        }
+        if (!zone) sprintf_s(key, sizeof(key), "%d%d", button, click + 1);
+        else sprintf_s(key, sizeof(key), "%d%dFunc%d", button, click + 1, zone + 1);
+        if (zone < count && saved->action.kind == IB_DLL) {
+            char record[IB_RECORD_CHARS];
+            sprintf_s(record, sizeof(record), "-1|%s", saved->action.key);
+            if (!pm_add_value(batch, key, record)) return FALSE;
+        } else if (zone < count && func >= 0) { if (!pm_add_number(batch, key, func, FALSE)) return FALSE; }
+        else if (!pm_add_value(batch, key, NULL)) return FALSE;
+        if (!zone) sprintf_s(key, sizeof(key), "%d%dFile", button, click + 1);
+        else sprintf_s(key, sizeof(key), "%d%dFile%d", button, click + 1, zone + 1);
+        if (zone < count && IsMousePathFunc(func)) {
+            if (!pm_add_text(batch, key, zone_file_map[button][click][zone])) return FALSE;
+        } else if (!pm_add_value(batch, key, NULL)) return FALSE;
+        if (!zone) sprintf_s(key, sizeof(key), "%d%dWorkDir", button, click + 1);
+        else sprintf_s(key, sizeof(key), "%d%dWorkDir%d", button, click + 1, zone + 1);
+        if (zone < count && IsMouseWorkDirFunc(func)) {
+            if (!pm_add_text(batch, key, zone_workdir_map[button][click][zone])) return FALSE;
+        } else if (!pm_add_value(batch, key, NULL)) return FALSE;
+    }
+    if (button == IDS_HOTKEY - IDS_LEFTBUTTON) {
+        sprintf_s(key, sizeof(key), "%d%dHotkey", button, click + 1);
+        if (pData[button].hotkey[click]) return pm_add_number(batch, key, pData[button].hotkey[click], FALSE);
+        return pm_add_value(batch, key, NULL);
+    }
+    return TRUE;
 }
 
 /*------------------------------------------------
 　更新
 --------------------------------------------------*/
-void OnApply(HWND hDlg)
+static BOOL pm_commit_batch(HWND hDlg, LPCWSTR path, const PM_BATCH* batch)
 {
-	char s[256];
-	int n;
-	int i;
-	int j;
+    WCHAR question[640], backup[MAX_PATH + 80], notice[MAX_PATH + 180];
+    DWORD error;
+    if (tc_patch_batchW(path, reg_section, batch->data, batch->used + 1)) return TRUE;
+    error = GetLastError();
+    if (error != ERROR_NO_UNICODE_TRANSLATION) { SetLastError(error); return FALSE; }
+    swprintf_s(question, _countof(question), b_EnglishMenu
+        ? L"This INI uses legacy Windows code page %u. Saving this text requires converting the entire INI to UTF-8. A verified copy of the original will be kept beside it. Convert and save\x3f"
+        : L"\u3053\u306e INI \u306f Windows \u30b3\u30fc\u30c9\u30da\u30fc\u30b8 %u \u3067\u4fdd\u5b58\u3055\u308c\u3066\u3044\u307e\u3059\u3002\n\u3053\u306e\u6587\u5b57\u5217\u3092\u4fdd\u5b58\u3059\u308b\u306b\u306f INI \u5168\u4f53\u3092 UTF-8 \u306b\u5909\u63db\u3059\u308b\u5fc5\u8981\u304c\u3042\u308a\u307e\u3059\u3002\n\u5143\u30d5\u30a1\u30a4\u30eb\u306f\u5185\u5bb9\u3092\u7167\u5408\u3057\u3066\u540c\u3058\u30d5\u30a9\u30eb\u30c0\u306b\u4fdd\u7ba1\u3057\u307e\u3059\u3002\u5909\u63db\u3057\u3066\u4fdd\u5b58\u3057\u307e\u3059\u304b\uff1f",
+        GetACP());
+    if (MessageBoxW(hDlg, question, L"TClock", MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2) != IDYES) {
+        SetLastError(ERROR_CANCELLED);
+        return FALSE;
+    }
+    if (!tc_patch_utf8W(path, reg_section, batch->data, batch->used + 1, backup, _countof(backup))) return FALSE;
+    if (backup[0]) {
+        swprintf_s(notice, _countof(notice), b_EnglishMenu
+            ? L"The original INI was preserved at:\n%ls"
+            : L"\u5143\u306e INI \u3092\u4fdd\u7ba1\u3057\u307e\u3057\u305f\uff1a\n%ls", backup);
+        MessageBoxW(hDlg, notice, L"TClock", MB_OK | MB_ICONINFORMATION);
+    }
+    return TRUE;
+}
 
-	n = CBGetCurSel(hDlg, IDC_DROPFILES);
-	if (dropfiles_dirty)
-	{
-		SetMyRegLongDef(reg_section, "DropFiles", n);
-		dropfiles_initial = n;
-		dropfiles_dirty = FALSE;
-	}
-	GetDlgItemTextUTF8(hDlg, IDC_DROPFILESAPP, s, 256);
-	if (dropfiles_app_dirty)
-	{
-		SetMyRegStr(reg_section, "DropFilesApp", s);
-		lstrcpyn(dropfiles_app_initial, s, (int)sizeof(dropfiles_app_initial));
-		dropfiles_app_dirty = FALSE;
-	}
-	if (rightclick_menu_dirty)
-	{
-		rightclick_menu_initial =
-			(IsDlgButtonChecked(hDlg, IDC_RCLICKMENU) == BST_CHECKED) ? TRUE : FALSE;
-		SetMyRegLongDef(reg_section, "RightClickMenu", rightclick_menu_initial ? 1 : 0);
-		rightclick_menu_dirty = FALSE;
-	}
-
-	SaveZoneCurrent(hDlg);
-
-	for (i = 0; i < 28; i++)
-	{
-		for (j = 0; j < 4; j++)
-		{
-			if (!zone_dirty_map[i][j]) continue;
-			WriteMouseEntry(i, j);
-		}
-	}
-	ResetHotkey(g_hwndMain);
+static BOOL OnApply(HWND hDlg)
+{
+    PM_BATCH batch = {0};
+    WCHAR path[MAX_PATH];
+    char app[PM_TEXT_BYTES];
+    int drop = CBGetCurSel(hDlg, IDC_DROPFILES);
+    BOOL menu = IsDlgButtonChecked(hDlg, IDC_RCLICKMENU) == BST_CHECKED;
+    BOOL ok = FALSE;
+    DWORD error = ERROR_INVALID_DATA;
+    int i, j;
+    if (!pm_actions_ready || !pm_text_ready) { SetLastError(error); return FALSE; }
+    if (!pm_get_text(hDlg, IDC_DROPFILESAPP, app, sizeof(app))) { SetLastError(ERROR_INSUFFICIENT_BUFFER); return FALSE; }
+    for (i = 0; i < 28; ++i) for (j = 0; j < 4; ++j) {
+        int zone;
+        for (zone = 0; zone < 3; ++zone) if (pm_edit_invalid[i][j][zone]) {
+            SetLastError(ERROR_INSUFFICIENT_BUFFER); return FALSE;
+        }
+    }
+    SaveZoneCurrent(hDlg);
+    if (dropfiles_dirty && !pm_add_number(&batch, "DropFiles", drop, TRUE)) goto cleanup;
+    if (dropfiles_app_dirty && !pm_add_text(&batch, "DropFilesApp", app)) goto cleanup;
+    if (rightclick_menu_dirty && !pm_add_number(&batch, "RightClickMenu", menu, TRUE)) goto cleanup;
+    for (i = 0; i < 28; ++i) {
+        for (j = 0; j < 4; ++j) {
+            if (zone_dirty_map[i][j] && !pm_add_slot(&batch, i, j)) goto cleanup;
+        }
+    }
+    /* Cross the existing serialized configuration-path boundary once; all I/O is wide. */
+    if (batch.used) {
+        if (tc_utf8_to_utf16(g_inifile, path, _countof(path)) <= 0) goto cleanup;
+        if (!pm_commit_batch(hDlg, path, &batch)) { error = GetLastError(); goto cleanup; }
+    }
+    if (dropfiles_dirty) dropfiles_initial = drop;
+    if (dropfiles_app_dirty) lstrcpyn(dropfiles_app_initial, app, (int)sizeof(dropfiles_app_initial));
+    if (rightclick_menu_dirty) rightclick_menu_initial = menu;
+    dropfiles_dirty = dropfiles_app_dirty = rightclick_menu_dirty = FALSE;
+    ZeroMemory(zone_dirty_map, sizeof(zone_dirty_map));
+    for (i = 0; i < 28; ++i) for (j = 0; j < 4; ++j) {
+        int zone;
+        pm_zone_initial[i][j] = zone_count_map[i][j];
+        for (zone = 0; zone < 3; ++zone) pm_actions[i][j][zone].edited = FALSE;
+    }
+    mouse_note_setting("Mouse",NULL);
+    ResetHotkey(g_hwndMain);
+    ok = TRUE;
+cleanup:
+    if (batch.data) HeapFree(GetProcessHeap(), 0, batch.data);
+    if (!ok) SetLastError(error);
+    return ok;
 }
 
 /*------------------------------------------------
@@ -1079,7 +1462,11 @@ void OnApply(HWND hDlg)
 void OnDestroy(HWND hDlg)
 {
 	UNREFERENCED_PARAMETER(hDlg);
+    pm_clear_drafts();
 	if(pData) free(pData);
+    pData = NULL;
+    if (pm_commands) free(pm_commands);
+    pm_commands = NULL; pm_command_count = 0;
 }
 
 /*------------------------------------------------
@@ -1112,7 +1499,7 @@ void OnMouseButton(HWND hDlg)
 
 	for(j = 0; j < 4; j++)
 	{
-		if(pData[button].func[j] >= 0) break;
+		if(pData[button].func[j] >= 0 || pm_actions[button][j][0].action.kind != IB_BUILTIN) break;
 	}
 	if(j == 4) j = 0;
 	CheckRadioButton(hDlg, IDC_RADSINGLE, IDC_RADQUADRUPLE,
@@ -1176,16 +1563,16 @@ void OnMouseClickTime(HWND hDlg, int id)
 	else
 		SendDlgItemMessage(hDlg, IDC_HOTKEY, HKM_SETHOTKEY, 0, 0);
 	RefreshZoneControls(hDlg);
-	OnMouseFunc(hDlg);
+	OnMouseFunc(hDlg, FALSE);
 }
 
 /*------------------------------------------------
   Mouse Functions combo box
 --------------------------------------------------*/
-void OnMouseFunc(HWND hDlg)
+void OnMouseFunc(HWND hDlg, BOOL selected)
 {
 	int button, j;
-	int click, index, func;
+	int click, func;
 
 	button = GetMouseButtonSel(hDlg);
 	if (!pData || button < 0 || button >= 28) return;
@@ -1198,13 +1585,10 @@ void OnMouseFunc(HWND hDlg)
 	if(j == 4) return;
 	click = j;
 
-	index = CBGetCurSel(hDlg, IDC_MOUSEFUNC);
-	if (index == CB_ERR) return;
-	func = (int)(INT_PTR)CBGetItemData(hDlg, IDC_MOUSEFUNC, index);
-	if (func == CB_ERR) return;
-	pData[button].func[click] = func;
-	zone_func[0] = func;
-	SaveZoneCurrent(hDlg);
+    if (!pm_choose_action(hDlg, IDC_MOUSEFUNC, 0, selected, &func)) return;
+    pData[button].func[click] = func;
+    zone_func[0] = func;
+    SaveZoneCurrent(hDlg);
 
 	if (button == (IDS_HOTKEY - IDS_LEFTBUTTON))
 	{
@@ -1219,8 +1603,7 @@ void OnMouseFunc(HWND hDlg)
 
 	if(IsMousePathFunc(func))
 	{
-		NormalizeUtf8InPlaceNoWriteback(zone_file[0], (int)sizeof(zone_file[0]));
-		SetDlgItemTextUTF8Strict(hDlg, IDC_MOUSEFILE, zone_file[0]);
+		pm_set_edit(hDlg, IDC_MOUSEFILE, 0, zone_file[0]);
 	}
 	RefreshZoneControls(hDlg);
 }
@@ -1251,7 +1634,7 @@ void OnMouseFileChange(HWND hDlg)
 
 	if(IsMousePathFunc(func))
 	{
-		GetDlgItemTextUTF8(hDlg, IDC_MOUSEFILE, zone_file[0], (int)sizeof(zone_file[0]));
+        if (!pm_read_edit(hDlg, IDC_MOUSEFILE, 0, zone_file[0], sizeof(zone_file[0]))) return;
 		lstrcpyn(pData[button].fname[click], zone_file[0], (int)sizeof(pData[button].fname[click]));
 		SaveZoneCurrent(hDlg);
 	}
@@ -1271,7 +1654,6 @@ void OnZoneCount(HWND hDlg)
 void OnZoneFunc(HWND hDlg, WORD id)
 {
 	int zone_index;
-	int index;
 	int func;
 
 	if (id == IDC_ZONE2FUNC)
@@ -1280,11 +1662,8 @@ void OnZoneFunc(HWND hDlg, WORD id)
 		zone_index = 2;
 	else
 		return;
-	index = CBGetCurSel(hDlg, id);
-	if (index == CB_ERR) return;
-	func = (int)(INT_PTR)CBGetItemData(hDlg, id, index);
-	if (func == CB_ERR) return;
-	zone_func[zone_index] = func;
+    if (!pm_choose_action(hDlg, id, zone_index, TRUE, &func)) return;
+    zone_func[zone_index] = func;
 	SaveZoneCurrent(hDlg);
 	RefreshZoneControls(hDlg);
 }
@@ -1299,7 +1678,11 @@ void OnZoneFileChange(HWND hDlg, WORD id)
 		zone_index = 2;
 	else
 		return;
-	GetDlgItemTextUTF8(hDlg, id, zone_file[zone_index], (int)sizeof(zone_file[zone_index]));
+    {
+        int button, click;
+        if (!GetZoneSel(hDlg, &button, &click)) return;
+        if (!pm_read_edit(hDlg, id, zone_index, zone_file[zone_index], sizeof(zone_file[zone_index]))) return;
+    }
 	SaveZoneCurrent(hDlg);
 }
 
@@ -1310,7 +1693,7 @@ void OnZoneFileChange(HWND hDlg, WORD id)
 void OnSansho(HWND hDlg, WORD id)
 {
 	int n;
-	char filter[80], deffile[MAX_PATH], fname[MAX_PATH];
+	char filter[80], deffile[PM_TEXT_BYTES], fname[PM_TEXT_BYTES];
 	HRESULT hrModern;
 
 	if(id == IDC_DROPFILESAPPSANSHO)
@@ -1318,16 +1701,15 @@ void OnSansho(HWND hDlg, WORD id)
 		n = CBGetCurSel(hDlg, IDC_DROPFILES);
 		if(n >= 3)
 		{
-			char initdirUtf8[MAX_PATH];
+			char initdirUtf8[PM_TEXT_BYTES];
 			wchar_t initdirW[MAX_PATH];
 			const wchar_t* initdirArg = NULL;
-			GetDlgItemTextUTF8(hDlg, id - 1, initdirUtf8, MAX_PATH);
+			if (!pm_get_text(hDlg, id - 1, initdirUtf8, sizeof(initdirUtf8))) return;
 			if (initdirUtf8[0] && tc_utf8_to_utf16(initdirUtf8, initdirW, (int)(sizeof(initdirW) / sizeof(initdirW[0]))) > 0) {
 				initdirArg = initdirW;
 			}
 			hrModern = SelectPathUTF8Modern(hDlg, TRUE, initdirArg, NULL, 0, fname, (int)sizeof(fname));
 			if (FAILED(hrModern)) return;
-			NormalizeUtf8InPlaceNoWriteback(fname, (int)sizeof(fname));
 			SetDlgItemTextUTF8Strict(hDlg, id - 1, fname);
 			PostMessage(hDlg, WM_NEXTDLGCTL, 1, FALSE);
 			SendPSChanged(hDlg);
@@ -1347,12 +1729,10 @@ void OnSansho(HWND hDlg, WORD id)
 	str0cat(filter, MyStringUTF8(IDS_ALLFILE));
 	str0cat(filter, "*.*");
 
-	GetDlgItemTextUTF8(hDlg, id - 1, deffile, MAX_PATH);
+	if (!pm_get_text(hDlg, id - 1, deffile, sizeof(deffile))) return;
 
 	if(!SelectMyFileUTF8(hDlg, filter, 0, deffile, fname, (int)sizeof(fname))) // propsheet.c
 		return;
-
-	NormalizeUtf8InPlaceNoWriteback(fname, (int)sizeof(fname));
 	SetDlgItemTextUTF8Strict(hDlg, id - 1, fname);
 	PostMessage(hDlg, WM_NEXTDLGCTL, 1, FALSE);
 	if (id == IDC_MOUSEFILESANSHO)
@@ -1388,6 +1768,10 @@ void InitMouseFuncCombo(HWND hDlg, int ctrlId)
 	}
 	index = CBAddStringUTF8Compat(hDlg, ctrlId, b_EnglishMenu ? "Open Program" : "プログラムを開く");
 	CBSetItemData(hDlg, ctrlId, index, MOUSEFUNC_CUSTOMPROGRAM);
+    for (i = 0; i < pm_command_count; ++i) {
+        index = (int)SendDlgItemMessageW(hDlg, ctrlId, CB_ADDSTRING, 0, (LPARAM)pm_commands[i].label);
+        if (index >= 0) CBSetItemData(hDlg, ctrlId, index, -2 - i);
+    }
 	//リスト項目の表示数を指定
 	AdjustDlgConboBoxDropDown(hDlg, ctrlId, 29);
 }

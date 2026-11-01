@@ -4,8 +4,10 @@
   KAZUBON 1997-2001
 -------------------------------------------------------*/
 #include "tcdll.h"
+#include "format_collect.h"
 #include "minmode.h"
 #include "../common/plugin_api.h"
+#include "../common/plugin_transport.h"
 #include "../common/analog_skin.h"
 #include "../common/chime_schedule.h"
 #include "../common/flip_clock.h"
@@ -97,6 +99,7 @@ void InitClock();
 void CreateClockDC(void);
 void ReadData(void);
 void InitSysInfo(void);
+static void CollectFormatSources(void);
 void OnTimer_Win10(void);	//added by TTTT
 void OnTimerUpperTaskbar(void);
 static void DrawClockFocusRect(HDC hdc);
@@ -396,9 +399,28 @@ static BOOL FormatStyleBuildRuns(HDC hdc, const WCHAR* text, const char* info,
 static BOOL FormatStyleLayoutRuns(HDC hdc, const WCHAR* text, int xcenter, int yclock,
 	int wclock, int hclock, LONG* measuredWidth, LONG* measuredHeight);
 static void FormatStyleUpdateWatermark(LONG textWidth, LONG textHeight);
+/* Host style rules override provider styles field by field; provider fields the
+   rules do not set survive. Host value rewrites are not applied to provider text. */
+static void fs_merge_host(const WCHAR* text, TC_FORMAT_SPANS* spans)
+{
+	static TC_FS_STYLE overlays[TC_FORMAT_MAX_SPANS]; /* clock thread only */
+	int i;
+	if (!spans->count || !TcFormatStyleResolveFrame(&g_formatStyleRules, text, lstrlenW(text),
+		spans, overlays, TC_FORMAT_MAX_SPANS)) return;
+	for (i = 0; i < spans->count; i++) TcFormatStyleMerge(&spans->items[i].style, &overlays[i]);
+}
 static void fs_format_frame(WCHAR* text, int capacity, char* info, SYSTEMTIME* time,
 	int beat100, const WCHAR* formatText, TC_FORMAT_SPANS* spans)
 {
+	if (fbr_format(text, capacity, info, time, beat100, formatText, spans)) {
+		if (g_formatStyleRules.enabled) fs_merge_host(text, spans);
+		return;
+	}
+	if (!g_formatStyleRules.enabled) {
+		/* Reached only with an active bridge; keep the plain built-in result. */
+		MakeFormatW(text, capacity, info, time, beat100, formatText);
+		return;
+	}
 	MakeFormatExW(text, capacity, info, time, beat100, formatText, spans);
 	if (!TcFormatStyleTransform(&g_formatStyleRules, text, capacity, info, spans)) {
 		spans->overflow = TRUE;
@@ -700,8 +722,8 @@ int		widthSubTaskbar[MAX_SUBSCREEN], heightSubTaskbar[MAX_SUBSCREEN];
 
 int g_InternetConnectStat_Win10 = -1;	//added for Internet Connectionstatus by TTTT
 char icp_SSID_APName[32];
-char activeSSID[32];
-char activeAPName[32];
+char activeSSID[TC_NETLABEL_BYTES];
+char activeAPName[TC_NETLABEL_BYTES];
 
 // IP addresses added by TTTT
 char ipLTE[32];
@@ -1797,7 +1819,7 @@ static BOOL wui_fill_state(TC_DISPLAY_BACKEND_RENDER_STATE* state, SYSTEMTIME* p
 	ZeroMemory(&formatSpans, sizeof(formatSpans));
 	g_wuiFrameValid = FALSE;
 	g_wuiFrameRunsReady = FALSE;
-	if (g_formatStyleRules.enabled) fs_format_frame(sW, _countof(sW), s_info, pt, beat100, g_formatW, &formatSpans);
+	if (g_formatStyleRules.enabled || fbr_active()) fs_format_frame(sW, _countof(sW), s_info, pt, beat100, g_formatW, &formatSpans);
 	else MakeFormatW(sW, _countof(sW), s_info, pt, beat100, g_formatW);
 	lstrcpynW(state->text, sW, _countof(state->text));
 	lstrcpynW(g_wuiFrameText, sW, _countof(g_wuiFrameText));
@@ -1816,7 +1838,6 @@ static BOOL wui_fill_state(TC_DISPLAY_BACKEND_RENDER_STATE* state, SYSTEMTIME* p
             else state->contentRect.right -= sizeAClock.cx;
         }
     }
-	if (!g_formatStyleRules.enabled) return TRUE;
 	if (formatSpans.overflow || !GetClientRect(hwndClockMain, &rcClient)) return FALSE;
     if (state->contentVersion) rcClient = state->contentRect;
 	if (!hdcClock) {
@@ -2003,7 +2024,8 @@ static void wui_push_secondary(const TC_DISPLAY_BACKEND_RENDER_STATE* state)
 static void wui_push_frame(TC_DISPLAY_BACKEND_RENDER_STATE* state)
 {
 	wui_push_secondary(state);
-	if (g_wuiDllLive && !g_wuiStyleFallback && (IsVertTaskbar(hwndTaskBarMain) || (ext_is_active())) && m_color_start) {
+	/* A render-provider frame lives in the GDI layer, so WinUI composes that layer too. */
+	if (g_wuiDllLive && !g_wuiStyleFallback && (IsVertTaskbar(hwndTaskBarMain) || ext_is_active() || rrt_showing()) && m_color_start) {
 		GdiFlush();
 		state->layerPixels = (const BYTE*)m_color_start;
 		state->layerWidth = bmi_MainClock.bmiHeader.biWidth;
@@ -2327,7 +2349,7 @@ static void wui_draw_body(HDC hdc, SYSTEMTIME* pt, int beat100)
 		++g_wuiProbeTick;
 	}
 	filled = wui_fill_state(&state, (g_wuiCfg == TC_DISPLAY_BACKEND_WINUI) ? pt : NULL, beat100);
-	g_wuiStyleFallback = g_formatStyleRules.enabled && !filled;
+	g_wuiStyleFallback = (g_formatStyleRules.enabled || fbr_active()) && !filled;
 	if (g_wuiStyleFallback) {
 		ZeroMemory(&state, sizeof(state));
 		state.cb = sizeof(state);
@@ -2343,6 +2365,11 @@ static void wui_draw_body(HDC hdc, SYSTEMTIME* pt, int beat100)
 	g_wuiBgOnly = TRUE;
 	g_wuiSubOnly = FALSE;
 	DrawClockSub(hdc, pt, beat100);
+	/* The provider image replaces the text WinUI would draw over the layer. */
+	if (rrt_showing()) {
+		state.text[0] = L'\0';
+		state.runCount = 0;
+	}
 	wui_push_frame(&state);
 	g_wuiBgOnly = FALSE;
 	g_wuiSubOnly = TRUE;
@@ -2473,6 +2500,10 @@ void EndClock(void)
 {
 	if (g_clkEnding) return;
 	g_clkEnding = TRUE;
+	ccr_reset();
+	rrt_reset();
+	fbr_reset();
+	fcl_reset();
 
 	if (b_DebugLog)writeDebugLog_Win10("[tclock.c] EndClock called.", 999);
 
@@ -2780,7 +2811,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 				}
 				else if (wParam == IDTIMERDLL_SYSINFO)
 				{
-					UpdateSysRes(bGetBattery, bGetMem, bGetNet, bGetHdd, bGetCpu, bGetVol, bGetGpu, bGetTemp);
+					CollectFormatSources();
 				}
 				else if (wParam == IDTIMERDLL_CHECKNETSTAT)
 				{
@@ -2862,6 +2893,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 			////if(message == WM_RBUTTONUP) break;
 			return 0;
 
+		case WM_MOUSEWHEEL:
+            /* Wheel LPARAM is a screen point; the host validates it against the live clock. */
+            if (!b_MinimalMode) PostMessageW(hwndTClockExeMain, message, wParam, lParam);
+            return 0;
 		case WM_MOUSEMOVE:
 			return 0;
 		case WM_CONTEXTMENU:   // 右クリックメニュー
@@ -3005,6 +3040,25 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 		//	return 0;
 		//}
+		case WM_COPYDATA:
+		{
+			LRESULT copied;
+			if (ccr_receive((HWND)wParam, (const COPYDATASTRUCT*)lParam, &copied)) return copied;
+			if (rrt_receive((HWND)wParam, (const COPYDATASTRUCT*)lParam, &copied)) return copied;
+		}
+			if (fbr_receive((HWND)wParam, (const COPYDATASTRUCT*)lParam)) return TRUE;
+			break;
+		case TCF_BRIDGE_REDRAW:
+			/* wParam: collect the new lease's sources before the first published frame. */
+			if (wParam) CollectFormatSources();
+			RedrawTClock();
+			return 0;
+		case TCR_REDRAW:
+			RedrawTClock();
+			return 0;
+		case TCF_BRIDGE_TOOLTIP:
+			TooltipRefreshBridge();
+			return 0;
 		case CLOCKM_UPDATE_EXTTEXT:	//0x0404
 		{
 			g_formatStyleResizePending = FALSE;
@@ -4330,6 +4384,7 @@ static void tc_read_settings(void)
 		sprintf(strTemp, "AdditionalMountPath%1d", i);
 		GetMyRegStr("ETC", strTemp, strAdditionalMountPath[i], 64, "");
 	}
+	if (FAILED(fcl_reload())) fcl_reset();
 
 
 
@@ -4513,6 +4568,29 @@ static void tc_read_settings(void)
 	CleanSettingFile();
 	InterlockedDecrement(&g_depth_ReadData);
 
+}
+
+/* The source timer owns collection; paint and snapshot capture never call this.
+   Legacy masks remain separate so provider-only polling cannot acquire an
+   unrelated historical drive from the legacy scanner's accumulating array. */
+static void CollectFormatSources(void)
+{
+    FDM_WORK work;BOOL changed;UINT flags;
+    if (b_MinimalMode || b_SafeMode) fcl_reset();
+    changed=fcl_pending();
+    fcl_take(GetTickCount64(),&work);flags=work.due.categories;
+    UpdateSysRes(bGetBattery || (flags & TCF_CATEGORY_BATTERY),
+        bGetMem || (flags & TCF_CATEGORY_MEMORY),bGetNet || (flags & TCF_CATEGORY_NETWORK),
+        bGetHdd,bGetCpu || (flags & TCF_CATEGORY_CPU),bGetVol || (flags & TCF_CATEGORY_VOLUME),
+        bGetGpu || (flags & TCF_CATEGORY_GPU),bGetTemp || (flags & TCF_CATEGORY_TEMP));
+    if (flags & TCF_CATEGORY_CONNECTION) net_poll_connection(!b_MinimalMode && !b_CompactMode);
+    if (!bGetHdd && (flags & TCF_CATEGORY_SPACE)) Hdd_sweep();
+    if (!bGetHdd && ((flags & TCF_CATEGORY_RATE) || changed || DiskRate_pending())) DiskRate_sweep();
+    if (!b_MinimalMode) {
+        if (flags & TCF_CATEGORY_CUSTOM) CustomFormatVarsDemand(work.due.customVariables);
+        if (flags & TCF_CATEGORY_GIP) GipTick();
+    }
+    fbr_mark_collected();
 }
 
 void InitSysInfo()
@@ -4806,7 +4884,8 @@ void PlayChime(BOOL secondary)
 static BOOL clk_update_network(SYSTEMTIME* time, int beat100)
 {
 	WCHAR text[4096];
-	if (!g_netDisplay || !g_formatW) return FALSE;
+	/* The bridge redraws every tick and formats on the exe side. */
+	if (!g_netDisplay || !g_formatW || fbr_active()) return FALSE;
 	FormatNetworkTextW(text, _countof(text), time, beat100, g_formatW, &g_formatStyleRules);
 	if (lstrcmpW(text, g_netDisplayText) == 0) return FALSE;
 	lstrcpynW(g_netDisplayText, text, _countof(g_netDisplayText));
@@ -4937,6 +5016,13 @@ void OnTimer_Win10(void)
 
 	if (ext_is_active() && ((g_extOptions.mode != EXT_MODE_FLIP && g_extOptions.mode != EXT_MODE_NIXIE) || g_extOptions.seconds) &&
         LastTime.wSecond != t.wSecond) bRedraw = TRUE;
+	/* A render provider draws from each second's text; the draw publishes its request. */
+	else if (rrt_active()) {
+		if (fbr_active()) fbr_tick(&t, beat100, g_formatW);
+		bRedraw = TRUE;
+	}
+	/* The bridge draws on frame arrival; the tick only publishes unless the built-in text is shown. */
+	else if (fbr_active()) bRedraw = fbr_tick(&t, beat100, g_formatW) || bRedraw;
 	else if (bDispSecond) bRedraw = TRUE;
 	else if (nDispBeat == FORMAT_BEAT1 && beatLast != (beat100 / 100)) bRedraw = TRUE;
 	else if (nDispBeat == FORMAT_BEAT2 && beatLast != beat100) bRedraw = TRUE;
@@ -4964,9 +5050,13 @@ void OnTimer_Win10(void)
 		bRedraw = TRUE;
 	}
 
+    /* A selected chime provider's current plan replaces the whole decision below. */
+    if (ccr_tick(&t, chimePaused, &bRedraw)) {
+        nChime = 0; /* Built-in strikes left at a handover are not replayed later. */
+    }
     /* Filter the actual playback day, including offsets across midnight.
        Keep the legacy hour gates and primary-over-secondary precedence. */
-    if (chimePaused || !chm_allows_day(chimeWeekdays, t.wDayOfWeek)) {
+    else if (chimePaused || !chm_allows_day(chimeWeekdays, t.wDayOfWeek)) {
         nChime = 0;
     } else {
         int seconds = t.wMinute * 60 + t.wSecond;
@@ -4976,6 +5066,7 @@ void OnTimer_Win10(void)
                     chimeHourStart, chimeHourEnd, FALSE)) {
                 int target = chm_target_hour(t.wHour, intOffsetChimeSec);
                 nChime = b_CuckooClock ? (target + 11) % 12 + 1 : 1;
+                if (b_DebugLog) writeDebugLog_Win10("[tclock.c] built-in chime decision, strikes", nChime);
             }
             /* Legacy blink-only and outside-audio-hours behavior is preserved.
                The new explicit pause flag suspends it without deleting settings. */
@@ -4986,6 +5077,7 @@ void OnTimer_Win10(void)
         } else if (b_EnableChime && b_EnableSecondaryChime &&
                    chm_matches(t.wHour, seconds, intOffsetSecondaryChimeSec,
                        chimeHourStart, chimeHourEnd, TRUE)) {
+            if (b_DebugLog) writeDebugLog_Win10("[tclock.c] built-in secondary chime decision", 1);
             PlayChime(TRUE);
         }
         if (!b_EnableChime) nChime = 0;
@@ -5979,11 +6071,12 @@ static BOOL FormatStyleBuildRuns(HDC hdc, const WCHAR* text, const char* info,
 	g_formatStyleRunCount = 0;
 	if (!hdc || !text || !info || !spans || spans->overflow) return FALSE;
 	textLength = lstrlenW(text);
+	if (!TcFormatStyleValidateFrame(text, textLength, spans)) return FALSE;
 	if (spans->resolved) {
 		int i;
 		for (i = 0; i < spans->count; i++) g_formatStyleOverlays[i] = spans->items[i].style;
 	}
-	else if (!TcFormatStyleResolveFrame(&g_formatStyleRules, text, textLength, spans,
+	else if (spans->count && !TcFormatStyleResolveFrame(&g_formatStyleRules, text, textLength, spans,
 		g_formatStyleOverlays, TC_FORMAT_MAX_SPANS)) return FALSE;
 	spanIndex = 0;
 	while (position < textLength) {
@@ -6013,6 +6106,8 @@ static BOOL FormatStyleBuildRuns(HDC hdc, const WCHAR* text, const char* info,
 			zone = (BYTE)info[position];
 			style = g_formatStyleBase;
 			style.foreColor = tc_clr(TextColorFromInfoVal((int)zone));
+			// Per-kind plugin colors need runs even when no format rule matches.
+			if (matchedAny && style.foreColor != tc_clr(TextColorFromInfoVal(1))) *matchedAny = TRUE;
 			style.shadowColor = tc_clr(TextColorFromInfoVal(99));
 			if (span) {
 				TcFormatStyleMerge(&style, &g_formatStyleOverlays[spanIndex]);
@@ -6163,8 +6258,8 @@ static void FormatStyleUpdateWatermark(LONG textWidth, LONG textHeight)
 	if (requiredHeight > g_formatStyleHeightWatermark) g_formatStyleHeightWatermark = requiredHeight;
 	if (!g_formatStyleResizePending && IsWindow(hwndClockMain) &&
 		(requiredWidth > widthMainClockContent || requiredHeight > heightMainClockContent)) {
-		g_formatStyleResizePending = TRUE;
-		PostMessage(hwndClockMain, CLOCKM_UPDATE_EXTTEXT, 0, 0);
+		if (PostMessage(hwndClockMain, CLOCKM_UPDATE_EXTTEXT, 0, 0))
+			g_formatStyleResizePending = TRUE;
 	}
 }
 
@@ -6326,10 +6421,10 @@ static COLORREF tpc_query_color(int kind)
     static DWORD stamp;
     static COLORREF base;
     static BOOL vpn;
-    DWORD now = GetTickCount(), resultTick;
+    DWORD now = GetTickCount();
     DWORD_PTR result = 0;
     TC_TEXT_CONTEXT context = { sizeof(context) };
-    COPYDATASTRUCT data;
+    TPI_SEND_RESULT transport;
     UINT i;
     if (now - stamp >= 1000 || base != ColorWeekdayText || vpn != flag_VPN) {
         used = 0;stamp = now;base = ColorWeekdayText;vpn = flag_VPN;
@@ -6337,10 +6432,9 @@ static COLORREF tpc_query_color(int kind)
     for (i = 0; i < used; ++i) if (cache[i].kind == (UINT)kind) return cache[i].value;
     context.kind = (UINT)kind;context.base = ColorWeekdayText;
     GetLocalTime(&context.time);context.holiday = IsHoliday_Win10(&context.time);context.vpn = flag_VPN;
-    data.dwData = TC_PLUGIN_COLOR_DATA;data.cbData = sizeof(context);data.lpData = &context;
-    resultTick = SendMessageTimeoutW(hwndTClockExeMain, WM_COPYDATA, (WPARAM)hwndClockMain,
-        (LPARAM)&data, SMTO_ABORTIFHUNG | SMTO_BLOCK, 50, &result) ? 1 : 0;
-    if (!resultTick || !(result & 0x01000000u)) result = ColorWeekdayText;
+    transport = tpi_send(hwndTClockExeMain, hwndClockMain, TC_PLUGIN_COLOR_DATA,
+        &context, sizeof(context), 50, &result);
+    if (transport != TPI_REPLIED || !(result & 0x01000000u)) result = ColorWeekdayText;
     else result = (ColorWeekdayText & 0xff000000u) | (result & 0x00ffffffu);
     if (used < _countof(cache)) { cache[used].kind = (UINT)kind;cache[used++].value = (COLORREF)result; }
     return (COLORREF)result;
@@ -6379,6 +6473,7 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
 	TC_FORMAT_SPANS formatSpans;
 	BOOL useStyledText = FALSE;
 	BOOL styleMatched = FALSE;
+	BOOL renderFrame = FALSE;
 	LONG styledTextWidth = 0;
 	LONG styledTextHeight = 0;
 	//COLORREF s_col[1024];
@@ -6461,11 +6556,19 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
 		CopyMemory(s_info, g_wuiFrameInfo, sizeof(s_info));
 		formatSpans = g_wuiFrameSpans;
 	}
-	else if (g_formatStyleRules.enabled) {
+	else if (g_formatStyleRules.enabled || fbr_active()) {
 		fs_format_frame(sW, _countof(sW), s_info, pt, beat100, g_formatW, &formatSpans);
 	}
 	else {
 		MakeFormatW(sW, _countof(sW), s_info, pt, beat100, g_formatW);
+		ZeroMemory(&formatSpans, sizeof(formatSpans));
+	}
+	/* A fresh render-provider frame replaces the text (drawn in rrt_blend below). */
+	renderFrame = rrt_take(pt, sW, (UINT)widthMainClockFrame, (UINT)heightMainClockFrame, acs_get_dpi(hwndClockMain),
+		(g_bVertTaskbar ? TC_RENDER_VERTICAL : 0) | (g_wuiFrameActive ? TC_RENDER_WINUI : 0),
+		ext_is_active() ? "not applied, extended display mode" : NULL);
+	if (renderFrame) {
+		sW[0] = L'\0';
 		ZeroMemory(&formatSpans, sizeof(formatSpans));
 	}
 
@@ -6523,7 +6626,7 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
 		useStyledText = TRUE;
 		styleMatched = TRUE;
 	}
-	else if (g_formatStyleRules.enabled && !formatSpans.overflow &&
+	else if (!formatSpans.overflow &&
 		FormatStyleBuildRuns(hdcClock, sW, s_info, &formatSpans, &styleMatched) && styleMatched &&
 		FormatStyleLayoutRuns(hdcClock, sW, xcenter, yclock, wclock, hclock, &styledTextWidth, &styledTextHeight)) {
 		useStyledText = TRUE;
@@ -6669,10 +6772,11 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
 			p_info++;
 		}
 		if (*pw == L'\r') {
+			int newlineLength = pw[1] == L'\n' ? 2 : 1;
 			*pw = L'\0';
-			pw += 2;
+			pw += newlineLength;
 			*p_info = 0;
-			p_info += 2;
+			p_info += newlineLength;
 		}		//改行マークを文字列終端マークにいったん置換 -> 最終行以外, pは次行の先頭アドレス
 		if (*pw == L'\0' && spW == sW)					//1行フォーマットの場合
 		{
@@ -6891,6 +6995,7 @@ void DrawClockSub(HDC hdc, SYSTEMTIME* pt, int beat100)
 	}
 
 	//hdcClock_workはここでお役御免なので、サブクロック描画の際の透過率算出用に再利用する(赤チャネルだけ)
+	if (renderFrame) rrt_blend(m_color_start, (UINT)widthMainClockFrame, (UINT)heightMainClockFrame, bmi_MainClock.bmiHeader.biHeight < 0);
 	ext_draw_clock(pt);
 	for (color = m_color_start, color_work = m_color_work_start; color < m_color_end; ++color, ++color_work) {
 		color_work->rgbRed = color->rgbReserved;
@@ -7857,15 +7962,15 @@ void CalcMainClockContentSize(void)
 	ZeroMemory(s_info, sizeof(s_info));
 	ZeroMemory(&formatSpans, sizeof(formatSpans));
 	if (g_formatW) {
-		if (g_formatStyleRules.enabled) fs_format_frame(sW, _countof(sW), s_info, &t, beat100, g_formatW, &formatSpans);
-		else MakeFormatW(sW, _countof(sW), NULL, &t, beat100, g_formatW);
+		if (g_formatStyleRules.enabled || fbr_active()) fs_format_frame(sW, _countof(sW), s_info, &t, beat100, g_formatW, &formatSpans);
+		else MakeFormatW(sW, _countof(sW), s_info, &t, beat100, g_formatW);
 	} else {
 		sW[0] = L'\0';
 	}
 
 	pw = sW; w = 0; h = 0;
 	hf = tm.tmHeight - tm.tmInternalLeading;
-	if (g_formatStyleRules.enabled && !formatSpans.overflow &&
+	if (!formatSpans.overflow &&
 		FormatStyleBuildRuns(hdc, sW, s_info, &formatSpans, &styleMatched) && styleMatched &&
 		FormatStyleLayoutRuns(hdc, sW, 0, 0, 0, 0, &w, &h)) {
 		int runIndex;
@@ -7907,11 +8012,18 @@ void CalcMainClockContentSize(void)
 	{
 		h += nShadowRange; w += nShadowRange;
 	}
-	if (g_formatStyleRules.enabled) {
+	if (g_formatStyleRules.enabled || fbr_active()) {
 		if (w < g_formatStyleWidthWatermark) w = g_formatStyleWidthWatermark;
 		if (h < g_formatStyleHeightWatermark) h = g_formatStyleHeightWatermark;
 	}
 	if (h < 4) h = 4;
+	{
+		LONG renderWidth, renderHeight;
+		if (rrt_measure(&renderWidth, &renderHeight)) {
+			w = renderWidth;
+			h = renderHeight;
+		}
+	}
 
 //	if (hFon) SelectObject(hdc, hOldFont);		//この先ずっとTClockが稼働するので、戻さなくてよい。
 	ReleaseDC(hwndClockMain, hdc);

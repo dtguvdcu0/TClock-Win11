@@ -1,7 +1,6 @@
 #ifndef TCLOCK_PLUGIN_ACTIONS_H
 #define TCLOCK_PLUGIN_ACTIONS_H
 #include "plugin_runtime.h"
-#define PACT_ACTION_CAPACITY PRT_ACTION_CAPACITY
 int pact_count(void);
 const char* pact_get_key(int index);
 const char* pact_get_label(const char* key, BOOL english);

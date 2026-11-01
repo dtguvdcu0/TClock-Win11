@@ -9,6 +9,7 @@
 #include "../common/ini_io_utf8.h"
 #include "../common/text_codec.h"
 #include <stdio.h>
+#include <limits.h>
 #include <string.h>
 
 #define RM_ITEM_MIN 1
@@ -23,6 +24,9 @@ static int g_rm_item_count = 0;
 static int g_rm_ready = 0;
 static int g_rm_loading = 0;
 static int g_rm_dirty = 0;
+/* Property dialog is single-instance; preserve displayed plugin keys across slot reuse. */
+static char (*g_rm_action_keys)[128];
+static int g_rm_action_count;
 
 typedef struct RM_MENU_ITEM_DATA {
     int sourceRow; /* Original identity until the pending edits are successfully committed. */
@@ -241,8 +245,8 @@ static const char* rm_default_label_for_action(const char* action)
 static const char* rm_action_key_from_index(int idx)
 {
     if (idx >= 19) {
-        const char* key = idx < 19 + PACT_ACTION_CAPACITY ? pact_get_key(idx - 19) : preg_get_action(idx - 19 - PACT_ACTION_CAPACITY);
-        return key ? key : "";
+        int index = idx - 19;
+        return index < g_rm_action_count && g_rm_action_keys ? g_rm_action_keys[index] : "";
     }
     switch (idx) {
     case 0: return "taskmgr";
@@ -270,7 +274,7 @@ static const char* rm_action_key_from_index(int idx)
 
 static int rm_action_index_from_key(const char* key)
 {
-    int i, count = 19 + PACT_ACTION_CAPACITY + preg_count_actions();
+    int i, count = 19 + g_rm_action_count;
     if (!key || !key[0]) return -1;
     for (i = 0; i < count; ++i) {
         if (lstrcmpi(key, rm_action_key_from_index(i)) == 0) return i;
@@ -280,8 +284,18 @@ static int rm_action_index_from_key(const char* key)
 
 static void rm_fill_builtin_action_combo(HWND hDlg)
 {
-    int i, exeCount = preg_count_actions(), dllCount = pact_count();
+    int i, total, exeCount = preg_count_actions(), dllCount = pact_count();
+    char (*keys)[128] = NULL;
+    if (exeCount < 0 || dllCount < 0 || dllCount > INT_MAX - 19 - exeCount) return;
+    total = dllCount + exeCount;
+    if ((SIZE_T)total > (SIZE_T)-1 / sizeof(*keys)) return;
+    if (total) {
+        keys = (char (*)[128])HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, (SIZE_T)total * sizeof(*keys));
+        if (!keys) return;
+    }
     CBResetContent(hDlg, IDC_RM_ITEM_ACTION);
+    if (g_rm_action_keys) HeapFree(GetProcessHeap(), 0, g_rm_action_keys);
+    g_rm_action_keys = keys;g_rm_action_count = 0;
     for (i = 0; i < 19; ++i) {
         int function = i == 13 ? MOUSEFUNC_TCARD_OPEN : i == 14 ? MOUSEFUNC_TCALENDAR_OPEN :
             (i == 15 || i == 18) ? MOUSEFUNC_TCAPTURE_SETTINGS : i == 16 ? MOUSEFUNC_TCYCLE_OPEN : MOUSEFUNC_NONE;
@@ -296,15 +310,21 @@ static void rm_fill_builtin_action_combo(HWND hDlg)
         const char* label = key ? pact_get_label(key, b_EnglishMenu) : NULL;
         if (!label) continue;
         row = CBAddStringUTF8Compat(hDlg, IDC_RM_ITEM_ACTION, label);
-        if (row >= 0) CBSetItemData(hDlg, IDC_RM_ITEM_ACTION, row, 19 + i);
+        if (row >= 0) {
+            lstrcpyn(g_rm_action_keys[g_rm_action_count], key, (int)sizeof(g_rm_action_keys[0]));
+            CBSetItemData(hDlg, IDC_RM_ITEM_ACTION, row, 19 + g_rm_action_count++);
+        }
     }
     for (i = 0; i < exeCount; ++i) {
         const char* key = preg_get_action(i);
-        const char* label = preg_get_label(key);
+        const char* label = preg_get_cached_label(i);
         int row;
-        if (!label) continue;
+        if (!key || !label) continue;
         row = CBAddStringUTF8Compat(hDlg, IDC_RM_ITEM_ACTION, label);
-        if (row >= 0) CBSetItemData(hDlg, IDC_RM_ITEM_ACTION, row, 19 + PACT_ACTION_CAPACITY + i);
+        if (row >= 0) {
+            lstrcpyn(g_rm_action_keys[g_rm_action_count], key, (int)sizeof(g_rm_action_keys[0]));
+            CBSetItemData(hDlg, IDC_RM_ITEM_ACTION, row, 19 + g_rm_action_count++);
+        }
     }
 }
 static void rm_fill_show_combo(HWND hDlg, int alarmMode)
@@ -717,8 +737,13 @@ static void rm_item_load_controls(HWND hDlg, const RM_MENU_ITEM_DATA* item)
     index = rm_action_index_from_key(item->action);
     {
         int row, found = -1;
-        for (row = 0; row < CBGetCount(hDlg, IDC_RM_ITEM_ACTION); ++row)
-            if ((int)CBGetItemData(hDlg, IDC_RM_ITEM_ACTION, row) == index) { found = row; break; }
+        for (row = 0; row < CBGetCount(hDlg, IDC_RM_ITEM_ACTION); ++row) {
+            int itemIndex = (int)CBGetItemData(hDlg, IDC_RM_ITEM_ACTION, row);
+            const char* rowKey;
+            if (itemIndex == CB_ERR) continue;
+            rowKey = rm_action_key_from_index(itemIndex);
+            if (rowKey && lstrcmpi(rowKey, item->action) == 0) { found = row; break; }
+        }
         CBSetCurSel(hDlg, IDC_RM_ITEM_ACTION, found);
         if (found < 0) SetDlgItemTextUTF8Strict(hDlg, IDC_RM_ITEM_ACTION,
             index >= 0 ? rm_default_label_for_action(item->action) : item->action);
@@ -1014,6 +1039,10 @@ BOOL CALLBACK PageRClickMenuProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM 
         }
         break;
     }
+    case WM_DESTROY:
+        if (g_rm_action_keys) HeapFree(GetProcessHeap(), 0, g_rm_action_keys);
+        g_rm_action_keys = NULL;g_rm_action_count = 0;
+        return TRUE;
     case WM_NOTIFY:
         if (((NMHDR*)lParam)->code == PSN_APPLY) {
             /* Parent commits atomically through RM_COMMIT before dispatching other pages. */

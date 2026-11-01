@@ -757,8 +757,6 @@ extern "C" BOOL updateConnectProfsInfo_Win10(BOOL b_Detail)	// return value: 1 =
 	extern BOOL b_ExistMeteredProfile;
 	BOOL b_ExistMeteredProfile_old;
 
-	extern char activeSSID[];
-	extern char activeAPName[];
 
 	BOOL b_LTEProfNameMatched;
 
@@ -927,12 +925,12 @@ extern "C" BOOL updateConnectProfsInfo_Win10(BOOL b_Detail)	// return value: 1 =
 		}
 
 		if (connectedWiFiProfNum != -1)
-			tc_utf16_to_utf8( ssidOrApName[connectedWiFiProfNum]->Data(), activeSSID, 64);
+			tc_utf16_to_utf8( ssidOrApName[connectedWiFiProfNum]->Data(), activeSSID, (int)sizeof(activeSSID));
 		else
 			strcpy(activeSSID, "SSID:N/A");
 
 		if (connectedLTEProfNum != -1)
-			tc_utf16_to_utf8( ssidOrApName[connectedLTEProfNum]->Data(), activeAPName, 64);
+			tc_utf16_to_utf8( ssidOrApName[connectedLTEProfNum]->Data(), activeAPName, (int)sizeof(activeAPName));
 		else
 			strcpy(activeAPName, "APN: N/A");
 

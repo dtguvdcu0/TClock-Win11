@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <string.h>
+#include <limits.h>
 
 #include "../../dll/format_style.h"
 #include "../../common/color_value.h"
@@ -502,8 +503,91 @@ static void test_value_assignments(void)
 	test_check(TcFormatStyleIdentifier(L"STATUS_1") && !TcFormatStyleIdentifier(L"1STATUS") && !TcFormatStyleIdentifier(L"Bad-Name"), "named identifier grammar");
 }
 
+static void test_reject_frame(const WCHAR* source, const TC_FORMAT_SPANS* candidate, const char* name)
+{
+    WCHAR text[128], savedText[128];
+    char info[128], savedInfo[128];
+    TC_FORMAT_SPANS spans = *candidate, savedSpans = *candidate;
+    ZeroMemory(text, sizeof(text)); lstrcpyW(text, source);
+    FillMemory(info, sizeof(info), 1);
+    CopyMemory(savedText, text, sizeof(text)); CopyMemory(savedInfo, info, sizeof(info));
+    test_check(!TcFormatStyleTransform(NULL, text, 128, info, &spans), name);
+    test_check(!memcmp(text,savedText,sizeof(text)) && !memcmp(info,savedInfo,sizeof(info)) &&
+        !memcmp(&spans,&savedSpans,sizeof(spans)), "rejected frame leaves text/info/spans unchanged");
+}
+
+static void test_frame_validation(void)
+{
+    TC_FORMAT_SPANS base, spans;
+    WCHAR text[128] = L"10";
+    char info[128] = {1,1,0};
+    static TC_FS_RULESET ruleset;
+    TC_FS_REPORT report;
+    int resolved, i;
+    ZeroMemory(&base, sizeof(base));
+    base.count = 1; base.items[0].length = 2; base.items[0].zone = 1;
+    lstrcpyW(base.items[0].selector,L"CU");
+    for (resolved = 0; resolved <= 1; resolved++) {
+        base.resolved = resolved;
+        spans = base; spans.count = INT_MAX; test_reject_frame(text,&spans,"count cannot bypass validation");
+        spans = base; spans.count = -1; test_reject_frame(text,&spans,"negative count rejected");
+        spans = base; spans.overflow = TRUE; test_reject_frame(text,&spans,"overflow rejected");
+        spans = base; spans.items[0].start = INT_MAX; test_reject_frame(text,&spans,"start overflow rejected");
+        spans = base; spans.items[0].length = INT_MAX; test_reject_frame(text,&spans,"length overflow rejected");
+        spans = base; spans.items[0].length = -1; test_reject_frame(text,&spans,"negative length rejected");
+        spans = base; FillMemory(spans.items[0].selector,sizeof(spans.items[0].selector),0x41);
+        test_reject_frame(text,&spans,"unterminated selector rejected");
+        spans = base; lstrcpyW(spans.items[0].selector,L"Bad-Name");
+        test_reject_frame(text,&spans,"invalid selector grammar rejected");
+        spans = base; spans.items[0].occurrence = -1; test_reject_frame(text,&spans,"negative occurrence rejected");
+        spans = base; spans.items[0].zone = 255; test_reject_frame(text,&spans,"unknown zone rejected");
+        spans = base; spans.items[0].style.setMask = TC_FS_PROP_VALUE;
+        test_reject_frame(text,&spans,"external value-pool offsets rejected");
+        spans = base; spans.items[0].style.setMask = TC_FS_PROP_FONT_SIZE;
+        spans.items[0].style.fontSize = INT_MAX; test_reject_frame(text,&spans,"unbounded font size rejected");
+        spans = base; spans.items[0].style.setMask = TC_FS_PROP_FONT;
+        FillMemory(spans.items[0].style.fontFace,sizeof(spans.items[0].style.fontFace),0x41);
+        test_reject_frame(text,&spans,"unterminated font rejected");
+        spans = base; spans.items[0].style.setMask = TC_FS_PROP_SHADOW_RANGE;
+        spans.items[0].style.shadowRange = 11; test_reject_frame(text,&spans,"unbounded shadow rejected");
+        spans = base; spans.items[0].style.setMask = TC_FS_PROP_BOLD;
+        spans.items[0].style.bold = 2; test_reject_frame(text,&spans,"invalid style boolean rejected");
+        spans = base; spans.count = 2; spans.items[1] = spans.items[0]; spans.items[1].occurrence = 1;
+        test_reject_frame(text,&spans,"overlapping repeated spans rejected");
+        spans = base; test_reject_frame(L"\xD83D",&spans,"unpaired high surrogate rejected");
+        spans = base; test_reject_frame(L"\xDE00",&spans,"unpaired low surrogate rejected");
+        spans = base; spans.items[0].length = 1;
+        test_reject_frame(L"\xD83D\xDE00",&spans,"surrogate-splitting end rejected");
+        spans = base; spans.items[0].start = 1; spans.items[0].length = 1;
+        test_reject_frame(L"\xD83D\xDE00",&spans,"surrogate-splitting start rejected");
+        spans = base;
+        test_check(TcFormatStyleValidateFrame(L"\xD83D\xDE00",2,&spans),"whole surrogate token accepted");
+        spans.items[0].length = 0;
+        test_check(TcFormatStyleValidateFrame(L"",0,&spans),"empty named slot accepted");
+    }
+    spans = base; spans.resolved = 2; test_reject_frame(text,&spans,"noncanonical resolved flag rejected");
+    spans = base; spans.resolved = FALSE;
+    spans.items[0].style.setMask = TC_FS_PROP_FONT_SIZE|TC_FS_PROP_FONT|TC_FS_PROP_SHADOW_RANGE;
+    spans.items[0].style.fontSize = 256; spans.items[0].style.shadowRange = 10;
+    lstrcpyW(spans.items[0].style.fontFace,L"Segoe UI");
+    test_check(TcFormatStyleValidateFrame(text,2,&spans),"documented style maxima accepted");
+    ZeroMemory(&spans,sizeof(spans)); spans.count = TC_FORMAT_MAX_SPANS;
+    for (i=0;i<TC_FORMAT_MAX_SPANS;i++) {
+        spans.items[i].occurrence = i; spans.items[i].zone = 1;
+        lstrcpyW(spans.items[i].selector,L"STATUS");
+    }
+    test_check(TcFormatStyleValidateFrame(L"",0,&spans),"maximum repeated empty slots accepted");
+    TcFormatStyleInit(&ruleset); ruleset.enabled = TRUE; ruleset.ruleCount = 1;
+    test_check(TcFormatStyleParseRule(L"if (true) { CU.value=\"\xD800\"; }",1,&ruleset.rules[0],&report),
+        "malformed value can reach transform through a manually supplied rule");
+    spans = base; spans.resolved = FALSE;
+    test_check(!TcFormatStyleTransform(&ruleset,text,128,info,&spans) && !wcscmp(text,L"10") &&
+        info[0]==1 && !spans.resolved,"invalid generated value rejected before atomic publication");
+}
+
 int main(void)
 {
+	test_frame_validation();
 	test_value_assignments();
 	test_frame_compatibility();
 	test_cross_items();

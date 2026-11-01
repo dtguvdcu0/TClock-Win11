@@ -410,7 +410,14 @@
     <ClCompile Include="dllmain.c" />
     <ClCompile Include="font.c" />
     <ClCompile Include="format.c" />
+    <ClCompile Include="format_collect.c" />
+    <ClCompile Include="chime_route.c" />
+    <ClCompile Include="render_route.c" />
+    <ClCompile Include="format_bridge.c" />
+    <ClCompile Include="..\common\format_demand.c" />
+    <ClCompile Include="..\common\formatter_api.c" />
     <ClCompile Include="format_style.c" />
+    <ClCompile Include="..\common\format_source.c" />
     <ClCompile Include="..\common\color_value.c" />
     <ClCompile Include="..\common\analog_skin.cpp" />
     <ClCompile Include="..\common\flip_clock.cpp" />
@@ -434,6 +441,15 @@
   <ItemGroup>
     <ClInclude Include="resource.h" />
     <ClInclude Include="format_style.h" />
+    <ClInclude Include="..\common\format_source.h" />
+    <ClInclude Include="format_collect.h" />
+    <ClInclude Include="..\common\format_bridge.h" />
+    <ClInclude Include="..\common\chime_api.h" />
+    <ClInclude Include="..\common\chime_bridge.h" />
+    <ClInclude Include="..\common\render_api.h" />
+    <ClInclude Include="..\common\render_bridge.h" />
+    <ClInclude Include="..\common\format_demand.h" />
+    <ClInclude Include="..\common\formatter_api.h" />
     <ClInclude Include="..\common\color_value.h" />
     <ClInclude Include="..\common\analog_skin.h" />
     <ClInclude Include="..\common\flip_clock.h" />

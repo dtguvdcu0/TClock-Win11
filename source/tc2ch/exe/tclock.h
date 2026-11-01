@@ -256,6 +256,7 @@ void CreateTClockTrayIcon(BOOL bCreate);	//20220323 Ver4.12, by MMM
 // alarm.c -> exemain.c
 void GetFileAndOption(const char* command, char* fname, int fnameBytes, char* opt, int optBytes);
 BOOL ExecFile(HWND hwnd, const char* command);
+BOOL ExecFileW(HWND hwnd, const WCHAR* command);
 
 
 // pagebarmeter.c
@@ -288,6 +289,8 @@ void InitializeMenuItems(void);
 void MenuCustomMigrateLegacyModeKeys(void);
 void MenuCustomRemapAlarms(const int* sourceRows, int count);
 #define RM_COMMIT (WM_APP + 0x3B1)
+#define MOUSE_COMMIT (WM_APP + 0x3B3)
+#define MOUSE_DISPATCH (WM_APP + 0x3B4)
 void OnContextMenu(HWND hwnd, HWND hwndClicked, int xPos, int yPos);
 void OnTClockCommand(HWND hwnd, WORD wID, WORD wCode);
 void MenuOnTimerTick(HWND hwnd);
@@ -299,10 +302,14 @@ void InitMouseFunction(HWND hwnd);
 void EndMouseFunction(HWND hwnd);
 void ResetHotkey(HWND hwnd);
 void OnHotkey(HWND hwnd, int id);
+void mouse_note_setting(const char* section,const char* key);
+void mouse_reset_context(HWND owner);
+BOOL mouse_handle_message(HWND owner,UINT message,WPARAM wParam,LPARAM lParam);
 void ExecuteMouseFunction(HWND hwnd, LONG fnc, int btn, int clk);
 void OnDropFiles(HWND hwnd, HDROP hdrop);
 void OnMouseMsg(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
 void OnTimerMouse(HWND hwnd);
+void OnTimerMouseEvent(HWND hwnd);
 void GetMouseFileEntry(int btn, int clk, char* entry, int cch);
 void PushKeybd(LPKEYEVENT lpkey);
 

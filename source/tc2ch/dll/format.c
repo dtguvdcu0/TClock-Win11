@@ -2024,8 +2024,13 @@ int GetTimeFormatCompat(WORD wLanguageID, DWORD dwFlags, CONST SYSTEMTIME *t,
 /*------------------------------------------------
   load strings of day, month
 --------------------------------------------------*/
+/* AM/PM symbols from the INI, read once per settings load (InitFormat) instead of per format call. */
+static char g_ampmIni[2][80];
+static BOOL g_ampmIniValid;
+
 void InitFormat(SYSTEMTIME* lt)
 {
+	g_ampmIniValid = FALSE;
 	char s[80], *p;
 //	int i, ilang, ioptcal;
 	int i, ioptcal;
@@ -2437,13 +2442,17 @@ static void tc_get_locale_stime_w(WCHAR* buf, int cch)
 static void tc_get_locale_ampm_w(BOOL isAm, WCHAR* buf, int cch)
 {
 	int lctype = isAm ? LOCALE_S1159 : LOCALE_S2359;
-	const char* entry = isAm ? "AMsymbol" : "PMsymbol";
 	char value[80];
 	if (!buf || cch <= 0) return;
 
 	value[0] = 0;
 
-	GetMyRegStr("Format", entry, value, (int)sizeof(value), "");
+	if (!g_ampmIniValid) {
+		GetMyRegStr("Format", "AMsymbol", g_ampmIni[0], (int)sizeof(g_ampmIni[0]), "");
+		GetMyRegStr("Format", "PMsymbol", g_ampmIni[1], (int)sizeof(g_ampmIni[1]), "");
+		g_ampmIniValid = TRUE;
+	}
+	lstrcpyn(value, g_ampmIni[isAm ? 0 : 1], (int)sizeof(value));
 
 	if (value[0] != 0 && MultiByteToWideChar(CP_UTF8, 0, value, -1, buf, cch) > 0) {
 

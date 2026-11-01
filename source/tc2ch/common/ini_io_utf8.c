@@ -354,26 +354,19 @@ static int tc_ini_utf8_parse_section_multisz(const char* text, DWORD size, const
 
 static BOOL tc_ini_utf8_get_file_stamp(const char* path, FILETIME* ftWrite, DWORD* fileSizeLow)
 {
-    HANDLE h;
-    DWORD szLow;
+    WIN32_FILE_ATTRIBUTE_DATA data;
     if (!path || !ftWrite || !fileSizeLow) return FALSE;
     {
         wchar_t wPath[MAX_PATH];
         if (tc_utf8_to_utf16(path, wPath, (int)(sizeof(wPath) / sizeof(wPath[0]))) <= 0) {
             if (tc_ansi_to_utf16_compat(0, path, wPath, (int)(sizeof(wPath) / sizeof(wPath[0]))) <= 0) return FALSE;
         }
-        h = CreateFileW(wPath, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-                        NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+        /* One attribute query per read: the file is opened only when the stamp changed. */
+        if (!GetFileAttributesExW(wPath, GetFileExInfoStandard, &data) || (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) return FALSE;
     }
-    if (h == INVALID_HANDLE_VALUE) return FALSE;
-    if (!GetFileTime(h, NULL, NULL, ftWrite)) {
-        CloseHandle(h);
-        return FALSE;
-    }
-    szLow = GetFileSize(h, NULL);
-    CloseHandle(h);
-    if (szLow == INVALID_FILE_SIZE) return FALSE;
-    *fileSizeLow = szLow;
+    if (data.nFileSizeHigh || data.nFileSizeLow == INVALID_FILE_SIZE) return FALSE;
+    *ftWrite = data.ftLastWriteTime;
+    *fileSizeLow = data.nFileSizeLow;
     return TRUE;
 }
 
@@ -1068,24 +1061,23 @@ BOOL tc_ini_utf8_detect_file(const char* iniPath, BOOL* isUtf8, BOOL* hasBom)
         return TRUE;
     }
 
+    /* The cached read (reused while the file stamp is unchanged) reports the BOM. */
+    hLock = tc_ini_lock_enter(iniPath);
+    if (hLock && tc_ini_utf8_cache_get_locked(iniPath, &text, &size, &bom)) {
+        tc_ini_lock_leave(hLock);
+        if (isUtf8) *isUtf8 = TRUE;
+        if (hasBom) *hasBom = bom;
+        return TRUE;
+    }
+    if (hLock) tc_ini_lock_leave(hLock);
+
     /* Prefer BOM as UTF-8 intent marker even if legacy bytes polluted the body. */
     if (tc_file_has_utf8_bom(iniPath, &bom) && bom) {
         if (isUtf8) *isUtf8 = TRUE;
         if (hasBom) *hasBom = TRUE;
         return TRUE;
     }
-
-    hLock = tc_ini_lock_enter(iniPath);
-    if (!hLock) return FALSE;
-
-    if (!tc_ini_utf8_cache_get_locked(iniPath, &text, &size, &bom)) {
-        tc_ini_lock_leave(hLock);
-        return FALSE;
-    }
-    tc_ini_lock_leave(hLock);
-    if (isUtf8) *isUtf8 = TRUE;
-    if (hasBom) *hasBom = bom;
-    return TRUE;
+    return FALSE;
 }
 
 static BOOL tc_ini_utf8_find_value(const char* text, DWORD size,
@@ -1721,20 +1713,34 @@ BOOL tc_ini_utf8_write_string(const char* iniPath, const char* section, const ch
     tc_normalize_ini_name(key, NULL, keyNorm, (int)sizeof(keyNorm));
     if (!keyNorm[0]) return FALSE;
     if (!val) val = "";
-    hLock = tc_ini_lock_enter(iniPath);
-    if (!hLock) {
-        return FALSE;
-    }
-
-    if (!tc_read_text_file_utf8(iniPath, &text, &size, &hadBom)) {
-        goto cleanup;
-    }
-
     if (tc_is_valid_utf8_bytes(val)) {
         tc_copy_str(utf8Val, (int)sizeof(utf8Val), val);
     }
     else if (!tc_ansi_to_utf8_compat(val, utf8Val, (int)sizeof(utf8Val))) {
         tc_copy_str(utf8Val, (int)sizeof(utf8Val), val);
+    }
+    hLock = tc_ini_lock_enter(iniPath);
+    if (!hLock) {
+        return FALSE;
+    }
+
+    /* Periodic writers (clock size, timer calibration) usually store an unchanged value:
+       answer from the cached text while the file stamp is unchanged, without reading it. */
+    {
+        char* cached = NULL;
+        DWORD cachedSize = 0;
+        BOOL cachedBom = FALSE;
+        char current[4096];
+        if (tc_ini_utf8_cache_get_locked(iniPath, &cached, &cachedSize, &cachedBom) &&
+            tc_ini_utf8_find_value(cached, cachedSize, secNorm, keyNorm, current, (int)sizeof(current)) &&
+            lstrlen(current) < (int)sizeof(current) - 1 && strcmp(current, utf8Val) == 0) {
+            ok = TRUE;
+            goto cleanup;
+        }
+    }
+
+    if (!tc_read_text_file_utf8(iniPath, &text, &size, &hadBom)) {
+        goto cleanup;
     }
 
     if (!tc_ini_utf8_rewrite_key(iniPath, text, size, secNorm, keyNorm, utf8Val, &outText, &outSize)) {

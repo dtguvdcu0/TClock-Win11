@@ -101,8 +101,22 @@ static BOOL prt_policy_current(void) {
 static BOOL prt_read_allowed(void) {
     return !GetMyRegLong("ETC", "MinimalMode", 0) && !GetMyRegLong("Status_DoNotEdit", "SafeMode", 0);
 }
+static BOOL prt_allowed_valid, prt_allowed_value;
+static WIN32_FILE_ATTRIBUTE_DATA prt_allowed_stamp;
+static WCHAR prt_allowed_path[MAX_PATH];
 static BOOL prt_is_allowed(void) {
-    return prt_policy_current() ? prt_policy_allowed : prt_read_allowed();
+    WCHAR path[MAX_PATH];WIN32_FILE_ATTRIBUTE_DATA stamp;BOOL stamped;
+    if (prt_policy_current()) return prt_policy_allowed;
+    /* Without a loaded provider the policy cache is not filled; keep MinimalMode/SafeMode by stamp too. */
+    stamped = prt_read_stamp(path,&stamp);
+    if (prt_allowed_valid && stamped && !_wcsicmp(path,prt_allowed_path) &&
+        !memcmp(&stamp.ftLastWriteTime,&prt_allowed_stamp.ftLastWriteTime,sizeof(FILETIME)) &&
+        stamp.nFileSizeLow == prt_allowed_stamp.nFileSizeLow && stamp.nFileSizeHigh == prt_allowed_stamp.nFileSizeHigh)
+        return prt_allowed_value;
+    prt_allowed_value = prt_read_allowed();
+    prt_allowed_valid = stamped;
+    if (stamped) {wcscpy_s(prt_allowed_path,MAX_PATH,path);prt_allowed_stamp = stamp;}
+    return prt_allowed_value;
 }
 static BOOL prt_check_id(const WCHAR* id) {
     UINT i;
@@ -296,7 +310,7 @@ void prt_note_setting(const char* section, const char* key) {
     if (section && _stricmp(section,"Plugins") &&
         (_stricmp(section,"ETC") || (key && _stricmp(key,"MinimalMode"))) &&
         (_stricmp(section,"Status_DoNotEdit") || (key && _stricmp(key,"SafeMode")))) return;
-    prt_policy_valid = FALSE;
+    prt_policy_valid = FALSE;prt_allowed_valid = FALSE;
     prt_sync_policy();
 }
 static void prt_settle(PRT_PROVIDER* provider);
@@ -1008,8 +1022,8 @@ BOOL prt_handle_message(UINT message, LPARAM lParam, LRESULT* result) {
     transport=tpi_receive(message,lParam,TC_PLUGIN_COLOR_DATA,sizeof(TC_TEXT_CONTEXT),&payload);
     if(transport==TPI_NOT_MINE)return FALSE;*result=0;if(transport!=TPI_ACCEPTED)return TRUE;
     context=(const TC_TEXT_CONTEXT*)payload;if(context->size!=sizeof(*context))return TRUE;color=context->base;
-    if(prt_is_allowed()&&!prt_stopping){
-        for(i=0;i<prt_colors_used;++i)if(prt_get_color(i)->active&&prt_get_provider(prt_get_color(i)->provider)->active)++count;
+    for(i=0;i<prt_colors_used;++i)if(prt_get_color(i)->active&&prt_get_provider(prt_get_color(i)->provider)->active)++count;
+    if(count&&prt_is_allowed()&&!prt_stopping){
         if(count>_countof(local)){
             /* A missing reply makes the drawing side fall back to its base color. */
             if((SIZE_T)count>(SIZE_T)-1/sizeof(*snapshot))return TRUE;

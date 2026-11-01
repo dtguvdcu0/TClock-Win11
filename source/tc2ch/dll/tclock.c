@@ -2178,16 +2178,30 @@ static BOOL wui_run_pass(void)
 	return TRUE;
 }
 
+/* Display backend settings are read on settings loads (g_wuiIniValid cleared there), not per draw. */
+static BOOL g_wuiIniValid;
+static int g_wuiIniBackend;
+static DWORD g_wuiIniRenderer;
+static BOOL g_wuiIniRendererSet;
+
 static void wui_refresh(void)
 {
 	int backend;
 
-	backend = wui_sanitize((int)GetMyRegLong("Win11", "ExperimentalDisplayBackend", TC_DISPLAY_BACKEND_GDI));
+	if (!g_wuiIniValid) {
+		g_wuiIniBackend = (int)GetMyRegLong("Win11", "ExperimentalDisplayBackend", -1);
+		g_wuiIniRenderer = (DWORD)GetMyRegLong("Win11", "ExperimentalTextRenderer", -1);
+		g_wuiIniRendererSet = g_wuiIniRenderer != (DWORD)-1;
+		g_wuiIniValid = TRUE;
+	}
+	backend = wui_sanitize(g_wuiIniBackend == -1 ? TC_DISPLAY_BACKEND_GDI : g_wuiIniBackend);
 	if (IsVertTaskbar(hwndTaskBarMain)) backend = TC_DISPLAY_BACKEND_WINUI;
 	g_wuiCfg = backend;
-	g_wuiTextRenderer = (DWORD)GetMyRegLong("Win11", "ExperimentalTextRenderer", backend == TC_DISPLAY_BACKEND_WINUI ? 1 : 0);
+	g_wuiTextRenderer = g_wuiIniRendererSet ? g_wuiIniRenderer : (backend == TC_DISPLAY_BACKEND_WINUI ? 1u : 0u);
 	if (g_wuiTextRenderer > 2) g_wuiTextRenderer = 0;
-	if (!IsVertTaskbar(hwndTaskBarMain)) SetMyRegLong("Win11", "ExperimentalDisplayBackend", backend);
+	/* The stored backend is normalized once; an unchanged value is not written again. */
+	if (!IsVertTaskbar(hwndTaskBarMain) && g_wuiIniBackend != backend &&
+		SetMyRegLong("Win11", "ExperimentalDisplayBackend", backend)) g_wuiIniBackend = backend;
 
 	if (g_wuiCfg == TC_DISPLAY_BACKEND_GDI) {
 		g_wuiDllLive = FALSE;
@@ -3525,6 +3539,7 @@ static void tc_read_minimal(void)
 	else bEnabledWin11Notify = FALSE;
 	bAdjustTrayWin11SmallTaskbar = (BOOL)GetMyRegLong("Win11", "AdjustWin11IconPosition", 1);
 	SetMyRegLong("Win11", "AdjustWin11IconPosition", bAdjustTrayWin11SmallTaskbar);
+	g_wuiIniValid = FALSE;
 	wui_refresh();
 
 	GetMyRegStr("Format", "Format", fmt_raw, 1024, "mm/dd ddd\\n hh:nn:ss ");
@@ -4427,6 +4442,7 @@ static void tc_read_settings(void)
 	//}
 	SetMyRegLong("Win11", "AdjustWin11IconPosition", bAdjustTrayWin11SmallTaskbar);
 
+	g_wuiIniValid = FALSE;
 	wui_refresh();
 
 
@@ -8094,8 +8110,14 @@ void CalcMainClockSize(void)
 		heightMainClockFrame = tempRect.bottom - tempRect.top;
 	}
 
-	SetMyRegLong("Status_DoNotEdit", "ClockWidth", widthMainClockFrame);
-	SetMyRegLong("Status_DoNotEdit", "ClockHeight", heightMainClockFrame);
+	/* Status values: write only when the measured size changed since the last write. */
+	{
+		static int writtenWidth = -1, writtenHeight = -1;
+		if (widthMainClockFrame != writtenWidth &&
+			SetMyRegLong("Status_DoNotEdit", "ClockWidth", widthMainClockFrame)) writtenWidth = widthMainClockFrame;
+		if (heightMainClockFrame != writtenHeight &&
+			SetMyRegLong("Status_DoNotEdit", "ClockHeight", heightMainClockFrame)) writtenHeight = heightMainClockFrame;
+	}
 
 	if (b_DebugLog) {
 		writeDebugLog_Win10("[tclock.c][CalcMainClockContentSize] Clock Frame Width = ", widthMainClockFrame);

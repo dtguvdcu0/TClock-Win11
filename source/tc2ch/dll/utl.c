@@ -821,6 +821,7 @@ void WriteDebugDLL_New(LPSTR s)
 	extern int AutoClearLogLines;
 	extern char g_mydir_dll[];
 	char strTemp[1024];
+	char line[2048];
 
 	strcpy(fname, g_mydir_dll);
 	add_title(fname, "TCLOCK-WIN11-DEBUG.LOG");
@@ -835,7 +836,7 @@ void WriteDebugDLL_New(LPSTR s)
 				if (tc_ansi_to_utf16_compat(0, fname, wPath, (int)(sizeof(wPath) / sizeof(wPath[0]))) <= 0) return;
 			}
 			hFile = CreateFileW(
-				wPath, FILE_APPEND_DATA, FILE_SHARE_READ, NULL,
+				wPath, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
 				CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 		}
 		if (hFile != INVALID_HANDLE_VALUE)
@@ -851,17 +852,26 @@ void WriteDebugDLL_New(LPSTR s)
 				if (tc_ansi_to_utf16_compat(0, fname, wPath, (int)(sizeof(wPath) / sizeof(wPath[0]))) <= 0) return;
 			}
 			hFile = CreateFileW(
-				wPath, FILE_APPEND_DATA, FILE_SHARE_READ, NULL,
+				wPath, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
 				OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 		}
 	}
 
 	if (hFile != INVALID_HANDLE_VALUE)
 	{
-		wsprintf(strTemp, "[tcdll:%4d] ", LogLineCount);
-		WriteFile(hFile, strTemp, lstrlen(strTemp), &dwWriteSize, NULL);
-		WriteFile(hFile, s, lstrlen(s), &dwWriteSize, NULL);
-		WriteFile(hFile, "\x0d\x0a", lstrlen("\x0d\x0a"), &dwWriteSize, NULL);
+		int prefix = wsprintf(strTemp, "[tcdll:%4d] ", LogLineCount);
+		int length = lstrlen(s);
+		/* One append per line: the exe and the clock DLL share this file. */
+		if (prefix + length + 2 <= (int)sizeof(line)) {
+			memcpy(line, strTemp, prefix);
+			memcpy(line + prefix, s, length);
+			memcpy(line + prefix + length, "\x0d\x0a", 2);
+			WriteFile(hFile, line, prefix + length + 2, &dwWriteSize, NULL);
+		} else {
+			WriteFile(hFile, strTemp, prefix, &dwWriteSize, NULL);
+			WriteFile(hFile, s, length, &dwWriteSize, NULL);
+			WriteFile(hFile, "\x0d\x0a", 2, &dwWriteSize, NULL);
+		}
 		CloseHandle(hFile);
 	}
 }
@@ -933,7 +943,7 @@ void WriteNormalLog_DLL(const char* s)
 
 
 	SYSTEMTIME systemtime;
-	char strTemp[1024];
+	char strTemp[1024 + 2];
 	GetLocalTime(&systemtime);
 
 	{
@@ -955,14 +965,15 @@ void WriteNormalLog_DLL(const char* s)
 				if (tc_ansi_to_utf16_compat(0, fname, wPath, (int)(sizeof(wPath) / sizeof(wPath[0]))) <= 0) return;
 			}
 			hFile = CreateFileW(
-				wPath, FILE_APPEND_DATA, FILE_SHARE_READ, NULL,
+				wPath, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
 				OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 		}
 
 	if (hFile != INVALID_HANDLE_VALUE) {
 
+		/* One append per line: the exe and the clock DLL share this file. */
+		strcat_s(strTemp, sizeof(strTemp), "\x0d\x0a");
 		WriteFile(hFile, strTemp, lstrlen(strTemp), &dwWriteSize, NULL);
-		WriteFile(hFile, "\x0d\x0a", lstrlen("\x0d\x0a"), &dwWriteSize, NULL);
 
 		CloseHandle(hFile);
 	}

@@ -929,7 +929,7 @@ void WriteDebug_New2(const char* s)
 
 	
 	SYSTEMTIME systemtime;
-	char strTemp[1024];
+	char strTemp[1024 + 2];
 	GetLocalTime(&systemtime);
 	//DWORD tickCount_LastLog_temp = 0;
 	//tickCount_LastLog_temp = GetTickCount();
@@ -953,15 +953,16 @@ void WriteDebug_New2(const char* s)
 			if (tc_ansi_to_utf16_compat(0, fname, wPath, (int)(sizeof(wPath) / sizeof(wPath[0]))) <= 0) return;
 		}
 		hFile = CreateFileW(wPath,
-			FILE_APPEND_DATA, FILE_SHARE_READ, NULL,
+			FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
 			OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 	}
 	if (hFile != INVALID_HANDLE_VALUE) {
 		//WriteFile(hFile, "[TClock main] ", lstrlen("[TClock main] "), &dwWriteSize, NULL);
 		//WriteFile(hFile, s, lstrlen(s), &dwWriteSize, NULL);
 
+		/* One append per line: the exe and the clock DLL share this file. */
+		strcat_s(strTemp, sizeof(strTemp), "\x0d\x0a");
 		WriteFile(hFile, strTemp, lstrlen(strTemp), &dwWriteSize, NULL);
-		WriteFile(hFile, "\x0d\x0a", lstrlen("\x0d\x0a"), &dwWriteSize, NULL);
 
 		CloseHandle(hFile);
 	}
@@ -982,7 +983,7 @@ void WriteNormalLog(const char* s)
 
 
 	SYSTEMTIME systemtime;
-	char strTemp[1024];
+	char strTemp[1024 + 2];
 	GetLocalTime(&systemtime);
 
 	{
@@ -1004,14 +1005,15 @@ void WriteNormalLog(const char* s)
 			if (tc_ansi_to_utf16_compat(0, fname, wPath, (int)(sizeof(wPath) / sizeof(wPath[0]))) <= 0) return;
 		}
 		hFile = CreateFileW(wPath,
-			FILE_APPEND_DATA, FILE_SHARE_READ, NULL,
+			FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
 			OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 	}
 
 	if (hFile != INVALID_HANDLE_VALUE) {
 
+		/* One append per line: the exe and the clock DLL share this file. */
+		strcat_s(strTemp, sizeof(strTemp), "\x0d\x0a");
 		WriteFile(hFile, strTemp, lstrlen(strTemp), &dwWriteSize, NULL);
-		WriteFile(hFile, "\x0d\x0a", lstrlen("\x0d\x0a"), &dwWriteSize, NULL);
 
 		CloseHandle(hFile);
 	}

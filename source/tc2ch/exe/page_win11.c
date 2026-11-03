@@ -453,12 +453,22 @@ static BOOL ab_preview_offsets(AB_DIALOG* state)
  return ab_sample(ab_find_taskbar(g_hwndClock), g_hwndClock, &state->automatic, state->colors);
 }
 
+// Skip unchanged text so the periodic preview does not repaint static labels.
+static void ab_set_text(HWND dlg, int id, const WCHAR* text)
+{
+ WCHAR current[256];
+ HWND control = GetDlgItem(dlg, id);
+ if (!control) return;
+ if (GetWindowTextW(control, current, _countof(current)) < _countof(current) - 1 && !wcscmp(current, text)) return;
+ SetWindowTextW(control, text);
+}
+
 static void ab_clear_preview(HWND dlg, AB_DIALOG* state)
 {
  int i;
  state->colors[0] = state->colors[1] = CLR_INVALID;
- for (i = 0; i < 2; ++i) SetDlgItemTextW(dlg, IDC_AB_COLOR1+i, L"---");
- InvalidateRect(GetDlgItem(dlg, IDC_AB_GRADIENT), NULL, TRUE);
+ for (i = 0; i < 2; ++i) ab_set_text(dlg, IDC_AB_COLOR1+i, L"---");
+ InvalidateRect(GetDlgItem(dlg, IDC_AB_GRADIENT), NULL, FALSE);
 }
 
 static void ab_create_preview(HWND dlg)
@@ -539,7 +549,7 @@ static BOOL ab_check_dialog(HWND dlg, AB_DIALOG* state)
   if (state->picking) { state->picking = 0; if (GetCapture() == dlg) ReleaseCapture(); }
   ab_show_markers(state, FALSE);
   ab_clear_preview(dlg, state);
-  SetDlgItemTextW(dlg, IDC_AB_STATUS, !editable ?
+  ab_set_text(dlg, IDC_AB_STATUS, !editable ?
    (b_EnglishMenu ? L"Settings belong to a newer version; changes are disabled." : L"\u65b0\u3057\u3044\u30d0\u30fc\u30b8\u30e7\u30f3\u306e\u8a2d\u5b9a\u306e\u305f\u3081\u5909\u66f4\u3067\u304d\u307e\u305b\u3093\u3002") :
    (b_EnglishMenu ? L"This profile is inactive at the current taskbar position." : L"\u73fe\u5728\u306e\u30bf\u30b9\u30af\u30d0\u30fc\u914d\u7f6e\u3067\u306f\u3053\u306e\u8a2d\u5b9a\u306f\u9078\u629e\u3067\u304d\u307e\u305b\u3093\u3002"));
   return FALSE;
@@ -556,7 +566,7 @@ static void ab_preview(HWND dlg, AB_DIALOG* state)
  if (!ab_read_choice(dlg, state)) {
   ab_clear_preview(dlg, state);
   ab_show_markers(state, FALSE);
-  SetDlgItemTextW(dlg, IDC_AB_STATUS, b_EnglishMenu ? L"Positions: 0..100%. Offsets: -200..200 px. Balance: 0..100." : L"\u4f4d\u7f6e: 0\uff5e100% / \u5fae\u8abf\u6574: -200\uff5e200 px / \u6df7\u5408\u7387: 0\uff5e100\u3002");
+  ab_set_text(dlg, IDC_AB_STATUS, b_EnglishMenu ? L"Positions: 0..100%. Offsets: -200..200 px. Balance: 0..100." : L"\u4f4d\u7f6e: 0\uff5e100% / \u5fae\u8abf\u6574: -200\uff5e200 px / \u6df7\u5408\u7387: 0\uff5e100\u3002");
   return;
  }
  ab_check_dialog(dlg, state);
@@ -565,16 +575,16 @@ static void ab_preview(HWND dlg, AB_DIALOG* state)
  if (state->selection == 0 ? ab_preview_offsets(state) : ab_sample(taskbar, g_hwndClock, &state->points, state->colors)) {
   for (i = 0; i < 2; ++i) {
    wsprintfW(text, L"#%02X%02X%02X", GetRValue(state->colors[i]), GetGValue(state->colors[i]), GetBValue(state->colors[i]));
-   SetDlgItemTextW(dlg, IDC_AB_COLOR1 + i, text);
+   ab_set_text(dlg, IDC_AB_COLOR1 + i, text);
   }
-  SetDlgItemTextW(dlg, IDC_AB_STATUS, state->selection == 1 && state->points.count == 1 ?
+  ab_set_text(dlg, IDC_AB_STATUS, state->selection == 1 && state->points.count == 1 ?
    (b_EnglishMenu ? L"One point: solid background. Apply in Properties." : L"1\u70b9: \u5358\u8272\u306e\u80cc\u666f\u3002\u30d7\u30ed\u30d1\u30c6\u30a3\u3067\u9069\u7528\u3002") :
    (b_EnglishMenu ? L"0: Point 2 / 50: even / 100: Point 1.\nGradient follows the taskbar: left-right or top-bottom." : L"0: 2\u70b9\u76ee / 50: \u5747\u7b49 / 100: 1\u70b9\u76ee\u3002\n\u4e0a\u4e0b\u914d\u7f6e\u306f\u5de6\u53f3\u3001\u5de6\u53f3\u914d\u7f6e\u306f\u4e0a\u4e0b\u306b\u5909\u5316\u3002"));
  } else {
   ab_clear_preview(dlg, state);
-  SetDlgItemTextW(dlg, IDC_AB_STATUS, b_EnglishMenu ? L"Choose visible background outside the clock." : L"\u6642\u8a08\u3068\u91cd\u306a\u3089\u306a\u3044\u80cc\u666f\u3092\u9078\u3093\u3067\u304f\u3060\u3055\u3044\u3002");
+  ab_set_text(dlg, IDC_AB_STATUS, b_EnglishMenu ? L"Choose visible background outside the clock." : L"\u6642\u8a08\u3068\u91cd\u306a\u3089\u306a\u3044\u80cc\u666f\u3092\u9078\u3093\u3067\u304f\u3060\u3055\u3044\u3002");
  }
- InvalidateRect(GetDlgItem(dlg, IDC_AB_GRADIENT), NULL, TRUE);
+ InvalidateRect(GetDlgItem(dlg, IDC_AB_GRADIENT), NULL, FALSE);
  ab_show_markers(state, TRUE);
 }
 
@@ -688,7 +698,7 @@ static INT_PTR CALLBACK ab_handle_dialog(HWND dlg, UINT message, WPARAM wp, LPAR
    if (!ab_check_dialog(dlg, state) || !ab_read_choice(dlg, state)) { ab_preview(dlg, state); return TRUE; }
    state->picking = LOWORD(wp) == IDC_AB_PICK1 ? 1 : 2;
    SetCapture(dlg); SetCursor(LoadCursorW(NULL, MAKEINTRESOURCEW(32515)));
-   SetDlgItemTextW(dlg, IDC_AB_STATUS, b_EnglishMenu ? L"Click taskbar background. Esc cancels selection." : L"\u30bf\u30b9\u30af\u30d0\u30fc\u306e\u80cc\u666f\u3092\u30af\u30ea\u30c3\u30af\u3002Esc\u3067\u4e2d\u6b62\u3002");
+   ab_set_text(dlg, IDC_AB_STATUS, b_EnglishMenu ? L"Click taskbar background. Esc cancels selection." : L"\u30bf\u30b9\u30af\u30d0\u30fc\u306e\u80cc\u666f\u3092\u30af\u30ea\u30c3\u30af\u3002Esc\u3067\u4e2d\u6b62\u3002");
    return TRUE;
   case IDOK:
    if (!ab_check_dialog(dlg, state) || !ab_read_choice(dlg, state)) { ab_preview(dlg, state); return TRUE; }

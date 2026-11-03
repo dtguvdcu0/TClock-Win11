@@ -82,8 +82,6 @@ static void tip_init_scroll(HWND hDlg)
 static void tip_scroll_to(HWND hDlg, int target)
 {
     SCROLLINFO info;
-    HWND child, next;
-    RECT rect;
     int maxPos, delta;
 
     ZeroMemory(&info, sizeof(info));
@@ -97,17 +95,14 @@ static void tip_scroll_to(HWND hDlg, int target)
     delta = target - info.nPos;
     if (!delta) return;
 
-    for (child = GetWindow(hDlg, GW_CHILD); child; child = next) {
-        next = GetWindow(child, GW_HWNDNEXT);
-        if (!GetWindowRect(child, &rect)) continue;
-        MapWindowPoints(NULL, hDlg, (LPPOINT)&rect, 2);
-        SetWindowPos(child, NULL, rect.left, rect.top - delta, 0, 0,
-            SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
-    }
     info.fMask = SIF_POS;
     info.nPos = target;
     SetScrollInfo(hDlg, SB_VERT, &info, TRUE);
-    InvalidateRect(hDlg, NULL, TRUE);
+    // Blit existing pixels and move children in one step; only the exposed
+    // strip is repainted, which avoids per-control moves and a full erase.
+    ScrollWindowEx(hDlg, 0, -delta, NULL, NULL, NULL, NULL,
+        SW_SCROLLCHILDREN | SW_INVALIDATE | SW_ERASE);
+    UpdateWindow(hDlg);
 }
 
 static void tip_scroll_focus(HWND hDlg, HWND focused)

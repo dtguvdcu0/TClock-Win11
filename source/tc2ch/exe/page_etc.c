@@ -188,15 +188,15 @@ static void OnUpdate(HWND hDlg)
 
 	tempInt = (int)SendMessage(g_hwndClock, WM_COMMAND, (WPARAM)CLOCKM_REQUEST_TEMPCOUNTERINFO, selectedThermalZone);
 
-	if (Language_Offset == LANGUAGE_OFFSET_JAPANESE) {
-		wchar_t tempStr[64];
-		wsprintfW(tempStr, L"\x73FE\x5728\x306E\x30C7\x30FC\x30BF: %d \x2103", tempInt % 200);
-		SetDlgItemTextW(hDlg, IDC_LABEL_CURRENT_TEMP, tempStr);
-	}
-	else {
-		char tempStr[64];
-		wsprintf(tempStr, "Current Value: %d deg.", tempInt % 200);
-		SetWindowTextUTF8Strict(GetDlgItem(hDlg, IDC_LABEL_CURRENT_TEMP), tempStr);
+	{
+		wchar_t tempStr[64], current[64];
+		if (Language_Offset == LANGUAGE_OFFSET_JAPANESE)
+			wsprintfW(tempStr, L"\x73FE\x5728\x306E\x30C7\x30FC\x30BF: %d \x2103", tempInt % 200);
+		else
+			wsprintfW(tempStr, L"Current Value: %d deg.", tempInt % 200);
+		// Skip unchanged values so the 1 s timer does not repaint the label.
+		GetDlgItemTextW(hDlg, IDC_LABEL_CURRENT_TEMP, current, 64);
+		if (lstrcmpW(current, tempStr)) SetDlgItemTextW(hDlg, IDC_LABEL_CURRENT_TEMP, tempStr);
 	}
 
 }

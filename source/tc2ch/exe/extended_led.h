@@ -13,12 +13,19 @@ static UINT ext_get_checked(HWND d,int id){return (UINT)SendMessageW(ext_get_con
 static BOOL ext_set_number(HWND d,int id,UINT value,BOOL sign){WCHAR text[32];if(sign)swprintf_s(text,_countof(text),L"%d",(int)value);else swprintf_s(text,_countof(text),L"%u",value);return ext_set_text(d,id,text);}
 static void ext_layout_led(HWND dialog,EXT_PAGE* page,BOOL show);
 static void ext_scroll_led(HWND dialog,EXT_PAGE* page,int target);
+// Ignore scroll requests that do not change the clamped position to avoid a full panel repaint.
+static void ext_step_led(HWND dialog,EXT_PAGE* page,int target)
+{
+    if(!page)return;
+    target=max(0,min(target,max(0,page->ledHeight-page->ledView)));
+    if(target!=page->ledScroll)ext_scroll_led(dialog,page,target);
+}
 static void ext_reveal_led(HWND dialog,EXT_PAGE* page,HWND control)
 {
     RECT rect,client;if(!page||!control||GetParent(control)!=page->ledPanel)return;
     GetWindowRect(control,&rect);MapWindowPoints(NULL,page->ledPanel,(POINT*)&rect,2);GetClientRect(page->ledPanel,&client);
-    if(rect.top<0)ext_scroll_led(dialog,page,page->ledScroll+rect.top);
-    else if(rect.bottom>client.bottom)ext_scroll_led(dialog,page,page->ledScroll+rect.bottom-client.bottom);
+    if(rect.top<0)ext_step_led(dialog,page,page->ledScroll+rect.top);
+    else if(rect.bottom>client.bottom)ext_step_led(dialog,page,page->ledScroll+rect.bottom-client.bottom);
 }
 static LRESULT CALLBACK ext_panel_proc(HWND window,UINT message,WPARAM wParam,LPARAM lParam,UINT_PTR id,DWORD_PTR ref)
 {
@@ -33,13 +40,13 @@ static LRESULT CALLBACK ext_panel_proc(HWND window,UINT message,WPARAM wParam,LP
         switch(LOWORD(wParam)){case SB_LINEUP:target-=unit.bottom;break;case SB_LINEDOWN:target+=unit.bottom;break;
         case SB_PAGEUP:target-=(int)si.nPage;break;case SB_PAGEDOWN:target+=(int)si.nPage;break;
         case SB_THUMBTRACK:case SB_THUMBPOSITION:target=si.nTrackPos;break;case SB_TOP:target=0;break;case SB_BOTTOM:target=si.nMax;break;}
-        ext_scroll_led(dialog,page,target);return 0;
+        ext_step_led(dialog,page,target);return 0;
     }
     if(message==WM_MOUSEWHEEL&&page){
         UINT lines=3;SystemParametersInfoW(SPI_GETWHEELSCROLLLINES,0,&lines,0);RECT unit={0,0,0,16};MapDialogRect(dialog,&unit);
         int step=lines==WHEEL_PAGESCROLL?page->ledView:unit.bottom*(int)lines;
         page->ledWheel+=GET_WHEEL_DELTA_WPARAM(wParam);int ticks=page->ledWheel/WHEEL_DELTA;page->ledWheel%=WHEEL_DELTA;
-        ext_scroll_led(dialog,page,page->ledScroll-ticks*step);return 0;
+        ext_step_led(dialog,page,page->ledScroll-ticks*step);return 0;
     }
     if(message==WM_NCDESTROY)RemoveWindowSubclass(window,ext_panel_proc,id);
     return DefSubclassProc(window,message,wParam,lParam);

@@ -21,6 +21,19 @@ typedef struct PPG_STATE {
 } PPG_STATE;
 static LPCWSTR ppg_text(LPCWSTR english,LPCWSTR japanese){return b_EnglishMenu?english:japanese;}
 static PPG_STATE* ppg_state(HWND dialog){return (PPG_STATE*)GetWindowLongPtrW(dialog,GWLP_USERDATA);}
+/* Descriptions of the known companion tools are owned by TClock, indexed like preg_files (TCard, TCycle, TCalendar, TCapture). NULL falls back to the plugin resource. */
+static const WCHAR* const ppg_known_ja[]={L"TClock\u306e\u66f8\u5f0f\u304c\u4f7f\u3048\u308b\u4ed8\u7b8b\u7d19\u30c4\u30fc\u30eb\u3067\u3059\u3002\u5358\u4f53\u3067\u52d5\u4f5c\u3059\u308b\u307b\u304b\u3001LAN\u5185\u306e\u4ed6\u306ePC\u3068\u4ed8\u7b8b\u3092\u540c\u671f\u3059\u308b\u3053\u3068\u3082\u3067\u304d\u307e\u3059\u3002",L"Windows\u306e\u30bf\u30b9\u30af\u30b9\u30b1\u30b8\u30e5\u30fc\u30e9\u30fc\u306e\u3088\u3046\u306a\u30a2\u30d7\u30ea\u30b1\u30fc\u30b7\u30e7\u30f3\u30e9\u30f3\u30c1\u30e3\u30fc\u3067\u3059\u3002\u30a2\u30d7\u30ea\u306e\u8d77\u52d5\u76e3\u8996\uff08\u7d42\u4e86\u6642\u306e\u518d\u8d77\u52d5\uff09\u3001\u5b9a\u671f\u5b9f\u884c\u3001\u30ad\u30fc\u30dc\u30fc\u30c9\u30b7\u30e7\u30fc\u30c8\u30ab\u30c3\u30c8\u304b\u3089\u306e\u8d77\u52d5\u306a\u3069\u306b\u5bfe\u5fdc\u3057\u3066\u3044\u307e\u3059\u3002",L"\u6539\u4fee\u4e2d\u3067\u3059\u3002",L"\u30de\u30eb\u30c1\u30c7\u30a3\u30b9\u30d7\u30ec\u30a4\u5bfe\u5fdc\u306e\u30b9\u30af\u30ea\u30fc\u30f3\u30b7\u30e7\u30c3\u30c8\u30c4\u30fc\u30eb\u3067\u3059\u3002\u30db\u30c3\u30c8\u30ad\u30fc\u3067\u306e\u64ae\u5f71\u306e\u307b\u304b\u3001\u9023\u7d9a\u64ae\u5f71\u3084\u5b9a\u671f\u64ae\u5f71\u3082\u3067\u304d\u307e\u3059\u3002"};
+static const WCHAR* const ppg_known_en[]={L"A sticky-note tool that supports TClock format strings. It works standalone and can also sync notes with other PCs on the LAN.",L"An application launcher in the style of Windows Task Scheduler. It supports launch monitoring (restarting apps when they exit), scheduled runs, keyboard shortcuts, and more.",L"Currently being reworked.",L"A multi-display screenshot tool. Besides capturing with a hotkey, it supports burst capture and scheduled capture."};
+#define PPG_DOWNLOAD_URL L"https://github.com/dtguvdcu0/TClock-Plugin"
+static void ppg_get_about(const PLUGIN_RECORD* r,WCHAR* description,int capacity){
+    const WCHAR* text;
+    if(r->known<0||r->known>=(int)_countof(ppg_known_ja)){preg_get_description(r,b_EnglishMenu,description,capacity);return;}
+    text=b_EnglishMenu?ppg_known_en[r->known]:ppg_known_ja[r->known];
+    if(text)wcscpy_s(description,capacity,text);else preg_get_description(r,b_EnglishMenu,description,capacity);
+    if(description[0])wcscat_s(description,capacity,L"\r\n");
+    wcscat_s(description,capacity,ppg_text(L"Download: ",L"\u914d\u5e03\u5143: "));
+    wcscat_s(description,capacity,PPG_DOWNLOAD_URL);
+}
 static BOOL ppg_is_listed(const PLUGIN_RECORD* r){return r->visible&&(!r->automatic||r->discovered);}
 static void ppg_mark(HWND dialog){PPG_STATE* s=ppg_state(dialog);if(s&&!s->loading){s->dirty=TRUE;SendMessageW(GetParent(dialog),PSM_CHANGED,(WPARAM)dialog,0);}}
 static void ppg_capture(HWND dialog){
@@ -34,7 +47,7 @@ static void ppg_show(HWND dialog){
     s->loading=TRUE;
     if(r){
         if(r->conflict)wcscpy_s(description,_countof(description),ppg_text(L"More than one registration or DLL uses this plugin ID. Keep one matching DLL in the plugins folder.",L"\u540c\u3058\u30d7\u30e9\u30b0\u30a4\u30f3ID\u306eDLL\u307e\u305f\u306f\u767b\u9332\u304c\u91cd\u8907\u3057\u3066\u3044\u307e\u3059\u3002plugins\u30d5\u30a9\u30eb\u30c0\u5185\u306e\u5bfe\u8c61DLL\u30921\u3064\u306b\u3057\u3066\u304f\u3060\u3055\u3044\u3002"));
-        else preg_get_description(r,b_EnglishMenu,description,_countof(description));
+        else ppg_get_about(r,description,_countof(description));
     }
     SetDlgItemTextW(dialog,IDC_PL_DESCRIPTION,description);
     EnableWindow(GetDlgItem(dialog,IDC_PL_ENABLED),r!=NULL);CheckDlgButton(dialog,IDC_PL_ENABLED,r&&r->enabled?BST_CHECKED:BST_UNCHECKED);

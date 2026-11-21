@@ -362,7 +362,8 @@ static BOOL pm_load_commands(void)
         if (duplicate < used) continue;
         /* Own the catalog snapshot; combo positions and runtime slots are not persistent identities. */
         strcpy_s(commands[used].key, IB_KEY_CHARS, key);
-        swprintf_s(commands[used].label, _countof(commands[0].label), L"DLL: %ls [%ls]", wide, stable);
+        /* Show the command label only; the stable key stays internal (selection matches by key). */
+        wcscpy_s(commands[used].label, _countof(commands[0].label), wide);
         ++used;
     }
     if (used == pm_command_count && (!used || !memcmp(commands, pm_commands, (SIZE_T)used * sizeof(*commands)))) {

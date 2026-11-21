@@ -6,12 +6,6 @@ Standard support and validation target: **Windows 11 26H2**.
 - 不具合の調査・修正
 - 26H2での安定化
 
-## TClock本体の機能拡張
-
-- WinUIへの部分移行
-- 不具合の調査・修正色設定2を、書式や値ごとに着色できるようにする
-- アナログ時計表示の強化
-
 ## 関連ツール・連携機能
 
 - GitHubPagesでの解説サイト

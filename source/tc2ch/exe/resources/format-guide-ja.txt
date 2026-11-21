@@ -44,6 +44,7 @@ TClock 使える書式ガイド
   td+HH:MM / td-HH:MM             固定の時差を指定します。
   tu+HH:MM / tu-HH:MM             US DST を考慮した時差を指定します。
   te+HH:MM / te-HH:MM             Europe DST を考慮した時差を指定します。
+  ts+YY/MM/DD / ts-YY/MM/DD       以降の日付を年/月/日ずらします（月末は丸め）。td と併用時は td を先に書きます。
   StU / StE                       US / Europe DST の状態を "*" または空白で表示します。
   w+HH / w-HH                     時だけをずらして表示します。
 

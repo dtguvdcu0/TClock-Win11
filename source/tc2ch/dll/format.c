@@ -3687,6 +3687,33 @@ static BOOL tc_emit_ip_token_w(WCHAR** dp, int* remain, const WCHAR** psp)
 	return TRUE;
 }
 
+/* Shift a date by years, months and days (in that order). The day is clamped to the month end
+   after the year/month step; the weekday is recomputed. The time of day is kept. */
+static void tc_shift_date(SYSTEMTIME* st, int years, int months, int days)
+{
+	static const int monthDays[12] = { 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
+	SYSTEMTIME shifted = *st;
+	FILETIME ft;
+	ULARGE_INTEGER value;
+	int total = (int)st->wYear * 12 + (int)st->wMonth - 1 + years * 12 + months;
+	int year = total / 12;
+	int month = total % 12 + 1;
+	int last = monthDays[month - 1];
+	if (month == 2 && ((year % 4 == 0 && year % 100 != 0) || year % 400 == 0)) last = 29;
+	if (year < 1601 || year > 30827) return;
+	shifted.wYear = (WORD)year;
+	shifted.wMonth = (WORD)month;
+	if ((int)shifted.wDay > last) shifted.wDay = (WORD)last;
+	if (!SystemTimeToFileTime(&shifted, &ft)) return;
+	value.LowPart = ft.dwLowDateTime;
+	value.HighPart = ft.dwHighDateTime;
+	if (days < 0 && value.QuadPart < (ULONGLONG)(-days) * 864000000000ULL) return;
+	value.QuadPart += (ULONGLONG)(LONGLONG)days * 864000000000ULL;
+	ft.dwLowDateTime = value.LowPart;
+	ft.dwHighDateTime = value.HighPart;
+	if (FileTimeToSystemTime(&ft, &shifted)) *st = shifted;
+}
+
 static BOOL tc_wfmt_core(WCHAR* s, int sCch, char* s_info, SYSTEMTIME* pt, int beat100,
 	const WCHAR* fmt, TC_FORMAT_SPANS* spans)
 {
@@ -4102,6 +4129,21 @@ static BOOL tc_wfmt_core(WCHAR* s, int sCch, char* s_info, SYSTEMTIME* pt, int b
 						disptime = CalcTimeDifference_Europe_Win10(pt, td_hour, td_min, td_neg);
 					}
 					sp += 8;
+					continue;
+				}
+
+				/* Date shift: ts+YY/MM/DD or ts-YY/MM/DD shifts the following tokens by years, months and days. */
+				if (sp[0] == L't' && sp[1] == L's' && (sp[2] == L'+' || sp[2] == L'-') &&
+					sp[3] >= L'0' && sp[3] <= L'9' && sp[4] >= L'0' && sp[4] <= L'9' && sp[5] == L'/' &&
+					sp[6] >= L'0' && sp[6] <= L'9' && sp[7] >= L'0' && sp[7] <= L'9' && sp[8] == L'/' &&
+					sp[9] >= L'0' && sp[9] <= L'9' && sp[10] >= L'0' && sp[10] <= L'9')
+				{
+					int sign = (sp[2] == L'-') ? -1 : 1;
+					int years = (int)(sp[3] - L'0') * 10 + (int)(sp[4] - L'0');
+					int months = (int)(sp[6] - L'0') * 10 + (int)(sp[7] - L'0');
+					int days = (int)(sp[9] - L'0') * 10 + (int)(sp[10] - L'0');
+					tc_shift_date(&disptime, sign * years, sign * months, sign * days);
+					sp += 11;
 					continue;
 				}
 

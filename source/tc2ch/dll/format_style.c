@@ -484,7 +484,7 @@ BOOL TcFormatStyleSelectorSupported(const WCHAR* selector)
 		L"GIP", L"GIPA", L"GU", L"GI", L"IPA", L"IPE", L"IPW", L"IPL", L"IPV",
 		L"ST", L"Sd", L"Sa", L"Sh", L"Sn", L"Ss", L"AD", L"ad", L"BCS", L"BL",
 		L"B", L"TEMP", L"VL", L"VM", L"PCORE", L"LPROC", L"StU", L"StE", L"w",
-		L"aaaa", L"aaa", L"yyyy", L"yy", L"Y", L"g", L"dddd", L"dde", L"ddd",
+		L"aaaa", L"aaa", L"yyyy", L"yy", L"Y", L"g", L"dddd", L"dde", L"ddd", L"HOLW", L"HOLM", L"HOLN",
 		L"dd", L"d", L"mmmm", L"mme", L"mmm", L"mm", L"m", L"hh", L"h", L"nn",
 		L"n", L"ss", L"s", L"tt", L"AMPM", L"ampm"
 	};

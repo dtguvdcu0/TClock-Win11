@@ -7,6 +7,7 @@
 #include "format_collect.h"
 #include "minmode.h"
 #include "../common/plugin_api.h"
+#include "../common/holiday_jp.h"
 #include "../common/plugin_transport.h"
 #include "../common/analog_skin.h"
 #include "../common/chime_schedule.h"
@@ -457,7 +458,6 @@ BOOL bTimerAdjust_NetStat = FALSE;
 COLORREF ColorWeekdayText = RGB(0, 0, 0);
 BOOL bSaturday = FALSE;
 BOOL bSunday = FALSE;
-BOOL bHoliday = FALSE;
 BOOL b_DayChange = FALSE;
 
 COLORREF originalColorTaskbar = RGB(0, 0, 0);
@@ -8780,73 +8780,9 @@ void RestartTClockFromDLL(void)
 
 BOOL IsHoliday_Win10(SYSTEMTIME* pt)
 {
-	if (b_English) return (FALSE);
-
-	BOOL b_ret = FALSE;
-	int Year, Month, Day, DoW;
-	Year = pt->wYear;
-	Month = pt->wMonth;
-	Day = pt->wDay;
-	DoW = pt->wDayOfWeek;
-
-	switch(Month) {
-		case 1:
-			if (Day == 1 || (Day == 2 && DoW == 1)) b_ret = TRUE;	//元旦
-			if (Day > 7 && Day < 15 && DoW == 1) b_ret = TRUE;		//成人の日
-			break;
-		case 2:
-			if (Day == 11 || (Day == 12 && DoW == 1)) b_ret = TRUE;	//建国記念日
-			if (Day == 23 || (Day == 24 && DoW == 1)) b_ret = TRUE;	//天皇誕生日
-			break;
-		case 3:		//春分の日
-			if (Year == 2020 || Year == 2021 || Year == 2024 || Year == 2025 || Year == 2026 || Year == 2028 || Year == 2029 || Year == 2030)
-				if (Day == 20 || (Day == 21 && DoW == 1)) b_ret = TRUE;
-			if (Year == 2022 || Year == 2023 || Year == 2027)
-				if (Day == 21 || (Day == 22 && DoW == 1)) b_ret = TRUE;
-			break;
-		case 4:
-			if (Day == 29 || (Day == 30 && DoW == 1)) b_ret = TRUE;	//昭和の日
-			break;
-		case 5:
-			if (Day == 3) b_ret = TRUE;		//憲法記念日
-			if (Day == 4) b_ret = TRUE;		//みどりの日
-			if (Day == 5) b_ret = TRUE;		//こどもの日
-			if (Day == 6 && (DoW == 1 || DoW == 2 || DoW == 3)) b_ret = TRUE;	//振替休日
-			break;
-		case 7:
-			//if (Year == 2020) {
-			//	if (Day == 23) b_ret = TRUE;
-			//}
-			//else {
-				if (Day > 14 && Day < 22 && DoW == 1) b_ret = TRUE;		//海の日
-			//}
-			break;
-		case 8:
-			//if (Year == 2020) {
-			//	if (Day == 10) b_ret = TRUE;
-			//}
-			//else {
-				if (Day == 11 || (Day == 12 && DoW == 1)) b_ret = TRUE;		//山の日
-			//}
-			break;
-		case 9:
-			if (Day > 14 && Day < 22 && DoW == 1) b_ret = TRUE;		//敬老の日
-			//以下、秋分の日
-			if (Year == 2020 || Year == 2024 || Year == 2028)
-				if (Day == 22 || (Day == 23 && DoW == 1)) b_ret = TRUE;
-			if (Year == 2021 || Year == 2022 || Year == 2023 || Year == 2025 || Year == 2026 || Year == 2027 || Year == 2029 || Year == 2030)
-				if (Day == 23 || (Day == 24 && DoW == 1)) b_ret = TRUE;
-			break;
-		case 10:
-			if (Year != 2020) {
-				if (Day > 7 && Day < 15 && DoW == 1) b_ret = TRUE;	//スポーツの日
-			}
-			break;
-		case 11:
-			if (Day == 3 || (Day == 4 && DoW == 1)) b_ret = TRUE;	//文化の日
-			if (Day == 23 || (Day == 24 && DoW == 1)) b_ret = TRUE;	//勤労感謝の日
-	}
-	return(b_ret);
+	/* Japanese holidays only; closure days do not count as holidays here. */
+	if (b_English || !pt) return FALSE;
+	return TcHolidayFind((int)pt->wYear, (int)pt->wMonth, (int)pt->wDay, NULL) == TC_HOLIDAY_PUBLIC;
 }
 
 

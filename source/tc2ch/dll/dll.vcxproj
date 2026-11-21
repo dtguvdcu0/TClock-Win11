@@ -418,6 +418,7 @@
     <ClCompile Include="..\common\formatter_api.c" />
     <ClCompile Include="format_style.c" />
     <ClCompile Include="..\common\format_source.c" />
+    <ClCompile Include="..\common\holiday_jp.c" />
     <ClCompile Include="..\common\color_value.c" />
     <ClCompile Include="..\common\analog_skin.cpp" />
     <ClCompile Include="..\common\flip_clock.cpp" />
@@ -442,6 +443,7 @@
     <ClInclude Include="resource.h" />
     <ClInclude Include="format_style.h" />
     <ClInclude Include="..\common\format_source.h" />
+    <ClInclude Include="..\common\holiday_jp.h" />
     <ClInclude Include="format_collect.h" />
     <ClInclude Include="..\common\format_bridge.h" />
     <ClInclude Include="..\common\chime_api.h" />

@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <winhttp.h>
 #include "../common/text_codec.h"
+#include "../common/holiday_jp.h"
 #pragma comment(lib, "winhttp.lib")
 #define MAX_PROCESSOR               64
 #ifndef TC_FORMAT_ENABLE_ANSI_DATE_TIME_TOKENS
@@ -4044,6 +4045,24 @@ static BOOL tc_wfmt_core(WCHAR* s, int sCch, char* s_info, SYSTEMTIME* pt, int b
 					continue;
 				}
 
+				/* Japanese holiday tokens: HOLW mark or weekday, HOLM mark, HOLN name. Disabled in English UI. */
+				if (sp[0] == L'H' && sp[1] == L'O' && sp[2] == L'L' && (sp[3] == L'W' || sp[3] == L'M' || sp[3] == L'N')) {
+					extern BOOL b_English;
+					const WCHAR* selector = (sp[3] == L'W') ? L"HOLW" : (sp[3] == L'M') ? L"HOLM" : L"HOLN";
+					const WCHAR* holidayName = NULL;
+					UINT kind = b_English ? TC_HOLIDAY_NONE : TcHolidayFind((int)disptime.wYear, (int)disptime.wMonth, (int)disptime.wDay, &holidayName);
+					if (sp[3] == L'N') {
+						if (holidayName) TC_TOKEN(0x04, selector, tc_wappend_text(&dp, &remain, holidayName));
+					}
+					else if (kind != TC_HOLIDAY_NONE) {
+						TC_TOKEN(0x04, selector, tc_wappend_text(&dp, &remain, (kind == TC_HOLIDAY_PUBLIC) ? L"祝" : L"休"));
+					}
+					else if (sp[3] == L'W') {
+						WCHAR buf[64];
+						if (GetDateFormatW(MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), 0, &disptime, L"ddd", buf, (int)(sizeof(buf) / sizeof(buf[0]))) > 0) TC_TOKEN(0x04, selector, tc_wappend_text(&dp, &remain, buf));
+					}
+					sp += 4; continue;
+				}
 				if (_wcsnicmp(sp, L"PCORE", 5) == 0) {
 					extern int nCores; TC_TOKEN(0x01, L"PCORE", { int cores = (nCores < 0) ? 0 : nCores; tc_wappend_uint_var(&dp, &remain, cores); });
 					sp += 5; continue;

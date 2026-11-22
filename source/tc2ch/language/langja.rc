@@ -586,8 +586,8 @@ BEGIN
     LTEXT           "　TClockLight (by K. Takata氏)",IDC_STATIC,10,100,182,8
     LTEXT           "　Tclock-Win10 (by Mantis Mountain Mobile氏)",IDC_STATIC,10,110,182,8
     LTEXT           "を参考にしWindows11 26H2動作のための修正を行っています。",IDC_STATIC,10,126,182,12
-    PUSHBUTTON      "Windowsが起動するたびにTClockを起動",IDC_STARTUP,6,181,136,15
-    PUSHBUTTON      "レジストリ削除",IDC_DELREG,146,181,50,15
+    PUSHBUTTON      "スタートアップに登録",IDC_STARTUP,6,181,97,15
+    PUSHBUTTON      "スタートアップから削除",IDC_STARTUP_DEL,107,181,97,15
     CONTROL         "",IDC_UPDATE_NOTICE,"Button",BS_OWNERDRAW | WS_TABSTOP,6,213,198,12
 END
 
@@ -605,8 +605,8 @@ BEGIN
     LTEXT           "  TClockLight (by K. Takata)",IDC_STATIC,10,100,190,8
     LTEXT           "  TClock-Win10 (by Mantis Mountain Mobile)",IDC_STATIC,10,110,190,8
     LTEXT           "was revised with reference to those versions for Windows 11 26H2 compatibility.",IDC_STATIC,10,126,190,16
-    PUSHBUTTON      "Create a Shortcut in Startup",IDC_STARTUP,6,181,136,15
-    PUSHBUTTON      "Clean Registry",IDC_DELREG,146,181,50,15
+    PUSHBUTTON      "Add to Startup",IDC_STARTUP,6,181,97,15
+    PUSHBUTTON      "Remove from Startup",IDC_STARTUP_DEL,107,181,97,15
     CONTROL         "",IDC_UPDATE_NOTICE,"Button",BS_OWNERDRAW | WS_TABSTOP,6,213,198,12
 END
 
@@ -1804,10 +1804,10 @@ END
 STRINGTABLE
 BEGIN
     IDS_GMCPU               "CPU使用率"
-    IDS_DELREGT             "レジストリ削除"
-    IDS_DELREGOK            "削除成功！"
-    IDS_DELREGNG            "削除に失敗しました。\n(レジストリエントリが存在しない場合を含みます。)"
-    IDS_DELREGNGINI         "iniファイルを使用している時のみ実行できます。"
+    IDS_STARTUPDEL          "スタートアップからショートカットを削除しますか？\n(旧バージョンのレジストリ設定も削除します。)"
+    IDS_STARTUPDELOK        "スタートアップから削除しました。"
+    IDS_STARTUPDELNONE      "削除する項目はありませんでした。"
+    IDS_STARTUPDELNG        "スタートアップのショートカットを削除できませんでした。"
     IDS_GTBAR               "棒グラフ"
     IDS_GTLINE              "折れ線グラフ"
     IDS_TIPTYPENORMAL       "通常"
@@ -1997,10 +1997,10 @@ BEGIN
     IDS_TIPFILEEXT2         "Tooltip Text File (*.txt)"
     IDS_GMNET2              "Network Traffic"
     IDS_GMCPU2              "CPU Usage"
-    IDS_DELREGT2            "Remove Registry Entry"
-    IDS_DELREGOK2           "Successed to remove Registry Entries!"
-    IDS_DELREGNG2           "Failed to remove Registry Entries.\n(This includes the case there is no TClock Entry.)"
-    IDS_DELREGNGINI2        "This function is available when you use *.ini for setting."
+    IDS_STARTUPDEL2         "Remove the TClock shortcut from Startup?\n(Legacy registry settings are also removed.)"
+    IDS_STARTUPDELOK2       "Removed from Startup."
+    IDS_STARTUPDELNONE2     "There was nothing to remove."
+    IDS_STARTUPDELNG2       "Failed to remove the Startup shortcut."
     IDS_GTBAR2              "Bar Graph"
     IDS_GTLINE2             "Line Graph"
     IDS_TIPTYPENORMAL2      "Defalut"

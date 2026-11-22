@@ -13,6 +13,7 @@ static void OnApply(HWND hDlg);
 
 
 static void OnStartup(HWND hDlg);
+static void OnStartupDel(HWND hDlg);
 BOOL CreateLink(LPCSTR fname, LPCSTR dstpath, LPCSTR name);
 static BOOL Utf8ToWideStrict(const char* src, wchar_t* dst, int dstCch);
 
@@ -51,17 +52,8 @@ BOOL CALLBACK PageMiscProc(HWND hDlg, UINT message,
 			case IDC_STARTUP:
 				OnStartup(hDlg);
 				break;
-			case IDC_DELREG:
-				{
-					int r;
-					r = DelRegAll();
-					if (r == 0)
-						MyMessageBoxW(hDlg, MyStringW(IDS_DELREGNGINI), L"TClock-Win11", MB_OK, MB_ICONEXCLAMATION);
-					else if (r == 1)
-						MyMessageBoxW(hDlg, MyStringW(IDS_DELREGOK), L"TClock-Win11", MB_OK, MB_ICONINFORMATION);
-					else
-						MyMessageBoxW(hDlg, MyStringW(IDS_DELREGNG), L"TClock-Win11", MB_OK, MB_ICONEXCLAMATION);
-				}
+			case IDC_STARTUP_DEL:
+				OnStartupDel(hDlg);
 				break;
 				//  readme.txtを開く
 			}
@@ -122,6 +114,40 @@ void OnStartup(HWND hDlg)
 
 	GetModuleFileNameUTF8(GetModuleHandle(NULL), myexe, MAX_PATH);
 	CreateLink(myexe, dstpath, "TClock-Win11");
+}
+
+/*------------------------------------------------
+  Remove the Startup shortcut and legacy registry entries
+--------------------------------------------------*/
+void OnStartupDel(HWND hDlg)
+{
+	WCHAR lnkfile[MAX_PATH];
+	BOOL removed = FALSE, failed = FALSE;
+
+	if(MyMessageBoxW(hDlg, MyStringW(IDS_STARTUPDEL),
+		L"TClock-Win11", MB_YESNO, MB_ICONQUESTION) != IDYES) return;
+
+	if(SHGetFolderPathW(hDlg, CSIDL_STARTUP, NULL, SHGFP_TYPE_CURRENT, lnkfile) == S_OK &&
+		wcslen(lnkfile) + wcslen(L"\\TClock-Win11.lnk") < MAX_PATH)
+	{
+		wcscat(lnkfile, L"\\TClock-Win11.lnk");
+		if(DeleteFileW(lnkfile))
+			removed = TRUE;
+		else if(GetLastError() != ERROR_FILE_NOT_FOUND)
+			failed = TRUE;
+	}
+	else
+		failed = TRUE;
+
+	if(DelRegAll() == 1)
+		removed = TRUE;
+
+	if(failed)
+		MyMessageBoxW(hDlg, MyStringW(IDS_STARTUPDELNG), L"TClock-Win11", MB_OK, MB_ICONEXCLAMATION);
+	else if(removed)
+		MyMessageBoxW(hDlg, MyStringW(IDS_STARTUPDELOK), L"TClock-Win11", MB_OK, MB_ICONINFORMATION);
+	else
+		MyMessageBoxW(hDlg, MyStringW(IDS_STARTUPDELNONE), L"TClock-Win11", MB_OK, MB_ICONINFORMATION);
 }
 
 /*------------------------------------------------

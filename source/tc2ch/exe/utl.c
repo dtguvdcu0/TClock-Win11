@@ -334,7 +334,7 @@ void add_title(char *path, const char *title)
 			{
 				break;
 			}
-			p = CharNext(p);
+			p++;	/* UTF-8 path: byte walk. CharNext would pair UTF-8 bytes as CP932 DBCS and skip a separator. */
 		}
 		*p++ = '\\';
 	}
@@ -357,7 +357,7 @@ void del_title(char *path)
 			if(p > path && *(p - 1) == ':') ep = p + 1;
 			else ep = p;
 		}
-		p = CharNext(p);
+		p++;	/* UTF-8 path: byte walk. CharNext would pair UTF-8 bytes as CP932 DBCS and skip a separator. */
 	}
 	*ep = 0;
 }
@@ -377,7 +377,7 @@ void get_title(char* dst, const char *path)
 			if(p > path && *(p - 1) == ':') ep = p + 1;
 			else ep = p;
 		}
-		p = CharNext(p);
+		p++;	/* UTF-8 path: byte walk. CharNext would pair UTF-8 bytes as CP932 DBCS and skip a separator. */
 	}
 
 	if(*ep == '\\' || *ep == '/') ep++;
@@ -401,7 +401,7 @@ int ext_cmp(const char *fname, const char *ext)
 	{
 		if(*p == '.') sp = p;
 		else if(*p == '\\' || *p == '/') sp = NULL;
-		p = CharNext(p);
+		p++;	/* UTF-8 path: byte walk. CharNext would pair UTF-8 bytes as CP932 DBCS and skip a separator. */
 	}
 
 	if(sp == NULL) sp = p;
@@ -1161,12 +1161,21 @@ int GetMyRegStr(const char* section, const char* entry, char* val, int cbData,
 				}
 			}
 			r = tc_ini_utf8_read_string(g_inifile, key, entry, defval ? defval : "", val, cbData);
-			if (r == 0) {
-				r = GetPrivateProfileString(key, entry, defval ? defval : "", val, cbData, g_inifile);
-			}
 		}
 		else {
-			r = GetPrivateProfileString(key, entry, defval ? defval : "", val, cbData, g_inifile);
+			r = tc_ini_legacy_read_string(g_inifile, key, entry, defval ? defval : "", val, cbData);
+			if (r > 0 && tc_is_utf8_hex_target_key(section, entry)) {
+				WCHAR wbuf[4096];
+				/* Legacy ACP INI boundary: these consumers require UTF-8, including paths
+				   joined to the UTF-8 module/INI directory. Other settings remain ACP. */
+				if (tc_ansi_to_utf16_compat(0, val, wbuf, (int)_countof(wbuf)) > 0) {
+					r = tc_utf16_to_utf8(wbuf, val, cbData);
+				}
+				else {
+					val[0] = '\0';
+					r = 0;
+				}
+			}
 		}
 	}
 	if (isUtf8 && !isUtf8Target && r > 0) {
@@ -1452,7 +1461,7 @@ BOOL SetMyRegStr(const char* section, const char* entry, const char* val)
 	}
 	else {
 		/* Compatibility boundary: keep Win32 profile write fallback for legacy non-UTF8 INI. */
-		if (WritePrivateProfileString(key, entry, saveval, g_inifile)) {
+		if (tc_ini_legacy_write_string(g_inifile, key, entry, saveval)) {
 			r = TRUE;
 		}
 	}
@@ -1548,7 +1557,7 @@ BOOL SetMyRegLong(const char* section, const char* entry, DWORD val)
 	}
 	else {
 		/* Compatibility boundary: keep Win32 profile write fallback for legacy non-UTF8 INI. */
-		if (WritePrivateProfileString(key, entry, s, g_inifile)) {
+		if (tc_ini_legacy_write_string(g_inifile, key, entry, s)) {
 			r = TRUE;
 		}
 	}

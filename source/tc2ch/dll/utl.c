@@ -281,7 +281,7 @@ void add_title(char *path, const char *title)
 			{
 				break;
 			}
-			p = CharNext(p);
+			p++;	/* UTF-8 path: byte walk. CharNext would pair UTF-8 bytes as CP932 DBCS and skip a separator. */
 		}
 		*p++ = '\\';
 	}
@@ -304,7 +304,7 @@ void del_title(char *path)
 			if(p > path && *(p - 1) == ':') ep = p + 1;
 			else ep = p;
 		}
-		p = CharNext(p);
+		p++;	/* UTF-8 path: byte walk. CharNext would pair UTF-8 bytes as CP932 DBCS and skip a separator. */
 	}
 	*ep = 0;
 }
@@ -325,7 +325,7 @@ void get_title(char* dst, const char *path)
 			if (p > path && *(p - 1) == ':') ep = p + 1;
 			else ep = p;
 		}
-		p = CharNext(p);
+		p++;	/* UTF-8 path: byte walk. CharNext would pair UTF-8 bytes as CP932 DBCS and skip a separator. */
 	}
 
 	if (*ep == '\\' || *ep == '/') ep++;
@@ -457,12 +457,21 @@ int GetMyRegStr(const char* section, const char* entry, char* val, int cbData,
 				}
 			}
 			r = tc_ini_utf8_read_string(g_inifile, key, entry, defval ? defval : "", val, cbData);
-			if (r == 0) {
-				r = GetPrivateProfileString(key, entry, defval ? defval : "", val, cbData, g_inifile);
-			}
 		}
 		else {
-			r = GetPrivateProfileString(key, entry, defval ? defval : "", val, cbData, g_inifile);
+			r = tc_ini_legacy_read_string(g_inifile, key, entry, defval ? defval : "", val, cbData);
+			if (r > 0 && keepUtf8Bytes) {
+				WCHAR wbuf[4096];
+				/* Legacy ACP INI boundary: these consumers require UTF-8, including paths
+				   joined to the UTF-8 module/INI directory. Other settings remain ACP. */
+				if (tc_ansi_to_utf16_compat(0, val, wbuf, (int)_countof(wbuf)) > 0) {
+					r = tc_utf16_to_utf8(wbuf, val, cbData);
+				}
+				else {
+					val[0] = '\0';
+					r = 0;
+				}
+			}
 		}
 	}
 	if (isUtf8 && r > 0 && !keepUtf8Bytes) {
@@ -584,12 +593,12 @@ LONG GetMyRegLong(const char* section, const char* entry, LONG defval)
 			}
 			else {
 				/* Compatibility boundary: keep Win32 profile fallback for legacy non-UTF8 INI. */
-				r = GetPrivateProfileInt(key, entry, defval, g_inifile);
+				r = (LONG)tc_ini_legacy_read_int(g_inifile, key, entry, defval);
 			}
 		}
 		else {
 			/* Compatibility boundary: keep Win32 profile fallback for legacy non-UTF8 INI. */
-			r = GetPrivateProfileInt(key, entry, defval, g_inifile);
+			r = (LONG)tc_ini_legacy_read_int(g_inifile, key, entry, defval);
 		}
 	}
 
@@ -730,7 +739,7 @@ BOOL SetMyRegStr(const char* section, const char* entry, const char* val)
 			}
 		}
 		/* Compatibility boundary: keep Win32 profile write fallback for legacy non-UTF8 INI. */
-		else if (WritePrivateProfileString(key, entry, saveval, g_inifile)) {
+		else if (tc_ini_legacy_write_string(g_inifile, key, entry, saveval)) {
 			r = TRUE;
 		}
 
@@ -778,7 +787,7 @@ BOOL SetMyRegLong(const char* section, const char* entry, DWORD val)
 			}
 		}
 		/* Compatibility boundary: keep Win32 profile write fallback for legacy non-UTF8 INI. */
-		else if (WritePrivateProfileString(key, entry, s, g_inifile)) {
+		else if (tc_ini_legacy_write_string(g_inifile, key, entry, s)) {
 			r = TRUE;
 		}
 
@@ -882,6 +891,20 @@ void WriteDebugDLL_New(LPSTR s)
 
 // 与えられたファイル名が相対パスならば
 // TClockのフォルダからの絶対パスに変換
+/* The dll path domain is UTF-8, like the exe (GetModuleFileNameW, then UTF-8). */
+DWORD GetModuleFileNameUTF8(HMODULE module, char* outUtf8, DWORD outBytes)
+{
+	wchar_t wPath[MAX_PATH];
+	DWORD wlen;
+
+	if (!outUtf8 || outBytes == 0) return 0;
+	outUtf8[0] = '\0';
+	wlen = GetModuleFileNameW(module, wPath, (DWORD)(sizeof(wPath) / sizeof(wPath[0])));
+	if (wlen == 0 || wlen >= (DWORD)(sizeof(wPath) / sizeof(wPath[0]))) return 0;
+	if (tc_utf16_to_utf8(wPath, outUtf8, (int)outBytes) <= 0) return 0;
+	return (DWORD)strlen(outUtf8);
+}
+
 PSTR CreateFullPathName(HINSTANCE hinst, PSTR fname)
 {
 	size_t len;
@@ -914,7 +937,7 @@ PSTR CreateFullPathName(HINSTANCE hinst, PSTR fname)
 	}
 
 	// TClockの位置を基準パスとして指定文字列を相対パスとして追加
-	if (GetModuleFileName(hinst, szTClockPath, MAX_PATH) == 0) {
+	if (GetModuleFileNameUTF8((HMODULE)hinst, szTClockPath, MAX_PATH) == 0) {
 		return NULL;
 	}
 	del_title(szTClockPath);

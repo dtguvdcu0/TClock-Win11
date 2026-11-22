@@ -142,6 +142,7 @@ HFONT CreateMyFontW(const WCHAR* fontname, int fontsize,
 int ext_cmp(const char *fname, const char *ext);
 //void add_title(char *path, const char *title);
 void del_title(char *path);
+DWORD GetModuleFileNameUTF8(HMODULE hmod, char* outUtf8, DWORD outBytes);
 
 void parse(char *dst, const char *src, int n);
 

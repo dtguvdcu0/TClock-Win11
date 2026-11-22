@@ -1834,6 +1834,65 @@ cleanup:
     return ok;
 }
 
+/* Legacy (non-UTF-8) INI boundary. The Profile API decodes a file without a UTF-16LE BOM
+   with the ANSI code page. The path is UTF-8 (ACP is still accepted) and always reaches the
+   W API intact; section, key and value text keep the ACP contract of the former A calls. */
+static BOOL tc_legacy_prepare(const char* iniPath, const char* section, const char* key,
+                              WCHAR* path, WCHAR* wsec, WCHAR* wkey)
+{
+    if (!iniPath || !key || !key[0]) return FALSE;
+    if (!section || !section[0]) section = "Main";
+    if (!tc_path_utf8_or_ansi_to_utf16(iniPath, path, MAX_PATH)) return FALSE;
+    /* Compatibility boundary: legacy INI section/key names are ACP text. */
+    if (tc_ansi_to_utf16_compat(0, section, wsec, 128) <= 0) return FALSE;
+    /* Compatibility boundary: legacy INI section/key names are ACP text. */
+    return tc_ansi_to_utf16_compat(0, key, wkey, 128) > 0;
+}
+
+int tc_ini_legacy_read_string(const char* iniPath, const char* section, const char* key,
+                              const char* defval, char* outVal, int outSize)
+{
+    WCHAR path[MAX_PATH], wsec[128], wkey[128], wdef[1024], wval[4096];
+    char abuf[8192];
+    if (!outVal || outSize <= 0) return 0;
+    outVal[0] = '\0';
+    if (!defval) defval = "";
+    if (!tc_legacy_prepare(iniPath, section, key, path, wsec, wkey)) {
+        tc_copy_str(outVal, outSize, defval);
+        return lstrlen(outVal);
+    }
+    wdef[0] = L'\0';
+    /* Compatibility boundary: legacy INI default values are ACP text. */
+    if (defval[0] && tc_ansi_to_utf16_compat(0, defval, wdef, _countof(wdef)) <= 0) wdef[0] = L'\0';
+    wval[0] = L'\0';
+    GetPrivateProfileStringW(wsec, wkey, wdef, wval, _countof(wval), path); /* Legacy ACP INI boundary. */
+    if (!wval[0]) return 0;
+    /* Compatibility boundary: legacy INI values return as ACP text, as the former A call did. */
+    if (tc_utf16_to_ansi_compat(0, wval, abuf, (int)sizeof(abuf)) <= 0) return 0;
+    tc_copy_str(outVal, outSize, abuf);
+    return lstrlen(outVal);
+}
+
+UINT tc_ini_legacy_read_int(const char* iniPath, const char* section, const char* key, int defval)
+{
+    WCHAR path[MAX_PATH], wsec[128], wkey[128];
+    if (!tc_legacy_prepare(iniPath, section, key, path, wsec, wkey)) return (UINT)defval;
+    return GetPrivateProfileIntW(wsec, wkey, defval, path); /* Legacy ACP INI boundary. */
+}
+
+BOOL tc_ini_legacy_write_string(const char* iniPath, const char* section, const char* key,
+                                const char* val)
+{
+    WCHAR path[MAX_PATH], wsec[128], wkey[128], wval[4096];
+    if (!tc_legacy_prepare(iniPath, section, key, path, wsec, wkey)) return FALSE;
+    wval[0] = L'\0';
+    /* Compatibility boundary: legacy INI values are ACP text. */
+    if (val && val[0] && tc_ansi_to_utf16_compat(0, val, wval, _countof(wval)) <= 0) return FALSE;
+    if (!WritePrivateProfileStringW(wsec, wkey, wval, path)) return FALSE; /* Legacy ACP INI boundary. */
+    tc_ini_utf8_clear_cache();
+    return TRUE;
+}
+
 BOOL tc_ini_utf8_selfcheck(void)
 {
     char tmpPath[MAX_PATH];

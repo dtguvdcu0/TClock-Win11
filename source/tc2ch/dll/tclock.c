@@ -748,7 +748,7 @@ static LONG g_refresh_pending = 0;
 int WinBuildNumber = 0;
 //int Win11Type = 0;
 
-char g_mydir_dll[MAX_PATH]; // path to tclock.exe
+char g_mydir_dll[MAX_PATH]; // folder of the clock dll (UTF-8)
 
 char strVPN_Keywords[256];
 char strVPN_Excludes[256];
@@ -1467,7 +1467,7 @@ void InitClock()
 
 	HookEnd();	//Ver 4.0.5.3試行。Initclock起動してからは不要なのでフック外す。不具合出るならこの行を削除する。
 
-	GetModuleFileName(hmod, fname, MAX_PATH);
+	GetModuleFileNameUTF8((HMODULE)hmod, fname, MAX_PATH);
 
 
 	GetTaskbarSize();
@@ -3412,7 +3412,7 @@ static void tc_read_minimal(void)
 	ext_load_settings();
 	SetMyRegLong("Status_DoNotEdit", "Win11TClockMain", bWin11Main);
 
-	GetModuleFileName(hmod, g_mydir_dll, MAX_PATH);
+	GetModuleFileNameUTF8((HMODULE)hmod, g_mydir_dll, MAX_PATH);
 	del_title(g_mydir_dll);
 
 	b_NormalLog = GetMyRegLong(NULL, "NormalLog", TRUE);
@@ -3924,7 +3924,7 @@ static void tc_read_settings(void)
 
 	//SetMyRegLong("Status_DoNotEdit", "WindowsType", Win11Type);
 
-	GetModuleFileName(hmod, g_mydir_dll, MAX_PATH);		//iniファイル経由でなくディレクトリ取得するように by TTTT
+	GetModuleFileNameUTF8((HMODULE)hmod, g_mydir_dll, MAX_PATH);		//iniファイル経由でなくディレクトリ取得するように by TTTT
 	del_title(g_mydir_dll);
 
 

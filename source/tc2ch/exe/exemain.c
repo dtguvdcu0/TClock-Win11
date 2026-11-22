@@ -119,14 +119,14 @@ static void GetTCyclePathConfig(char* outPath, int outPathLen);
 static void LaunchTCycleAgentIfEnabled(void);
 static LONG GetTCaptureEnableConfig(void);
 static void GetTCapturePathConfig(char* outPath, int outPathLen);
-static void SyncTCaptureIntegrationIniPath(const char* tcapExePath);
+static WCHAR s_captureIni[MAX_PATH];
+static unsigned s_captureSyncTicks;
 static void LaunchTCaptureAgentIfEnabled(void);
 static LONG GetTCalendarAlertEnableConfig(void);
 static void GetTCalendarPathConfig(char* outPath, int outPathLen);
 static void LaunchTCalendarAlertIfEnabled(void);
 static void EnsureTCalendarConfigDefaults(void);
 static void TerminateExtensionsOnExplicitExitIfNeeded(void);
-// TEMP_VERIFY_START ghostchk
 static void zchk_log(const char* state, BOOL shellAlive, BOOL trayAlive, DWORD flags, DWORD nowTick);
 
 static UINT s_uTaskbarRestart = 0;
@@ -183,7 +183,6 @@ DWORD g_tickRelayoutRequestLast = 0;
 DWORD g_tickShellMissingLast = 0;
 DWORD g_tickZombieHealthyLast = 0;
 int g_lastGhostState = -1;
-// TEMP_VERIFY_END ghostchk
 BOOL b_HideClockPolicyApplied = FALSE;
 BOOL b_HideClockPolicyWasEnabled = FALSE;
 BOOL b_SkipHideClockRestore = FALSE;
@@ -880,24 +879,14 @@ static void GetTCapturePathConfig(char* outPath, int outPathLen)
     DelMyReg("ETC", "TCapturePath");
 }
 
-static void SyncTCaptureIntegrationIniPath(const char* tcapExePath)
+static BOOL ex_sync_capture(void)
 {
-    char tcapIniPath[MAX_PATH];
-    char current[MAX_PATH];
-
-    if (!tcapExePath || !tcapExePath[0]) return;
-    if (!g_inifile[0]) return;
-
-    lstrcpyn(tcapIniPath, tcapExePath, MAX_PATH);
-    del_title(tcapIniPath);
-    add_title(tcapIniPath, "TCapture.ini");
-
-    tc_ini_utf8_read_string(tcapIniPath, "Integration", "TClockIniPath", "", current, MAX_PATH);
-    if (strcmp(current, g_inifile) == 0) return;
-
-    if (!tc_ini_utf8_write_string(tcapIniPath, "Integration", "TClockIniPath", g_inifile)) {
-        if (b_DebugLog) WriteDebug_New2("[exemain.c] Failed to sync Integration.TClockIniPath in TCapture.ini");
-    }
+    char entry[sizeof("TClockIniPath=") + sizeof(g_inifile)] = "TClockIniPath=";
+    if (!g_inifile[0] || !tc_ini_beginW(s_captureIni)) return FALSE;
+    tc_ini_end();
+    /* TCapture stores the host path as UTF-8 INI content. */
+    memcpy(entry + sizeof("TClockIniPath=") - 1, g_inifile, strlen(g_inifile) + 1);
+    return tc_patch_batchW(s_captureIni, "Integration", entry, (DWORD)strlen(entry) + 2);
 }
 
 static void EnsureTCalendarConfigDefaults(void)
@@ -925,33 +914,35 @@ static void EnsureTCalendarConfigDefaults(void)
 static void LaunchTCaptureAgentIfEnabled(void)
 {
     char tcapPathCfg[MAX_PATH];
-    char exePath[MAX_PATH];
-    const char* launchParams;
-    HINSTANCE launchResult;
+    WCHAR configured[MAX_PATH], directory[MAX_PATH], exePath[MAX_PATH];
+    BOOL missing;
+    HINSTANCE launched;
 
+    s_captureSyncTicks = 0;
     if (!GetTCaptureEnableConfig()) return;
-
     GetTCapturePathConfig(tcapPathCfg, MAX_PATH);
-    if (tcapPathCfg[0] == 0) strcpy(tcapPathCfg, "plugins\\TCapture.exe");
-    if ((tcapPathCfg[1] == ':') || (tcapPathCfg[0] == '\\') || (tcapPathCfg[0] == '/')) {
-        strcpy(exePath, tcapPathCfg);
-    }
-    else {
-        strcpy(exePath, g_mydir);
-        add_title(exePath, tcapPathCfg);
-    }
-
-    if (!PathFileExistsUtf8Strict(exePath)) {
+    if (!tc_utf8_to_utf16(tcapPathCfg, configured, _countof(configured)) ||
+        !tc_utf8_to_utf16(g_mydir, directory, _countof(directory)) ||
+        !PathCombineW(exePath, directory, configured) || !PathFileExistsW(exePath)) {
         if (b_DebugLog) WriteDebug_New2("[exemain.c] TCaptureEnable=1 but TCapture target was not found");
         return;
     }
 
-    SyncTCaptureIntegrationIniPath(exePath);
+    wcscpy_s(s_captureIni, _countof(s_captureIni), exePath);
+    if (!PathRemoveFileSpecW(s_captureIni) || !PathAppendW(s_captureIni, L"TCapture.ini")) return;
+    missing = GetFileAttributesW(s_captureIni) == INVALID_FILE_ATTRIBUTES &&
+              GetLastError() == ERROR_FILE_NOT_FOUND;
+    if (!missing && !ex_sync_capture() && b_DebugLog)
+        WriteDebug_New2("[exemain.c] Failed to sync Integration.TClockIniPath in TCapture.ini");
 
-    launchParams = b_EnglishMenu ? "--agent --lang en" : "--agent --lang ja";
-    launchResult = ShellExecuteUtf8Strict(NULL, "open", exePath, launchParams, g_mydir, SW_HIDE);
-    if ((INT_PTR)launchResult <= 32 && b_DebugLog) {
-        WriteDebug_New2("[exemain.c] Failed to launch TCapture agent");
+    launched = ShellExecuteW(NULL, L"open", exePath,
+                             b_EnglishMenu ? L"--agent --lang en" : L"--agent --lang ja",
+                             directory, SW_HIDE);
+    if ((INT_PTR)launched <= 32) {
+        if (b_DebugLog) WriteDebug_New2("[exemain.c] Failed to launch TCapture agent");
+    } else if (missing) {
+        /* Let TCapture create all default profiles before recording the integration path. */
+        s_captureSyncTicks = 30;
     }
 }
 
@@ -1056,7 +1047,6 @@ static void TerminateExtensionsOnExplicitExitIfNeeded(void)
     preg_stop_tools();
 }
 
-// TEMP_VERIFY_START ghostchk
 static void zchk_log(const char* state, BOOL shellAlive, BOOL trayAlive, DWORD flags, DWORD nowTick)
 {
 	char tempString[256];
@@ -1075,7 +1065,6 @@ static void zchk_log(const char* state, BOOL shellAlive, BOOL trayAlive, DWORD f
 		(unsigned long)flags);
 	WriteDebug_New2(tempString);
 }
-// TEMP_VERIFY_END ghostchk
 
 
 /*-------------------------------------------------------
@@ -1200,7 +1189,11 @@ static UINT WINAPI TclockExeMain(void)
 
 
 	// get the path where .exe is positioned
-	GetModuleFileNameUTF8(g_hInst, g_mydir, MAX_PATH);	//この時点ではフルパス付きのtclock実行ファイル名を取得
+	if (!GetModuleFileNameUTF8(g_hInst, g_mydir, MAX_PATH)) {
+		MessageBoxW(NULL, L"TClock could not read its installation path. Move it to a shorter folder path.",
+		            L"TClock-Win11", MB_ICONERROR | MB_SETFOREGROUND);
+		return 1;
+	}
 	char fname[MAX_PATH];
 	strcpy(fname, g_mydir);		//exeのファイル名がついたままのg_mydirをfnameに入れて
 	getExeVersion(fname);		//fileバージョンを取得してexeVersionM, exeVersionLを取得->DLLバージョンチェックに利用
@@ -1597,6 +1590,13 @@ LRESULT CALLBACK WndProc(HWND hwnd,	UINT message, WPARAM wParam, LPARAM lParam)	
 			else if (wParam == IDTIMER_MAIN)	//メインループタイマー(デフォルト1秒)のタイムアウトの処理
 			{
 				//if (b_DebugLog) WriteDebug_New2("[exemain.c][WndProc] WM_TIMER(IDTIMER_MAIN) received");
+                if (s_captureSyncTicks) {
+                    --s_captureSyncTicks;
+                    if (GetFileAttributesW(s_captureIni) != INVALID_FILE_ATTRIBUTES && ex_sync_capture())
+                        s_captureSyncTicks = 0;
+                    else if (!s_captureSyncTicks && b_DebugLog)
+                        WriteDebug_New2("[exemain.c] Timed out waiting for TCapture.ini initialization");
+                }
 				OnTimerMain(hwnd);
 				MenuOnTimerTick(hwnd);
 				pfb_refresh(hwnd, FALSE);
@@ -1661,13 +1661,11 @@ LRESULT CALLBACK WndProc(HWND hwnd,	UINT message, WPARAM wParam, LPARAM lParam)	
 			pfb_refresh(hwnd, TRUE);
 			pch_refresh(hwnd, TRUE);
 			prn_refresh(hwnd, TRUE);
-			// TEMP_VERIFY_START ghostchk
 			if (b_DebugLog) {
 				char tempString[128];
 				wsprintf(tempString, "[ghostchk][exe] hwnd-clock=%p", g_hwndClock);
 				WriteDebug_New2(tempString);
 			}
-			// TEMP_VERIFY_END ghostchk
 			return 0;
 		case (WM_USER + 1):   // error
 			if (b_DebugLog) {
@@ -1842,14 +1840,12 @@ LRESULT CALLBACK WndProc(HWND hwnd,	UINT message, WPARAM wParam, LPARAM lParam)	
 	if(message == s_uTaskbarRestart) // When Explorer is hung up,
 	{								 // and the taskbar is recreated.
 		if (b_DebugLog) WriteDebug_New2("[exemain.c][WndProc] message: s_uTaskbarRestart received");
-		// TEMP_VERIFY_START ghostchk
 		g_tickTaskbarRestartLast = GetTickCount();
 		g_tickRelayoutRequestLast = g_tickTaskbarRestartLast;
 		g_tickShellMissingLast = 0;
 		g_Win11ZombieMissCount = 0;
 		g_lastGhostState = -1;
 		if (b_DebugLog) zchk_log("taskbarcreated", TRUE, TRUE, 0, g_tickTaskbarRestartLast);
-		// TEMP_VERIFY_END ghostchk
 
         if (b_IgnoreTaskbarRestartForHideClock) {
             b_IgnoreTaskbarRestartForHideClock = FALSE;
@@ -1897,7 +1893,9 @@ LRESULT CALLBACK WndProc(HWND hwnd,	UINT message, WPARAM wParam, LPARAM lParam)	
 		}
 	}
 
-	return DefWindowProc(hwnd, message, wParam, lParam);
+	/* The class is registered with RegisterClassW, so messages carry UTF-16 (CREATESTRUCTW, WM_SETTEXT).
+	   DefWindowProcA truncated the caption L"TClock" to "T" and broke FindWindowW-based /exit and duplicate detection. */
+	return DefWindowProcW(hwnd, message, wParam, lParam);
 }
 
 void TerminateTClock(HWND hwnd)
@@ -2063,7 +2061,6 @@ void OnTimerMain(HWND hwnd)		//メインループタイマー(デフォルト1�
 
 void OnTimerZombieCheck2(HWND hwnd)
 {
-	// TEMP_VERIFY_START ghostchk
 	DWORD nowTick = GetTickCount();
 	HWND hwndShell = NULL;
 	HWND hwndTray = NULL;
@@ -2071,17 +2068,14 @@ void OnTimerZombieCheck2(HWND hwnd)
 	BOOL shellAlive = FALSE;
 	BOOL trayAlive = FALSE;
 	int ghostState = -1;
-	// TEMP_VERIFY_END ghostchk
 
 	if (!g_hwndClock)
 	{
-		// TEMP_VERIFY_START ghostchk
 		ghostState = 1;
 		if (b_DebugLog && g_lastGhostState != ghostState) {
 			zchk_log("clock-missing", FALSE, FALSE, 0, nowTick);
 			g_lastGhostState = ghostState;
 		}
-		// TEMP_VERIFY_END ghostchk
 		return;
 	}
 
@@ -2091,23 +2085,18 @@ void OnTimerZombieCheck2(HWND hwnd)
 		ret = (int)SendMessage(g_hwndClock, WM_COMMAND, (WPARAM)CLOCKM_ZOMBIECHECK_CALL, 0);
 		if (ret == 255)
 		{
-			// TEMP_VERIFY_START ghostchk
 			g_tickZombieHealthyLast = nowTick;
 			g_tickShellMissingLast = 0;
 			g_Win11ZombieMissCount = 0;
-			// TEMP_VERIFY_END ghostchk
 			if (b_DebugLog) WriteDebug_New2("[exemain.c][OnTimerZombieCheck2] TClock is alive.");
-			// TEMP_VERIFY_START ghostchk
 			ghostState = 0;
 			if (b_DebugLog && g_lastGhostState != ghostState) {
 				zchk_log("healthy", TRUE, TRUE, 0, nowTick);
 				g_lastGhostState = ghostState;
 			}
-			// TEMP_VERIFY_END ghostchk
 		}
 		else
 		{
-			// TEMP_VERIFY_START ghostchk
 			BOOL relayoutWanted = FALSE;
 			DWORD relayoutAge = 0xFFFFFFFFu;
 			g_Win11ZombieMissCount++;
@@ -2132,13 +2121,11 @@ void OnTimerZombieCheck2(HWND hwnd)
 					|| (healthFlags & CLKH_OUTER_CB_VALID) == 0
 					|| (healthFlags & CLKH_FRAME_VALID) == 0);
 			relayoutAge = g_tickRelayoutRequestLast ? (nowTick - g_tickRelayoutRequestLast) : 0xFFFFFFFFu;
-			// TEMP_VERIFY_END ghostchk
 
 			if (GetMyRegLong("Status_DoNotEdit", "Win11TClockMain", 0) == 1) {
 				//Win11の場合は普通にExplorerが再起動したらここに来る。無視してExeを生かしておいたらOSからNotificationが来るのでその時に対処する。
 				//if (b_DebugLog) WriteDebug_New2("[exemain.c][OnTimerZombieCheck2](Win11) No responce from DLL. Explorer.exe may be restarted. Continue operation to wait notification from OS.");
 				//if (b_NormalLog) WriteNormalLog("(Win11) No responce from DLL. Explorer.exe may be restarted. Continue operation to wait notification from OS.");
-				// TEMP_VERIFY_START ghostchk
 				if (relayoutWanted && relayoutAge >= 10000) {
 					LRESULT recoverRet = SendMessage(g_hwndClock, WM_COMMAND, (WPARAM)CLOCKM_REQUEST_RECOVERY, (LPARAM)CLKR_RELAYOUT_ONLY);
 					g_tickRelayoutRequestLast = nowTick;
@@ -2157,20 +2144,17 @@ void OnTimerZombieCheck2(HWND hwnd)
 					zchk_log(shellAlive ? "win11-return-shell-alive" : "win11-return-shell-missing", shellAlive, trayAlive, healthFlags, nowTick);
 					g_lastGhostState = ghostState;
 				}
-				// TEMP_VERIFY_END ghostchk
 				return;
 			}
 			else {
 				//Win10の場合にはここに来た時点でかなり異常なのでそのまま終わることにする。ふつうは起きない。
 				if (b_DebugLog) WriteDebug_New2("[exemain.c][OnTimerZombieCheck2](Win10) No responce from DLL. TClock may be unexpectedly dead. Quit TClock, regardless b_AutoRestart.");
 				if (b_NormalLog) WriteNormalLog("(Win10) No responce from DLL. TClock may be unexpectedly dead. Quit TClock, regardless b_AutoRestart.");
-				// TEMP_VERIFY_START ghostchk
 				ghostState = 4;
 				if (b_DebugLog && g_lastGhostState != ghostState) {
 					zchk_log("win10-terminate-current-behavior", shellAlive, trayAlive, healthFlags, nowTick);
 					g_lastGhostState = ghostState;
 				}
-				// TEMP_VERIFY_END ghostchk
 				TerminateTClockFromDLL(hwnd, FALSE);		//すでにTClockの改造部は終了/消失していると判断されるため、FromDLLでの終了動作を行う。
 			}
 

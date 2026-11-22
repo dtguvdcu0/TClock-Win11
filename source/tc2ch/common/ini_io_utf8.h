@@ -29,6 +29,13 @@ BOOL tc_ini_utf8_write_string(const char* iniPath, const char* section, const ch
                               const char* val);
 BOOL tc_ini_utf8_delete_key(const char* iniPath, const char* section, const char* key);
 BOOL tc_ini_utf8_delete_section(const char* iniPath, const char* section);
+/* Legacy (non-UTF-8) INI boundary: W Profile API with the path decoded as UTF-8 or ACP.
+   Section, key and value text keep the legacy ACP contract of the former A calls. */
+int tc_ini_legacy_read_string(const char* iniPath, const char* section, const char* key,
+                              const char* defval, char* outVal, int outSize);
+UINT tc_ini_legacy_read_int(const char* iniPath, const char* section, const char* key, int defval);
+BOOL tc_ini_legacy_write_string(const char* iniPath, const char* section, const char* key,
+                                const char* val);
 BOOL tc_ini_utf8_selfcheck(void);
 /* Atomic UTF-8 batch; each bounded multisz entry sets key=value or deletes key without an equals sign. */
 BOOL tc_write_batchW(const wchar_t* iniPath, const char* section, const char* entries, DWORD entryBytes);

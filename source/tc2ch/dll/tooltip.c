@@ -798,14 +798,15 @@ static BOOL GetTooltipText(PSTR pszText)
 		}
 	}
 	if (bAbsPath == FALSE) {
-		GetModuleFileName(hmod, szFilePath, sizeof(szFilePath));
+		if (!GetModuleFileNameUTF8((HMODULE)hmod, szFilePath, sizeof(szFilePath))) return FALSE;
 		del_title(szFilePath);
-		if (len + strlen(szFilePath) >= MAX_PATH) {
+		if (len + strlen(szFilePath) + 1 >= sizeof(szFilePath)) {
 			return FALSE;
 		}
 		add_title(szFilePath, pszText);
 		*pszText = '\0';
 	} else {
+		if (len >= sizeof(szFilePath)) return FALSE;
 		strcpy(szFilePath, pszText);
 		*pszText = '\0';
 	}
